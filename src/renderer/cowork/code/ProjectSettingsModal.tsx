@@ -24,7 +24,6 @@ import {
   type ProjectResource,
   type ResourceAvailability,
   type ProjectSkillSource,
-  type SkillLibraryItem,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
@@ -34,6 +33,7 @@ import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
 import { openCodePath, openCodeRepository } from './shellLinks';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
+import { useSkillLibrary } from './useSkillLibrary';
 
 const supportedProviders = new Set(['github', 'linear']);
 
@@ -90,10 +90,8 @@ export function ProjectSettingsModal({
   const [availability, setAvailability] = useState<ResourceAvailability[]>([]);
   const [commandDrafts, setCommandDrafts] = useState<Record<string, string>>({});
   const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
-  const [skillItems, setSkillItems] = useState<SkillLibraryItem[]>([]);
+  const { page: skillLibrary, loading: skillsLoading, error: skillsError } = useSkillLibrary(undefined, { enabled: open });
   const [selectedSkillSources, setSelectedSkillSources] = useState<ProjectSkillSource[]>([]);
-  const [skillsLoading, setSkillsLoading] = useState(false);
-  const [skillsError, setSkillsError] = useState('');
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [environmentText, setEnvironmentText] = useState('');
   const [portNames, setPortNames] = useState('PORT');
@@ -208,23 +206,6 @@ export function ProjectSettingsModal({
   }, [open, project?.id]);
 
   useEffect(() => {
-    if (!open) return undefined;
-    let active = true;
-    setSkillsLoading(true);
-    codingApi.skillLibrary().then((library) => {
-      if (!active) return;
-      setSkillItems(library.items);
-      setSkillsError('');
-    }).catch((reason) => {
-      if (!active) return;
-      setSkillsError(reason instanceof Error ? reason.message : 'Could not load team skills.');
-    }).finally(() => {
-      if (active) setSkillsLoading(false);
-    });
-    return () => { active = false; };
-  }, [open]);
-
-  useEffect(() => {
     if (!open || !projectEngineId) return undefined;
     void codingCatalog.loadModels(projectEngineId);
     return undefined;
@@ -337,7 +318,7 @@ export function ProjectSettingsModal({
               <div><strong>Skills</strong><span>Team standards and workflows available to every task in this project</span></div>
             </div>
             <ProjectSkillSelector
-              items={skillItems}
+              items={skillLibrary.items}
               selected={selectedSkillSources}
               loading={skillsLoading}
               error={skillsError}

@@ -126,6 +126,10 @@ export function DeliveryAutomationMonitor({
   }, []);
 
   const runAll = useCallback(async () => {
+    const live = new Set(sessionsRef.current.map((session) => session.id));
+    for (const id of executed.current.keys()) {
+      if (!live.has(id)) executed.current.delete(id);
+    }
     // Run sessions sequentially to avoid a burst of GitHub GraphQL, check-run,
     // and review requests when several parallel tasks reach delivery together.
     let changed = false;

@@ -9,6 +9,9 @@ import { Input } from '../../components/ui/Input';
 import { ConnectComputerModal } from './ConnectComputerModal';
 import { SettingsGroup, SettingsSectionPanel } from './settingsLayout';
 
+const POLL_INTERVAL_MS = 5_000;
+const MAX_POLL_INTERVAL_MS = 60_000;
+
 
 function platformLabel(platform: CodeComputer['capabilities']['platform']): string {
   if (platform === 'darwin') return 'macOS';
@@ -48,23 +51,44 @@ export default function ComputersSettingsSection() {
   const [editingName, setEditingName] = useState('');
   const [revokingId, setRevokingId] = useState('');
 
-  const refresh = useCallback(async (quiet = false) => {
+  const refresh = useCallback(async (quiet = false): Promise<boolean> => {
     if (!quiet) setLoading(true);
     try {
       const page = await codingApi.computers();
       setComputers(page.items);
       setError('');
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load computers.');
+      return false;
     } finally {
       if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(true), 5000);
-    return () => window.clearInterval(timer);
+    let timer = 0;
+    let delay = POLL_INTERVAL_MS;
+    let inFlight = false;
+    let disposed = false;
+    const poll = async (quiet: boolean) => {
+      if (inFlight) return;
+      inFlight = true;
+      window.clearTimeout(timer);
+      const ok = await refresh(quiet);
+      inFlight = false;
+      if (disposed) return;
+      delay = ok ? POLL_INTERVAL_MS : Math.min(delay * 2, MAX_POLL_INTERVAL_MS);
+      timer = window.setTimeout(() => { if (document.visibilityState === 'visible') void poll(true); }, delay);
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void poll(true); };
+    void poll(false);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [refresh]);
 
   const saveName = async (computer: CodeComputer) => {

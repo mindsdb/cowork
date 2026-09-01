@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { host } from '../../platform/host';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -11,21 +11,14 @@ import {
   codingApi,
   type CodeProject,
   type SkillLibraryItem,
-  type SkillLibraryPage,
   type SkillLibrarySource,
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
 import { openCodeRepository } from './shellLinks';
+import { useSkillLibrary } from './useSkillLibrary';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
-
-const EMPTY_LIBRARY: SkillLibraryPage = { sources: [], items: [] };
-// CodeView intentionally swaps its first-class screens rather than hiding all
-// of them in the DOM. Retain only the current identity's last successful
-// catalogue so returning to Skills is instant without crossing account/org
-// boundaries after a sign-out or identity change.
-let libraryCache: { scopeKey: string; page: SkillLibraryPage } | null = null;
 
 function kindLabel(kind: SkillLibraryItem['kind']): string {
   if (kind === 'instructions') return 'Instructions';
@@ -208,12 +201,9 @@ function SkillSourceModal({
   );
 }
 
-export function CodeSkillsView({ projects, scopeKey }: { projects: CodeProject[]; scopeKey: string }) {
-  const cachedPage = libraryCache?.scopeKey === scopeKey ? libraryCache.page : null;
-  const [library, setLibrary] = useState<SkillLibraryPage>(() => cachedPage || EMPTY_LIBRARY);
-  const [loading, setLoading] = useState(() => cachedPage == null);
+export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
+  const { page: library, loading, error, reload: load } = useSkillLibrary();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<OriginFilter>('all');
   const [addOpen, setAddOpen] = useState(false);
@@ -224,21 +214,6 @@ export function CodeSkillsView({ projects, scopeKey }: { projects: CodeProject[]
   const [removePending, setRemovePending] = useState<SkillLibrarySource | null>(null);
   const [removeError, setRemoveError] = useState('');
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
-
-  const load = useCallback(async () => {
-    const needsInitialContent = libraryCache?.scopeKey !== scopeKey;
-    if (needsInitialContent) setLoading(true);
-    try {
-      const next = await codingApi.skillLibrary();
-      libraryCache = { scopeKey, page: next };
-      setLibrary(next);
-      setError('');
-    }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the Skills Library.'); }
-    finally { if (needsInitialContent) setLoading(false); }
-  }, [scopeKey]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -382,7 +357,7 @@ export function CodeSkillsView({ projects, scopeKey }: { projects: CodeProject[]
         onClose={() => { setRemovePending(null); setRemoveError(''); }}
         onConfirm={async () => {
           if (!removePending) return;
-          setBusy(true); setError('');
+          setBusy(true);
           try {
             await codingApi.removeSkillSource(removePending.id);
             setRemovePending(null);

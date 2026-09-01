@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession, DiffFile, GitState } from './api';
+import { resetDocumentVisibility, setDocumentVisibility } from '../../../../tests/helpers/visibility';
 
 
 const api = vi.hoisted(() => ({
@@ -142,6 +143,26 @@ describe('useCodingSession', () => {
     }
   });
 
+  it('pauses reconciliation while the document is hidden and catches up once it is visible', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockResolvedValue(session('a'));
+      renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const callsBeforeHiding = api.session.mock.calls.length;
+
+      act(() => setDocumentVisibility('hidden'));
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      expect(api.session).toHaveBeenCalledTimes(callsBeforeHiding);
+
+      act(() => setDocumentVisibility('visible'));
+      expect(api.session).toHaveBeenCalledTimes(callsBeforeHiding + 1);
+    } finally {
+      resetDocumentVisibility();
+      vi.useRealTimers();
+    }
+  });
+
   it('restores the conversation without waiting for slow Git review data', async () => {
     const slowGit = deferred<never>();
     const slowDiff = deferred<never>();
@@ -230,6 +251,67 @@ describe('useCodingSession', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('indexes the latest event per type as events arrive instead of on every read', async () => {
+    api.session.mockResolvedValue(session('a'));
+    api.events.mockResolvedValueOnce({
+      items: [
+        event(1, 'agent_message', 'Hello'),
+        { ...event(2, 'agent_message'), phase: 'completed' },
+        event(3, 'error', 'First failure'),
+      ],
+      next_seq: 3,
+    });
+    const { result } = renderHook(() => useCodingSession('a'));
+    await waitFor(() => expect(result.current.events).toHaveLength(3));
+
+    const indexed = result.current.latestEvents;
+    expect(indexed.agent_message?.latest.seq).toBe(2);
+    expect(indexed.agent_message?.latestWithText?.text).toBe('Hello');
+    expect(indexed.error?.latest.text).toBe('First failure');
+
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.latestEvents).toBe(indexed);
+
+    const onEvent = (api.openStream.mock.calls as unknown as Array<[
+      string,
+      number,
+      (event: CodingEvent) => void,
+    ]>)[0]?.[2];
+    if (!onEvent) throw new Error('Live event handler was not registered.');
+    await act(async () => {
+      onEvent(event(4, 'error', 'Second failure'));
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    });
+
+    expect(result.current.latestEvents.error?.latest.text).toBe('Second failure');
+    expect(result.current.latestEvents.agent_message).toBe(indexed.agent_message);
+  });
+
+  it('falls back to the previous wording when a reconciled event replaces the latest text with none', async () => {
+    api.session.mockResolvedValue(session('a'));
+    api.events.mockResolvedValueOnce({
+      items: [
+        event(1, 'agent_message', 'Hello'),
+        event(2, 'agent_message', 'Draft'),
+        event(3, 'agent_message', 'Final'),
+      ],
+      next_seq: 3,
+    });
+    const { result } = renderHook(() => useCodingSession('a'));
+    await waitFor(() => expect(result.current.events).toHaveLength(3));
+    expect(result.current.latestEvents.agent_message?.latestWithText?.text).toBe('Final');
+
+    api.events.mockResolvedValueOnce({ items: [{ ...event(3, 'agent_message'), phase: 'completed' }], next_seq: 3 });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.latestEvents.agent_message?.latest.phase).toBe('completed');
+    expect(result.current.latestEvents.agent_message?.latestWithText?.text).toBe('Draft');
+
+    api.events.mockResolvedValueOnce({ items: [{ ...event(2, 'agent_message'), phase: 'completed' }], next_seq: 3 });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.latestEvents.agent_message?.latest.seq).toBe(3);
+    expect(result.current.latestEvents.agent_message?.latestWithText?.text).toBe('Hello');
   });
 
   it('reloads the task when the runtime reports a command result', async () => {

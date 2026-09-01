@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
 import { EventTimeline } from './EventTimeline';
+import { indexLatestEvents } from './useCodingSession';
 
 
 beforeAll(() => {
@@ -45,11 +46,35 @@ function event(seq: number, type: CodingEvent['type'], text: string): CodingEven
 }
 
 
+function timelineProps(events: CodingEvent[]) {
+  return { events, latestEvents: indexLatestEvents(events) };
+}
+
+
 describe('EventTimeline', () => {
+  it('reads the terminal error from the index instead of scanning the transcript on each render', () => {
+    const events = Array.from({ length: 6_000 }, (_, index) => event(index + 1, index % 2 ? 'error' : 'agent_message', `Event ${index + 1}`));
+    let indexReads = 0;
+    const counted = new Proxy(events, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) indexReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const props = { events: counted, latestEvents: indexLatestEvents(events), session: { ...session('failed'), run_status: 'failed' as const } };
+    const view = render(<EventTimeline {...props} />);
+    expect(screen.getByText('Event 6000')).toBeInTheDocument();
+
+    indexReads = 0;
+    view.rerender(<EventTimeline {...props} recovering />);
+
+    expect(indexReads).toBeLessThan(10);
+  });
+
   it('collapses repeated connection failures and renders one terminal outcome', () => {
     const events = [1, 2, 3, 4, 5].map((seq) => event(seq, 'error', `Attempt ${seq} failed`));
 
-    render(<EventTimeline events={events} session={{ ...session('failed'), last_error: 'Connection unavailable' }} />);
+    render(<EventTimeline {...timelineProps(events)} session={{ ...session('failed'), last_error: 'Connection unavailable' }} />);
 
     expect(screen.getByText('Connection retried 5 times')).toBeInTheDocument();
     expect(screen.getAllByText('Failed')).toHaveLength(1);
@@ -63,7 +88,7 @@ describe('EventTimeline', () => {
     const onRecover = vi.fn(async () => {});
     render(
       <EventTimeline
-        events={[event(1, 'error', 'Computer disconnected')]}
+        {...timelineProps([event(1, 'error', 'Computer disconnected')])}
         session={{
           ...session('interrupted'),
           run_status: 'interrupted',
@@ -84,7 +109,7 @@ describe('EventTimeline', () => {
   it('keeps local failures recoverable through the composer instead of a remote-run action', () => {
     render(
       <EventTimeline
-        events={[event(1, 'error', 'Tests failed')]}
+        {...timelineProps([event(1, 'error', 'Tests failed')])}
         session={{ ...session('failed'), last_error: 'Tests failed' }}
       />,
     );
@@ -97,7 +122,7 @@ describe('EventTimeline', () => {
   it('hides raw session events because status is represented once in the outcome', () => {
     render(
       <EventTimeline
-        events={[event(1, 'session', 'Raw completed notification')]}
+        {...timelineProps([event(1, 'session', 'Raw completed notification')])}
         session={session('completed')}
       />,
     );
@@ -115,7 +140,7 @@ describe('EventTimeline', () => {
       data: { command: 'steer', commandId: 'cmd-2' },
     };
 
-    render(<EventTimeline events={[acknowledged, rejected]} session={session('running')} />);
+    render(<EventTimeline {...timelineProps([acknowledged, rejected])} session={session('running')} />);
 
     expect(screen.getByText('Steer rejected')).toBeInTheDocument();
     expect(screen.getByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
@@ -130,7 +155,7 @@ describe('EventTimeline', () => {
       data: { queueId: 'queued-1' },
     };
 
-    render(<EventTimeline events={[queued]} session={session('running')} />);
+    render(<EventTimeline {...timelineProps([queued])} session={session('running')} />);
 
     expect(screen.queryByText('Run Windows tests next')).not.toBeInTheDocument();
   });
@@ -142,7 +167,7 @@ describe('EventTimeline', () => {
       { ...event(3, 'command', ''), item_id: 'command-1', phase: 'completed' as const, title: 'Run tests' },
     ];
 
-    render(<EventTimeline events={command} session={session('completed')} />);
+    render(<EventTimeline {...timelineProps(command)} session={session('completed')} />);
 
     expect(screen.getByText('Agent activity')).toBeInTheDocument();
     expect(screen.queryByText('Run tests', { selector: 'summary span' })).toBeNull();
@@ -155,7 +180,7 @@ describe('EventTimeline', () => {
       phase: 'progress' as const,
     };
 
-    render(<EventTimeline events={[usage]} session={session('completed')} />);
+    render(<EventTimeline {...timelineProps([usage])} session={session('completed')} />);
 
     expect(screen.getByText('Agent activity')).toBeInTheDocument();
     expect(screen.queryByText('Usage updated', { selector: 'summary span' })).toBeNull();
@@ -165,12 +190,12 @@ describe('EventTimeline', () => {
     const scrollTo = vi.mocked(HTMLElement.prototype.scrollTo);
     scrollTo.mockClear();
     const first = { ...event(1, 'agent_message', 'Hello'), item_id: 'message-1', phase: 'progress' as const };
-    const view = render(<EventTimeline events={[first]} session={session('running')} />);
+    const view = render(<EventTimeline {...timelineProps([first])} session={session('running')} />);
     const callsAfterFirstChunk = scrollTo.mock.calls.length;
 
     view.rerender(
       <EventTimeline
-        events={[first, { ...event(2, 'agent_message', ' world'), item_id: 'message-1', phase: 'progress' }]}
+        {...timelineProps([first, { ...event(2, 'agent_message', ' world'), item_id: 'message-1', phase: 'progress' }])}
         session={session('running')}
       />,
     );
@@ -181,7 +206,7 @@ describe('EventTimeline', () => {
 
   it('does not mount large activity details until the user opens them', () => {
     const command = { ...event(1, 'command', 'very large command output'), title: 'Run tests' };
-    render(<EventTimeline events={[command]} session={session('completed')} />);
+    render(<EventTimeline {...timelineProps([command])} session={session('completed')} />);
 
     expect(screen.queryByText('very large command output')).toBeNull();
     fireEvent.click(screen.getByText('Agent activity'));
@@ -204,7 +229,7 @@ describe('EventTimeline', () => {
       },
     ];
 
-    render(<EventTimeline events={childWork} session={session('running')} />);
+    render(<EventTimeline {...timelineProps(childWork)} session={session('running')} />);
 
     expect(screen.getByText('Parallel work')).toBeInTheDocument();
     expect(screen.getByText('Audit the UI')).toBeInTheDocument();
@@ -214,7 +239,7 @@ describe('EventTimeline', () => {
 
   it('windows long transcripts while keeping earlier updates available', () => {
     const events = Array.from({ length: 325 }, (_, index) => event(index + 1, 'user_message', `Message ${index + 1}`));
-    render(<EventTimeline events={events} session={session('completed')} />);
+    render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
 
     expect(screen.queryByText('Message 1')).toBeNull();
     expect(screen.getByText('Message 325')).toBeInTheDocument();

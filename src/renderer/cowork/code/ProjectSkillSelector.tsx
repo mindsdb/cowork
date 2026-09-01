@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import type { ProjectSkillSource, SkillLibraryItem } from './api';
+import { skillSupersedesHint } from './presentation';
 
 function includesPath(sources: ProjectSkillSource[], sourceId: string, path: string): boolean {
   return sources.some((source) => source.source_id === sourceId && source.enabled_paths.includes(path));
@@ -164,7 +165,7 @@ export function ProjectSkillSelector({
                     />
                     <span>
                       <strong>{item.name}</strong>
-                      <small>{item.description || item.path}</small>
+                      <small>{[item.description || item.path, skillSupersedesHint(item)].filter(Boolean).join(' · ')}</small>
                     </span>
                   </label>
                 ))}

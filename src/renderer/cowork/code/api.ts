@@ -235,6 +235,7 @@ export interface ExtensionEntry {
   status: string;
   detail: string;
   path?: string | null;
+  supersedes?: ExtensionEntry[];
 }
 
 export interface ExtensionInventory {
@@ -386,6 +387,7 @@ export interface SkillLibraryItem {
   version?: string | null;
   enabled: boolean;
   enabled_project_ids: string[];
+  supersedes?: SkillLibraryItem[];
 }
 
 export interface SkillLibrarySource {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { codingApi, type CodingSession, type EngineCommand } from './api';
 import { CodeComposer } from './CodeComposer';
+import { resetSkillLibraryCache } from './useSkillLibrary';
 import { host } from '../../platform/host';
 
 
@@ -31,7 +32,10 @@ const commands: EngineCommand[] = [
   { name: 'permissions', label: 'Permissions', description: 'Change task access', action: 'client', client_action: 'controls' },
 ];
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetSkillLibraryCache();
+});
 
 function renderComposer(session: CodingSession = baseSession, history: string[] = []) {
   const onSend = vi.fn(async () => {});
@@ -95,6 +99,18 @@ describe('CodeComposer', () => {
     await screen.findByText('$shared-review');
     expect(screen.queryByText('$minds-release')).not.toBeInTheDocument();
     expect(screen.getByText('$shared-review')).toBeInTheDocument();
+  });
+
+  it('says which skill a project-scoped team skill replaces', async () => {
+    const personal = { id: 'personal:review', kind: 'skill' as const, name: 'Review', description: 'Use the personal standard', origin: 'personal' as const, source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] };
+    vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
+      sources: [],
+      items: [{ id: 'team:review', kind: 'skill', name: 'Review', description: 'Use the team standard', origin: 'team', source_id: 'team', source_name: 'Engineering', path: 'skills/review/SKILL.md', enabled: true, enabled_project_ids: ['minds'], supersedes: [personal] }],
+    });
+    renderComposer({ ...baseSession, status: 'completed', project_id: 'minds', project_name: 'MindsHub' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: '/' } });
+
+    expect(await screen.findByText('Engineering · replaces Yours/Review')).toBeInTheDocument();
   });
 
   it('shows one deterministic command when team and personal skills share a slug', async () => {

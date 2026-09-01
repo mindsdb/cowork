@@ -10,6 +10,11 @@ import {
 } from './server-source';
 import { withEnv } from '../../tests/helpers/env';
 import { buildKind } from './cowork-home';
+import { resolveServerChannel } from '../../scripts/resolve-server-channel.mjs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // server-source lazily `require('./cowork-home')` for the build-kind ref
 // fallback. Mock it so we can drive buildKind() directly — the real one
@@ -109,6 +114,55 @@ describe('getChannel', () => {
       });
       expect(getChannel()).toBe('git');
     });
+  });
+});
+
+// The release workflows cannot import getChannel() without a build, so they
+// call scripts/resolve-server-channel.mjs. These tests are the sync mechanism:
+// change the precedence in one place without the other and the suite fails,
+// instead of CI baking a channel the app would resolve differently.
+describe('scripts/resolve-server-channel.mjs mirrors getChannel', () => {
+  const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const SCRIPT = path.join(REPO, 'scripts/resolve-server-channel.mjs');
+
+  afterEach(() => {
+    vi.mocked(buildKind).mockReset();
+    vi.mocked(buildKind).mockReturnValue('dev');
+  });
+
+  it('agrees with getChannel() for every build kind, channel and ref combination', () => {
+    const kinds = ['dev', 'preview', 'stable', 'prod'] as const;
+    const channels = [undefined, 'git', 'pypi', 'PyPI', 'not-a-channel', '  '];
+    const refs = [undefined, 'codex/team-skills-library', '   '];
+    for (const kind of kinds) {
+      vi.mocked(buildKind).mockReturnValue(kind);
+      for (const channel of channels) {
+        for (const ref of refs) {
+          withEnv({ COWORK_SERVER_CHANNEL: channel, COWORK_SERVER_REF: ref }, () => {
+            expect(resolveServerChannel({ channel, ref, buildKind: kind }), JSON.stringify({ kind, channel, ref })).toBe(getChannel());
+          });
+        }
+      }
+    }
+  });
+
+  it('prints the channel for a workflow step from the env names the app itself reads', () => {
+    const run = (env: Record<string, string>) => execFileSync(process.execPath, [SCRIPT], {
+      env: { ...process.env, ...env },
+      encoding: 'utf8',
+    });
+    expect(run({ COWORK_BUILD_KIND: 'preview' })).toBe('pypi');
+    expect(run({ COWORK_BUILD_KIND: 'preview', COWORK_SERVER_REF: 'feat/x' })).toBe('git');
+    expect(run({ COWORK_BUILD_KIND: 'preview', COWORK_SERVER_REF: 'feat/x', COWORK_SERVER_CHANNEL: 'pypi' })).toBe('pypi');
+    expect(run({ COWORK_BUILD_KIND: 'dev' })).toBe('git');
+  });
+
+  it('is the only channel logic in the release workflows', () => {
+    for (const workflow of ['build-macos-pkg.yml', 'build-windows-installer.yml', 'build-linux-deb.yml']) {
+      const text = readFileSync(path.join(REPO, '.github/workflows', workflow), 'utf8');
+      expect(text, workflow).toContain('CH=$(node scripts/resolve-server-channel.mjs)');
+      expect(text, workflow).not.toMatch(/CH=(git|pypi)\b/);
+    }
   });
 });
 

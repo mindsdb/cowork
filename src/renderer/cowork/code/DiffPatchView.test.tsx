@@ -31,4 +31,16 @@ describe('DiffPatchView', () => {
 
     expect(onSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'lines 5–6' }));
   });
+
+  it('drops the selection when the patch changes underneath it', () => {
+    const onSelectionChange = vi.fn();
+    const view = render(<DiffPatchView patch={PATCH} onSelectionChange={onSelectionChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Select 5' }));
+    expect(document.querySelectorAll('.is-selected')).toHaveLength(1);
+
+    view.rerender(<DiffPatchView patch={`${PATCH}\n+another`} onSelectionChange={onSelectionChange} />);
+
+    expect(onSelectionChange).toHaveBeenLastCalledWith(null);
+    expect(document.querySelectorAll('.is-selected')).toHaveLength(0);
+  });
 });

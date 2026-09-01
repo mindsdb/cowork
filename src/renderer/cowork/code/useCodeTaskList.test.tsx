@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
+import { resetDocumentVisibility, setDocumentVisibility } from '../../../../tests/helpers/visibility';
 
 
 const sessions = vi.hoisted(() => vi.fn());
@@ -109,6 +110,25 @@ describe('useCodeTaskList', () => {
       await act(async () => { await Promise.resolve(); });
       expect(sessions).toHaveBeenCalledOnce();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pauses the list refresh while the document is hidden and catches up once it is visible', async () => {
+    vi.useFakeTimers();
+    try {
+      renderTaskList(true);
+      await act(async () => { await Promise.resolve(); });
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => setDocumentVisibility('hidden'));
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => setDocumentVisibility('visible'));
+      expect(sessions).toHaveBeenCalledTimes(2);
+    } finally {
+      resetDocumentVisibility();
       vi.useRealTimers();
     }
   });

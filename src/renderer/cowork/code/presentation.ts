@@ -1,4 +1,4 @@
-import type { CodingEvent, CodingSession, CodingStatus, DiffFile, TaskRunStatus } from './api';
+import type { CodingEvent, CodingSession, CodingStatus, DiffFile, SkillLibraryItem, TaskRunStatus } from './api';
 
 
 export const CODE_STATUS: Record<CodingStatus, { label: string; tone: 'neutral' | 'accent' | 'warning' | 'success' | 'danger' }> = {
@@ -76,6 +76,13 @@ export function diffStats(files: Pick<DiffFile, 'additions' | 'deletions'>[]): {
   );
 }
 
+
+// A project-scoped catalogue folds a personal or built-in skill under the
+// enabled team skill of the same name; the hidden ones arrive in `supersedes`.
+export function skillSupersedesHint(item: Pick<SkillLibraryItem, 'supersedes'>): string {
+  const hidden = item.supersedes || [];
+  return hidden.length ? `replaces ${hidden.map((skill) => `${skill.source_name}/${skill.name}`).join(', ')}` : '';
+}
 
 export function promptHistory(events: CodingEvent[]): string[] {
   return events

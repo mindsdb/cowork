@@ -5,6 +5,7 @@ import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
+import type { LatestEvents } from './useCodingSession';
 import './event-timeline.css';
 
 
@@ -270,12 +271,12 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
 
 function TaskOutcome({
   session,
-  events,
+  latestError,
   recovering,
   onRecover,
 }: {
   session: CodingSession;
-  events: CodingEvent[];
+  latestError: CodingEvent | undefined;
   recovering: boolean;
   onRecover: () => Promise<void>;
 }) {
@@ -284,7 +285,6 @@ function TaskOutcome({
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
-  const latestError = [...events].reverse().find((event) => event.type === 'error');
   const errorDetail = session.last_error || latestError?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = session.status === 'completed'
@@ -319,11 +319,13 @@ function TaskOutcome({
 
 export const EventTimeline = memo(function EventTimeline({
   events,
+  latestEvents,
   session,
   recovering = false,
   onRecover = async () => {},
 }: {
   events: CodingEvent[];
+  latestEvents: LatestEvents;
   session: CodingSession;
   recovering?: boolean;
   onRecover?: () => Promise<void>;
@@ -335,9 +337,8 @@ export const EventTimeline = memo(function EventTimeline({
   const visibleItems = hiddenCount ? items.slice(-visibleCount) : items;
   const latestEventSeq = events.at(-1)?.seq || 0;
   const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
-  const terminalErrorSeq = hasRecoveryCard
-    ? [...events].reverse().find((event) => event.type === 'error')?.seq
-    : undefined;
+  const latestError = latestEvents.error?.latest;
+  const terminalErrorSeq = hasRecoveryCard ? latestError?.seq : undefined;
   const active = isActiveStatus(session.status);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -383,12 +384,13 @@ export const EventTimeline = memo(function EventTimeline({
         {session.status === 'running' && (
           <div className="code-running-indicator"><Spinner className="text-sm" /><span>The coding agent is working…</span></div>
         )}
-        <TaskOutcome session={session} events={events} recovering={recovering} onRecover={onRecover} />
+        <TaskOutcome session={session} latestError={latestError} recovering={recovering} onRecover={onRecover} />
       </div>
     </div>
   );
 }, (left, right) => (
   left.events === right.events
+  && left.latestEvents === right.latestEvents
   && left.session.status === right.session.status
   && left.session.run_status === right.session.run_status
   && left.session.computer_status === right.session.computer_status

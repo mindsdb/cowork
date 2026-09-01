@@ -30,6 +30,9 @@ function ExtensionRow({ item }: { item: ExtensionEntry }) {
         <strong>{item.label}</strong>
         {(item.description || item.detail) && <p>{[item.description, item.detail].filter(Boolean).join(' · ')}</p>}
         {item.path && <code title={item.path}>{item.path}</code>}
+        {item.supersedes?.map((hidden) => (
+          <p key={`${hidden.detail}-${hidden.path || hidden.id}`}>Also installed in {hidden.detail}{hidden.path ? ` · ${hidden.path}` : ''}</p>
+        ))}
       </div>
       <small>{item.status}</small>
     </div>
