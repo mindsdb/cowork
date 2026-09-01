@@ -1575,22 +1575,15 @@ function AppCore() {
     });
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules();
-    if (codeFixtureActive) {
-      setConnectors([
-        { engine: 'github', name: 'github-work', display_name: 'MindsDB GitHub', status: 'connected' },
-        { engine: 'linear', name: 'linear-work', display_name: 'MindsDB Linear', status: 'connected' },
-      ]);
-    } else {
-      fetchDatasources()
-        .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
-        .catch(() => setConnectors([]));
-    }
+    fetchDatasources()
+      .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+      .catch(() => setConnectors([]));
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, [codeFixtureActive]);
+  }, []);
 
   useEffect(() => {
     refreshData();
