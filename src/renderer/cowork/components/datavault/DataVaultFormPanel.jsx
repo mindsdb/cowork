@@ -154,6 +154,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         if (outcome?.status === 'success') {
           clearInterval(oauthPollRef.current);
           setBusy(false);
+          // Bring this tab back to the foreground now that sign-in
+          // finished — mirrors desktop regaining window focus once its
+          // own browser-tab OAuth flow completes (ENG-2190). Doesn't
+          // depend on a popup reference (window.open()'s return value is
+          // discarded above — noopener-adjacent by not being captured at
+          // all) — the tab that opened it closes itself independently via
+          // a script in auth's callback page.
+          try { window.focus(); } catch { /* best effort */ }
           try { await fetchDatasources(); } catch { /* best effort */ }
           patchForm(conversationId, {
             form_id: formId,
@@ -445,6 +453,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             setBusy(false);
             return;
           }
+          // Bring the app tab back to the foreground now that sign-in
+          // finished — mirrors desktop regaining window focus once its
+          // own browser-tab OAuth flow completes (ENG-2190). The popup
+          // also closes itself independently via a script in the
+          // callback page (see auth's render_callback_page) — this is
+          // just the faster path for the case where `popup` is a live
+          // reference. It isn't always: the popup-blocked fallback above
+          // routes through host.openExternal() instead, which opens a new
+          // tab without keeping a reference to it at all — that case (and
+          // the browser_oauth_builtin path above, which never captures a
+          // reference either) relies solely on the callback page's own
+          // self-close script to close the tab.
+          if (popup) { try { popup.close(); } catch {} }
+          try { window.focus(); } catch {}
           // The server callback already persisted the connection — just
           // flip the form into its success branch + recap in chat.
           patchForm(conversationId, {
