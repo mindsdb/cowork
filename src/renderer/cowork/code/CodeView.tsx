@@ -30,6 +30,7 @@ import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
 import { useProjectActions } from './useProjectActions';
+import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
@@ -192,9 +193,7 @@ export default function CodeView({
   const approval = session?.pending_approval?.id === resolvingApprovalId
     ? null
     : session?.pending_approval;
-  const suggestedUpdate = [...detail.events].reverse().find(
-    (event) => event.type === 'agent_message' && event.text.trim(),
-  )?.text.trim() || '';
+  const suggestedUpdate = detail.latestEvents.agent_message?.latestWithText?.text.trim() || '';
   const performRecovery = async (sessionId: string, option: RecoveryOption) => {
     setRecoveringTaskId(sessionId);
     setRecoveryError('');
@@ -244,6 +243,7 @@ export default function CodeView({
     }
   };
   return (
+    <SkillScopeContext.Provider value={skillScopeKey}>
     <div className="code-page">
       <DeliveryAutomationMonitor
         sessions={sessions}
@@ -313,7 +313,7 @@ export default function CodeView({
       )}
 
       {skillsOpen ? (
-        <CodeSkillsView key={skillScopeKey} projects={projects.projects} scopeKey={skillScopeKey} />
+        <CodeSkillsView key={skillScopeKey} projects={projects.projects} />
       ) : connectorsOpen ? (
         <CodeConnectorsView
           connections={connections}
@@ -402,6 +402,7 @@ export default function CodeView({
             <EventTimeline
               key={`timeline-${session.id}`}
               events={detail.events}
+              latestEvents={detail.latestEvents}
               session={session}
               recovering={recoveringTaskId === session.id}
               onRecover={() => recoverTask(session.id)}
@@ -658,5 +659,6 @@ export default function CodeView({
         />
       )}
     </div>
+    </SkillScopeContext.Provider>
   );
 }

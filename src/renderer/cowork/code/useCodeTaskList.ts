@@ -66,13 +66,19 @@ export function useCodeTaskList({
     load()
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
       .finally(() => setLoading(false));
-    const interval = window.setInterval(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
       load().catch(() => {
         // The selected-task stream owns connectivity feedback during a
         // transient background-list refresh.
       });
-    }, 5_000);
-    return () => window.clearInterval(interval);
+    };
+    const interval = window.setInterval(refresh, 5_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [active, load]);
 
   useEffect(() => {

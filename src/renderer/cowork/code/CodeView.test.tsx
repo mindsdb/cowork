@@ -165,6 +165,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockImplementation((id: string | null) => ({
       session: id ? session(id) : null,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: false,
@@ -198,6 +199,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockReturnValue({
       session: null,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: true,
@@ -244,6 +246,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockReturnValue({
       session: awaiting,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: false,
@@ -271,7 +274,7 @@ describe('CodeView session-list reconciliation', () => {
     };
     mocks.approve.mockReturnValueOnce(pending.promise);
     mocks.useCodingSession.mockReturnValue({
-      session: awaiting, events: [], git: null, diff: [], loading: false, error: '',
+      session: awaiting, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
     });
 
@@ -294,7 +297,7 @@ describe('CodeView session-list reconciliation', () => {
     };
     mocks.steerQueued.mockReturnValueOnce(pending.promise);
     mocks.useCodingSession.mockReturnValue({
-      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      session: active, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
     });
 
@@ -316,7 +319,7 @@ describe('CodeView session-list reconciliation', () => {
     const active = { ...session('active'), status: 'running' as const };
     mocks.cancel.mockReturnValueOnce(pending.promise);
     mocks.useCodingSession.mockReturnValue({
-      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      session: active, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
     });
 
@@ -356,6 +359,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockReturnValue({
       session: directFolder,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: false,
@@ -379,6 +383,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockReturnValue({
       session: gitSession,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: false,
@@ -438,7 +443,7 @@ describe('CodeView session-list reconciliation', () => {
     const streaming = { ...session('streaming'), status: 'running' as const, event_count: 4 };
     mocks.sessions.mockResolvedValue({ items: [streaming] });
     const detail = {
-      session: streaming, events: [], git: null, diff: [], loading: false, error: '',
+      session: streaming, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
     };
     mocks.useCodingSession.mockReturnValue(detail);
@@ -461,6 +466,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.useCodingSession.mockReturnValue({
       session: active,
       events: [],
+      latestEvents: {},
       git: null,
       diff: [],
       loading: false,

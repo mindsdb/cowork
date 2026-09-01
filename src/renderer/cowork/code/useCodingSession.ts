@@ -9,14 +9,65 @@ import {
 } from './api';
 
 
+export interface LatestEvent {
+  latest: CodingEvent;
+  latestWithText?: CodingEvent;
+}
+
+export type LatestEvents = Partial<Record<CodingEvent['type'], LatestEvent>>;
+
+interface Timeline {
+  events: CodingEvent[];
+  latest: LatestEvents;
+}
+
+const EMPTY_TIMELINE: Timeline = { events: [], latest: {} };
+
+
 function sameSessionPayload(left: CodingSession | null, right: CodingSession): boolean {
   return left !== null && JSON.stringify(left) === JSON.stringify(right);
 }
 
 
+// Completion markers carry no text (only deltas do), so readers that need the
+// newest wording of a type look at latestWithText rather than latest.
+function hasText(event: CodingEvent): boolean {
+  return event.text.trim().length > 0;
+}
+
+function latestTextBefore(events: CodingEvent[], event: CodingEvent): CodingEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const candidate = events[index];
+    if (candidate.type === event.type && candidate.seq < event.seq && hasText(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+export function indexLatestEvents(
+  incoming: Iterable<CodingEvent>,
+  previous: LatestEvents = {},
+  retained: CodingEvent[] = [],
+): LatestEvents {
+  const next = { ...previous };
+  for (const event of incoming) {
+    const current = next[event.type];
+    const older = current !== undefined && event.seq < current.latest.seq;
+    const replacesText = current?.latestWithText?.seq === event.seq;
+    if (older && !replacesText) continue;
+    next[event.type] = {
+      latest: older ? current.latest : event,
+      latestWithText: hasText(event) ? event
+        : replacesText ? latestTextBefore(retained, event)
+        : current?.latestWithText,
+    };
+  }
+  return next;
+}
+
+
 export function useCodingSession(sessionId: string | null, active = true) {
   const [session, setSession] = useState<CodingSession | null>(null);
-  const [events, setEvents] = useState<CodingEvent[]>([]);
+  const [timeline, setTimeline] = useState<Timeline>(EMPTY_TIMELINE);
   const [git, setGit] = useState<GitState | null>(null);
   const [diff, setDiff] = useState<DiffFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -39,10 +90,11 @@ export function useCodingSession(sessionId: string | null, active = true) {
     const ordered = [...pendingEvents.current.values()].sort((left, right) => left.seq - right.seq);
     pendingEvents.current.clear();
     if (!ordered.length) return;
-    setEvents((current) => {
-      const bySequence = new Map(current.map((event) => [event.seq, event]));
+    setTimeline((current) => {
+      const bySequence = new Map(current.events.map((event) => [event.seq, event]));
       for (const event of ordered) bySequence.set(event.seq, event);
-      return [...bySequence.values()].sort((left, right) => left.seq - right.seq).slice(-6_000);
+      const events = [...bySequence.values()].sort((left, right) => left.seq - right.seq).slice(-6_000);
+      return { events, latest: indexLatestEvents(ordered, current.latest, events) };
     });
   }, []);
 
@@ -124,7 +176,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       return undefined;
     }
     setSession(null);
-    setEvents([]);
+    setTimeline(EMPTY_TIMELINE);
     setGit(null);
     setDiff([]);
     setError('');
@@ -182,7 +234,8 @@ export function useCodingSession(sessionId: string | null, active = true) {
     // prerequisite for restoring the conversation or accepting input.
     void refreshReview(sessionId);
 
-    const reconcile = window.setInterval(() => {
+    const reconcile = () => {
+      if (document.visibilityState !== 'visible') return;
       Promise.allSettled([
         codingApi.session(sessionId),
         codingApi.events(sessionId, cursor.current),
@@ -198,10 +251,13 @@ export function useCodingSession(sessionId: string | null, active = true) {
         }
         if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') setError('');
       });
-    }, 2_500);
+    };
+    const reconcileTimer = window.setInterval(reconcile, 2_500);
+    document.addEventListener('visibilitychange', reconcile);
     return () => {
       alive = false;
-      window.clearInterval(reconcile);
+      window.clearInterval(reconcileTimer);
+      document.removeEventListener('visibilitychange', reconcile);
       if (liveFlushTimer.current != null) {
         window.clearTimeout(liveFlushTimer.current);
         liveFlushTimer.current = null;
@@ -215,5 +271,5 @@ export function useCodingSession(sessionId: string | null, active = true) {
     };
   }, [active, applySession, ingestEvents, refreshReview, scheduleReview, sessionId]);
 
-  return { session, events, git, diff, loading, error, refresh, refreshReview };
+  return { session, events: timeline.events, latestEvents: timeline.latest, git, diff, loading, error, refresh, refreshReview };
 }

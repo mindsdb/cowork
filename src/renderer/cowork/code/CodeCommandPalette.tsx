@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
-import { codingApi, type EngineCommand, type SkillLibraryItem } from './api';
+import type { EngineCommand, SkillLibraryItem } from './api';
+import { skillSupersedesHint } from './presentation';
+import { useSkillLibrary } from './useSkillLibrary';
 
 
 export type CodePaletteItem =
@@ -40,14 +42,7 @@ export function useCodePaletteItems({
   query: string | null;
   projectId?: string | null;
 }): CodePaletteItem[] {
-  const [skills, setSkills] = useState<SkillLibraryItem[]>([]);
-  useEffect(() => {
-    let alive = true;
-    codingApi.skillLibrary(projectId)
-      .then((library) => { if (alive) setSkills(library.items); })
-      .catch(() => { if (alive) setSkills([]); });
-    return () => { alive = false; };
-  }, [projectId]);
+  const skills = useSkillLibrary(projectId).page.items;
 
   return useMemo(() => {
     if (query == null) return [];
@@ -66,7 +61,7 @@ export function useCodePaletteItems({
         invocation: skillInvocation(skill),
         label: skill.name,
         description: skill.description || 'MindsHub skill',
-        scope: skill.source_name,
+        scope: [skill.source_name, skillSupersedesHint(skill)].filter(Boolean).join(' · '),
         skill,
       }));
     const seenInvocations = new Set<string>();

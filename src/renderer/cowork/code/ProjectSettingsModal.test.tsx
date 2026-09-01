@@ -44,6 +44,7 @@ vi.mock('./api', () => ({
 }));
 
 import { ProjectSettingsModal } from './ProjectSettingsModal';
+import { resetSkillLibraryCache } from './useSkillLibrary';
 
 const project: CodeProject = {
   schema_version: 2,
@@ -63,6 +64,7 @@ const project: CodeProject = {
 describe('ProjectSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSkillLibraryCache();
   });
 
   it('keeps account management out of an unsaved project draft while making skills selectable', async () => {

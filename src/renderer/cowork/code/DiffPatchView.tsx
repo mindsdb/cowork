@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 
 import './review-file.css';
 
@@ -57,6 +57,11 @@ export function DiffPatchView({ patch, onSelectionChange }: { patch: string; onS
   const lines = useMemo(() => parseDiffPatch(patch), [patch]);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
+  useEffect(() => {
+    setAnchor(null);
+    setFocus(null);
+    onSelectionChange(null);
+  }, [patch]);
   const select = (event: MouseEvent, line: DiffPatchLine) => {
     if (line.kind === 'header') return;
     const startIndex = event.shiftKey && anchor != null ? anchor : line.index;

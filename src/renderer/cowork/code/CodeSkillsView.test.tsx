@@ -44,6 +44,7 @@ vi.mock('./api', () => ({
 
 import type { CodeProject, SkillLibraryPage } from './api';
 import { CodeSkillsView } from './CodeSkillsView';
+import { SkillScopeContext, resetSkillLibraryCache } from './useSkillLibrary';
 
 const projects: CodeProject[] = [
   {
@@ -116,9 +117,18 @@ const library: SkillLibraryPage = {
   ],
 };
 
+function renderSkills(scopeKey = 'account-one') {
+  return render(
+    <SkillScopeContext.Provider value={scopeKey}>
+      <CodeSkillsView projects={projects} />
+    </SkillScopeContext.Provider>,
+  );
+}
+
 describe('CodeSkillsView', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    resetSkillLibraryCache();
     skillLibrary.mockResolvedValue(structuredClone(library));
     skillDocument.mockResolvedValue({
       item: structuredClone(library.items[0]),
@@ -131,7 +141,7 @@ describe('CodeSkillsView', () => {
 
   it('presents team and personal guidance as a searchable first-class library', async () => {
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
 
     expect(await screen.findByRole('heading', { name: 'Skills' })).toBeInTheDocument();
     expect(screen.getByText('Engineering standards')).toBeInTheDocument();
@@ -146,7 +156,7 @@ describe('CodeSkillsView', () => {
 
   it('opens a readable skill document from the library row', async () => {
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
 
     await user.click(await screen.findByRole('button', { name: 'View Review' }));
 
@@ -157,7 +167,7 @@ describe('CodeSkillsView', () => {
 
   it('assigns a team skill to projects without losing other selected items', async () => {
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
     await screen.findByText('Review code against team standards.');
 
     await user.click(screen.getByRole('button', { name: '1 project' }));
@@ -168,11 +178,12 @@ describe('CodeSkillsView', () => {
       project_id: 'project-two',
       enabled_paths: ['skills/review/SKILL.md'],
     }]));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('shows source usage without presenting it as a destructive error', async () => {
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
     await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
 
     expect(screen.getByText('Used by 1 project')).toBeInTheDocument();
@@ -182,7 +193,7 @@ describe('CodeSkillsView', () => {
 
   it('opens the backing Git repository from source details', async () => {
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
     await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
 
     await user.click(screen.getByRole('button', { name: 'Open repository' }));
@@ -193,7 +204,7 @@ describe('CodeSkillsView', () => {
   it('keeps project assignment failures inside the assignment dialog', async () => {
     setSkillSourceProjects.mockRejectedValueOnce(new Error('A review skill with that name is already selected.'));
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
     await user.click(await screen.findByRole('button', { name: '1 project' }));
     await user.click(screen.getByRole('checkbox', { name: /Inference/ }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -205,7 +216,7 @@ describe('CodeSkillsView', () => {
   it('keeps source refresh failures inside source details', async () => {
     refreshSkillSource.mockRejectedValueOnce(new Error('The repository could not be reached.'));
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
     await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
     await user.click(screen.getByRole('button', { name: 'Check for updates' }));
 
@@ -219,7 +230,7 @@ describe('CodeSkillsView', () => {
       items: [],
     });
     const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
+    renderSkills();
 
     await user.click(await screen.findByRole('button', { name: 'Needs attention' }));
 
@@ -228,7 +239,7 @@ describe('CodeSkillsView', () => {
   });
 
   it('never reuses a previous account catalogue while the next account loads', async () => {
-    const first = render(<CodeSkillsView projects={projects} scopeKey="account-alpha" />);
+    const first = renderSkills('account-alpha');
     expect(await screen.findByText('Review code against team standards.')).toBeInTheDocument();
     first.unmount();
     skillLibrary.mockResolvedValueOnce({
@@ -240,7 +251,7 @@ describe('CodeSkillsView', () => {
       }],
     });
 
-    render(<CodeSkillsView projects={projects} scopeKey="account-beta" />);
+    renderSkills('account-beta');
 
     expect(screen.queryByText('Review code against team standards.')).not.toBeInTheDocument();
     expect(await screen.findByText('Only this account can see it.')).toBeInTheDocument();

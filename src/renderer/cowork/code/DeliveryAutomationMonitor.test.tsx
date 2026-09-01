@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession, DeliveryPlan } from './api';
@@ -94,6 +94,18 @@ describe('DeliveryAutomationMonitor', () => {
 
     await new Promise((resolve) => window.setTimeout(resolve, 20));
     expect(mocks.deliveryPlan).not.toHaveBeenCalled();
+  });
+
+  it('forgets executed actions for tasks that leave the list', async () => {
+    const props = { onSessionsChange: vi.fn(), onError: vi.fn() };
+    const view = render(<DeliveryAutomationMonitor sessions={[session('task-1')]} {...props} />);
+    await waitFor(() => expect(mocks.claimDeliveryAutomation).toHaveBeenCalledTimes(1));
+
+    view.rerender(<DeliveryAutomationMonitor sessions={[]} {...props} />);
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)); });
+    view.rerender(<DeliveryAutomationMonitor sessions={[session('task-1')]} {...props} />);
+
+    await waitFor(() => expect(mocks.claimDeliveryAutomation).toHaveBeenCalledTimes(2));
   });
 
   it('continues to monitor legacy single-workspace tasks', async () => {
