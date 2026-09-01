@@ -211,6 +211,27 @@ describe('useCodingSession', () => {
     }
   });
 
+  it('keeps the session object identity across a reconcile poll that returns identical data', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockImplementation(async () => session('a'));
+      const { result } = renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const loaded = result.current.session;
+      expect(loaded?.id).toBe('a');
+
+      await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });
+      expect(api.session.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(result.current.session).toBe(loaded);
+
+      api.session.mockImplementation(async () => session('a', 'renamed'));
+      await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.session?.title).toBe('renamed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reloads the task when the runtime reports a command result', async () => {
     api.session.mockResolvedValue(session('a'));
     renderHook(() => useCodingSession('a'));

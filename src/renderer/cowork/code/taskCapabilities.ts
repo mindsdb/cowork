@@ -9,7 +9,7 @@ export type TaskCapabilityName = keyof TaskCapabilities;
  * not understand.
  */
 export function supportsTaskCapability(
-  session: CodingSession,
+  session: Pick<CodingSession, 'task_capabilities' | 'computer_is_local'>,
   capability: TaskCapabilityName,
 ): boolean {
   if (session.task_capabilities) return session.task_capabilities[capability];

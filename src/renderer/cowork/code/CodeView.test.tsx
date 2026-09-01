@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
@@ -6,6 +6,8 @@ import type { CodingSession } from './api';
 
 const mocks = vi.hoisted(() => ({
   sessions: vi.fn(),
+  session: vi.fn(),
+  events: vi.fn(async () => ({ items: [], next_seq: 0 })),
   deleteSession: vi.fn(),
   steer: vi.fn(),
   turn: vi.fn(),
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
   runProjectAction: vi.fn(),
   useCodingSession: vi.fn(),
+  composerRender: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
@@ -22,7 +25,11 @@ vi.mock('./api', () => ({
     engines: vi.fn(async () => []),
     projectActions: vi.fn(async () => ({ items: [], preview_url: null })),
     skillLibrary: vi.fn(async () => ({ sources: [], items: [] })),
+    git: vi.fn(async () => ({ is_git: false, detached: false, dirty: false, status_lines: [], worktree_path: '', source_path: '' })),
+    diff: vi.fn(async () => ({ files: [] })),
     sessions: mocks.sessions,
+    session: mocks.session,
+    events: mocks.events,
     deleteSession: mocks.deleteSession,
     steer: mocks.steer,
     turn: mocks.turn,
@@ -32,8 +39,20 @@ vi.mock('./api', () => ({
     cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
   },
+  openCodingEventStream: vi.fn(() => () => {}),
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
+vi.mock('./CodeCommandPalette', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./CodeCommandPalette')>();
+  return {
+    ...actual,
+    // Called once per CodeComposer render, so it doubles as a composer render probe.
+    useCodePaletteItems: (...args: Parameters<typeof actual.useCodePaletteItems>) => {
+      mocks.composerRender();
+      return actual.useCodePaletteItems(...args);
+    },
+  };
+});
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
   TaskBar: ({ onDelete, onStatus, onRunProjectAction }: {
@@ -75,6 +94,8 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
+
+const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
 
 
 function session(id: string): CodingSession {
@@ -383,6 +404,48 @@ describe('CodeView session-list reconciliation', () => {
       preview_url: 'http://127.0.0.1:41004',
     });
     expect(await screen.findByText('Terminal terminal-preview')).toBeInTheDocument();
+  });
+
+  it('does not re-render the composer across a reconcile poll that returns identical data', async () => {
+    vi.useFakeTimers();
+    try {
+      const polled = session('polled');
+      mocks.sessions.mockResolvedValue({ items: [polled] });
+      mocks.session.mockImplementation(async () => ({ ...polled }));
+      mocks.useCodingSession.mockImplementation(actualUseCodingSession);
+      renderCode({ sessions: [polled], selectedId: polled.id });
+      await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
+      const loadsBeforePoll = mocks.session.mock.calls.length;
+      const rendersBeforePoll = mocks.composerRender.mock.calls.length;
+
+      await act(async () => {
+        vi.advanceTimersByTime(2_500);
+        for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      });
+
+      expect(mocks.session.mock.calls.length).toBeGreaterThan(loadsBeforePoll);
+      expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not re-render the composer when a poll changes only fields the composer ignores', async () => {
+    const streaming = { ...session('streaming'), status: 'running' as const, event_count: 4 };
+    mocks.sessions.mockResolvedValue({ items: [streaming] });
+    const detail = {
+      session: streaming, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    };
+    mocks.useCodingSession.mockReturnValue(detail);
+    const view = renderCode({ sessions: [streaming], selectedId: streaming.id });
+    await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
+    const rendersBeforePoll = mocks.composerRender.mock.calls.length;
+
+    mocks.useCodingSession.mockReturnValue({ ...detail, session: { ...streaming, event_count: 5, updated_at: '2026-08-21T09:06:00Z' } });
+    view.rerender(<CodeView {...view.props} />);
+
+    expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
   });
 
   it('routes task status through steering while an agent turn is active', async () => {

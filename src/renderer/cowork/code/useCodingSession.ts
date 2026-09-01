@@ -9,6 +9,11 @@ import {
 } from './api';
 
 
+function sameSessionPayload(left: CodingSession | null, right: CodingSession): boolean {
+  return left !== null && JSON.stringify(left) === JSON.stringify(right);
+}
+
+
 export function useCodingSession(sessionId: string | null, active = true) {
   const [session, setSession] = useState<CodingSession | null>(null);
   const [events, setEvents] = useState<CodingEvent[]>([]);
@@ -24,6 +29,10 @@ export function useCodingSession(sessionId: string | null, active = true) {
   const reviewInFlight = useRef<Promise<void> | null>(null);
   const activeSessionId = useRef(sessionId);
   activeSessionId.current = sessionId;
+
+  const applySession = useCallback((value: CodingSession) => {
+    setSession((current) => sameSessionPayload(current, value) ? current : value);
+  }, []);
 
   const flushEvents = useCallback((id: string) => {
     if (activeSessionId.current !== id) return;
@@ -94,7 +103,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       codingApi.events(sessionId, cursor.current),
     ]);
     if (activeSessionId.current !== sessionId) return;
-    if (sessionResult.status === 'fulfilled') setSession(sessionResult.value);
+    if (sessionResult.status === 'fulfilled') applySession(sessionResult.value);
     if (eventResult.status === 'fulfilled') {
       ingestEvents(sessionId, eventResult.value.items, eventResult.value.next_seq, true);
     }
@@ -107,7 +116,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
     // approvals, or the composer hostage to a potentially expensive worktree
     // scan; update it progressively instead.
     void refreshReview(sessionId);
-  }, [ingestEvents, refreshReview, sessionId]);
+  }, [applySession, ingestEvents, refreshReview, sessionId]);
 
   useEffect(() => {
     if (!active) {
@@ -160,7 +169,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
           setError('');
           ingestEvents(sessionId, [event]);
           if (event.type === 'session' || event.type === 'approval' || event.type === 'error' || event.type === 'command_result') {
-            codingApi.session(sessionId).then((value) => { if (alive) setSession(value); }).catch(() => {});
+            codingApi.session(sessionId).then((value) => { if (alive) applySession(value); }).catch(() => {});
           }
           if (event.type === 'file_change' || event.type === 'diff' || event.type === 'session') {
             scheduleReview(sessionId);
@@ -179,7 +188,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
         codingApi.events(sessionId, cursor.current),
       ]).then(([sessionResult, eventResult]) => {
         if (!alive) return;
-        if (sessionResult.status === 'fulfilled') setSession(sessionResult.value);
+        if (sessionResult.status === 'fulfilled') applySession(sessionResult.value);
         if (eventResult.status === 'fulfilled') {
           const page = eventResult.value;
           ingestEvents(sessionId, page.items, page.next_seq, true);
@@ -204,7 +213,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
       pendingEvents.current.clear();
       closeStream();
     };
-  }, [active, ingestEvents, refreshReview, scheduleReview, sessionId]);
+  }, [active, applySession, ingestEvents, refreshReview, scheduleReview, sessionId]);
 
   return { session, events, git, diff, loading, error, refresh, refreshReview };
 }

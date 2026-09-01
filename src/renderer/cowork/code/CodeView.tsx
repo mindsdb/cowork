@@ -138,18 +138,21 @@ export default function CodeView({
   const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
     session ? supportsTaskCapability(session, capability) : false
   );
+  const engineId = session?.engine_id;
+  const taskCapabilities = session?.task_capabilities;
+  const computerIsLocal = session?.computer_is_local;
   const commands = useMemo(() => {
-    const available = catalog.engines.find((engine) => engine.id === session?.engine_id)?.commands || [];
-    if (!session) return available;
+    const available = catalog.engines.find((engine) => engine.id === engineId)?.commands || [];
+    const scope = { task_capabilities: taskCapabilities, computer_is_local: computerIsLocal };
     return available.filter((command) => {
-      if (command.action !== 'client') return supportsTaskCapability(session, 'slash_commands');
-      if (command.client_action === 'fork') return supportsTaskCapability(session, 'fork');
-      if (command.client_action === 'controls') return supportsTaskCapability(session, 'task_controls');
-      if (command.client_action === 'terminal') return supportsTaskCapability(session, 'terminal');
-      if (command.client_action === 'skills' || command.client_action === 'mcp') return supportsTaskCapability(session, 'extensions');
+      if (command.action !== 'client') return supportsTaskCapability(scope, 'slash_commands');
+      if (command.client_action === 'fork') return supportsTaskCapability(scope, 'fork');
+      if (command.client_action === 'controls') return supportsTaskCapability(scope, 'task_controls');
+      if (command.client_action === 'terminal') return supportsTaskCapability(scope, 'terminal');
+      if (command.client_action === 'skills' || command.client_action === 'mcp') return supportsTaskCapability(scope, 'extensions');
       return false;
     });
-  }, [catalog.engines, session]);
+  }, [catalog.engines, engineId, taskCapabilities, computerIsLocal]);
   const project = useProjectActions(session?.id);
 
   useEffect(() => {
