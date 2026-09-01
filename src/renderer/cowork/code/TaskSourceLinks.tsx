@@ -30,7 +30,6 @@ export function TaskSourceLinks({
   availableConnections,
   value,
   onChange,
-  onContextAdded,
   onOpenConnectors,
   onProjectConnectionsChange,
   autoLinkUrl,
@@ -41,7 +40,6 @@ export function TaskSourceLinks({
   availableConnections?: ConnectorConnection[];
   value: SourceContext[];
   onChange: (contexts: SourceContext[]) => void;
-  onContextAdded: (context: SourceContext) => void;
   onOpenConnectors: () => void;
   onProjectConnectionsChange?: () => Promise<void> | void;
   autoLinkUrl: string;
@@ -125,7 +123,6 @@ export function TaskSourceLinks({
         connection_name: connection.name,
       });
       onChange([...value.filter((item) => item.url !== context.url), context]);
-      onContextAdded(context);
       setLink('');
       setOpen(false);
     } catch (reason) {
@@ -134,7 +131,7 @@ export function TaskSourceLinks({
     } finally {
       setLoading(false);
     }
-  }, [connectionName, connections, ensureProjectConnection, onChange, onContextAdded, project, value]);
+  }, [connectionName, connections, ensureProjectConnection, onChange, project, value]);
 
   useEffect(() => {
     if (!open || !project || !connectionName || busy) return undefined;

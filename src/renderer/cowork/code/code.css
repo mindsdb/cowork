@@ -579,12 +579,15 @@
 .code-project-skill-picker__search { height: 36px; margin: 8px 9px; padding: 0 8px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink-4); }
 .code-project-skill-picker__search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
 .code-project-skill-picker__search > .field-input { height: 32px; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.code-project-skill-picker__groups { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--line); }
+.code-project-skill-picker__groups { max-height: 244px; overflow-y: auto; border-top: 1px solid var(--line); }
 .code-project-skill-picker__groups section > header { min-height: 28px; padding: 7px 11px 5px; color: var(--ink-4); font: 600 8.5px var(--font-mono); }
 .code-project-skill-picker__groups label { min-height: 46px; padding: 6px 11px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); cursor: pointer; }
 .code-project-skill-picker__groups label:hover { background: var(--surface-2); }
 .code-project-skill-picker__groups input { flex: none; accent-color: var(--accent); }
 .code-project-skill-picker__groups label > span { min-width: 0; display: grid; gap: 3px; }
+.code-project-skill-picker__included { min-height: 46px; padding: 6px 11px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); }
+.code-project-skill-picker__included > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.code-project-skill-picker__included > em { padding: 3px 7px; flex: none; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 9px; font-style: normal; font-weight: 650; }
 .code-project-skill-picker__groups strong { color: var(--ink-2); font-size: 10.5px; font-weight: 600; }
 .code-project-skill-picker__groups small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .code-project-skill-picker__message { min-height: 70px; padding: 14px; display: grid; place-items: center; color: var(--ink-4); font-size: 10px; text-align: center; }

@@ -2,11 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CodeProject, SkillLibraryItem } from './api';
+
 const { engines, models, pickCodeFolder, skillLibrary } = vi.hoisted(() => ({
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
-  skillLibrary: vi.fn(async () => ({
+  skillLibrary: vi.fn<() => Promise<{ sources: never[]; items: SkillLibraryItem[] }>>(async () => ({
     sources: [],
     items: [{
       id: 'quality-skill', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review',
@@ -40,7 +42,6 @@ vi.mock('./api', () => ({
   },
 }));
 
-import type { CodeProject } from './api';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
 
 const project: CodeProject = {
@@ -101,6 +102,36 @@ describe('ProjectSettingsModal', () => {
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('button', { name: 'Open Skills' }));
     expect(onOpenSkills).toHaveBeenCalledOnce();
+  });
+
+  it('shows MindsHub-maintained skills as included while creating a project', async () => {
+    const user = userEvent.setup();
+    skillLibrary.mockResolvedValueOnce({
+      sources: [],
+      items: [{
+        id: 'thermo-nuclear-code-quality-review', kind: 'skill',
+        name: 'Thermo-Nuclear Code Quality Review',
+        description: 'Run an exacting engineering quality review.', origin: 'built_in',
+        source_id: null, source_name: 'MindsHub', path: 'thermo-nuclear-code-quality-review/SKILL.md',
+        enabled: true, enabled_project_ids: [],
+      }],
+    });
+    render(
+      <ProjectSettingsModal
+        open
+        project={null}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByText('1 skill included'));
+    expect(screen.getByText('Thermo-Nuclear Code Quality Review')).toBeInTheDocument();
+    expect(screen.getByText('MindsHub maintained')).toBeInTheDocument();
+    expect(screen.getByText('Included')).toBeInTheDocument();
+    expect(screen.queryByText('0 available')).not.toBeInTheDocument();
   });
 
   it('summarises and exposes an existing project skill selection', async () => {

@@ -690,6 +690,92 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Work on mindsdb/cowork#42: Linked issue');
   });
 
+  it('replaces an untouched generated issue prompt when linked work changes', async () => {
+    const user = userEvent.setup();
+    const connectedProject = {
+      ...project,
+      connections: [
+        { provider: 'linear' as const, name: 'linear-work', label: 'Linear' },
+        { provider: 'github' as const, name: 'github-work', label: 'GitHub' },
+      ],
+    };
+    readSourceContext.mockImplementation(async (_id: string, body: { provider: 'github' | 'linear'; kind: string; url: string; connection_name?: string | null }) => (
+      body.provider === 'linear'
+        ? { ...body, title: 'Fix the schedule', external_id: 'ENG-289', body: 'Linear context' }
+        : { ...body, title: 'Ship the fix', external_id: 'mindsdb/cowork#84', body: 'Pull-request context' }
+    ));
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+    const prompt = screen.getByRole('textbox', { name: 'Coding task' });
+
+    await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://linear.app/mindsdb/issue/ENG-289/fix-the-schedule',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(prompt).toHaveValue('Work on ENG-289: Fix the schedule'));
+
+    await user.click(screen.getByRole('button', { name: 'Remove ENG-289' }));
+    expect(prompt).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Add issue or PR' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://github.com/mindsdb/cowork/pull/84',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(prompt).toHaveValue('Work on mindsdb/cowork#84: Ship the fix'));
+    expect(prompt).not.toHaveValue(expect.stringContaining('ENG-289'));
+  });
+
+  it('never overwrites a user-authored prompt when linked work changes', async () => {
+    const user = userEvent.setup();
+    const connectedProject = {
+      ...project,
+      connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
+    };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+    const prompt = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(prompt, 'Keep this exact implementation brief');
+    await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://github.com/mindsdb/cowork/issues/42',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await screen.findByText('Linked issue');
+    expect(prompt).toHaveValue('Keep this exact implementation brief');
+  });
+
   it('starts a no-project task from a chosen local folder without Git ceremony', async () => {
     const user = userEvent.setup();
     const onOpenProjectSettings = vi.fn();

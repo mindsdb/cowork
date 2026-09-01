@@ -87,6 +87,37 @@ describe('FilesPanel', () => {
     });
   });
 
+  it('uses the file path rather than an internal workspace id for a single resource', async () => {
+    const user = userEvent.setup();
+    const onReference = vi.fn();
+    const internalId = 'af8922aa-605c-4064-b639-4e95fbf2524e';
+    mocks.resources.mockResolvedValue({
+      items: [{ id: 'folder', name: internalId, kind: 'folder' }],
+    });
+    mocks.entries.mockResolvedValue({
+      resource_id: 'folder',
+      path: '',
+      truncated: false,
+      items: [{
+        resource_id: 'folder', resource_name: internalId, path: 'package.json',
+        name: 'package.json', kind: 'file',
+      }],
+    });
+    mocks.file.mockResolvedValue({
+      resource_id: 'folder', resource_name: internalId, path: 'package.json', name: 'package.json',
+      content: '{}\n', content_hash: 'a'.repeat(64), line_count: 1,
+      line_start: 1, line_end: 1, truncated: false,
+    });
+    render(<FilesPanel open sessionId="task-1" onClose={vi.fn()} onReference={onReference} />);
+
+    await user.click(await screen.findByRole('button', { name: 'package.json' }));
+    await user.click(await screen.findByRole('option'));
+    await user.click(screen.getByRole('button', { name: /Add to prompt/ }));
+
+    expect(onReference).toHaveBeenCalledWith(expect.objectContaining({ name: 'package.json:1' }));
+    expect(onReference.mock.calls[0][0].name).not.toContain(internalId);
+  });
+
   it('searches within the selected resource and opens the matching line', async () => {
     const user = userEvent.setup();
     mocks.search.mockResolvedValue({
