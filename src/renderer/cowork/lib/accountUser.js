@@ -64,7 +64,13 @@ function activeOrgFromPayload(payload) {
 // user menu so the two placeholders can't drift apart.
 export function accountInitials(user) {
   if (user?.name) {
-    return user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    // `[...w][0]`, not `w[0]`: string indexing returns a UTF-16 code *unit*,
+    // so a name beginning with an astral character ('🛰 Byron') put a lone
+    // high surrogate in the avatar circle, which renders as tofu. Spreading
+    // iterates by code point. BMP accents were already fine — this is the
+    // same class as ENG-2138 one layer down, in string indexing rather than
+    // in the decode.
+    return user.name.split(' ').map((w) => [...w][0]).slice(0, 2).join('').toUpperCase();
   }
   if (user?.email) return user.email[0].toUpperCase();
   return '?';

@@ -19,14 +19,16 @@ export function recordOf(value) {
 }
 
 /**
- * Decode one base64url-encoded JSON segment.
+ * Decode one base64url-encoded JSON segment. Module-private: every caller
+ * wants a whole JWT, so `decodeJwtPayload` is the only export that needs to
+ * exist. Split out because that is where the UTF-8 step lives.
  *
  * Returns null — never throws — for anything that is not a base64url string
  * encoding a JSON object. Every caller treats null as "unreadable" and falls
  * back to a signed-out or unknown state, so a malformed token must not
  * propagate an exception through a render.
  */
-export function decodeBase64UrlJson(value) {
+function decodeBase64UrlJson(value) {
   try {
     if (typeof value !== 'string' || !value || value.length % 4 === 1) return null;
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/');

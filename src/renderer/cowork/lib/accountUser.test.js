@@ -80,6 +80,19 @@ describe('accountInitials', () => {
     expect(accountInitials(user)).toBe('ÁM');
   });
 
+  // String indexing returns a UTF-16 code unit, so an astral first character
+  // used to put a lone high surrogate (U+D83D) in the circle — tofu, not a
+  // letter. BMP accents never showed this, which is why it survived the first
+  // pass of ENG-2138.
+  it('uses a whole code point when the name starts with an astral character', () => {
+    const initials = accountInitials({ name: '🛰 Byron' });
+    expect(initials).toBe('🛰B');
+    expect([...initials].some((c) => {
+      const point = c.codePointAt(0);
+      return point >= 0xd800 && point <= 0xdfff;
+    })).toBe(false);
+  });
+
   it('falls back to the email initial when there is no name', () => {
     expect(accountInitials({ email: 'someone@example.com' })).toBe('S');
   });

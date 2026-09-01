@@ -1,5 +1,5 @@
 import { prepareForOrganizationReload } from './organizationTransition';
-import { decodeBase64UrlJson, recordOf } from './jwtClaims';
+import { decodeJwtPayload, recordOf } from './jwtClaims';
 
 export const EXPECTED_ORGANIZATION_HEADER = 'X-Cowork-Expected-Organization-Id';
 export const ORGANIZATION_RELOAD_HEADER = 'X-Cowork-Organization-Reload';
@@ -38,10 +38,7 @@ function organizationIdFromClaim(value) {
 }
 
 function organizationIdFromAccessToken(accessToken) {
-  if (typeof accessToken !== 'string') return null;
-  const segments = accessToken.split('.');
-  if (segments.length < 2) return null;
-  const payload = decodeBase64UrlJson(segments[1]);
+  const payload = decodeJwtPayload(accessToken);
   return payload ? organizationIdFromClaim(payload.activate_organization) : null;
 }
 

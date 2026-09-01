@@ -1,4 +1,4 @@
-import { decodeBase64UrlJson, recordOf } from './jwtClaims';
+import { decodeJwtPayload, recordOf } from './jwtClaims';
 
 let webIdentityRequired = false;
 let documentIdentity = null;
@@ -32,10 +32,7 @@ function organizationIdFromClaim(value) {
 }
 
 function cacheIdentityFromAccessToken(accessToken) {
-  if (typeof accessToken !== 'string') return null;
-  const segments = accessToken.split('.');
-  if (segments.length < 2) return null;
-  const payload = decodeBase64UrlJson(segments[1]);
+  const payload = decodeJwtPayload(accessToken);
   if (!payload) return null;
   const subject = nonEmptyString(payload.sub);
   const organizationId = organizationIdFromClaim(payload.activate_organization);
