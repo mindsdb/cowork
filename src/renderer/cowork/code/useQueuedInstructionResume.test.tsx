@@ -10,25 +10,32 @@ vi.mock('./api', () => ({ codingApi: { runQueued } }));
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 
 
-function queuedSession(status: CodingSession['status'] = 'completed'): CodingSession {
+function queuedSession(status: CodingSession['status'] = 'completed', id = 'task-1'): CodingSession {
   return {
     schema_version: 1,
-    id: 'task-1',
+    id,
     title: 'Queued task',
     engine_id: 'codex',
     engine_adapter_version: '1',
     model: 'gpt-5.6-sol',
     permission_mode: 'supervised',
     status,
-    source_path: '/work/task-1',
-    workspace_path: '/work/task-1',
+    source_path: `/work/${id}`,
+    workspace_path: `/work/${id}`,
     workspace_kind: 'direct_folder',
     source_dirty: false,
-    queued_instructions: [{ id: 'queue-1', prompt: 'Run tests', created_at: '2026-08-23T09:00:00Z' }],
+    queued_instructions: [{ id: `${id}-queue-1`, prompt: 'Run tests', created_at: '2026-08-23T09:00:00Z' }],
     event_count: 0,
     created_at: '2026-08-23T09:00:00Z',
     updated_at: '2026-08-23T09:00:00Z',
   };
+}
+
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
 
@@ -59,5 +66,40 @@ describe('useQueuedInstructionResume', () => {
     renderHook(() => useQueuedInstructionResume(queuedSession('running'), vi.fn(async () => {}), vi.fn()));
     await act(async () => { await Promise.resolve(); });
     expect(runQueued).not.toHaveBeenCalled();
+  });
+
+  it('sends the same queued instruction once while the session re-renders mid-request', async () => {
+    const pending = deferred<CodingSession>();
+    runQueued.mockReturnValueOnce(pending.promise);
+    const refresh = vi.fn(async () => {});
+    const { rerender } = renderHook(
+      ({ session }: { session: CodingSession }) => useQueuedInstructionResume(session, refresh, vi.fn()),
+      { initialProps: { session: queuedSession('completed') } },
+    );
+
+    rerender({ session: queuedSession('ready') });
+    expect(runQueued).toHaveBeenCalledTimes(1);
+
+    pending.resolve(queuedSession('running'));
+    await act(async () => { await pending.promise; });
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a resume response that arrives after switching tasks', async () => {
+    const first = deferred<CodingSession>();
+    const second = deferred<CodingSession>();
+    runQueued.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const refresh = vi.fn(async () => {});
+    const { rerender } = renderHook(
+      ({ session }: { session: CodingSession }) => useQueuedInstructionResume(session, refresh, vi.fn()),
+      { initialProps: { session: queuedSession('completed', 'task-1') } },
+    );
+
+    rerender({ session: queuedSession('completed', 'task-2') });
+    expect(runQueued).toHaveBeenCalledTimes(2);
+
+    first.resolve(queuedSession('running', 'task-1'));
+    await act(async () => { await first.promise; });
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
