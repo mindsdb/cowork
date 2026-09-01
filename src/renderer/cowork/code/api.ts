@@ -73,6 +73,19 @@ export interface PendingApproval {
   allow_session: boolean;
 }
 
+export interface ResolvedSkill {
+  id: string;
+  kind: 'skill' | 'instructions' | 'workflow';
+  name: string;
+  description: string;
+  origin: 'team' | 'personal' | 'built_in';
+  source_id?: string | null;
+  source_name: string;
+  source_path: string;
+  version?: string | null;
+  content_hash: string;
+}
+
 export interface CodingSession {
   schema_version: number;
   id: string;
@@ -99,9 +112,13 @@ export interface CodingSession {
   source_dirty: boolean;
   workspace_warning?: string | null;
   guidance_summary?: string | null;
+  resolved_skills?: ResolvedSkill[];
+  skill_roots?: string[];
+  skill_instructions?: string;
   allocated_ports?: Record<string, number>;
   source_contexts?: SourceContext[];
   deliveries?: DeliveryRecord[];
+  delivery_policy?: DeliveryAutomationPolicy;
   engine_session_id?: string | null;
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
@@ -111,6 +128,15 @@ export interface CodingSession {
   event_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface DeliveryAutomationPolicy {
+  fix_failing_checks: boolean;
+  mark_ready_when_passing: boolean;
+  merge_when_approved: boolean;
+  complete_source_after_merge: boolean;
+  archive_after_merge: boolean;
+  max_fix_attempts: number;
 }
 
 export interface QueuedInstruction {
@@ -247,12 +273,18 @@ export interface PlaybookReference {
   last_checked_at?: string | null;
 }
 
+export interface ProjectSkillSource {
+  source_id: string;
+  enabled_paths: string[];
+}
+
 export interface CodeProject {
   schema_version: number;
   id: string;
   name: string;
   folders: ProjectFolder[];
   playbook?: PlaybookReference | null;
+  skill_sources?: ProjectSkillSource[];
   connections: ProjectConnection[];
   environment: { variables: Record<string, string>; port_names: string[] };
   default_engine_id: string;
@@ -260,6 +292,47 @@ export interface CodeProject {
   permission_mode: PermissionMode;
   created_at: string;
   updated_at: string;
+}
+
+export interface SkillLibraryItem {
+  id: string;
+  kind: 'skill' | 'instructions' | 'workflow';
+  name: string;
+  description: string;
+  origin: 'team' | 'personal' | 'built_in';
+  source_id?: string | null;
+  source_name: string;
+  path: string;
+  version?: string | null;
+  enabled: boolean;
+  enabled_project_ids: string[];
+}
+
+export interface SkillLibrarySource {
+  id: string;
+  name: string;
+  repository: string;
+  branch: string;
+  current_revision: string;
+  available_revision: string;
+  update_available: boolean;
+  last_checked_at: string;
+  item_count: number;
+  enabled_project_count: number;
+  diff: string;
+  error?: string | null;
+}
+
+export interface SkillLibraryPage {
+  sources: SkillLibrarySource[];
+  items: SkillLibraryItem[];
+}
+
+export interface SkillLibraryDocument {
+  item: SkillLibraryItem;
+  files: string[];
+  selected_path: string;
+  content: string;
 }
 
 export interface PlaybookItem {
@@ -294,6 +367,24 @@ export interface SourceContext {
   attachments?: SourceAttachment[];
 }
 
+export interface WorkItemSummary {
+  provider: 'github' | 'linear';
+  kind: 'issue' | 'pull_request';
+  url: string;
+  title: string;
+  external_id: string;
+  state: string;
+  scope: string;
+  assignee: string;
+  updated_at: string;
+  connection_name: string;
+}
+
+export interface WorkItemPage {
+  items: WorkItemSummary[];
+  incomplete: boolean;
+}
+
 export interface SourceComment {
   id: string;
   author: string;
@@ -310,7 +401,7 @@ export interface SourceAttachment {
 
 export interface DeliveryRecord {
   provider: 'github' | 'linear' | 'slack';
-  action: 'progress' | 'result' | 'draft_pull_request';
+  action: 'progress' | 'result' | 'draft_pull_request' | 'complete_source';
   target_url: string;
   status: 'pending' | 'published' | 'failed';
   external_url?: string | null;
@@ -337,9 +428,21 @@ export interface PullRequestStatus {
 }
 
 export interface PullRequestCheck {
+  id?: string;
   name: string;
   state: 'passing' | 'failing' | 'pending' | 'neutral';
   url: string;
+  detail?: string;
+  annotations?: PullRequestAnnotation[];
+}
+
+export interface PullRequestAnnotation {
+  path: string;
+  start_line?: number | null;
+  end_line?: number | null;
+  level: 'notice' | 'warning' | 'failure';
+  title: string;
+  message: string;
 }
 
 export interface PullRequestFeedback {
@@ -349,7 +452,11 @@ export interface PullRequestFeedback {
   body: string;
   url: string;
   path: string;
+  line?: number | null;
   created_at: string;
+  thread_id?: string;
+  resolved?: boolean;
+  outdated?: boolean;
 }
 
 export interface DeliveryPlanItem {
@@ -469,12 +576,32 @@ const liveCodingApi = {
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
-  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
   }),
   deleteProject: (id: string) => requestJson<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  skillLibrary: (projectId?: string | null) => requestJson<SkillLibraryPage>(
+    `/skills/library${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`,
+  ),
+  skillDocument: (itemId: string, path?: string) => requestJson<SkillLibraryDocument>(
+    `/skills/library/content?itemId=${encodeURIComponent(itemId)}${path ? `&path=${encodeURIComponent(path)}` : ''}`,
+  ),
+  addSkillSource: (body: { name?: string; repository: string; branch: string }) => requestJson<SkillLibrarySource>('/skills/sources', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  refreshSkillSource: (id: string) => requestJson<SkillLibrarySource>(`/skills/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' }),
+  applySkillSource: (id: string) => requestJson<SkillLibrarySource>(`/skills/sources/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
+  removeSkillSource: (id: string) => requestJson<void>(`/skills/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setProjectSkillSource: (projectId: string, sourceId: string, enabledPaths: string[]) => requestJson<SkillLibraryPage>(
+    `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(sourceId)}`,
+    { method: 'PUT', body: JSON.stringify({ enabled_paths: enabledPaths }) },
+  ),
+  setSkillSourceProjects: (sourceId: string, assignments: Array<{ project_id: string; enabled_paths: string[] }>) => requestJson<SkillLibraryPage>(
+    `/skills/sources/${encodeURIComponent(sourceId)}/projects`,
+    { method: 'PUT', body: JSON.stringify({ assignments }) },
+  ),
   configurePlaybook: (id: string, repository: string, branch: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook`, {
     method: 'POST', body: JSON.stringify({ repository, branch }),
   }),
@@ -487,6 +614,9 @@ const liveCodingApi = {
   }),
   integrations: (id: string) => requestJson<{ items: IntegrationStatus[] }>(`/projects/${encodeURIComponent(id)}/integrations`),
   readSourceContext: (id: string, body: Omit<SourceContext, 'title' | 'external_id' | 'body'>) => requestJson<SourceContext>(`/projects/${encodeURIComponent(id)}/source-context`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  searchWorkItems: (id: string, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null; limit?: number }) => requestJson<WorkItemPage>(`/projects/${encodeURIComponent(id)}/work-items/search`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   sessions: (includeArchived = false) => requestJson<{ items: CodingSession[] }>(`/sessions?includeArchived=${includeArchived}`),
@@ -534,13 +664,22 @@ const liveCodingApi = {
   apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
   validate: (id: string) => requestJson<{ items: ProjectCommandResult[] }>(`/sessions/${encodeURIComponent(id)}/validate`, { method: 'POST' }),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
+  updateDeliveryPolicy: (id: string, body: DeliveryAutomationPolicy) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/delivery-policy`, {
+    method: 'PUT', body: JSON.stringify(body),
+  }),
+  claimDeliveryAutomation: (id: string, fingerprint: string) => requestJson<{ claimed: boolean; attempts: number; limit: number }>(`/sessions/${encodeURIComponent(id)}/delivery-automation/claim`, {
+    method: 'POST', body: JSON.stringify({ fingerprint }),
+  }),
   draftPullRequests: (id: string, body: { title: string; body: string; drafts?: Array<{ folder_id: string; title: string; body: string }>; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
     method: 'POST', body: JSON.stringify(body),
   }),
-  pullRequestAction: (id: string, body: { action: 'ready' | 'merge'; target_url: string; connection_name?: string | null; confirmed: boolean }) => requestJson<PullRequestStatus>(`/sessions/${encodeURIComponent(id)}/pull-request-action`, {
+  pullRequestAction: (id: string, body: { action: 'ready' | 'merge' | 'resolve_thread'; target_url: string; connection_name?: string | null; thread_id?: string | null; confirmed: boolean }) => requestJson<PullRequestStatus>(`/sessions/${encodeURIComponent(id)}/pull-request-action`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   publish: (id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string; text: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/publish`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  completeSource: (id: string, body: { provider: 'github' | 'linear'; action: 'complete'; target_url: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/source-action`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   terminal: (id: string, after = 0) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal?after=${after}`),

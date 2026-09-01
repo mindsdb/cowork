@@ -60,6 +60,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
           folders: values.folders,
           connections: values.connections || [],
           environment: values.environment || { variables: {}, port_names: ['PORT'] },
+          skill_sources: values.skill_sources || [],
           default_engine_id: values.default_engine_id || 'codex',
           default_model: values.default_model || DEFAULT_CODING_AGENT_MODEL,
           permission_mode: values.permission_mode || 'supervised',

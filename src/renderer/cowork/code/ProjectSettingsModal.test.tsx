@@ -1,17 +1,27 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { engines, models } = vi.hoisted(() => ({
+const { engines, models, pickCodeFolder, skillLibrary } = vi.hoisted(() => ({
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
+  pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
+  skillLibrary: vi.fn(async () => ({
+    sources: [],
+    items: [{
+      id: 'quality-skill', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review',
+      description: 'Run an exacting engineering quality review.', origin: 'team',
+      source_id: 'engineering', source_name: 'Engineering standards', path: 'skills/quality/SKILL.md',
+      enabled: true, enabled_project_ids: [],
+    }],
+  })),
 }));
 
 vi.mock('../../platform/host', () => ({
   host: {
     openExternal: vi.fn(),
     openPath: vi.fn(),
-    pickCodeFolder: vi.fn(),
+    pickCodeFolder,
   },
 }));
 
@@ -20,6 +30,7 @@ vi.mock('./api', () => ({
     engines,
     models,
     playbook: vi.fn(),
+    skillLibrary,
   },
 }));
 
@@ -41,7 +52,11 @@ const project: CodeProject = {
 };
 
 describe('ProjectSettingsModal', () => {
-  it('keeps account management out of an unsaved project draft', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps account management out of an unsaved project draft while making skills selectable', async () => {
     render(
       <ProjectSettingsModal
         open
@@ -55,7 +70,104 @@ describe('ProjectSettingsModal', () => {
     );
 
     expect(screen.getByText('Save this project, then add GitHub or Linear.')).toBeInTheDocument();
+    expect(await screen.findByText('1 available')).toBeInTheDocument();
+    expect(screen.getByText('Choose skills')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Connectors' })).not.toBeInTheDocument();
+  });
+
+  it('summarises and exposes an existing project skill selection', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectSettingsModal
+        open
+        project={{
+          ...project,
+          skill_sources: [
+            { source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md', 'AGENTS.md'] },
+          ],
+        }}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('2 skills added')).toBeInTheDocument();
+    await user.click(screen.getByText('2 skills added'));
+    expect(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ })).toBeChecked();
+  });
+
+  it('assigns team skills while creating a project for the first time', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values, id: 'created-project' } as CodeProject));
+    render(
+      <ProjectSettingsModal
+        open
+        project={null}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add the first folder' }));
+    await user.click(await screen.findByText('Choose skills'));
+    await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md'] }],
+    })));
+  });
+
+  it('removes a team skill from an existing project', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(
+      <ProjectSettingsModal
+        open
+        project={{
+          ...project,
+          skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md'] }],
+        }}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await user.click(screen.getByText('1 skill added'));
+    await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ skill_sources: [] })));
+  });
+
+  it('keeps the project editor open when saving its complete configuration fails', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onSave = vi.fn(async () => { throw new Error('Could not assign this skill.'); });
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        onClose={onClose}
+        onSave={onSave}
+      />,
+    );
+
+    await user.click(await screen.findByText('Choose skills'));
+    await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    expect(await screen.findByText('Could not assign this skill.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('uses the first-class developer tools section and routes account management to Connectors', async () => {
@@ -134,53 +246,6 @@ describe('ProjectSettingsModal', () => {
     rerender(<ProjectSettingsModal {...props} open suspended={false} />);
 
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved project name');
-  });
-
-  it('keeps unsaved playbook edits when the selected project object refreshes', async () => {
-    const user = userEvent.setup();
-    const props = {
-      open: true,
-      connections: [],
-      busy: false,
-      onClose: vi.fn(),
-      onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
-    };
-    const { rerender } = render(<ProjectSettingsModal {...props} project={project} />);
-    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
-    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
-    const branch = screen.getByPlaceholderText('main');
-
-    await user.type(repository, '/work/team-playbook');
-    await user.clear(branch);
-    await user.type(branch, 'staging');
-    rerender(
-      <ProjectSettingsModal
-        {...props}
-        project={{ ...project, updated_at: '2026-08-23T10:00:00Z' }}
-      />,
-    );
-
-    expect(repository).toHaveValue('/work/team-playbook');
-    expect(branch).toHaveValue('staging');
-  });
-
-  it('keeps Team Setup edits when a newly created project receives its saved identity', async () => {
-    const user = userEvent.setup();
-    const props = {
-      open: true,
-      connections: [],
-      busy: false,
-      onClose: vi.fn(),
-      onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
-    };
-    const { rerender } = render(<ProjectSettingsModal {...props} project={null} />);
-    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
-    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
-
-    await user.type(repository, '/work/team-playbook');
-    rerender(<ProjectSettingsModal {...props} project={project} />);
-
-    expect(repository).toHaveValue('/work/team-playbook');
   });
 
   it('resolves the legacy default id to the live GPT 5.6 Sol catalog model', async () => {

@@ -23,11 +23,14 @@ import {
   type PlaybookStatus,
   type ProjectCommand,
   type ProjectFolder,
+  type ProjectSkillSource,
+  type SkillLibraryItem,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
+import { ProjectSkillSelector } from './ProjectSkillSelector';
 
 const supportedProviders = new Set(['github', 'linear']);
 
@@ -66,7 +69,6 @@ export function ProjectSettingsModal({
   onClose,
   onSave,
   onDelete,
-  onProjectChanged = async () => {},
   onOpenConnectors = () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
@@ -81,7 +83,6 @@ export function ProjectSettingsModal({
   onClose: () => void;
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
-  onProjectChanged?: () => Promise<void>;
   onOpenConnectors?: () => void;
   defaultEngineId?: string;
   defaultModel?: string;
@@ -92,8 +93,11 @@ export function ProjectSettingsModal({
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [commandDrafts, setCommandDrafts] = useState<Record<string, string>>({});
   const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
-  const [playbookRepository, setPlaybookRepository] = useState('');
-  const [playbookBranch, setPlaybookBranch] = useState('main');
+  const [skillItems, setSkillItems] = useState<SkillLibraryItem[]>([]);
+  const [selectedSkillSources, setSelectedSkillSources] = useState<ProjectSkillSource[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState('');
+  const [skillsSaving, setSkillsSaving] = useState(false);
   const [environmentText, setEnvironmentText] = useState('');
   const [portNames, setPortNames] = useState('PORT');
   const [projectEngineId, setProjectEngineId] = useState(defaultEngineId);
@@ -104,7 +108,6 @@ export function ProjectSettingsModal({
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
-  const [teamSetupEditing, setTeamSetupEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
@@ -154,8 +157,10 @@ export function ProjectSettingsModal({
       [`${folder.id}:validate`, formatCommandLine(folder.commands.find((item) => item.phase === 'validate')?.argv || [])],
     ])));
     setSelectedConnections((project?.connections || []).map((item) => `${item.provider}:${item.name}`));
-    setPlaybookRepository(project?.playbook?.repository || '');
-    setPlaybookBranch(project?.playbook?.branch || 'main');
+    setSelectedSkillSources((project?.skill_sources || []).map((source) => ({
+      ...source,
+      enabled_paths: [...source.enabled_paths],
+    })));
     setEnvironmentText(Object.entries(project?.environment.variables || {}).map(([key, value]) => `${key}=${value}`).join('\n'));
     setPortNames((project?.environment.port_names || ['PORT']).join(', '));
     setEngineModelIds([]);
@@ -165,7 +170,6 @@ export function ProjectSettingsModal({
     setError('');
     setDeleteOpen(false);
     setPlaybookStatus(null);
-    setTeamSetupEditing(false);
     if (project?.playbook) {
       codingApi.playbook(project.id).then(setPlaybookStatus).catch((reason) => {
         setError(reason instanceof Error ? reason.message : 'Could not inspect the team playbook.');
@@ -176,6 +180,23 @@ export function ProjectSettingsModal({
   // object here would erase the in-progress playbook fields on a recoverable
   // clone/fetch error.
   }, [defaultEngineId, defaultModel, open, project?.id, suspended]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    setSkillsLoading(true);
+    codingApi.skillLibrary().then((library) => {
+      if (!active) return;
+      setSkillItems(library.items);
+      setSkillsError('');
+    }).catch((reason) => {
+      if (!active) return;
+      setSkillsError(reason instanceof Error ? reason.message : 'Could not load team skills.');
+    }).finally(() => {
+      if (active) setSkillsLoading(false);
+    });
+    return () => { active = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -231,17 +252,6 @@ export function ProjectSettingsModal({
     setError('');
   };
 
-  const chooseTeamSetupFolder = async () => {
-    const result = await host.pickCodeFolder();
-    if (result.ok && result.path) {
-      setPlaybookRepository(result.path);
-      setTeamSetupEditing(true);
-      setError('');
-    } else if (!result.cancelled) {
-      setError(result.reason || 'Could not choose that folder.');
-    }
-  };
-
   const updateFolder = (id: string, values: Partial<ProjectFolder>) => {
     setFolders((current) => current.map((item) => item.id === id ? { ...item, ...values } : item));
   };
@@ -254,6 +264,7 @@ export function ProjectSettingsModal({
   const save = async () => {
     if (!name.trim()) { setError('Name this Code Project.'); return; }
     if (!folders.length) { setError('Add at least one folder.'); return; }
+    setSkillsSaving(true);
     try {
       const normalizedFolders = folders.map((folder) => {
         const commands = (['setup', 'validate'] as const).flatMap((phase) => {
@@ -275,35 +286,26 @@ export function ProjectSettingsModal({
         return [line.slice(0, separator).trim(), line.slice(separator + 1)];
       }));
       const parsedPortNames = portNames.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
-      const saved = await onSave({
+      await onSave({
         name: name.trim(), folders: normalizedFolders, connections: projectConnections,
         environment: { variables, port_names: parsedPortNames },
+        skill_sources: selectedSkillSources,
         default_engine_id: projectEngineId,
         default_model: projectModel,
         permission_mode: projectPermission,
       });
-      let playbookChanged = false;
-      if (playbookRepository.trim() && (!project?.playbook || project.playbook.repository !== playbookRepository.trim() || project.playbook.branch !== playbookBranch.trim())) {
-        setPlaybookBusy(true);
-        await codingApi.configurePlaybook(saved.id, playbookRepository.trim(), playbookBranch.trim() || 'main');
-        playbookChanged = true;
-      } else if (!playbookRepository.trim() && project?.playbook) {
-        setPlaybookBusy(true);
-        await codingApi.removePlaybook(saved.id);
-        playbookChanged = true;
-      }
-      if (playbookChanged) await onProjectChanged();
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this Code Project.');
     } finally {
       setPlaybookBusy(false);
+      setSkillsSaving(false);
     }
   };
 
   return (
     <>
-    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy && !skillsSaving} closeOnEsc={!busy && !skillsSaving}>
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
@@ -350,24 +352,25 @@ export function ProjectSettingsModal({
             canManage={project !== null}
           />
 
-          <section className="code-project-section code-team-setup">
+          <section className="code-project-section code-project-skills">
             <div className="code-project-section__heading">
-              <div><strong>Team Setup</strong><span>Versioned skills, instructions, and workflows shared by the team</span></div>
+              <div><strong>Skills</strong><span>Team standards and workflows available to every task in this project</span></div>
             </div>
+            <ProjectSkillSelector
+              items={skillItems}
+              selected={selectedSkillSources}
+              loading={skillsLoading}
+              error={skillsError}
+              onChange={setSelectedSkillSources}
+            />
 
-            {!project?.playbook && !teamSetupEditing && (
-              <div className="code-team-setup__empty">
-                <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
-                <div>
-                  <strong>No Team Setup connected</strong>
-                  <p>Connect a Git repository containing SKILL.md files, AGENTS.md instructions, or team workflows.</p>
-                </div>
-                <Button size="sm" variant="subtle" onClick={() => setTeamSetupEditing(true)}>Connect repository</Button>
-              </div>
-            )}
-
-            {project?.playbook && !teamSetupEditing && (
-              <div className="code-team-setup__connected">
+            {project?.playbook && (
+              <details className="code-project-legacy-setup">
+                <summary>
+                  <span><strong>Project-only Team Setup</strong><small>{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>
+                  <i>{Ico.chevDown(11)}</i>
+                </summary>
+                <div className="code-team-setup__connected">
                 <div className="code-team-setup__summary">
                   <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
                   <div>
@@ -383,7 +386,6 @@ export function ProjectSettingsModal({
                     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for Team Setup updates.'); }
                     finally { setPlaybookBusy(false); }
                   }}>Check for updates</Button>
-                  <Button size="sm" variant="subtle" onClick={() => setTeamSetupEditing(true)}>Change source</Button>
                 </div>
 
                 {playbookStatus?.update_available && (
@@ -437,25 +439,8 @@ export function ProjectSettingsModal({
                   </div>
                 </details>
                 {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}
-              </div>
-            )}
-
-            {teamSetupEditing && (
-              <div className="code-team-setup__editor">
-                <label>
-                  <span>Repository</span>
-                  <Input value={playbookRepository} onChange={setPlaybookRepository} placeholder="Git URL or local Git folder" autoFocus />
-                </label>
-                <label>
-                  <span>Branch</span>
-                  <Input value={playbookBranch} onChange={setPlaybookBranch} placeholder="main" />
-                </label>
-                <div className="code-team-setup__editor-actions">
-                  <Button size="sm" variant="subtle" onClick={() => void chooseTeamSetupFolder()}>{Ico.folder(13)} Choose local repository</Button>
-                  {project?.playbook && <Button size="sm" variant="subtle" onClick={() => setPlaybookRepository('')}>Remove connection</Button>}
                 </div>
-                <p>The repository stays the source of truth. Cowork keeps a managed local copy and checks before applying updates.</p>
-              </div>
+              </details>
             )}
           </section>
 
@@ -480,8 +465,8 @@ export function ProjectSettingsModal({
       <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
         {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete project</Button>}
         <div className="code-project-footer-actions">
-          <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || playbookBusy || !name.trim() || !folders.length}>{busy || playbookBusy ? 'Saving…' : 'Save project'}</Button>
+          <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !folders.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
         </div>
       </ModalFooter>
     </Modal>

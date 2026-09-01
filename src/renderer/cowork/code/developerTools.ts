@@ -71,6 +71,22 @@ export function parseDeveloperSourceUrl(value: string): DeveloperSourceTarget | 
   return null;
 }
 
+/**
+ * Normalize a server- or repository-provided link before it crosses Electron's
+ * OS-shell boundary. Code surfaces never need executable schemes such as
+ * `file:`, `javascript:`, or custom application handlers.
+ */
+export function safeCodeExternalUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 export function sourceContextLabel(context: SourceContext): string {
   return context.external_id || context.title || sourceProviderLabel(context.provider);
 }

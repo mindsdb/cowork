@@ -45,6 +45,7 @@ import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useAccountUser } from './hooks/useAccountUser';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -1361,7 +1362,9 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-dots-off', settings.showDots === false);
+    const visible = settings.showDots !== false;
+    document.body.classList.toggle('gf-dots-off', !visible);
+    window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
   // Seed nav state from the address bar so a web deep-link / refresh paints the
@@ -1381,6 +1384,8 @@ function AppCore() {
       ? 'code'
       : 'cowork'
   ));
+  const codeFixtureActive = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('codeFixture');
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
@@ -1389,11 +1394,11 @@ function AppCore() {
   // home | task | projects | scheduled | schedule-detail | artifacts | customize
   const changeWorkspace = useCallback((next) => {
     if (next !== 'cowork' && next !== 'code') return;
-    if (next === 'code' && host.isWeb) return;
+    if (next === 'code' && host.isWeb && !codeFixtureActive) return;
     if (sidebarPopout) setNavPopoutOpen(false);
     if (next === 'code') setCodeWorkspaceMounted(true);
     setWorkspaceMode(next);
-  }, [sidebarPopout]);
+  }, [codeFixtureActive, sidebarPopout]);
   const openCode = useCallback(() => changeWorkspace('code'), [changeWorkspace]);
   // Code owns a separate task history, but its route-specific navigation is
   // rendered by the canonical Cowork sidebar instead of a second nested rail.
@@ -1403,10 +1408,12 @@ function AppCore() {
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
     connectorsOpen: codeConnectorsOpen,
+    skillsOpen: codeSkillsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
     openConnectors: openCodingConnectors,
+    openSkills: openCodingSkills,
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
   } = useCodeWorkspace(openCode);
@@ -1418,7 +1425,12 @@ function AppCore() {
   // with content; the home stage keeps the full ambient motion.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-quiet', workspaceMode === 'code' || route !== 'home');
+    const denseWorkspace = workspaceMode === 'code' || route !== 'home';
+    document.body.classList.toggle('gf-quiet', denseWorkspace);
+    // The field is decorative, so dense work surfaces update it at a much
+    // lower frequency. Its slow drift remains visible without competing with
+    // typing, streaming output, or approval interactions on busy machines.
+    window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
   }, [route, workspaceMode]);
   // Effective collapse state: only honor the user's preference while
@@ -2429,6 +2441,10 @@ function AppCore() {
     setSettingsOpen,
     refreshData,
   });
+  const codeAccountUser = useAccountUser(ssoConnected);
+  const codeSkillScopeKey = codeAccountUser
+    ? [codeAccountUser.sub, codeAccountUser.email, codeAccountUser.org].filter(Boolean).join(':')
+    : 'signed-out';
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -4371,7 +4387,7 @@ function AppCore() {
             : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
           activeWorkspace={workspaceMode}
           activeCodeRoute={workspaceMode === 'code'
-            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : null))
+            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4379,7 +4395,7 @@ function AppCore() {
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={workspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={workspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen
+          activeCodingSessionId={workspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4393,6 +4409,7 @@ function AppCore() {
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
           onOpenCodingConnectors={openCodingConnectors}
+          onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
@@ -4843,7 +4860,7 @@ function AppCore() {
         )}
         </div>
 
-        {!host.isWeb && codeWorkspaceMounted && (
+        {(!host.isWeb || codeFixtureActive) && codeWorkspaceMounted && (
           <div
             className="workspace-mode-panel"
             hidden={workspaceMode !== 'code'}
@@ -4855,13 +4872,16 @@ function AppCore() {
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
               connectorsOpen={codeConnectorsOpen}
+              skillsOpen={codeSkillsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
               modelMeta={modelMeta}
+              skillScopeKey={codeSkillScopeKey}
               connections={connectors}
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
+              onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}

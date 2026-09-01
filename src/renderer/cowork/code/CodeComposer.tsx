@@ -1,27 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Textarea } from '../components/ui/Input';
-import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode } from './api';
+import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu, PromptQueue } from './ComposerMenus';
 import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
+import { SkillDetailModal } from './SkillDetailModal';
 
 
-export function CodeComposer({
-  session,
-  busy,
-  onSend,
-  onStop,
-  commands,
-  onClientCommand,
-  onPermissionChange,
-  onSteerQueued,
-  onRemoveQueued,
-  history = [],
-}: {
+type CodeComposerProps = {
   session: CodingSession;
   busy: boolean;
   onSend: (prompt: string, delivery: 'turn' | 'steer' | 'queue', attachments: InputReference[]) => Promise<void>;
@@ -32,7 +22,60 @@ export function CodeComposer({
   onSteerQueued: (instructionId: string) => Promise<void>;
   onRemoveQueued: (instructionId: string) => Promise<void>;
   history?: string[];
-}) {
+};
+
+function sameStrings(left: string[] = [], right: string[] = []): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameReferences(left: InputReference[] = [], right: InputReference[] = []): boolean {
+  return left.length === right.length && left.every((item, index) => (
+    item.name === right[index]?.name
+    && item.path === right[index]?.path
+    && item.kind === right[index]?.kind
+  ));
+}
+
+function sameQueuedInstructions(left: CodingSession, right: CodingSession): boolean {
+  const leftItems = left.queued_instructions || [];
+  const rightItems = right.queued_instructions || [];
+  return leftItems.length === rightItems.length && leftItems.every((item, index) => {
+    const other = rightItems[index];
+    return item.id === other?.id
+      && item.prompt === other.prompt
+      && item.created_at === other.created_at
+      && sameReferences(item.attachments, other.attachments);
+  });
+}
+
+function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): boolean {
+  // CodeView recreates thin action closures as task data arrives, but those
+  // closures are behaviorally identical until one of the session fields below
+  // changes (and selecting another task remounts the composer by key). Ignoring
+  // only those wrappers prevents transcript polling from interrupting input.
+  return left.busy === right.busy
+    && left.commands === right.commands
+    && left.session.id === right.session.id
+    && left.session.status === right.session.status
+    && left.session.engine_id === right.session.engine_id
+    && left.session.project_id === right.session.project_id
+    && left.session.permission_mode === right.session.permission_mode
+    && sameQueuedInstructions(left.session, right.session)
+    && sameStrings(left.history, right.history);
+}
+
+export const CodeComposer = memo(function CodeComposer({
+  session,
+  busy,
+  onSend,
+  onStop,
+  commands,
+  onClientCommand,
+  onPermissionChange,
+  onSteerQueued,
+  onRemoveQueued,
+  history = [],
+}: CodeComposerProps) {
   const [prompt, setPrompt] = useState('');
   const [commandIndex, setCommandIndex] = useState(0);
   const [attachments, setAttachments] = useState<InputReference[]>([]);
@@ -41,6 +84,7 @@ export function CodeComposer({
   const [referenceError, setReferenceError] = useState('');
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
@@ -48,7 +92,7 @@ export function CodeComposer({
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase() ?? null;
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
-  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectName: session.project_name });
+  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectId: session.project_id });
   useEffect(() => setCommandIndex(0), [commandQuery]);
   useEffect(() => {
     setMentionIndex(0);
@@ -155,6 +199,7 @@ export function CodeComposer({
             onQueryChange={(query) => setPrompt(`/${query}`)}
             onSelectedIndexChange={setCommandIndex}
             onChoose={choosePaletteItem}
+            onViewSkill={setDetailItem}
             onDismiss={() => setPrompt('')}
           />
         )}
@@ -277,6 +322,7 @@ export function CodeComposer({
           )}
         </div>
       </div>
+      <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );
-}
+}, sameComposerProps);

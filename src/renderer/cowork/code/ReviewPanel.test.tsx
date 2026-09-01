@@ -227,4 +227,42 @@ describe('ReviewPanel', () => {
     expect(screen.getByText(/Published with Linear work/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Post another' })).toBeInTheDocument();
   });
+
+  it('completes linked work only after the final update and explicit confirmation', async () => {
+    const user = userEvent.setup();
+    const onCompleteSource = vi.fn(async () => {});
+    const context = {
+      provider: 'linear' as const, kind: 'issue' as const, url: 'https://linear.app/mindsdb/issue/ENG-421',
+      title: 'Checkout recovery', external_id: 'ENG-421', body: '',
+    };
+    const linkedSession: CodingSession = {
+      ...projectSession,
+      source_contexts: [context],
+      deliveries: [{
+        provider: 'linear', action: 'result', target_url: context.url, status: 'published',
+        external_url: `${context.url}#comment-1`, detail: 'Final result posted', created_at: '2026-08-24T10:30:00Z',
+      }],
+    };
+    render(
+      <ReviewPanel
+        open
+        session={linkedSession}
+        git={null}
+        files={[]}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        onCompleteSource={onCompleteSource}
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Handoff' }));
+    await user.click(screen.getByRole('button', { name: 'Complete issue' }));
+    await user.click(screen.getAllByRole('button', { name: 'Complete issue' }).at(-1)!);
+
+    await waitFor(() => expect(onCompleteSource).toHaveBeenCalledWith(context));
+  });
 });

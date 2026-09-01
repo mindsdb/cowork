@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
-import { useSkills, type CoworkSkill } from '../lib/skillsStore';
-import type { EngineCommand } from './api';
+import { codingApi, type EngineCommand, type SkillLibraryItem } from './api';
 
 
 export type CodePaletteItem =
@@ -14,7 +13,7 @@ export type CodePaletteItem =
       label: string;
       description: string;
       scope: string;
-      skill: CoworkSkill;
+      skill: SkillLibraryItem;
     }
   | {
       id: string;
@@ -27,43 +26,56 @@ export type CodePaletteItem =
       command: EngineCommand;
     };
 
-function skillScope(skill: CoworkSkill): string {
-  const projects = skill.projects || (skill.project ? [skill.project] : []);
-  return projects.length ? projects.join(', ') : 'All projects';
+function skillInvocation(skill: SkillLibraryItem): string {
+  const path = skill.path.replace(/\/SKILL\.md$/i, '');
+  return `$${path.split('/').filter(Boolean).pop() || skill.name}`;
 }
 
 export function useCodePaletteItems({
   commands,
   query,
-  projectName,
+  projectId,
 }: {
   commands: EngineCommand[];
   query: string | null;
-  projectName?: string | null;
+  projectId?: string | null;
 }): CodePaletteItem[] {
-  const { skills } = useSkills();
+  const [skills, setSkills] = useState<SkillLibraryItem[]>([]);
+  useEffect(() => {
+    let alive = true;
+    codingApi.skillLibrary(projectId)
+      .then((library) => { if (alive) setSkills(library.items); })
+      .catch(() => { if (alive) setSkills([]); });
+    return () => { alive = false; };
+  }, [projectId]);
+
   return useMemo(() => {
     if (query == null) return [];
     const normalized = query.trim().toLowerCase();
     const matches = (...values: Array<string | undefined>) => !normalized || values.some((value) => value?.toLowerCase().includes(normalized));
 
-    const skillItems: CodePaletteItem[] = (skills || [])
+    const skillItems: CodePaletteItem[] = skills
       .filter((skill) => {
-        if (!skill.label || skill.enabled === false) return false;
-        const scope = skill.projects || (skill.project ? [skill.project] : []);
-        if (scope.length && (!projectName || !scope.includes(projectName))) return false;
-        return matches(skill.label, skill.description, skillScope(skill));
+        if (skill.kind !== 'skill' || !skill.name || !skill.enabled) return false;
+        return matches(skill.name, skill.description, skill.source_name);
       })
       .map((skill) => ({
-        id: `mindshub-skill:${skill.label}`,
+        id: `mindshub-skill:${skill.id}`,
         kind: 'skill' as const,
         section: 'skills' as const,
-        invocation: `$${skill.label}`,
-        label: skill.label,
+        invocation: skillInvocation(skill),
+        label: skill.name,
         description: skill.description || 'MindsHub skill',
-        scope: skillScope(skill),
+        scope: skill.source_name,
         skill,
       }));
+    const seenInvocations = new Set<string>();
+    const uniqueSkillItems = skillItems.filter((item) => {
+      const invocation = item.invocation.toLowerCase();
+      if (seenInvocations.has(invocation)) return false;
+      seenInvocations.add(invocation);
+      return true;
+    });
 
     const commandItems: CodePaletteItem[] = commands
       .filter((command) => matches(command.name, command.label, command.description, command.argument_hint || undefined))
@@ -78,8 +90,8 @@ export function useCodePaletteItems({
         command,
       }));
 
-    return [...skillItems, ...commandItems];
-  }, [commands, projectName, query, skills]);
+    return [...uniqueSkillItems, ...commandItems];
+  }, [commands, query, skills]);
 }
 
 export function CodeCommandPalette({
@@ -90,6 +102,7 @@ export function CodeCommandPalette({
   onQueryChange,
   onSelectedIndexChange,
   onChoose,
+  onViewSkill,
   onDismiss,
 }: {
   items: CodePaletteItem[];
@@ -99,11 +112,31 @@ export function CodeCommandPalette({
   onQueryChange: (query: string) => void;
   onSelectedIndexChange: (index: number) => void;
   onChoose: (item: CodePaletteItem) => void;
+  onViewSkill: (skill: SkillLibraryItem) => void;
   onDismiss: () => void;
 }) {
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const [availableHeight, setAvailableHeight] = useState<number>();
   const skills = items.filter((item) => item.section === 'skills');
   const commands = items.filter((item) => item.section === 'commands');
   const selected = Math.min(selectedIndex, Math.max(0, items.length - 1));
+
+  useLayoutEffect(() => {
+    const palette = paletteRef.current;
+    if (!palette?.parentElement?.classList.contains('code-start-composer')) {
+      setAvailableHeight(undefined);
+      return undefined;
+    }
+
+    const fitToViewport = () => {
+      const remainingHeight = window.innerHeight - palette.getBoundingClientRect().top - 12;
+      setAvailableHeight(Math.max(150, Math.min(430, remainingHeight)));
+    };
+    fitToViewport();
+    window.addEventListener('resize', fitToViewport);
+    return () => window.removeEventListener('resize', fitToViewport);
+  }, []);
+
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -130,28 +163,49 @@ export function CodeCommandPalette({
   const renderItem = (item: CodePaletteItem) => {
     const index = items.indexOf(item);
     return (
-      <button
+      <div
         key={item.id}
-        type="button"
-        role="option"
-        aria-selected={index === selected}
-        className={index === selected ? 'is-selected' : ''}
+        className={`code-command-palette__item${index === selected ? ' is-selected' : ''}`}
         onMouseEnter={() => onSelectedIndexChange(index)}
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onChoose(item)}
       >
-        <code>{item.invocation}</code>
-        <span>
-          <strong>{item.label}</strong>
-          <small>{item.description}</small>
-        </span>
-        <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
-      </button>
+        <button
+          type="button"
+          role="option"
+          aria-selected={index === selected}
+          className="code-command-palette__choose"
+          onClick={() => onChoose(item)}
+        >
+          <code>{item.invocation}</code>
+          <span>
+            <strong>{item.label}</strong>
+            <small>{item.description}</small>
+          </span>
+          <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
+        </button>
+        {item.kind === 'skill' && (
+          <button
+            type="button"
+            className="code-command-palette__view"
+            aria-label={`View ${item.label}`}
+            onClick={() => onViewSkill(item.skill)}
+          >
+            View
+          </button>
+        )}
+      </div>
     );
   };
 
   return (
-    <div className="code-command-palette" role="listbox" aria-label="Skills and commands" onKeyDown={handleKeyDown}>
+    <div
+      ref={paletteRef}
+      className="code-command-palette"
+      role="listbox"
+      aria-label="Skills and commands"
+      style={availableHeight ? { maxHeight: availableHeight } : undefined}
+      onKeyDown={handleKeyDown}
+    >
       <label className="code-command-palette__search">
         <span aria-hidden="true">{Ico.search(13)}</span>
         <input

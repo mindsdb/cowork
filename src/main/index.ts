@@ -43,6 +43,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { normalizeExternalBrowserUrl } from './external-url';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -463,9 +464,8 @@ function createWindow() {
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
     return { action: 'deny' };
   });
 
@@ -474,9 +474,8 @@ function createWindow() {
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
     // Block navigation and open in OS browser
     event.preventDefault();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -1270,9 +1269,8 @@ function setupIPC() {
   );
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      await shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) await shell.openExternal(browserUrl);
   });
 
   // Open a local file/folder in the OS default app (Finder, browser,

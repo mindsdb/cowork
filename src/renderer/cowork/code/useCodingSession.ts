@@ -17,48 +17,97 @@ export function useCodingSession(sessionId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const cursor = useRef(0);
+  const pendingEvents = useRef<Map<number, CodingEvent>>(new Map());
+  const liveFlushTimer = useRef<number | null>(null);
+  const reviewScheduleTimer = useRef<number | null>(null);
+  const requestedReviewId = useRef<string | null>(null);
+  const reviewInFlight = useRef<Promise<void> | null>(null);
   const activeSessionId = useRef(sessionId);
   activeSessionId.current = sessionId;
 
-  const mergeEvents = useCallback((id: string, incoming: CodingEvent[], nextSeq?: number) => {
+  const flushEvents = useCallback((id: string) => {
     if (activeSessionId.current !== id) return;
-    const ordered = [...incoming]
-      .filter((event) => event.seq > cursor.current)
-      .sort((left, right) => left.seq - right.seq);
-    const lastSeq = ordered.at(-1)?.seq;
-    cursor.current = Math.max(cursor.current, lastSeq || 0, nextSeq || 0);
+    const ordered = [...pendingEvents.current.values()].sort((left, right) => left.seq - right.seq);
+    pendingEvents.current.clear();
     if (!ordered.length) return;
-    setEvents((current) => [...current, ...ordered].slice(-6_000));
+    setEvents((current) => {
+      const bySequence = new Map(current.map((event) => [event.seq, event]));
+      for (const event of ordered) bySequence.set(event.seq, event);
+      return [...bySequence.values()].sort((left, right) => left.seq - right.seq).slice(-6_000);
+    });
   }, []);
 
-  const refreshReview = useCallback(async (id: string) => {
-    const [gitResult, diffResult] = await Promise.allSettled([codingApi.git(id), codingApi.diff(id)]);
+  const ingestEvents = useCallback((id: string, incoming: CodingEvent[], nextSeq = 0, immediate = false) => {
     if (activeSessionId.current !== id) return;
-    if (gitResult.status === 'fulfilled') setGit(gitResult.value);
-    if (diffResult.status === 'fulfilled') setDiff(diffResult.value.files);
+    for (const event of incoming) pendingEvents.current.set(event.seq, event);
+    const lastSeq = incoming.reduce((highest, event) => Math.max(highest, event.seq), 0);
+    cursor.current = Math.max(cursor.current, lastSeq, nextSeq);
+    if (immediate) {
+      if (liveFlushTimer.current != null) window.clearTimeout(liveFlushTimer.current);
+      liveFlushTimer.current = null;
+      flushEvents(id);
+      return;
+    }
+    if (liveFlushTimer.current != null) return;
+    // Codex can emit several small deltas in one display frame. All transport
+    // paths feed this same ordered buffer, so reconciliation can never render
+    // a later frame ahead of an earlier live frame.
+    liveFlushTimer.current = window.setTimeout(() => {
+      liveFlushTimer.current = null;
+      flushEvents(id);
+    }, 16);
+  }, [flushEvents]);
+
+  const refreshReview = useCallback(async (id: string) => {
+    requestedReviewId.current = id;
+    if (reviewInFlight.current) return reviewInFlight.current;
+    const run = async () => {
+      while (requestedReviewId.current) {
+        const requestedId = requestedReviewId.current;
+        requestedReviewId.current = null;
+        const [gitResult, diffResult] = await Promise.allSettled([
+          codingApi.git(requestedId),
+          codingApi.diff(requestedId),
+        ]);
+        if (activeSessionId.current !== requestedId) continue;
+        if (gitResult.status === 'fulfilled') setGit(gitResult.value);
+        if (diffResult.status === 'fulfilled') setDiff(diffResult.value.files);
+      }
+    };
+    reviewInFlight.current = run().finally(() => { reviewInFlight.current = null; });
+    return reviewInFlight.current;
   }, []);
+
+  const scheduleReview = useCallback((id: string) => {
+    requestedReviewId.current = id;
+    if (reviewScheduleTimer.current != null) return;
+    reviewScheduleTimer.current = window.setTimeout(() => {
+      reviewScheduleTimer.current = null;
+      void refreshReview(id);
+    }, 150);
+  }, [refreshReview]);
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
-    const [sessionResult, eventResult, gitResult, diffResult] = await Promise.allSettled([
+    const [sessionResult, eventResult] = await Promise.allSettled([
       codingApi.session(sessionId),
       codingApi.events(sessionId, cursor.current),
-      codingApi.git(sessionId),
-      codingApi.diff(sessionId),
     ]);
     if (activeSessionId.current !== sessionId) return;
     if (sessionResult.status === 'fulfilled') setSession(sessionResult.value);
     if (eventResult.status === 'fulfilled') {
-      mergeEvents(sessionId, eventResult.value.items, eventResult.value.next_seq);
+      ingestEvents(sessionId, eventResult.value.items, eventResult.value.next_seq, true);
     }
-    if (gitResult.status === 'fulfilled') setGit(gitResult.value);
-    if (diffResult.status === 'fulfilled') setDiff(diffResult.value.files);
     if (sessionResult.status === 'rejected' && eventResult.status === 'rejected') {
       setError(sessionResult.reason instanceof Error ? sessionResult.reason.message : 'Could not refresh this coding task.');
     } else {
       setError('');
     }
-  }, [mergeEvents, sessionId]);
+    // Git inspection is supplementary review data. Never hold task actions,
+    // approvals, or the composer hostage to a potentially expensive worktree
+    // scan; update it progressively instead.
+    void refreshReview(sessionId);
+  }, [ingestEvents, refreshReview, sessionId]);
 
   useEffect(() => {
     setSession(null);
@@ -67,46 +116,58 @@ export function useCodingSession(sessionId: string | null) {
     setDiff([]);
     setError('');
     cursor.current = 0;
+    pendingEvents.current.clear();
+    requestedReviewId.current = null;
+    if (liveFlushTimer.current != null) {
+      window.clearTimeout(liveFlushTimer.current);
+      liveFlushTimer.current = null;
+    }
+    if (reviewScheduleTimer.current != null) {
+      window.clearTimeout(reviewScheduleTimer.current);
+      reviewScheduleTimer.current = null;
+    }
     if (!sessionId) return undefined;
 
     let alive = true;
     let closeStream = () => {};
     setLoading(true);
-    Promise.allSettled([
-      codingApi.session(sessionId),
-      codingApi.events(sessionId),
-      codingApi.git(sessionId),
-      codingApi.diff(sessionId),
-    ]).then(([sessionResult, eventResult, gitResult, diffResult]) => {
+    codingApi.session(sessionId).then((value) => {
       if (!alive) return;
-      if (sessionResult.status === 'fulfilled') setSession(sessionResult.value);
-      if (eventResult.status === 'fulfilled') {
-        mergeEvents(sessionId, eventResult.value.items, eventResult.value.next_seq);
-      }
-      if (gitResult.status === 'fulfilled') setGit(gitResult.value);
-      if (diffResult.status === 'fulfilled') setDiff(diffResult.value.files);
-      if (sessionResult.status === 'rejected') {
-        setError(sessionResult.reason instanceof Error ? sessionResult.reason.message : 'Could not load this coding task.');
-      } else if (eventResult.status === 'rejected') {
-        setError('Task history is reconnecting…');
-      }
+      setSession(value);
+      setError('');
+    }).catch((reason) => {
+      if (alive) setError(reason instanceof Error ? reason.message : 'Could not load this coding task.');
+    }).finally(() => {
+      if (alive) setLoading(false);
+    });
+
+    codingApi.events(sessionId).then((page) => {
+      if (!alive) return;
+      ingestEvents(sessionId, page.items, page.next_seq, true);
+    }).catch(() => {
+      if (alive) setError('Task history is reconnecting…');
+    }).finally(() => {
+      if (!alive) return;
       closeStream = openCodingEventStream(
         sessionId,
         cursor.current,
         (event) => {
-          if (!alive || event.seq <= cursor.current) return;
+          if (!alive) return;
           setError('');
-          mergeEvents(sessionId, [event], event.seq);
+          ingestEvents(sessionId, [event]);
           if (event.type === 'session' || event.type === 'approval' || event.type === 'error') {
             codingApi.session(sessionId).then((value) => { if (alive) setSession(value); }).catch(() => {});
           }
           if (event.type === 'file_change' || event.type === 'diff' || event.type === 'session') {
-            refreshReview(sessionId).catch(() => {});
+            scheduleReview(sessionId);
           }
         },
         () => { if (alive) setError('Live updates disconnected. Reconnecting…'); },
       );
-    }).finally(() => { if (alive) setLoading(false); });
+    });
+    // Review data is useful as soon as it is available, but it is never a
+    // prerequisite for restoring the conversation or accepting input.
+    void refreshReview(sessionId);
 
     const reconcile = window.setInterval(() => {
       Promise.allSettled([
@@ -117,9 +178,9 @@ export function useCodingSession(sessionId: string | null) {
         if (sessionResult.status === 'fulfilled') setSession(sessionResult.value);
         if (eventResult.status === 'fulfilled') {
           const page = eventResult.value;
-          mergeEvents(sessionId, page.items, page.next_seq);
+          ingestEvents(sessionId, page.items, page.next_seq, true);
           if (page.items.some((event) => event.type === 'file_change' || event.type === 'diff' || event.type === 'session')) {
-            refreshReview(sessionId).catch(() => {});
+            scheduleReview(sessionId);
           }
         }
         if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') setError('');
@@ -128,9 +189,18 @@ export function useCodingSession(sessionId: string | null) {
     return () => {
       alive = false;
       window.clearInterval(reconcile);
+      if (liveFlushTimer.current != null) {
+        window.clearTimeout(liveFlushTimer.current);
+        liveFlushTimer.current = null;
+      }
+      if (reviewScheduleTimer.current != null) {
+        window.clearTimeout(reviewScheduleTimer.current);
+        reviewScheduleTimer.current = null;
+      }
+      pendingEvents.current.clear();
       closeStream();
     };
-  }, [mergeEvents, refreshReview, sessionId]);
+  }, [ingestEvents, refreshReview, scheduleReview, sessionId]);
 
   return { session, events, git, diff, loading, error, refresh, refreshReview };
 }

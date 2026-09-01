@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CodingSession } from './api';
+import type { CodingEvent, CodingSession, DiffFile, GitState } from './api';
 
 
 const api = vi.hoisted(() => ({
@@ -49,6 +49,20 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+
+function event(seq: number, type: CodingEvent['type'], text = ''): CodingEvent {
+  return {
+    schema_version: 1,
+    seq,
+    timestamp: '',
+    type,
+    title: '',
+    text,
+    phase: 'progress',
+    data: {},
+  };
 }
 
 
@@ -102,6 +116,116 @@ describe('useCodingSession', () => {
     await waitFor(() => expect(result.current.session?.id).toBe('a'));
     expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function));
     expect(result.current.loading).toBe(false);
+  });
+
+  it('restores the conversation without waiting for slow Git review data', async () => {
+    const slowGit = deferred<never>();
+    const slowDiff = deferred<never>();
+    api.session.mockResolvedValue(session('a'));
+    api.git.mockReturnValue(slowGit.promise);
+    api.diff.mockReturnValue(slowDiff.promise);
+
+    const { result } = renderHook(() => useCodingSession('a'));
+
+    await waitFor(() => expect(result.current.session?.id).toBe('a'));
+    expect(result.current.loading).toBe(false);
+    expect(api.openStream).toHaveBeenCalledWith('a', 0, expect.any(Function), expect.any(Function));
+  });
+
+  it('batches live event deltas into one display-frame update', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockResolvedValue(session('a'));
+      const { result } = renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const streamCalls = api.openStream.mock.calls as unknown as Array<[
+        string,
+        number,
+        (event: CodingEvent) => void,
+      ]>;
+      const onEvent = streamCalls[0]?.[2];
+      expect(onEvent).toBeTypeOf('function');
+      if (!onEvent) throw new Error('Live event handler was not registered.');
+
+      act(() => {
+        onEvent(event(1, 'agent_message', 'Hello'));
+        onEvent(event(2, 'agent_message', ' world'));
+      });
+
+      await act(async () => { vi.advanceTimersByTime(16); });
+      // The hook preserves both persisted frames, but publishes them to React
+      // together so the transcript only rerenders once per display frame.
+      expect(result.current.events.map((item) => item.text)).toEqual(['Hello', ' world']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('orders a reconciled event behind an earlier buffered live event', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockResolvedValue(session('a'));
+      const { result } = renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const streamCalls = api.openStream.mock.calls as unknown as Array<[
+        string,
+        number,
+        (event: CodingEvent) => void,
+      ]>;
+      const onEvent = streamCalls[0]?.[2];
+      if (!onEvent) throw new Error('Live event handler was not registered.');
+
+      act(() => { onEvent(event(1, 'agent_message', 'First')); });
+      api.events.mockResolvedValueOnce({ items: [event(2, 'agent_message', 'Second')], next_seq: 2 });
+      await act(async () => { await result.current.refresh(); });
+      await act(async () => { vi.advanceTimersByTime(16); });
+
+      expect(result.current.events.map((item) => item.seq)).toEqual([1, 2]);
+      expect(result.current.events.map((item) => item.text)).toEqual(['First', 'Second']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('coalesces repeated review invalidations while a scan is in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const firstGit = deferred<GitState>();
+      const firstDiff = deferred<{ files: DiffFile[] }>();
+      api.session.mockResolvedValue(session('a'));
+      api.git
+        .mockReturnValueOnce(firstGit.promise)
+        .mockResolvedValue({ is_git: true, detached: true, dirty: true, status_lines: [], worktree_path: '/work/a-task', source_path: '/work/a' });
+      api.diff
+        .mockReturnValueOnce(firstDiff.promise)
+        .mockResolvedValue({ files: [] });
+      renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const onEvent = (api.openStream.mock.calls as unknown as Array<[
+        string,
+        number,
+        (event: CodingEvent) => void,
+      ]>)[0]?.[2];
+      if (!onEvent) throw new Error('Live event handler was not registered.');
+
+      act(() => {
+        onEvent(event(1, 'file_change'));
+        onEvent(event(2, 'diff'));
+        onEvent(event(3, 'file_change'));
+        vi.advanceTimersByTime(150);
+      });
+      expect(api.git).toHaveBeenCalledTimes(1);
+      expect(api.diff).toHaveBeenCalledTimes(1);
+
+      firstGit.resolve({ is_git: true, detached: true, dirty: false, status_lines: [], worktree_path: '/work/a-task', source_path: '/work/a' });
+      firstDiff.resolve({ files: [] });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+      expect(api.git).toHaveBeenCalledTimes(2);
+      expect(api.diff).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reconciles event frames missed while the live stream is disconnected', async () => {

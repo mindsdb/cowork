@@ -6,6 +6,7 @@ import type {
   EngineCapability,
   GitState,
   SessionCreateBody,
+  SkillLibraryItem,
   WorkspaceInspection,
 } from './api';
 import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
@@ -14,6 +15,15 @@ import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
 const NOW = '2026-08-21T19:40:00Z';
 const ROOT = '/Users/developer/Projects/atlas-web';
 const WORKTREE = '/Users/developer/.cowork/coding/worktrees/atlas-web/task-73c4';
+// Keep visual QA representative of the production coding-model contract. A
+// deliberately tiny fixture made a healthy catalogue look regressed when the
+// fixture build was mistaken for the signed-in app.
+const FIXTURE_MODEL_IDS = [
+  'mindshub_air', 'qwen', 'deepseek', 'sonnet', 'fable', 'gpt-mini',
+  'gpt-nano', 'gpt-luna', 'kimi', 'glm', 'grok', 'gpt-codex',
+  'gemini-flash', 'grok-4-5', 'gpt-terra', 'gpt', 'opus', 'muse-spark',
+  'haiku', 'gemini',
+];
 
 
 function activeFixtureName(): string | null {
@@ -235,7 +245,7 @@ function fixtureState(name: string) {
         detail: 'Draft pull request created', folder_id: 'app', folder_name: 'Atlas web',
         base_branch: 'staging', task_branch: 'cowork/atlas/task-73c4', connection_name: 'github-work', created_at: NOW,
       }, {
-        provider: 'linear', action: 'progress', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
+        provider: 'linear', action: 'result', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
         status: 'published', external_url: 'https://linear.app/mindsdb/issue/ENG-421#comment-finish',
         detail: 'Published with Linear work', connection_name: 'linear-work', created_at: NOW,
       }] : [],
@@ -268,7 +278,7 @@ export function getCodeFixtureApi() {
   const name = activeFixtureName();
   if (!name) return null;
   const state = fixtureState(name);
-  let sessions = name === 'new' || name === 'empty' ? [] : state.sessions;
+  let sessions = name === 'new' || name === 'empty' || name === 'work-search' ? [] : state.sessions;
   const eventMap = new Map<string, CodingEvent[]>([[state.primary.id, state.events]]);
   const fileMap = new Map<string, DiffFile[]>([[state.primary.id, state.files]]);
 
@@ -306,7 +316,8 @@ export function getCodeFixtureApi() {
     id: 'project-atlas',
     name: 'Atlas',
     folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
-    connections: name.startsWith('delivery-') ? [
+    skill_sources: [],
+    connections: name.startsWith('delivery-') || name === 'work-search' ? [
       { provider: 'github', name: 'github-work', label: 'MindsDB GitHub' },
       { provider: 'linear', name: 'linear-work', label: 'MindsDB Linear' },
     ] : [],
@@ -317,10 +328,49 @@ export function getCodeFixtureApi() {
     created_at: NOW,
     updated_at: NOW,
   }];
+  const skillItems: SkillLibraryItem[] = [
+    { id: 'source-engineering:review/SKILL.md', kind: 'skill', name: 'Code review', description: 'Review changes against team engineering standards.', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+    { id: 'source-engineering:AGENTS.md', kind: 'instructions', name: 'AGENTS.md', description: '', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+    { id: 'personal:review', kind: 'skill', name: 'Review', description: 'Run a fresh, skeptical pass over completed work.', origin: 'personal', source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] },
+    { id: 'personal:craft-ui', kind: 'skill', name: 'Craft world-class UI', description: 'Design and verify polished product interfaces.', origin: 'built_in', source_name: 'MindsHub', path: 'craft-ui', enabled: true, enabled_project_ids: [] },
+    { id: 'personal:thermo-nuclear-code-quality-review', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review', description: 'Run an extremely strict maintainability review for abstraction quality, giant files, and spaghetti-condition growth.', origin: 'built_in', source_name: 'MindsHub', path: 'thermo-nuclear-code-quality-review', enabled: true, enabled_project_ids: [] },
+  ];
+
+  const skillLibraryPage = () => ({
+    sources: [{
+      id: 'source-engineering', name: 'Engineering standards', repository: 'https://github.com/mindsdb/engineering-skills',
+      branch: 'main', current_revision: 'a1b2c3d4e5f6', available_revision: 'a1b2c3d4e5f6',
+      update_available: false, last_checked_at: NOW, item_count: 2,
+      enabled_project_count: projects.filter((project) => (project.skill_sources || []).some(
+        (source) => source.source_id === 'source-engineering' && source.enabled_paths.length > 0,
+      )).length,
+      diff: '',
+    }],
+    items: copy(skillItems),
+  });
+  const assignSkillSource = (projectId: string, sourceId: string, enabledPaths: string[]) => {
+    const enabled = new Set(enabledPaths);
+    projects = projects.map((project) => {
+      if (project.id !== projectId) return project;
+      const skillSources = (project.skill_sources || []).filter((source) => source.source_id !== sourceId);
+      if (enabledPaths.length) {
+        skillSources.push({ source_id: sourceId, enabled_paths: [...enabledPaths].sort() });
+      }
+      return { ...project, skill_sources: skillSources, updated_at: NOW };
+    });
+    for (const item of skillItems) {
+      if (item.source_id !== sourceId) continue;
+      const projectIds = new Set(item.enabled_project_ids);
+      if (enabled.has(item.path)) projectIds.add(projectId);
+      else projectIds.delete(projectId);
+      item.enabled_project_ids = [...projectIds];
+      item.enabled = item.enabled_project_ids.length > 0;
+    }
+  };
 
   return {
     engines: async () => copy(engines),
-    models: async () => ({ items: [DEFAULT_CODING_AGENT_MODEL, 'fable', 'sonnet', 'gpt-5.5-mini'] }),
+    models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,
       branch: 'staging', revision: '91ef52ea6f3ab14d', dirty: false,
@@ -338,10 +388,9 @@ export function getCodeFixtureApi() {
         base_branch_available: true,
       })),
     }),
-    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
+    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'skill_sources' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
       const created: CodeProject = {
-        schema_version: 1, id: `project-${Date.now()}`, ...body, connections: [],
-        environment: { variables: {}, port_names: ['PORT'] }, created_at: NOW, updated_at: NOW,
+        schema_version: 1, id: `project-${Date.now()}`, ...body, created_at: NOW, updated_at: NOW,
       };
       projects = [created, ...projects];
       return copy(created);
@@ -351,6 +400,32 @@ export function getCodeFixtureApi() {
       return copy(projects.find((item) => item.id === id) || projects[0]);
     },
     deleteProject: async (id: string) => { projects = projects.filter((item) => item.id !== id); },
+    skillLibrary: async () => skillLibraryPage(),
+    skillDocument: async (itemId: string, selectedPath?: string) => {
+      const item = skillItems.find((candidate) => candidate.id === itemId);
+      if (!item) throw new Error('Skill not found.');
+      const files = item.kind === 'skill' ? ['SKILL.md', 'references/checklist.md'] : [item.path];
+      const path = selectedPath || files[0];
+      if (!files.includes(path)) throw new Error('Skill file not found.');
+      const content = path === 'references/checklist.md'
+        ? '# Review checklist\n\n- Inspect the complete diff.\n- Run focused verification.\n- Report only evidence-backed findings.'
+        : `---\nname: ${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}\ndescription: ${item.description}\n---\n\n# ${item.name}\n\n${item.description}\n\n## How to use it\n\nApply this guidance deliberately, verify the result, and report material findings clearly.`;
+      return { item: copy(item), files, selected_path: path, content };
+    },
+    addSkillSource: async () => ({ id: 'source-new', name: 'Team skills', repository: ROOT, branch: 'main', current_revision: 'abc123', available_revision: 'abc123', update_available: false, last_checked_at: NOW, item_count: 1, enabled_project_count: 0, diff: '' }),
+    refreshSkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
+    applySkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
+    removeSkillSource: async () => undefined,
+    setProjectSkillSource: async (projectId: string, sourceId: string, enabledPaths: string[]) => {
+      assignSkillSource(projectId, sourceId, enabledPaths);
+      return skillLibraryPage();
+    },
+    setSkillSourceProjects: async (sourceId: string, assignments: Array<{ project_id: string; enabled_paths: string[] }>) => {
+      for (const assignment of assignments) {
+        assignSkillSource(assignment.project_id, sourceId, assignment.enabled_paths);
+      }
+      return skillLibraryPage();
+    },
     configurePlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
     playbook: async () => ({ configured: false, update_available: false, items: [], diff: '' }),
     removePlaybook: async () => undefined,
@@ -360,6 +435,21 @@ export function getCodeFixtureApi() {
     integrations: async () => ({ items: [] }),
     readSourceContext: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
       ...body, title: 'Linked work', external_id: 'fixture-1', body: 'Fixture source context',
+    }),
+    searchWorkItems: async (_id: string, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null }) => ({
+      incomplete: false,
+      items: [{
+        provider: body.provider,
+        kind: 'issue' as const,
+        url: body.provider === 'github' ? 'https://github.com/mindsdb/cowork/issues/42' : 'https://linear.app/mindsdb/issue/ENG-42',
+        title: body.query || 'Improve Code delivery',
+        external_id: body.provider === 'github' ? 'mindsdb/cowork#42' : 'ENG-42',
+        state: 'Open',
+        scope: body.provider === 'github' ? 'mindsdb/cowork' : 'Engineering',
+        assignee: 'Ian',
+        updated_at: NOW,
+        connection_name: body.connection_name || `${body.provider}-work`,
+      }],
     }),
     sessions: async (includeArchived = false) => {
       if (name === 'error') throw new Error('Could not reach the local coding service.');
@@ -481,20 +571,30 @@ export function getCodeFixtureApi() {
             number: 142, title: 'Refine checkout validation and recovery states',
             url: 'https://github.com/mindsdb/atlas-web/pull/142', updated_at: NOW,
             checks: [
-              { name: 'Frontend tests', state: 'failing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/1' },
+              {
+                id: 'check-frontend', name: 'Frontend tests', state: 'failing' as const,
+                url: 'https://github.com/mindsdb/atlas-web/actions/runs/1', detail: 'Checkout recovery › retains customer details after a rejected request',
+                annotations: [{
+                  path: 'src/checkout/CheckoutForm.test.tsx', start_line: 167, end_line: 167,
+                  level: 'failure' as const, title: 'Expected the email field to retain its value', message: 'Received an empty string.',
+                }],
+              },
               { name: 'Lint', state: 'passing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/2' },
             ],
             feedback: [{
               id: 'review-1', author: 'reviewer', state: 'changes_requested',
               body: 'Please retain the draft if validation itself fails.',
               url: 'https://github.com/mindsdb/atlas-web/pull/142#discussion_r1',
-              path: 'src/checkout/CheckoutForm.tsx', created_at: NOW,
+              path: 'src/checkout/CheckoutForm.tsx', line: 96, thread_id: 'thread-review-1',
+              resolved: false, outdated: false, created_at: NOW,
             }], detail: '',
           },
         }, baseItems[1]] };
       }
       return { items: baseItems, integrations: connected };
     },
+    updateDeliveryPolicy: async (id: string, policy: NonNullable<CodingSession['delivery_policy']>) => copy(update(id, { delivery_policy: policy })),
+    claimDeliveryAutomation: async () => ({ claimed: true, attempts: 1, limit: 2 }),
     draftPullRequests: async (_id: string, body: { title: string }) => ({ items: [{
       provider: 'github' as const, action: 'draft_pull_request' as const,
       target_url: 'https://github.com/mindsdb/atlas-web.git', status: 'published' as const,
@@ -502,7 +602,7 @@ export function getCodeFixtureApi() {
       folder_id: 'app', folder_name: 'Atlas web', base_branch: 'staging',
       task_branch: 'cowork/atlas/task-73c4', created_at: NOW,
     }] }),
-    pullRequestAction: async (_id: string, body: { action: 'ready' | 'merge'; target_url: string }) => ({
+    pullRequestAction: async (_id: string, body: { action: 'ready' | 'merge' | 'resolve_thread'; target_url: string }) => ({
       state: body.action === 'merge' ? 'merged' as const : 'open' as const,
       review_state: 'approved' as const,
       ci_state: 'passing' as const,
@@ -516,6 +616,10 @@ export function getCodeFixtureApi() {
     }),
     publish: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string }) => ({
       ...body, status: 'published' as const, detail: 'Published', created_at: NOW, external_url: body.target_url,
+    }),
+    completeSource: async (_id: string, body: { provider: 'github' | 'linear'; target_url: string }) => ({
+      ...body, action: 'complete_source' as const, status: 'published' as const,
+      detail: 'Marked complete', created_at: NOW, external_url: body.target_url,
     }),
     terminal: async () => ({ status: 'stopped' as const, items: [], first_seq: 0, next_seq: 0 }),
     startTerminal: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),
