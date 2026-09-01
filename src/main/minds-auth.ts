@@ -147,15 +147,33 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
     if (hasUserSuppliedCredential) {
       settleMindsResumeCredentialGate(true);
     }
+    // Drain an exchange that started before the machine suspended, the same way
+    // refreshAfterOrgSwitch drains one that started before the org switch. Its
+    // socket died during sleep and its AbortSignal rides a monotonic clock that
+    // does not advance while suspended, so joining it via the single-flight
+    // guard would hold the barrier on a request that cannot answer.
+    if (_inflightRefresh) await _inflightRefresh;
+    if (resumeCancellationEpoch !== _credentialHandoffCancellationEpoch) {
+      return { status: 'superseded' } as const;
+    }
     return refreshTokensOnly();
   })();
-  void refresh.then((result) => {
-    if (result.status === 'no_refresh_token') {
+  void refresh.then(
+    (result) => {
+      if (result.status === 'no_refresh_token') {
+        settleMindsResumeCredentialGate(false);
+      }
+      // `ok` is settled by the awaited handoff below. A transient or pending
+      // handoff keeps the barrier closed across its short retry timer.
+    },
+    (err) => {
+      // Nothing in the body should reject today, but an armed barrier with no
+      // settle path blocks every later turn for the life of the process, and
+      // `void` would swallow the rejection with it.
+      console.warn('[minds-auth] resume refresh failed before it could settle the gate:', err);
       settleMindsResumeCredentialGate(false);
-    }
-    // `ok` is settled by the awaited handoff below. A transient or pending
-    // handoff keeps the barrier closed across its short retry timer.
-  });
+    },
+  );
   return refresh;
 }
 
@@ -229,9 +247,18 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     saveTokens(data.access_token, expiresInSeconds, data.refresh_token ?? refreshToken);
     const refreshedTokenStoreVersion = getTokenStoreVersion();
     // The exchange is not usable by a turn until the sidecar has accepted the
-    // selected credential. `syncMindsCredential` intentionally re-resolves it
-    // so a user-supplied mdb_ key still wins over this new session JWT.
-    const handedOff = await syncMindsCredential();
+    // selected credential. `syncUsableMindsCredential` intentionally re-resolves
+    // it so a user-supplied mdb_ key still wins over this new session JWT, and
+    // it reports acceptance AND usability rather than acceptance alone.
+    //
+    // Both halves matter. A PUT can land while the value it carried is already
+    // dead — sleep during the loopback call leaves `AbortSignal.timeout` on a
+    // monotonic clock that does not advance, so the push completes on wake with
+    // a JWT that expired hours earlier. Releasing the barrier on `landed` alone
+    // would open it onto exactly that credential. Every sibling release path
+    // (`retryCredentialHandoff`, `settleResumeGateFromSelectedCredential`,
+    // `commitMindsSignIn`, `clearUserSuppliedMindsKey`) already checks both.
+    const handedOff = await syncUsableMindsCredential();
     if (
       credentialHandoffCancellationEpoch
       !== _credentialHandoffCancellationEpoch
@@ -1284,10 +1311,36 @@ export async function commitMindsSignIn(): Promise<void> {
 
 let _refreshTimer: NodeJS.Timeout | null = null;
 
-// The normal refresh runs with a 60-second expiry buffer. Retry well inside it
-// so one transient failure cannot consume the entire safety window.
+// The normal refresh runs with a 60-second expiry buffer, and the wake barrier
+// gives a held turn only MINDS_RESUME_READY_TIMEOUT_MS. Retry fast enough to
+// land inside both, then back off: attempts at T+10 through T+50 all fall
+// inside the expiry buffer, and past it the fast interval buys nothing while a
+// long IdP outage would cost 360 token POSTs an hour on every installed client.
 const REFRESH_RETRY_DELAY_MS = 10_000;
+const REFRESH_RETRY_MAX_DELAY_MS = 60_000;
+const REFRESH_RETRIES_INSIDE_BUFFER = 5;
 const CREDENTIAL_HANDOFF_RETRY_DELAY_MS = 10_000;
+const CREDENTIAL_HANDOFF_RETRY_MAX_DELAY_MS = 60_000;
+const CREDENTIAL_HANDOFF_RETRIES_INSIDE_BUFFER = 5;
+
+/**
+ * Fast fixed retries while the expiry buffer and the wake barrier still care,
+ * then exponential backoff to a ceiling.
+ *
+ * The fast attempts stay exactly `baseMs` apart, with no jitter: they are the
+ * ones the buffer argument justifies, and keeping them exact keeps the refresh
+ * timing tests deterministic. Jitter starts with the backed-off attempts, which
+ * is where a fleet that entered the loop together would otherwise return to a
+ * struggling IdP together.
+ */
+function retryDelay(attempt: number, baseMs: number, maxMs: number, fastAttempts: number): number {
+  if (attempt < fastAttempts) return baseMs;
+  const backedOff = Math.min(baseMs * 2 ** (attempt - fastAttempts + 1), maxMs);
+  return backedOff + Math.floor(Math.random() * 2_000);
+}
+
+let _refreshRetryAttempt = 0;
+let _credentialHandoffRetryAttempt = 0;
 
 let _credentialHandoffTimer: NodeJS.Timeout | null = null;
 let _credentialHandoffRetryGeneration = 0;
@@ -1298,12 +1351,19 @@ export function scheduleRefresh(expiresInSeconds: number): void {
 }
 
 export function scheduleRefreshRetry(): void {
-  scheduleRefreshIn(REFRESH_RETRY_DELAY_MS);
+  const attempt = _refreshRetryAttempt++;
+  scheduleRefreshIn(retryDelay(
+    attempt,
+    REFRESH_RETRY_DELAY_MS,
+    REFRESH_RETRY_MAX_DELAY_MS,
+    REFRESH_RETRIES_INSIDE_BUFFER,
+  ));
 }
 
 export function cancelScheduledRefresh(): void {
   if (_refreshTimer) clearTimeout(_refreshTimer);
   _refreshTimer = null;
+  _refreshRetryAttempt = 0;
   _credentialHandoffCancellationEpoch += 1;
   cancelCredentialHandoffRetry();
 }
@@ -1318,22 +1378,37 @@ function scheduleRefreshIn(delayMs: number): void {
 }
 
 function scheduleRefreshAt(expiresAt: number): void {
+  // Only reached after a successful exchange, so the outage is over.
+  _refreshRetryAttempt = 0;
   scheduleRefreshIn(Math.max(expiresAt - Date.now() - 60_000, 10_000));
 }
 
 function cancelCredentialHandoffRetry(): void {
   _credentialHandoffRetryGeneration += 1;
+  _credentialHandoffRetryAttempt = 0;
   if (_credentialHandoffTimer) clearTimeout(_credentialHandoffTimer);
   _credentialHandoffTimer = null;
 }
 
 function scheduleCredentialHandoffRetry(): void {
+  const attempt = _credentialHandoffRetryAttempt;
   cancelCredentialHandoffRetry();
+  // cancelCredentialHandoffRetry resets the counter because it is also the
+  // cancel path; this loop carries its own attempt forward.
+  _credentialHandoffRetryAttempt = attempt + 1;
   const generation = _credentialHandoffRetryGeneration;
+  // A sidecar that predates the hand-over route answers 404 and cannot recover
+  // without a restart, and setServerStartedHook(syncMindsCredential) already
+  // re-pushes on the next start. Back off rather than PUT every 10s forever.
   _credentialHandoffTimer = setTimeout(() => {
     _credentialHandoffTimer = null;
     void retryCredentialHandoff(generation);
-  }, CREDENTIAL_HANDOFF_RETRY_DELAY_MS);
+  }, retryDelay(
+    attempt,
+    CREDENTIAL_HANDOFF_RETRY_DELAY_MS,
+    CREDENTIAL_HANDOFF_RETRY_MAX_DELAY_MS,
+    CREDENTIAL_HANDOFF_RETRIES_INSIDE_BUFFER,
+  ));
 }
 
 async function retryCredentialHandoff(generation: number): Promise<void> {

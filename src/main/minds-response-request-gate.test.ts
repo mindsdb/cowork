@@ -4,6 +4,7 @@ import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
+import { MINDS_RESUME_READY_TIMEOUT_MS } from './minds-resume-gate';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -57,6 +58,22 @@ describe('response-creation resume gate', () => {
     await vi.waitFor(() => expect(forward).toHaveBeenCalledWith(false));
   });
 
+  it('gates the elicitation answer, which also puts LLM work on the wire', async () => {
+    const waitUntilReady = vi.fn(async () => true);
+    const forward = vi.fn();
+
+    expect(gateMindsResponseCreationRequest(
+      { method: 'POST', url: 'http://127.0.0.1:8765/api/v1/responses/answer' },
+      8765,
+      true,
+      runtimeCredentialRequired,
+      waitUntilReady,
+      forward,
+    )).toBe(true);
+
+    await vi.waitFor(() => expect(forward).toHaveBeenCalledWith(true));
+  });
+
   it('does not gate other loopback traffic or response reads', () => {
     const waitUntilReady = vi.fn(async () => true);
     const forward = vi.fn();
@@ -64,6 +81,7 @@ describe('response-creation resume gate', () => {
       { method: 'GET', url: 'http://127.0.0.1:8765/api/v1/responses/response-1' },
       { method: 'GET', url: 'http://127.0.0.1:8765/api/v1/health/' },
       { method: 'POST', url: 'http://127.0.0.1:8765/api/v1/settings/MINDS_API_KEY' },
+      { method: 'POST', url: 'http://127.0.0.1:8765/api/v1/responses/cancel' },
       { method: 'POST', url: 'http://127.0.0.1:9999/api/v1/responses' },
     ];
 
@@ -134,7 +152,7 @@ describe('response-creation resume gate', () => {
     },
   );
 
-  it('counts the sidecar probe inside the 25-second request bound', async () => {
+  it('counts the sidecar probe inside the request bound', async () => {
     const now = vi.spyOn(Date, 'now')
       .mockReturnValueOnce(10_000)
       .mockReturnValue(13_000);
@@ -150,11 +168,11 @@ describe('response-creation resume gate', () => {
       forward,
     );
 
-    await vi.waitFor(() => expect(waitUntilReady).toHaveBeenCalledWith(22_000));
+    await vi.waitFor(() => expect(waitUntilReady).toHaveBeenCalledWith(MINDS_RESUME_READY_TIMEOUT_MS - 3_000));
     now.mockRestore();
   });
 
-  it('aborts at 25 seconds even when the sidecar requirement probe hangs', async () => {
+  it('aborts at the request bound even when the sidecar requirement probe hangs', async () => {
     vi.useFakeTimers();
     const waitUntilReady = vi.fn(async () => true);
     const forward = vi.fn();
@@ -168,7 +186,7 @@ describe('response-creation resume gate', () => {
       forward,
     );
 
-    await vi.advanceTimersByTimeAsync(24_999);
+    await vi.advanceTimersByTimeAsync(MINDS_RESUME_READY_TIMEOUT_MS - 1);
     expect(forward).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(forward).toHaveBeenCalledWith(false);

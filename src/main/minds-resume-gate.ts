@@ -1,4 +1,23 @@
-export const MINDS_RESUME_READY_TIMEOUT_MS = 25_000;
+/**
+ * How long response creation may be held while a wake refresh replaces the
+ * credential that expired during sleep.
+ *
+ * The ceiling comes from the RENDERER, not from the refresh. `startConversation`
+ * reserves the stream slot before the POST leaves, and `reconcileInFlight`
+ * releases a reservation the server never reported after `unseenThreshold` (4)
+ * unseen polls on a 5-second heartbeat. That release calls `ctrl.abort()`, and
+ * `_streamResponse` swallows `AbortError` without calling `onError`, so a hold
+ * that outlives the reap loses the user's message with the thinking placeholder
+ * still on screen. The earliest reap is around 13 seconds, so stay under it: a
+ * gate that gives up first cancels the request outright, which surfaces as a
+ * real error the user can retry rather than a task stuck "active" forever.
+ *
+ * The trade-off is deliberate. A wake refresh slower than this bound now fails
+ * fast instead of waiting, because it cannot win the race against the reap
+ * either way. `scheduleRefreshRetry` keeps retrying underneath, so the next
+ * message goes out on the refreshed credential.
+ */
+export const MINDS_RESUME_READY_TIMEOUT_MS = 12_000;
 
 interface ResumeCredentialGate {
   promise: Promise<boolean>;
@@ -32,6 +51,24 @@ export function settleMindsResumeCredentialGate(ready: boolean): void {
   _resumeCredentialGate = null;
   _resumeCredentialBlocked = !ready;
   gate?.resolve(ready);
+}
+
+/**
+ * Drop the barrier entirely, whether or not one is armed.
+ *
+ * `settleMindsResumeCredentialGate(false)` leaves `_resumeCredentialBlocked`
+ * true with no gate promise, so every later `waitForMindsResumeCredential`
+ * returns false immediately and response creation is cancelled indefinitely.
+ * That is correct while a session still expects a credential to arrive. It is
+ * wrong after sign-out: there is no resumed credential to wait for, nothing in
+ * the signed-out state can call `settle(true)`, and a user who signs out and
+ * then configures a direct provider would never start another turn.
+ */
+export function resetMindsResumeCredentialGate(): void {
+  const gate = _resumeCredentialGate;
+  _resumeCredentialGate = null;
+  _resumeCredentialBlocked = false;
+  gate?.resolve(false);
 }
 
 /**

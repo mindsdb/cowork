@@ -24,7 +24,7 @@ import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } f
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { refreshTokensOnly, refreshMindsCredentialAfterResume, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
-import { isMindsResumeCredentialGateActive, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
+import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
@@ -606,10 +606,12 @@ async function performMindsSignOut() {
   cancelCurrentOAuth();
   clearTokens();
   // A refresh that was already inside its awaited handoff can settle true
-  // between the early barrier above and this token-store transition. Reassert
-  // signed-out state after the credential clear; a later supersession repair
-  // observes the cleared store and keeps the same result.
-  settleMindsResumeCredentialGate(false);
+  // between the early barrier above and this token-store transition. Drop the
+  // barrier outright rather than reasserting a blocked state: a signed-out
+  // install has no resumed credential to wait for, and nothing in that state
+  // can ever settle it true again. Leaving it blocked would cancel every later
+  // turn, including the direct-provider turns that never touch MindsHub.
+  resetMindsResumeCredentialGate();
 
   // Clear credentials from the server's SQLite DB (the authoritative
   // source for config_ready). A single POST /settings/logout atomically

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   beginMindsResumeCredentialGate,
+  isMindsResumeCredentialGateActive,
   MINDS_RESUME_READY_TIMEOUT_MS,
+  resetMindsResumeCredentialGate,
   settleMindsResumeCredentialGate,
   waitForMindsResumeCredential,
 } from './minds-resume-gate';
@@ -66,6 +68,31 @@ describe('Minds resume credential gate', () => {
     await expect(waitForMindsResumeCredential()).resolves.toBe(false);
 
     settleMindsResumeCredentialGate(true);
+    await expect(waitForMindsResumeCredential()).resolves.toBe(true);
+  });
+
+  it('releases waiters and stops blocking when the session goes away', async () => {
+    // Sign-out has no resumed credential to wait for, and nothing in the
+    // signed-out state can ever settle the gate true. Leaving it blocked would
+    // cancel every later turn, including direct-provider turns.
+    beginMindsResumeCredentialGate();
+    const waiting = waitForMindsResumeCredential();
+
+    resetMindsResumeCredentialGate();
+
+    await expect(waiting).resolves.toBe(false);
+    expect(isMindsResumeCredentialGateActive()).toBe(false);
+    await expect(waitForMindsResumeCredential()).resolves.toBe(true);
+  });
+
+  it('clears a gate that was already latched shut', async () => {
+    beginMindsResumeCredentialGate();
+    settleMindsResumeCredentialGate(false);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+
+    resetMindsResumeCredentialGate();
+
+    expect(isMindsResumeCredentialGateActive()).toBe(false);
     await expect(waitForMindsResumeCredential()).resolves.toBe(true);
   });
 });

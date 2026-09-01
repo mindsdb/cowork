@@ -12,7 +12,22 @@ export function mindsRuntimeCredentialRequirementFromHealth(data: unknown): bool
   return typeof required === 'boolean' ? required : null;
 }
 
-/** Only a new turn needs the Minds credential before the request is sent. */
+/**
+ * The requests that put LLM work on the wire and therefore need the Minds
+ * credential settled first.
+ *
+ * `/responses` starts a turn. `/responses/answer` releases a turn parked on an
+ * elicitation card, whose next model call runs on whatever credential the
+ * sidecar holds — a sleep shorter than the elicitation timeout but longer than
+ * the access token's life lands exactly there. Reads, cancels and the SSE tail
+ * are deliberately absent: none of them spends the credential, and gating the
+ * cancel would make Stop unusable while the barrier is up.
+ */
+const GATED_RESPONSE_PATHS = new Set([
+  '/api/v1/responses',
+  '/api/v1/responses/answer',
+]);
+
 export function isMindsResponseCreationRequest(
   details: LoopbackRequestDetails,
   serverPort: number,
@@ -21,7 +36,7 @@ export function isMindsResponseCreationRequest(
   try {
     const url = new URL(details.url);
     const path = url.pathname.replace(/\/$/, '');
-    return url.port === String(serverPort) && path === '/api/v1/responses';
+    return url.port === String(serverPort) && GATED_RESPONSE_PATHS.has(path);
   } catch {
     return false;
   }
