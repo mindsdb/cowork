@@ -10,10 +10,11 @@
 // child's pid is not ours to signal.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
-import { randomUUID } from 'crypto';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as os from 'os';
+import * as path from 'path';
 
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
@@ -38,15 +39,11 @@ vi.mock('./uv-paths', () => ({
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
-vi.mock('./dev-oauth-credentials', () => ({
-  loadDevOAuthCredentials: vi.fn().mockReturnValue({}),
-}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
 
 import { app } from 'electron';
-import { loadDevOAuthCredentials } from './dev-oauth-credentials';
 import {
   startServer,
   getServerDiagnostics,
@@ -100,7 +97,6 @@ beforeEach(() => {
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-  vi.mocked(loadDevOAuthCredentials).mockReturnValue({});
 
   // process.kill is the real global — killTree calls it directly, so without
   // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
@@ -429,16 +425,8 @@ describe('dev-mode uv resolution', () => {
     expect(spawnCall?.[1]).toEqual(['run', 'cowork-server']);
   });
 
-  it('passes the development OAuth clients to the local server only in dev mode', async () => {
+  it('passes only the fixed development OAuth file location to a local server', async () => {
     enterDevMode();
-    const githubClientSecret = randomUUID();
-    const linearClientSecret = randomUUID();
-    vi.mocked(loadDevOAuthCredentials).mockReturnValue({
-      GITHUB_CLIENT_ID: 'github-id',
-      GITHUB_CLIENT_SECRET: githubClientSecret,
-      LINEAR_CLIENT_ID: 'linear-id',
-      LINEAR_CLIENT_SECRET: linearClientSecret,
-    });
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => child.emit('error', new Error('stop after env capture')), 0);
@@ -447,14 +435,12 @@ describe('dev-mode uv resolution', () => {
 
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
 
-    expect(loadDevOAuthCredentials).toHaveBeenCalledWith({ isPackaged: false });
     const options = vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions;
     expect(options.env).toMatchObject({
-      GITHUB_CLIENT_ID: 'github-id',
-      GITHUB_CLIENT_SECRET: githubClientSecret,
-      LINEAR_CLIENT_ID: 'linear-id',
-      LINEAR_CLIENT_SECRET: linearClientSecret,
+      COWORK_DEV_OAUTH_ENV_FILE: path.join(os.homedir(), '.cowork-dev', '.env'),
     });
+    expect(options.env).not.toHaveProperty('GITHUB_CLIENT_SECRET');
+    expect(options.env).not.toHaveProperty('LINEAR_CLIENT_SECRET');
   });
 
   it('reports a useful reason and never spawns when uv is unresolvable', async () => {

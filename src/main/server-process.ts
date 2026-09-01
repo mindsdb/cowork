@@ -17,7 +17,6 @@ import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
-import { loadDevOAuthCredentials } from './dev-oauth-credentials';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
@@ -30,6 +29,7 @@ import {
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
+const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
 // ENG-439: the sidecar binds a loopback port, which is machine-global, not
 // per-OS-user. With fast user switching, whichever user launches first owns
@@ -638,7 +638,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const env = {
       ...process.env,
       ...(await loadBundledServerCredentials()),
-      ...loadDevOAuthCredentials({ isPackaged: app.isPackaged }),
+      // An unpackaged checkout may use the developer-owned GitHub and Linear
+      // OAuth clients in ~/.cowork-dev/.env. Pass only its fixed location to
+      // the sidecar: cowork-server owns dotenv parsing and admits only the
+      // OAuthSettings fields, so client secrets never traverse Electron's
+      // child-process environment or logs.
+      ...(!app.isPackaged ? { COWORK_DEV_OAUTH_ENV_FILE: DEV_OAUTH_ENV_FILE } : {}),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       // Both port names: COWORK_SERVER_PORT for every shipped server and
