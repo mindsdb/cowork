@@ -10,7 +10,6 @@ const {
   applySkillSource,
   removeSkillSource,
   setSkillSourceProjects,
-  openExternal,
 } = vi.hoisted(() => ({
   skillLibrary: vi.fn(),
   skillDocument: vi.fn(),
@@ -19,11 +18,10 @@ const {
   applySkillSource: vi.fn(),
   removeSkillSource: vi.fn(),
   setSkillSourceProjects: vi.fn(),
-  openExternal: vi.fn(),
 }));
 
 vi.mock('../../platform/host', () => ({
-  host: { pickCodeFolder: vi.fn(), openExternal, openPath: vi.fn() },
+  host: { pickCodeFolder: vi.fn() },
 }));
 
 vi.mock('../components/markdown/MarkdownContent', () => ({
@@ -160,16 +158,6 @@ describe('CodeSkillsView', () => {
     expect(screen.getByText('Used by 1 project')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove source' })).not.toBeInTheDocument();
     expect(removeSkillSource).not.toHaveBeenCalled();
-  });
-
-  it('opens the backing Git repository from source details', async () => {
-    const user = userEvent.setup();
-    render(<CodeSkillsView projects={projects} scopeKey="account-one" />);
-    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
-
-    await user.click(screen.getByRole('button', { name: 'Open repository' }));
-
-    expect(openExternal).toHaveBeenCalledWith('https://github.com/mindsdb/engineering-skills');
   });
 
   it('keeps project assignment failures inside the assignment dialog', async () => {

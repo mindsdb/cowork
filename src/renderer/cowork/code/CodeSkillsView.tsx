@@ -15,7 +15,6 @@ import {
   type SkillLibrarySource,
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
-import { safeCodeExternalUrl } from './developerTools';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
@@ -35,25 +34,6 @@ function kindLabel(kind: SkillLibraryItem['kind']): string {
 
 function shortRevision(value: string | null | undefined): string {
   return value?.slice(0, 8) || 'Unversioned';
-}
-
-async function openSkillRepository(repository: string): Promise<void> {
-  const browserUrl = safeCodeExternalUrl(repository);
-  if (browserUrl) {
-    await host.openExternal(browserUrl);
-    return;
-  }
-  const scpRemote = repository.match(/^git@([^:]+):(.+)$/i);
-  if (scpRemote) {
-    const remoteUrl = safeCodeExternalUrl(`https://${scpRemote[1]}/${scpRemote[2].replace(/\.git$/i, '')}`);
-    if (!remoteUrl) throw new Error('That repository address is not safe to open.');
-    await host.openExternal(remoteUrl);
-    return;
-  }
-  // Reveal local team sources in the file manager. `openPath` would ask the OS
-  // to execute an arbitrary user-entered path with its default application.
-  const result = await host.showItemInFolder(repository);
-  if (!result.ok) throw new Error(result.reason || 'Could not open that repository.');
 }
 
 function AddSkillSourceModal({
@@ -182,7 +162,6 @@ function SkillSourceModal({
   onRefresh,
   onApply,
   onRemove,
-  onOpenRepository,
 }: {
   source: SkillLibrarySource | null;
   open: boolean;
@@ -192,7 +171,6 @@ function SkillSourceModal({
   onRefresh: () => Promise<void>;
   onApply: () => Promise<void>;
   onRemove: () => Promise<void>;
-  onOpenRepository: () => Promise<void>;
 }) {
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="skill-source-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
@@ -219,7 +197,6 @@ function SkillSourceModal({
           </span>
         ) : <Button variant="danger" onClick={() => void onRemove()} disabled={busy}>Remove source</Button>}
         <span className="flex-1" />
-        <Button variant="subtle" onClick={() => void onOpenRepository()} disabled={busy}>Open repository</Button>
         <Button variant="subtle" onClick={() => void onRefresh()} disabled={busy}>{Ico.refresh(13)} Check for updates</Button>
         {source?.update_available && <Button variant="primary" onClick={() => void onApply()} disabled={busy}>Update source</Button>}
       </ModalFooter>
@@ -382,12 +359,6 @@ export function CodeSkillsView({ projects, scopeKey }: { projects: CodeProject[]
         onClose={() => { setSourceDetail(null); setSourceActionError(''); }}
         onRefresh={() => updateSource('refresh')}
         onApply={() => updateSource('apply')}
-        onOpenRepository={async () => {
-          if (!sourceDetail) return;
-          setSourceActionError('');
-          try { await openSkillRepository(sourceDetail.repository); }
-          catch (reason) { setSourceActionError(reason instanceof Error ? reason.message : 'Could not open that repository.'); }
-        }}
         onRemove={async () => { if (sourceDetail) { setRemoveError(''); setRemovePending(sourceDetail); } }}
       />
       <ConfirmModal
