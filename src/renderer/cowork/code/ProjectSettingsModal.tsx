@@ -17,11 +17,13 @@ import {
 } from '../lib/modelPickerOptions';
 import {
   codingApi,
+  type CodeComputer,
   type CodeProject,
   type PermissionMode,
   type PlaybookStatus,
   type ProjectCommand,
-  type ProjectFolder,
+  type ProjectResource,
+  type ResourceAvailability,
   type ProjectSkillSource,
   type SkillLibraryItem,
 } from './api';
@@ -29,16 +31,11 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
+import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 
 const supportedProviders = new Set(['github', 'linear']);
-
-function folderId(path: string): string {
-  const stem = path.split(/[\\/]/).filter(Boolean).at(-1) || 'folder';
-  const slug = stem.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || 'folder';
-  return `${slug}-${crypto.randomUUID().slice(0, 8)}`;
-}
 
 function command(id: string, phase: 'setup' | 'validate'): ProjectCommand {
   return { id, label: phase === 'setup' ? 'Set up' : 'Validate', argv: [], phase };
@@ -70,6 +67,7 @@ export function ProjectSettingsModal({
   onSave,
   onDelete,
   onOpenConnectors = () => {},
+  onOpenSkills = () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
@@ -82,9 +80,10 @@ export function ProjectSettingsModal({
   connections: ConnectorConnection[];
   busy: boolean;
   onClose: () => void;
-  onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => Promise<CodeProject>;
+  onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
+  onOpenSkills?: () => void;
   defaultEngineId?: string;
   defaultModel?: string;
   models?: ModelPickerSource[];
@@ -94,7 +93,9 @@ export function ProjectSettingsModal({
   const localCatalog = useCodingCatalog(catalog === undefined);
   const codingCatalog = catalog || localCatalog;
   const [name, setName] = useState('');
-  const [folders, setFolders] = useState<ProjectFolder[]>([]);
+  const [resources, setResources] = useState<ProjectResource[]>([]);
+  const [computers, setComputers] = useState<CodeComputer[]>([]);
+  const [availability, setAvailability] = useState<ResourceAvailability[]>([]);
   const [commandDrafts, setCommandDrafts] = useState<Record<string, string>>({});
   const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
   const [skillItems, setSkillItems] = useState<SkillLibraryItem[]>([]);
@@ -111,6 +112,8 @@ export function ProjectSettingsModal({
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
@@ -153,10 +156,18 @@ export function ProjectSettingsModal({
     initializedProjectId.current = nextProjectId;
     if (projectWasJustCreated) return;
     setName(project?.name || '');
-    setFolders(project?.folders || []);
-    setCommandDrafts(Object.fromEntries((project?.folders || []).flatMap((folder) => [
-      [`${folder.id}:setup`, formatCommandLine(folder.commands.find((item) => item.phase === 'setup')?.argv || [])],
-      [`${folder.id}:validate`, formatCommandLine(folder.commands.find((item) => item.phase === 'validate')?.argv || [])],
+    const nextResources = project?.resources || (project?.folders || []).map((folder) => ({
+      kind: 'local_folder' as const,
+      id: folder.id,
+      name: folder.name,
+      path: folder.path,
+      computer_id: 'local',
+      commands: folder.commands,
+    }));
+    setResources(nextResources);
+    setCommandDrafts(Object.fromEntries(nextResources.flatMap((resource) => [
+      [`${resource.id}:setup`, formatCommandLine(resource.commands.find((item) => item.phase === 'setup')?.argv || [])],
+      [`${resource.id}:validate`, formatCommandLine(resource.commands.find((item) => item.phase === 'validate')?.argv || [])],
     ])));
     setSelectedConnections((project?.connections || []).map((item) => `${item.provider}:${item.name}`));
     setSelectedSkillSources((project?.skill_sources || []).map((source) => ({
@@ -170,6 +181,8 @@ export function ProjectSettingsModal({
     setProjectPermission(project?.permission_mode || 'supervised');
     setError('');
     setDeleteOpen(false);
+    setDeleteBusy(false);
+    setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
       codingApi.playbook(project.id).then(setPlaybookStatus).catch((reason) => {
@@ -181,6 +194,22 @@ export function ProjectSettingsModal({
   // object here would erase the in-progress playbook fields on a recoverable
   // clone/fetch error.
   }, [defaultEngineId, defaultModel, open, project?.id, suspended]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    Promise.all([
+      codingApi.computers(),
+      project ? codingApi.projectResources(project.id) : Promise.resolve({ items: [] }),
+    ]).then(([computerPage, resourcePage]) => {
+      if (!active) return;
+      setComputers(computerPage.items);
+      setAvailability(resourcePage.items.map((item) => item.availability));
+    }).catch((reason) => {
+      if (active) setError(reason instanceof Error ? reason.message : 'Could not check resource availability.');
+    });
+    return () => { active = false; };
+  }, [open, project?.id]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -224,26 +253,6 @@ export function ProjectSettingsModal({
 
   const availableEngines = engines.filter((engine) => engine.available);
 
-  const addFolder = async () => {
-    const result = await host.pickCodeFolder();
-    if (!result.ok || !result.path) {
-      if (!result.cancelled) setError(result.reason || 'Could not choose that folder.');
-      return;
-    }
-    if (folders.some((item) => item.path.toLowerCase() === result.path?.toLowerCase())) {
-      setError('That folder is already in this project.');
-      return;
-    }
-    const label = result.path.split(/[\\/]/).filter(Boolean).at(-1) || 'Folder';
-    setFolders((current) => [...current, { id: folderId(result.path!), name: label, path: result.path!, base_branch: null, commands: [] }]);
-    if (!name) setName(label);
-    setError('');
-  };
-
-  const updateFolder = (id: string, values: Partial<ProjectFolder>) => {
-    setFolders((current) => current.map((item) => item.id === id ? { ...item, ...values } : item));
-  };
-
   const updateCommand = (folderId: string, phase: 'setup' | 'validate', value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
     setError('');
@@ -251,17 +260,17 @@ export function ProjectSettingsModal({
 
   const save = async () => {
     if (!name.trim()) { setError('Name this Code Project.'); return; }
-    if (!folders.length) { setError('Add at least one folder.'); return; }
+    if (!resources.length) { setError('Add at least one repository or folder.'); return; }
     setSkillsSaving(true);
     try {
-      const normalizedFolders = folders.map((folder) => {
+      const normalizedResources = resources.map((resource) => {
         const commands = (['setup', 'validate'] as const).flatMap((phase) => {
-          const value = commandDrafts[`${folder.id}:${phase}`]?.trim() || '';
+          const value = commandDrafts[`${resource.id}:${phase}`]?.trim() || '';
           if (!value) return [];
-          const existing = folder.commands.find((item) => item.phase === phase) || command(`${folder.id}-${phase}`, phase);
+          const existing = resource.commands.find((item) => item.phase === phase) || command(`${resource.id}-${phase}`, phase);
           return [{ ...existing, argv: parseCommandLine(value) }];
         });
-        return { ...folder, commands };
+        return { ...resource, commands };
       });
       const projectConnections = availableConnections.filter((item) => selectedConnections.includes(`${item.engine}:${item.name}`)).map((item) => ({
         provider: item.engine as 'github' | 'linear' | 'slack',
@@ -275,7 +284,7 @@ export function ProjectSettingsModal({
       }));
       const parsedPortNames = portNames.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
       await onSave({
-        name: name.trim(), folders: normalizedFolders, connections: projectConnections,
+        name: name.trim(), resources: normalizedResources, connections: projectConnections,
         environment: { variables, port_names: parsedPortNames },
         skill_sources: selectedSkillSources,
         default_engine_id: projectEngineId,
@@ -297,7 +306,7 @@ export function ProjectSettingsModal({
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
-        subtitle="Folders, team guidance, tools, and defaults shared by this project."
+        subtitle="Code, connectors, skills, and defaults shared by every task in this project."
         onClose={onClose}
       />
       <ModalBody padding="0">
@@ -307,30 +316,17 @@ export function ProjectSettingsModal({
             <Input value={name} onChange={setName} placeholder="Project name" autoFocus />
           </label>
 
-          <section className="code-project-section">
-            <div className="code-project-section__heading">
-              <div><strong>Folders</strong><span>{folders.length ? `${folders.length} available to each task` : 'Add the folders this project spans'}</span></div>
-              <Button size="sm" variant="subtle" onClick={() => void addFolder()}>{Ico.plus(13)} Add folder</Button>
-            </div>
-            <div className="code-project-folder-list">
-              {folders.map((folder) => (
-                <details className="code-project-folder" key={folder.id}>
-                  <summary>
-                    <span className="code-project-folder__icon">{Ico.folder(14)}</span>
-                    <span className="code-project-folder__identity"><strong>{folder.name}</strong><code title={folder.path}>{folder.path}</code></span>
-                    <button type="button" aria-label={`Remove ${folder.name}`} onClick={(event) => { event.preventDefault(); setFolders((current) => current.filter((item) => item.id !== folder.id)); }}>{Ico.close(12)}</button>
-                    <span className="code-project-folder__chevron">{Ico.chevDown(11)}</span>
-                  </summary>
-                  <div className="code-project-folder__details">
-                    <label><span>Base branch</span><Input size="sm" value={folder.base_branch || ''} onChange={(value) => updateFolder(folder.id, { base_branch: value || null })} placeholder="Current branch" /></label>
-                    <label><span>Setup command</span><Input size="sm" variant="mono" value={commandDrafts[`${folder.id}:setup`] || ''} onChange={(value) => updateCommand(folder.id, 'setup', value)} placeholder="npm install" /></label>
-                    <label><span>Validation command</span><Input size="sm" variant="mono" value={commandDrafts[`${folder.id}:validate`] || ''} onChange={(value) => updateCommand(folder.id, 'validate', value)} placeholder="npm test" /></label>
-                  </div>
-                </details>
-              ))}
-              {!folders.length && <button type="button" className="code-project-empty-row" onClick={() => void addFolder()}>{Ico.folder(15)} Add the first folder</button>}
-            </div>
-          </section>
+          <ProjectResourcesEditor
+            resources={resources}
+            computers={computers}
+            availability={availability}
+            commandDrafts={commandDrafts}
+            disabled={busy || skillsSaving}
+            onChange={setResources}
+            onCommandChange={updateCommand}
+            onFirstResource={(resourceName) => { if (!name) setName(resourceName); }}
+            onError={setError}
+          />
 
           <ProjectConnectedTools
             connections={availableConnections}
@@ -350,6 +346,7 @@ export function ProjectSettingsModal({
               loading={skillsLoading}
               error={skillsError}
               onChange={setSelectedSkillSources}
+              onOpenSkills={onOpenSkills}
             />
 
             {project?.playbook && (
@@ -451,10 +448,10 @@ export function ProjectSettingsModal({
         </div>
       </ModalBody>
       <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
-        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete project</Button>}
+        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>Delete project</Button>}
         <div className="code-project-footer-actions">
           <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !folders.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
         </div>
       </ModalFooter>
     </Modal>
@@ -464,9 +461,22 @@ export function ProjectSettingsModal({
       message="This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted."
       confirmLabel="Delete project"
       destructive
-      busy={busy}
-      onClose={() => setDeleteOpen(false)}
-      onConfirm={async () => { await onDelete?.(); setDeleteOpen(false); }}
+      busy={busy || deleteBusy}
+      busyLabel="Deleting…"
+      error={deleteError}
+      onClose={() => { setDeleteOpen(false); setDeleteError(''); }}
+      onConfirm={async () => {
+        setDeleteBusy(true);
+        setDeleteError('');
+        try {
+          await onDelete?.();
+          setDeleteOpen(false);
+        } catch (reason) {
+          setDeleteError(reason instanceof Error ? reason.message : 'Could not delete this Code Project.');
+        } finally {
+          setDeleteBusy(false);
+        }
+      }}
     />
     </>
   );

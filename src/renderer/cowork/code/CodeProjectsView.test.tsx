@@ -8,12 +8,16 @@ import { CodeProjectsView } from './CodeProjectsView';
 
 const projects: CodeProject[] = [
   {
-    schema_version: 1,
+    schema_version: 2,
     id: 'mindshub',
     name: 'MindsHub',
     folders: [
       { id: 'cowork', name: 'cowork', path: '/work/cowork', commands: [] },
       { id: 'server', name: 'cowork-server', path: '/work/cowork-server', commands: [] },
+    ],
+    resources: [
+      { kind: 'repository', id: 'cowork', name: 'cowork', source_url: 'https://github.com/mindsdb/cowork.git', local_path: '/work/cowork', computer_id: null, default_branch: null, checkout_strategy: 'worktree', commands: [] },
+      { kind: 'repository', id: 'server', name: 'cowork-server', source_url: 'https://github.com/mindsdb/cowork-server.git', local_path: '/work/cowork-server', computer_id: null, default_branch: null, checkout_strategy: 'worktree', commands: [] },
     ],
     connections: [],
     environment: { variables: {}, port_names: ['PORT'] },
@@ -24,10 +28,11 @@ const projects: CodeProject[] = [
     updated_at: '2026-08-24T09:00:00Z',
   },
   {
-    schema_version: 1,
+    schema_version: 2,
     id: 'atlas',
     name: 'Project Atlas',
     folders: [{ id: 'api', name: 'atlas-api', path: '/work/atlas-api', commands: [] }],
+    resources: [{ kind: 'local_folder', id: 'api', name: 'atlas-api', path: '/work/atlas-api', computer_id: 'local', commands: [] }],
     connections: [],
     environment: { variables: {}, port_names: ['PORT'] },
     default_engine_id: 'codex',

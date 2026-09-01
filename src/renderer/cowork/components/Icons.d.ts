@@ -7,8 +7,10 @@ declare const Ico: {
   arrowUpLeft: IconRenderer;
   check: IconRenderer;
   chevDown: IconRenderer;
+  clock: IconRenderer;
   close: IconRenderer;
   code: IconRenderer;
+  computer: IconRenderer;
   cube: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
@@ -23,8 +25,11 @@ declare const Ico: {
   refresh: IconRenderer;
   search: IconRenderer;
   link: IconRenderer;
+  list: IconRenderer;
+  pin: IconRenderer;
   send: IconRenderer;
   settings: IconRenderer;
+  slider: IconRenderer;
   stop: IconRenderer;
   trash: IconRenderer;
 };

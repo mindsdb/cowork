@@ -39,6 +39,7 @@ vi.mock('../../../platform/host', () => ({
     applyUpdate: spies.applyUpdate,
   },
   getVersionInfo: spies.getVersionInfo,
+  getCodeControlPlaneOrigin: () => 'https://code.example.test',
   isElectron: true,
   getAccessToken: spies.getAccessToken,
 }));
@@ -57,6 +58,19 @@ vi.mock('../../code/api', () => ({
       ],
     })),
     models: vi.fn(async () => ({ items: ['fable'] })),
+    computers: vi.fn(async () => ({ items: [{
+      schema_version: 1,
+      id: 'local',
+      name: 'This computer',
+      is_local: true,
+      status: 'online',
+      active_run_count: 0,
+      last_seen_at: new Date().toISOString(),
+      capabilities: { platform: 'darwin', architecture: 'arm64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['bash'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
+    }] })),
+    computerRegistrationToken: vi.fn(async () => ({ registration_token: 'test-token', expires_in_seconds: 600 })),
+    renameComputer: vi.fn(),
+    revokeComputer: vi.fn(),
   },
 }));
 
@@ -121,6 +135,24 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     expect(await screen.findByText('The default coding agent for new projects and tasks. You can change it when starting a task.')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Coding agent engine' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Coding agent model' })).toBeInTheDocument();
+  });
+
+  it('renders the Computers section with local and managed targets', async () => {
+    render(<Harness section="computers" />);
+    expect(await screen.findByText('Run Code beyond this computer')).toBeInTheDocument();
+    expect(screen.getByText('Managed compute')).toBeInTheDocument();
+    expect(screen.getByText('Coming soon')).toBeInTheDocument();
+  });
+
+  it('creates a short-lived cross-platform computer connection command', async () => {
+    const user = userEvent.setup();
+    render(<Harness section="computers" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Connect computer' }));
+    expect(await screen.findByRole('dialog', { name: 'Connect a computer' })).toBeInTheDocument();
+    expect(await screen.findByText(/cowork-code-runtime --server "https:\/\/code\.example\.test"/)).toHaveTextContent('--code "test-token"');
+    expect(screen.getByRole('combobox', { name: 'Computer type' })).toHaveTextContent('Mac');
+    expect(screen.queryByText(/private local address/)).not.toBeInTheDocument();
   });
 
   it('renders the Appearance section', async () => {

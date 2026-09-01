@@ -6,10 +6,36 @@ import {
   orderByFamily,
 } from './modelCatalog';
 
+
+export interface ModelPickerSource {
+  id: string;
+  name: string;
+}
+
+export interface ModelPickerMeta {
+  modelProviders?: Record<string, string>;
+  modelFamilies?: Record<string, string>;
+  modelEnabled?: Record<string, boolean>;
+  onRefresh?: () => Promise<unknown> | unknown;
+}
+
+export interface ModelPickerOption {
+  value: string;
+  label: string;
+  tag?: string;
+  provider?: string;
+  disabled?: boolean;
+  locked?: boolean;
+}
+
 /** Keep a configured/current model usable while a live catalog is empty or no
  * longer advertises that exact version. The caller supplies the best label it
  * has; every picker then feeds the same source shape into the canonical adapter. */
-export function withModelPickerFallback(models = [], id = '', name = id) {
+export function withModelPickerFallback(
+  models: ModelPickerSource[] = [],
+  id = '',
+  name = id,
+): ModelPickerSource[] {
   const list = (models || []).filter(Boolean);
   if (!id || list.some((model) => model.id === id)) return list;
   return [{ id, name: name || id }, ...list];
@@ -23,15 +49,20 @@ export function withModelPickerFallback(models = [], id = '', name = id) {
  * ModelSelect owns the visual treatment and grouping; this helper only adapts
  * the settings catalog into its option contract.
  */
-export function buildModelPickerOptions(models = [], modelMeta = {}) {
+export function buildModelPickerOptions(
+  models: ModelPickerSource[] = [],
+  modelMeta: ModelPickerMeta = {},
+): ModelPickerOption[] {
   const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
   const list = (models || []).filter(Boolean);
   const ids = list.map((model) => model.id);
   const byId = new Map(list.map((model) => [model.id, model]));
-  const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id)).filter(Boolean);
+  const ordered = orderByFamily(ids, modelFamilies)
+    .map((id: string) => byId.get(id))
+    .filter((model: ModelPickerSource | undefined): model is ModelPickerSource => Boolean(model));
   const tagMoving = hasFrozenVersions(ids, modelFamilies);
 
-  return ordered.map((model) => {
+  return ordered.map((model: ModelPickerSource) => {
     const locked = isModelLocked(modelEnabled, model.id);
     const tag = [
       tagMoving && isMovingAlias(model.id, modelFamilies) ? 'Latest' : '',

@@ -1409,6 +1409,7 @@ function AppCore() {
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
+    setSessionPinned: setCodingSessionPinned,
   } = useCodeWorkspace(openCode);
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -4395,6 +4396,7 @@ function AppCore() {
           onSelectTask={selectTask}
           onNewTask={newTask}
           onSelectCodingSession={selectCodingSession}
+          onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
           onOpenCodingConnectors={openCodingConnectors}
@@ -4852,6 +4854,7 @@ function AppCore() {
             aria-hidden={workspaceMode !== 'code'}
           >
             <CodeView
+              active={workspaceMode === 'code'}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}

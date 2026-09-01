@@ -57,6 +57,7 @@ function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): b
     && left.commands === right.commands
     && left.session.id === right.session.id
     && left.session.status === right.session.status
+    && left.session.run_status === right.session.run_status
     && left.session.engine_id === right.session.engine_id
     && left.session.project_id === right.session.project_id
     && left.session.permission_mode === right.session.permission_mode
@@ -88,6 +89,7 @@ export const CodeComposer = memo(function CodeComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
+  const recoverable = ['failed', 'interrupted', 'recovering'].includes(session.run_status || '');
   const hasDraft = !!prompt.trim();
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase() ?? null;
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
@@ -215,7 +217,7 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? 'Message the agent…' : session.status === 'failed' ? 'Retry with more context…' : 'Ask for another change…'}
+          placeholder={active ? 'Message the agent…' : recoverable ? 'Add context before resuming…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
           disabled={busy}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {

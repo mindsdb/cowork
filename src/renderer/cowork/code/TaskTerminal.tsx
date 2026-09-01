@@ -302,13 +302,15 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
         </div>
         <div className="code-terminal__actions">
           {selected?.status === 'running' ? (
-            <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()}>Stop</Button>
+            <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()} title="Stop this terminal without closing its tab">
+              {Ico.stop(11)} Stop terminal
+            </Button>
           ) : selected && selected.status !== 'stopped' && (
             <Button size="sm" variant="subtle" disabled={busy} onClick={() => void restart()}>
               {Ico.refresh(12)} Restart
             </Button>
           )}
-          <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Close terminal panel">
+          <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Hide terminal panel" title="Hide terminal panel">
             {Ico.close(13)}
           </Button>
         </div>

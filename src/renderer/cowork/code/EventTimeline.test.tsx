@@ -59,6 +59,41 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Attempt 5 failed')).toBeInTheDocument();
   });
 
+  it('offers one recovery action for a preserved remote run', () => {
+    const onRecover = vi.fn(async () => {});
+    render(
+      <EventTimeline
+        events={[event(1, 'error', 'Computer disconnected')]}
+        session={{
+          ...session('interrupted'),
+          run_status: 'interrupted',
+          computer_status: 'offline',
+          last_error: 'Computer disconnected',
+        }}
+        onRecover={onRecover}
+      />,
+    );
+
+    expect(screen.getByText('Task paused')).toBeInTheDocument();
+    expect(screen.getByText(/conversation is safe; resume there or choose another compatible computer/)).toBeInTheDocument();
+    expect(screen.getAllByText('Computer disconnected')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Resume task' }));
+    expect(onRecover).toHaveBeenCalledOnce();
+  });
+
+  it('keeps local failures recoverable through the composer instead of a remote-run action', () => {
+    render(
+      <EventTimeline
+        events={[event(1, 'error', 'Tests failed')]}
+        session={{ ...session('failed'), last_error: 'Tests failed' }}
+      />,
+    );
+
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getByText('Tests failed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
+  });
+
   it('hides raw session events because status is represented once in the outcome', () => {
     render(
       <EventTimeline

@@ -1,6 +1,6 @@
 import Ico from '../components/Icons';
 import Combobox from '../components/ui/Combobox';
-import type { CodeProject } from './api';
+import { projectResources, type CodeProject } from './api';
 
 
 const NEW_PROJECT_VALUE = '__new_code_project__';
@@ -23,7 +23,7 @@ export function CodeProjectPicker({
     ...projects.map((project) => ({
       value: project.id,
       label: project.name,
-      tag: `${project.folders.length} folder${project.folders.length === 1 ? '' : 's'}`,
+      tag: `${projectResources(project).length} resource${projectResources(project).length === 1 ? '' : 's'}`,
       icon: Ico.folder(13),
     })),
   ];

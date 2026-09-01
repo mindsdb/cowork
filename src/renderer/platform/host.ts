@@ -74,6 +74,36 @@ export function getApiOrigin(): string {
   return window.location.origin;
 }
 
+// Endpoint an outbound Code runtime connects to. In packaged Electron this
+// matches getApiOrigin(); in Vite development the renderer itself lives on
+// :5173, so use the actual sidecar port instead of handing a runtime the UI
+// dev-server address. Hosted Code uses the current HTTPS origin.
+export function getCodeControlPlaneOrigin(): string {
+  if (isElectron) {
+    if (typeof bridge.codeControlPlaneOrigin === 'string') {
+      try {
+        const configured = new URL(bridge.codeControlPlaneOrigin);
+        if (
+          (configured.protocol === 'http:' || configured.protocol === 'https:')
+          && !configured.username
+          && !configured.password
+          && (configured.pathname === '/' || configured.pathname === '')
+          && !configured.search
+          && !configured.hash
+        ) {
+          return configured.origin;
+        }
+      } catch {
+        // Fall through to the private local sidecar. The connection UI will
+        // explain that loopback cannot be reached by another computer.
+      }
+    }
+    const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return getApiOrigin();
+}
+
 // True when the FastAPI backend the SPA talks to lives on THIS machine
 // (loopback). The deciding factor for "can I open a server-side file
 // path locally?" — a server-returned filesystem path is only openable

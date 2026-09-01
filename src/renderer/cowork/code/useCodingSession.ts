@@ -9,7 +9,7 @@ import {
 } from './api';
 
 
-export function useCodingSession(sessionId: string | null) {
+export function useCodingSession(sessionId: string | null, active = true) {
   const [session, setSession] = useState<CodingSession | null>(null);
   const [events, setEvents] = useState<CodingEvent[]>([]);
   const [git, setGit] = useState<GitState | null>(null);
@@ -110,6 +110,10 @@ export function useCodingSession(sessionId: string | null) {
   }, [ingestEvents, refreshReview, sessionId]);
 
   useEffect(() => {
+    if (!active) {
+      setLoading(false);
+      return undefined;
+    }
     setSession(null);
     setEvents([]);
     setGit(null);
@@ -200,7 +204,7 @@ export function useCodingSession(sessionId: string | null) {
       pendingEvents.current.clear();
       closeStream();
     };
-  }, [ingestEvents, refreshReview, scheduleReview, sessionId]);
+  }, [active, ingestEvents, refreshReview, scheduleReview, sessionId]);
 
   return { session, events, git, diff, loading, error, refresh, refreshReview };
 }

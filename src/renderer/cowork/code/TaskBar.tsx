@@ -4,7 +4,7 @@ import Menu from '../components/ui/Menu';
 import { host } from '../../platform/host';
 import type { CodingSession, DiffFile, GitState } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
-import { CODE_STATUS, compactPath, diffStats, repositoryLabel } from './presentation';
+import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
 
 
 export function TaskBar({
@@ -44,7 +44,7 @@ export function TaskBar({
   onArchive: () => void;
   onDelete: () => void;
 }) {
-  const status = CODE_STATUS[session.status];
+  const status = codingSessionStatus(session);
   const { additions, deletions } = diffStats(files);
   const taskIdle = session.status !== 'running' && session.status !== 'awaiting_approval';
   const worktreeLabel = compactPath(session.workspace_path);
@@ -57,6 +57,13 @@ export function TaskBar({
         ? 'direct folder'
         : (git?.branch || 'isolated worktree');
   const origin = session.source_contexts?.[0] || null;
+  const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
+  const scopedWorkspaceNames = (session.workspaces || []).map((workspace) => workspace.folder_name);
+  const scopeLabel = session.scope_all_project_resources
+    ? `All project resources (${folderCount})`
+    : scopedWorkspaceNames.length
+      ? scopedWorkspaceNames.join(', ')
+      : `${session.resource_ids?.length || folderCount} selected resources`;
 
   return (
     <header className="code-taskbar">
@@ -66,18 +73,40 @@ export function TaskBar({
           <div className="code-taskbar__title" title={session.title}>{session.title}</div>
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
-            <span aria-hidden="true">·</span>
             {origin && <>
+              <span aria-hidden="true">·</span>
               <button type="button" className="code-taskbar__origin" onClick={() => void host.openExternal(origin.url)}>
                 {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
               </button>
-              <span aria-hidden="true">·</span>
             </>}
-            <span>{workspaceModeLabel}</span>
-            <span className="code-taskbar__model" aria-hidden="true">·</span>
-            <span className="code-taskbar__model">
-              {session.engine_id === 'codex' ? 'Codex' : session.engine_id} · {modelLabel || session.model}
-            </span>
+            {session.computer_name && <>
+              <span aria-hidden="true">·</span>
+              <span>{session.computer_name}</span>
+            </>}
+            <span aria-hidden="true">·</span>
+            <Menu
+              side="bottom"
+              align="start"
+              width={280}
+              ariaLabel="Task details"
+              trigger={(
+                <button type="button" className="code-taskbar__detail-trigger" aria-label="Show task details">
+                  <span>Task details</span>{Ico.chevDown(10)}
+                </button>
+              )}
+              items={[{
+                key: 'task-details',
+                heading: (
+                  <div className="code-taskbar-details">
+                    <div><span>Workspace</span><strong>{workspaceModeLabel}</strong></div>
+                    <div><span>Task scope</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
+                    <div><span>Agent</span><strong>{engineLabel}</strong></div>
+                    <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
+                    <div><span>Location</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
+                  </div>
+                ),
+              }]}
+            />
           </div>
         </div>
       </div>
@@ -113,12 +142,12 @@ export function TaskBar({
         <Menu
           trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
           items={[
-            {
+            ...(session.computer_is_local !== false ? [{
               label: 'Open task workspace',
               icon: Ico.openFolder(13),
               onClick: () => void host.openPath(session.workspace_path),
               title: worktreeLabel,
-            },
+            }] : []),
             {
               label: 'Rename task',
               icon: Ico.edit(13),

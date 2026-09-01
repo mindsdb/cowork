@@ -202,28 +202,35 @@ jobs:
           "
 
       - name: Write build config (controls which cowork data home the app uses)
-        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+        env:
+          BUILD_KIND: ${{ inputs.build_kind }}
+        run: >-
+          node -e 'require("fs").writeFileSync("build-config.json", JSON.stringify({ buildKind: process.env.BUILD_KIND }))'
 
       # An explicit channel wins. Otherwise a feature server_ref selects git;
       # only an unpinned packaged build follows the normal PyPI stream. This
       # keeps feature UI and backend routes on the same revision line.
       - name: Resolve install channel
         id: channel
+        env:
+          BUILD_KIND: ${{ inputs.build_kind }}
+          SERVER_CHANNEL: ${{ inputs.server_channel }}
+          SERVER_REF: ${{ inputs.server_ref }}
         run: |
           set -euo pipefail
-          CH="${{ inputs.server_channel }}"
+          CH="$SERVER_CHANNEL"
           if [ -z "$CH" ]; then
-            if [ -n "${{ inputs.server_ref }}" ]; then
+            if [ -n "$SERVER_REF" ]; then
               CH=git
             else
-              case "${{ inputs.build_kind }}" in
+              case "$BUILD_KIND" in
                 prod|preview|stable) CH=pypi ;;
                 *) CH='' ;;
               esac
             fi
           fi
           echo "channel=$CH" >> "$GITHUB_OUTPUT"
-          echo "Install channel: ${CH:-git} (build_kind=${{ inputs.build_kind }})"
+          echo "Install channel: ${CH:-git} (build_kind=$BUILD_KIND)"
 
       # PyPI-channel builds bake the latest published cowork-server version
       # as the install floor: every fresh install starts from a release that
@@ -234,10 +241,12 @@ jobs:
       - name: Resolve cowork-server version floor (pypi channel only)
         if: steps.channel.outputs.channel == 'pypi'
         id: server_floor
+        env:
+          BUILD_KIND: ${{ inputs.build_kind }}
         run: |
           set -euo pipefail
           JSON=$(curl -fsSL --retry 3 https://pypi.org/pypi/cowork-server/json)
-          if [ "${{ inputs.build_kind }}" = "prod" ]; then
+          if [ "$BUILD_KIND" = "prod" ]; then
             # Stable floor: PyPI's info.version excludes pre-releases.
             VERSION=$(echo "$JSON" | jq -r '.info.version')
           else
@@ -247,7 +256,7 @@ jobs:
           fi
           test -n "$VERSION" && test "$VERSION" != "null"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Baking cowork-server floor $VERSION (build_kind=${{ inputs.build_kind }})"
+          echo "Baking cowork-server floor $VERSION (build_kind=$BUILD_KIND)"
 
       - name: Build, sign and notarize pkg
         env:
@@ -275,6 +284,8 @@ jobs:
 
       - name: Compute artifact name
         id: name
+        env:
+          BUILD_KIND: ${{ inputs.build_kind }}
         run: |
           set -euo pipefail
           # gen-build-channel.mjs (prebuild:main) resolves the display version once
@@ -292,14 +303,14 @@ jobs:
           # avoid the commit sha appearing twice. A clean release tag (prod) has
           # no such suffix, so this is a no-op there.
           VERSION_FN="$VERSION"
-          case "${{ inputs.build_kind }}" in
+          case "$BUILD_KIND" in
             preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
           esac
-          case "${{ inputs.build_kind }}" in
+          case "$BUILD_KIND" in
             preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}.pkg" ;;
             stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}.pkg"  ;;
             prod)    NAME="mindshub-cowork-${VERSION}.pkg" ;;
-            *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
+            *) echo "Unknown build_kind: $BUILD_KIND"; exit 1 ;;
           esac
           echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "Computed artifact name: ${NAME}"

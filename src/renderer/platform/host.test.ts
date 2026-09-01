@@ -284,11 +284,32 @@ describe('electron mode (bridge present)', () => {
     setUrl('file:///Applications/app/index.html');
     let host = await importHost();
     expect(host.getApiOrigin()).toBe('http://127.0.0.1:12345');
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
 
     (window as unknown as Record<string, unknown>).antontron = {}; // bridge without serverPort
     host = await importHost();
     expect(host.getApiOrigin()).toBe('http://127.0.0.1:26866');
     expect(host.isLocalApiOrigin()).toBe(true); // loopback → shell-openable
+  });
+
+  it('uses a validated reachable control-plane origin for outbound Code runtimes', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://code.example.test',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('https://code.example.test');
+  });
+
+  it('rejects control-plane URLs with credentials or non-origin paths', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://user:secret@code.example.test/runtime',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
   });
 
   it('IPC flows are used: getOAuthRedirectUri is null, calls delegate to the bridge', async () => {

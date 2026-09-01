@@ -1,5 +1,29 @@
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
+import type {
+  CodeComputer,
+  ComputerStatus,
+  ProjectCommand,
+  ProjectFolder,
+  ProjectResource,
+  ProjectResourceState,
+  ResourceAvailability,
+  TaskRunStatus,
+} from './resourceModels';
+
+export { projectResources } from './resourceModels';
+export type {
+  CodeComputer,
+  ComputerStatus,
+  LocalFolderResource,
+  ProjectCommand,
+  ProjectFolder,
+  ProjectResource,
+  ProjectResourceState,
+  RepositoryResource,
+  ResourceAvailability,
+  TaskRunStatus,
+} from './resourceModels';
 
 export type CodingStatus =
   | 'ready'
@@ -16,6 +40,8 @@ export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
 export interface SessionCreateBody {
   path?: string;
   project_id?: string;
+  resource_ids?: string[];
+  computer_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
   engine_id?: string;
@@ -38,6 +64,8 @@ interface CreateCodeTaskBase {
   permissionMode: PermissionMode;
   attachments: InputReference[];
   sourceContexts: SourceContext[];
+  resourceIds?: string[];
+  computerId?: string;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -58,6 +86,24 @@ export interface RuntimeControls {
   network_access: boolean;
   web_search: boolean;
   additional_dirs: string[];
+}
+
+export interface RuntimeRegistrationToken {
+  registration_token: string;
+  expires_in_seconds: number;
+}
+
+export interface RecoveryOption {
+  computer: CodeComputer;
+  mode: 'restore' | 'recreate';
+  preserves_workspace_changes: boolean;
+  recommended: boolean;
+  detail: string;
+}
+
+export interface RecoveryPlan {
+  run_id: string;
+  options: RecoveryOption[];
 }
 
 export type SessionUpdateBody = Partial<RuntimeControls>;
@@ -103,6 +149,16 @@ export interface CodingSession {
   status: CodingStatus;
   project_id?: string | null;
   project_name?: string | null;
+  task_id?: string | null;
+  run_id?: string | null;
+  computer_id?: string | null;
+  run_status?: TaskRunStatus | null;
+  computer_name?: string | null;
+  computer_status?: ComputerStatus | null;
+  computer_is_local?: boolean;
+  resource_ids?: string[];
+  scope_all_project_resources?: boolean;
+  runtime_epoch?: number;
   source_path: string;
   workspace_path: string;
   workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
@@ -123,6 +179,7 @@ export interface CodingSession {
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
   queued_instructions?: QueuedInstruction[];
+  pinned?: boolean;
   archived?: boolean;
   last_error?: string | null;
   event_count: number;
@@ -228,13 +285,6 @@ export interface GitState {
   source_path: string;
 }
 
-export interface ProjectCommand {
-  id: string;
-  label: string;
-  argv: string[];
-  phase: 'setup' | 'validate';
-}
-
 export interface ProjectCommandResult {
   command_id: string;
   label: string;
@@ -242,14 +292,6 @@ export interface ProjectCommandResult {
   phase: 'setup' | 'validate';
   return_code: number;
   output: string;
-}
-
-export interface ProjectFolder {
-  id: string;
-  name: string;
-  path: string;
-  base_branch?: string | null;
-  commands: ProjectCommand[];
 }
 
 export interface ProjectFolderInspection {
@@ -282,6 +324,7 @@ export interface CodeProject {
   schema_version: number;
   id: string;
   name: string;
+  resources: ProjectResource[];
   folders: ProjectFolder[];
   playbook?: PlaybookReference | null;
   skill_sources?: ProjectSkillSource[];
@@ -638,7 +681,28 @@ const liveCodingApi = {
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
-  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+  projectResources: (id: string) => requestJson<{ items: ProjectResourceState[] }>(`/projects/${encodeURIComponent(id)}/resources`),
+  projectComputers: (id: string, resourceIds: string[] | undefined, engineId?: string) => {
+    const query = new URLSearchParams();
+    resourceIds?.forEach((resourceId) => query.append('resourceId', resourceId));
+    if (engineId) query.set('engineId', engineId);
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
+  },
+  computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
+    method: 'POST',
+  }),
+  renameComputer: (id: string, name: string) => requestJson<CodeComputer>(`/computers/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify({ name }),
+  }),
+  revokeComputer: (id: string) => requestJson<void>(`/computers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  }),
+  resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
@@ -696,6 +760,7 @@ const liveCodingApi = {
   renameSession: (id: string, title: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/rename`, {
     method: 'POST', body: JSON.stringify({ title }),
   }),
+  setPinned: (id: string, pinned: boolean) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/${pinned ? 'pin' : 'unpin'}`, { method: 'POST' }),
   setArchived: (id: string, archived: boolean) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' }),
   forkSession: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
   events: (id: string, after = 0) => requestJson<{ items: CodingEvent[]; next_seq: number }>(`/sessions/${encodeURIComponent(id)}/events?after=${after}`),
@@ -714,6 +779,12 @@ const liveCodingApi = {
   runQueued: (id: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
   cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  recoveryOptions: (id: string) => requestJson<RecoveryPlan>(
+    `/sessions/${encodeURIComponent(id)}/recovery-options`,
+  ),
+  recover: (id: string, computerId?: string, allowRecreate = false) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/recover`, {
+    method: 'POST', body: JSON.stringify({ computer_id: computerId || null, allow_recreate: allowRecreate }),
+  }),
   approve: (id: string, approvalId: string, decision: ApprovalDecision) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/approvals/${encodeURIComponent(approvalId)}`, {
       method: 'POST',

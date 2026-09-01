@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
@@ -23,6 +23,8 @@ import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import ComputersSettingsSection from './ComputersSettingsSection';
+import { navItemsForHost } from './settingsNavigation';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -569,45 +571,6 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 // ───────────────────────── Nav sidebar ─────────────────────────
 
-const NAV_ITEMS = [
-  { id: 'agent', label: 'Agent', icon: 'robot' },
-  { id: 'codingAgent', label: 'Coding agent', icon: 'code' },
-  { id: 'codingMode', label: 'Coding Mode', icon: 'code' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette' },
-  { id: 'channels', label: 'Channels', icon: 'chats' },
-  { id: 'updates', label: 'Updates', icon: 'refresh' },
-  { id: 'backend', label: 'Backend', icon: 'database' },
-  { id: 'account', label: 'Account', icon: 'people' },
-];
-
-// Sections that make sense in the hosted web shell (ENG-932). Absent, not
-// disabled — a nav row that opens a dead end is worse than no row:
-//   backend  — start/stop/diagnostics of a server the user doesn't control.
-//   updates  — App-shell version and OTA source are meaningless on hosted;
-//              the server updates itself.
-//   account  — renders an SSO sign-in card, but a hosted user already
-//              authenticated through the console; a second sign-in is
-//              confusing at best.
-//   codingMode — launching an external CLI in a terminal is an Electron
-//              main-process capability with no web equivalent; web keeps
-//              its simple Anton/Hermes toggle inside Agent instead.
-// Agent stays because it carries the model picker and reasoning effort — the
-// point of the ticket. Appearance is purely cosmetic. Channels moved back here
-// from its standalone sidebar entry, which only existed while Settings was
-// hidden on web.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
-
-export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
-  // Fresh array on both branches — filter() already copies for web, and the
-  // desktop spread keeps a caller's mutation from reaching the shared module
-  // constant.
-  const items = isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED while the
-  // feature is unfinished — hide its whole nav section (and, transitively,
-  // any way to reach the toggle or harness picker) until it's flipped on.
-  return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
-}
-
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
@@ -616,7 +579,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
+      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item, index, items) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
         // server can't accept a save, and Backend stays enabled as the escape
@@ -627,9 +590,11 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         // way out.
         const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
+          <Fragment key={item.id}>
+          {showGroup && <div className="mt-3 first:mt-0 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>}
           <button
-            key={item.id}
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
@@ -647,6 +612,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
             )}
             <span>{item.label}</span>
           </button>
+          </Fragment>
         );
       })}
     </nav>
@@ -2072,6 +2038,8 @@ export default function SettingsView({
     <CodingAgentSettingsSection settings={settings} setSetting={setSetting} footer={renderSaveFooter()} />
   );
 
+  const renderComputersSection = () => <ComputersSettingsSection />;
+
   const renderAppearanceSection = () => (
     // No Save footer here — every control on this page auto-saves itself
     // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
@@ -2394,6 +2362,7 @@ export default function SettingsView({
       agent: renderAgentSection,
       codingAgent: renderCodingAgentSection,
       codingMode: renderCodingModeSection,
+      computers: renderComputersSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
@@ -2425,7 +2394,7 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
+              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item, index, items) => {
                 // `!host.isWeb &&`: the offline-disable exists because a dead local
                 // server can't accept a save, and Backend stays enabled as the
                 // escape hatch to restart it. On web there is no Backend row —
@@ -2436,7 +2405,11 @@ export default function SettingsView({
                 const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
-                  <div className="mshell-accordion" key={item.id}>
+                  <Fragment key={item.id}>
+                  {(index === 0 || items[index - 1]?.group !== item.group) && (
+                    <div className="pt-4 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>
+                  )}
+                  <div className="mshell-accordion">
                     <button
                       type="button"
                       className="mshell-accordion__head"
@@ -2454,6 +2427,7 @@ export default function SettingsView({
                       <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
                     </button>
                   </div>
+                  </Fragment>
                 );
               })}
             </nav>
@@ -2479,6 +2453,7 @@ export default function SettingsView({
       {effectiveSection === 'agent' && renderAgentSection()}
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'codingMode' && renderCodingModeSection()}
+      {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}

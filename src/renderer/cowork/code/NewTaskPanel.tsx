@@ -11,11 +11,13 @@ import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptio
 import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
+import { ExecutionTargetSelect } from './ExecutionTargetSelect';
 import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { parseDeveloperSourceUrl } from './developerTools';
 import { TaskSourceLinks } from './TaskSourceLinks';
+import { TaskExecutionControls } from './TaskExecutionControls';
 import { useNewTaskDraft } from './useNewTaskDraft';
 import type { CodingCatalog } from './useCodingCatalog';
 
@@ -66,6 +68,8 @@ export function NewTaskPanel({
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
     startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
     standaloneFolderPath, standaloneFolderName, chooseStandaloneFolder,
+    projectResources, resourceIds, setResourceIds, resourceStates,
+    computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
   } = draft;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -152,6 +156,33 @@ export function NewTaskPanel({
                 <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(13)}</span>
                 <span className="code-standalone-folder-picker__label">{standaloneFolderName || 'Choose folder'}</span>
               </Button>
+            )}
+            {selectedProject && (
+              <TaskExecutionControls
+                resources={projectResources}
+                selectedResourceIds={resourceIds}
+                resourceStates={resourceStates}
+                computers={computers}
+                allComputers={allComputers}
+                computerId={computerId}
+                disabled={busy || executionLoading}
+                onResourceIdsChange={setResourceIds}
+                onComputerChange={setComputerId}
+                onComputerMenuOpen={refreshComputers}
+              />
+            )}
+            {!selectedProject && (
+              <div className="code-task-execution-controls">
+                <ExecutionTargetSelect
+                  computers={allComputers}
+                  computerId={computerId}
+                  onComputerChange={setComputerId}
+                  disabled={busy}
+                  loading={executionLoading}
+                  localOnly
+                  onOpen={refreshComputers}
+                />
+              </div>
             )}
           </div>
           {commandQuery != null && (

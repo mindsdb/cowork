@@ -7,6 +7,7 @@ export interface ConfirmModalProps {
   destructive?: boolean;
   busy?: boolean;
   busyLabel?: string;
+  error?: string;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }

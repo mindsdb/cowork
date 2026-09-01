@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import type { CodeProject } from './api';
+import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
 
 
@@ -28,7 +28,7 @@ export function CodeProjectsView({
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return projects
-      .filter((project) => !normalized || project.name.toLowerCase().includes(normalized) || project.folders.some((folder) => folder.name.toLowerCase().includes(normalized)))
+      .filter((project) => !normalized || project.name.toLowerCase().includes(normalized) || projectResources(project).some((resource) => resource.name.toLowerCase().includes(normalized)))
       .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
   }, [projects, query]);
 
@@ -37,7 +37,7 @@ export function CodeProjectsView({
       <header className="code-projects-view__header">
         <div>
           <h1>Projects</h1>
-          <p>Folders, team skills, and defaults shared by coding tasks.</p>
+          <p>Repositories, folders, skills, and defaults shared by coding tasks.</p>
         </div>
         <Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>
       </header>
@@ -50,7 +50,7 @@ export function CodeProjectsView({
       <div className="code-projects-table" aria-label="Code Projects">
         <div className="code-projects-table__head" aria-hidden="true">
           <span>Project</span>
-          <span>Folders</span>
+          <span>Resources</span>
           <span>Updated</span>
           <span />
         </div>
@@ -62,17 +62,17 @@ export function CodeProjectsView({
               <span className="code-project-row__folder" aria-hidden="true">{Ico.folder(15)}</span>
               <span className="code-project-row__name">
                 <strong>{project.name}</strong>
-                <small>{project.folders.map((folder) => folder.name).join(', ')}</small>
+                <small>{projectResources(project).map((resource) => resource.name).join(', ')}</small>
               </span>
             </button>
-            <span className="code-project-row__count">{project.folders.length}</span>
+            <span className="code-project-row__count">{projectResources(project).length}</span>
             <span className="code-project-row__updated">{relativeTime(project.updated_at)}</span>
             <Button icon variant="subtle" size="sm" aria-label={`Edit ${project.name}`} onClick={() => onEdit(project.id)}>{Ico.settings(13)}</Button>
           </div>
         ))}
         {!loading && !error && !visible.length && (
           <div className="code-projects-table__empty">
-            <span>{projects.length ? 'No projects match your search.' : 'Create a project to group the folders your work spans.'}</span>
+            <span>{projects.length ? 'No projects match your search.' : 'Create a project to bring related repositories and folders together.'}</span>
             {!projects.length && <Button variant="subtle" size="sm" onClick={onCreate}>Create project</Button>}
           </div>
         )}

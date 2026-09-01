@@ -32,14 +32,15 @@ vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
 
-import { navItemsForHost, shouldRevealStoredKey } from './SettingsView';
+import { shouldRevealStoredKey } from './SettingsView';
+import { navItemsForHost } from './settingsNavigation';
 
 const ids = (items) => items.map((i) => i.id);
 
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives Electron every section when Coding Mode options are enabled', () => {
     expect(ids(navItemsForHost(false, true))).toEqual([
-      'agent', 'codingAgent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingAgent', 'codingMode', 'computers', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
   });
 
@@ -91,7 +92,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const b = navItemsForHost(false, true);
     b.pop();
     expect(ids(navItemsForHost(false, true))).toEqual([
-      'agent', 'codingAgent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingAgent', 'codingMode', 'computers', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
   });
 });
@@ -110,8 +111,11 @@ describe('navItemsForHost — Coding Mode parked behind CODING_MODE_OPTIONS_ENAB
 
   it('treats a falsy flag (undefined, 0, "") the same as explicit false', () => {
     expect(ids(navItemsForHost(false))).not.toContain('codingMode');
+    expect(ids(navItemsForHost(false))).not.toContain('computers');
     expect(ids(navItemsForHost(false, 0))).not.toContain('codingMode');
+    expect(ids(navItemsForHost(false, 0))).not.toContain('computers');
     expect(ids(navItemsForHost(false, ''))).not.toContain('codingMode');
+    expect(ids(navItemsForHost(false, ''))).not.toContain('computers');
   });
 });
 

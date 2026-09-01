@@ -35,10 +35,25 @@ vi.mock('../../platform/host', () => ({
 vi.mock('../lib/skillsStore', () => ({ useSkills: () => ({ skills: [] }) }));
 
 vi.mock('./api', () => ({
+  projectResources: (value: { resources?: unknown[]; folders?: unknown[] }) => value.resources || value.folders || [],
   codingApi: {
     engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
     models: codingModels,
     projectFolders,
+    projectResources: vi.fn(async () => ({ items: [
+      { resource: { kind: 'repository', id: 'cowork', name: 'cowork', source_url: 'https://github.com/mindsdb/cowork.git', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'cowork', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
+      { resource: { kind: 'repository', id: 'server', name: 'cowork-server', source_url: 'https://github.com/mindsdb/cowork-server.git', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'server', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
+    ] })),
+    projectComputers: vi.fn(async () => ({ items: [{
+      schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
+      last_seen_at: '2026-08-23T09:00:00Z',
+      capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
+    }] })),
+    computers: vi.fn(async () => ({ items: [{
+      schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
+      last_seen_at: '2026-08-23T09:00:00Z',
+      capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
+    }] })),
     readSourceContext,
     updateProject,
     searchWorkItems,
@@ -79,12 +94,16 @@ const modelMeta = {
 };
 
 const project = {
-  schema_version: 1,
+  schema_version: 2,
   id: 'project-1',
   name: 'MindsHub',
   folders: [
     { id: 'cowork', name: 'cowork', path: 'C:\\work\\cowork', base_branch: 'staging', commands: [] },
     { id: 'server', name: 'cowork-server', path: 'C:\\work\\cowork-server', base_branch: 'staging', commands: [] },
+  ],
+  resources: [
+    { kind: 'repository' as const, id: 'cowork', name: 'cowork', source_url: 'https://github.com/mindsdb/cowork.git', local_path: 'C:\\work\\cowork', computer_id: null, default_branch: 'staging', checkout_strategy: 'worktree' as const, commands: [] },
+    { kind: 'repository' as const, id: 'server', name: 'cowork-server', source_url: 'https://github.com/mindsdb/cowork-server.git', local_path: 'C:\\work\\cowork-server', computer_id: null, default_branch: 'staging', checkout_strategy: 'worktree' as const, commands: [] },
   ],
   connections: [],
   environment: { variables: {}, port_names: ['PORT'] },
@@ -162,6 +181,31 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Choose an available agent and model.')).not.toBeInTheDocument();
   });
 
+  it('explains why a project default model cannot start a task', async () => {
+    const user = userEvent.setup();
+    const lockedProject = { ...project, default_model: 'fable' };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[lockedProject]}
+        selectedProjectId={lockedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText('Add credits or choose an available model.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
   it('opens searchable skill and command discovery from slash on a new task', async () => {
     render(
       <NewTaskPanel
@@ -192,7 +236,7 @@ describe('NewTaskPanel', () => {
         defaultEngineId="codex"
         defaultModel="sonnet"
         models={models}
-        modelMeta={modelMeta}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
         projects={[configuredProject]}
         selectedProjectId={configuredProject.id}
         onProjectChange={vi.fn()}
@@ -280,6 +324,8 @@ describe('NewTaskPanel', () => {
       permissionMode: 'supervised',
       attachments: [],
       sourceContexts: [],
+      resourceIds: undefined,
+      computerId: 'local',
     }));
   });
 
@@ -311,6 +357,31 @@ describe('NewTaskPanel', () => {
 
     await user.click(options[0]);
     expect(onProjectChange).toHaveBeenCalledWith(null);
+  });
+
+  it('closes the resource menu before opening another composer picker', async () => {
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        {...projectProps}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    const resourcePicker = await screen.findByLabelText('Choose task resources');
+    await user.click(resourcePicker);
+    expect(screen.getByText('Task resources')).toBeVisible();
+
+    await user.click(screen.getByRole('combobox', { name: 'Code Project' }));
+
+    expect(screen.getByText('Task resources')).not.toBeVisible();
+    expect(screen.getByText('Project')).toBeVisible();
   });
 
   it('offers a direct route to create another Code Project', async () => {
@@ -630,7 +701,7 @@ describe('NewTaskPanel', () => {
         defaultEngineId="codex"
         defaultModel="fable"
         models={models}
-        modelMeta={modelMeta}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
         projects={[project]}
         selectedProjectId={null}
         onProjectChange={vi.fn()}
@@ -657,7 +728,7 @@ describe('NewTaskPanel', () => {
       path: 'C:\\Users\\Ian & Team\\plain folder',
       prompt: 'Build a small app',
       engineId: 'codex',
-      model: 'mindshub_air',
+      model: 'fable',
       permissionMode: 'supervised',
       attachments: [],
       sourceContexts: [],

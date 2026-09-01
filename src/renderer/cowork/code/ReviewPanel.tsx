@@ -82,7 +82,8 @@ export function ReviewPanel({
     workspace,
     files: files.filter((file) => (file.folder_id || 'folder') === workspace.folder_id),
   })).filter((group) => group.files.length > 0);
-  const supportsHandoff = session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length;
+  const supportsHandoff = session.computer_is_local !== false
+    && (session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length);
   const gitWorkspaces = workspaceEntries.filter((workspace) => workspace.workspace_kind === 'git_worktree');
   const sourceChanged = workspaceEntries.some((workspace) => workspace.source_dirty);
   const changeKey = files.map((file) => `${file.folder_id || 'folder'}:${file.status}:${file.path}:${file.patch}`).join('\n');
@@ -156,7 +157,7 @@ export function ReviewPanel({
           <button type="button" role="tab" aria-selected={tab === 'changes'} className={tab === 'changes' ? 'is-active' : ''} onClick={() => setTab('changes')}>
             Changes <span>{files.length}</span>
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Handoff</button>
+          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Deliver</button>
         </div>
         {error && <div className="code-review__error"><Alert variant="danger">{error}</Alert></div>}
 
@@ -197,6 +198,10 @@ export function ReviewPanel({
           </div>
         ) : (
           <div className="code-review__body code-git-panel scroll-clean">
+            <div className="code-delivery-heading">
+              <strong>Deliver this task</strong>
+              <span>Run checks, then open a pull request or apply the reviewed changes locally.</span>
+            </div>
             <section className="code-handoff-summary">
               {session.project_name && <div className="code-handoff-summary__row"><span>Project</span><strong>{session.project_name}</strong></div>}
               {workspaceEntries.map((workspace) => (
@@ -207,8 +212,8 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>
-              {session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>}
+              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
             </div>
             {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
             {handoffConflict && (
@@ -267,7 +272,7 @@ export function ReviewPanel({
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
                 {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
-                  <summary>More Git actions <span>{Ico.chevDown(11)}</span></summary>
+                  <summary>Git options <span>{Ico.chevDown(11)}</span></summary>
                   <div className="code-git-advanced__body">
                     <div className="code-git-action">
                       <div className="code-field-label">Create a branch in the task worktree</div>

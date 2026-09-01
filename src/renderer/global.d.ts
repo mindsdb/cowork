@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 
 interface AntonTronAPI {
+  serverPort?: number | null;
+  codeControlPlaneOrigin?: string | null;
+  codingModeOptionsEnabled?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -43,7 +46,7 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
-    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'not-installed' | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | null;
     portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
