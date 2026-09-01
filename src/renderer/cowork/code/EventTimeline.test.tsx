@@ -106,6 +106,22 @@ describe('EventTimeline', () => {
     expect(screen.getAllByText('Completed')).toHaveLength(1);
   });
 
+  it('shows a rejected command where it happened and hides acknowledged ones', () => {
+    const acknowledged = { ...event(1, 'command_result', ''), title: 'Cancel acknowledged', data: { command: 'cancel', commandId: 'cmd-1' } };
+    const rejected = {
+      ...event(2, 'command_result', 'The agent is between turns; queue this instruction instead.'),
+      title: 'Steer rejected',
+      phase: 'failed' as const,
+      data: { command: 'steer', commandId: 'cmd-2' },
+    };
+
+    render(<EventTimeline events={[acknowledged, rejected]} session={session('running')} />);
+
+    expect(screen.getByText('Steer rejected')).toBeInTheDocument();
+    expect(screen.getByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
+    expect(screen.queryByText('Cancel acknowledged')).toBeNull();
+  });
+
   it('leaves pending queued instructions in the actionable composer queue', () => {
     const queued = {
       ...event(1, 'user_message', 'Run Windows tests next'),

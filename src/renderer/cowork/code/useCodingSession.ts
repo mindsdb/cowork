@@ -159,7 +159,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
           if (!alive) return;
           setError('');
           ingestEvents(sessionId, [event]);
-          if (event.type === 'session' || event.type === 'approval' || event.type === 'error') {
+          if (event.type === 'session' || event.type === 'approval' || event.type === 'error' || event.type === 'command_result') {
             codingApi.session(sessionId).then((value) => { if (alive) setSession(value); }).catch(() => {});
           }
           if (event.type === 'file_change' || event.type === 'diff' || event.type === 'session') {

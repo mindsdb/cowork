@@ -211,6 +211,23 @@ describe('useCodingSession', () => {
     }
   });
 
+  it('reloads the task when the runtime reports a command result', async () => {
+    api.session.mockResolvedValue(session('a'));
+    renderHook(() => useCodingSession('a'));
+    await waitFor(() => expect(api.openStream).toHaveBeenCalledOnce());
+    const onEvent = (api.openStream.mock.calls as unknown as Array<[
+      string,
+      number,
+      (event: CodingEvent) => void,
+    ]>)[0]?.[2];
+    if (!onEvent) throw new Error('Live event handler was not registered.');
+    const callsBefore = api.session.mock.calls.length;
+
+    act(() => { onEvent({ ...event(1, 'command_result', 'Cancel rejected'), phase: 'failed' }); });
+
+    expect(api.session).toHaveBeenCalledTimes(callsBefore + 1);
+  });
+
   it('coalesces repeated review invalidations while a scan is in flight', async () => {
     vi.useFakeTimers();
     try {

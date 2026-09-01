@@ -158,6 +158,7 @@ describe('coding API boundary', () => {
       data: {},
     };
     expect(isCodingEvent(valid)).toBe(true);
+    expect(isCodingEvent({ ...valid, type: 'command_result', phase: 'failed', data: { command: 'steer', commandId: 'cmd-1' } })).toBe(true);
     expect(isCodingEvent({ ...valid, type: 'vendor-internal' })).toBe(false);
     expect(isCodingEvent({ ...valid, data: [] })).toBe(false);
     expect(isCodingEvent({ ...valid, seq: '1' })).toBe(false);

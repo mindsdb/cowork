@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   turn: vi.fn(),
   runQueued: vi.fn(),
   approve: vi.fn(),
+  steerQueued: vi.fn(),
+  cancel: vi.fn(),
   runProjectAction: vi.fn(),
   useCodingSession: vi.fn(),
 }));
@@ -26,6 +28,8 @@ vi.mock('./api', () => ({
     turn: mocks.turn,
     runQueued: mocks.runQueued,
     approve: mocks.approve,
+    steerQueued: mocks.steerQueued,
+    cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
   },
 }));
@@ -96,8 +100,9 @@ function session(id: string): CodingSession {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 
@@ -227,6 +232,78 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(screen.queryByRole('button', { name: 'Approval' })).toBeNull();
     expect(mocks.approve).toHaveBeenCalledWith(awaiting.id, 'approval-1', 'approve_once');
+  });
+
+  it('restores the approval card and shows the failure when the decision is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const awaiting = {
+      ...session('awaiting'),
+      status: 'awaiting_approval' as const,
+      pending_approval: {
+        id: 'approval-1', kind: 'command', title: 'Run command', detail: 'npm test',
+        risk: 'May run a command', scope: 'This task only', allow_session: false,
+      },
+    };
+    mocks.approve.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: awaiting, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(screen.queryByRole('button', { name: 'Approval' })).toBeNull();
+
+    pending.reject(new Error('The approval could not be delivered to the task computer.'));
+
+    expect(await screen.findByText('The approval could not be delivered to the task computer.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
+  });
+
+  it('re-enables the composer and shows the failure when a steer is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const active = {
+      ...session('active'),
+      status: 'running' as const,
+      queued_instructions: [{ id: 'queued-1', prompt: 'Run Windows tests', created_at: '2026-08-21T09:01:00Z' }],
+    };
+    mocks.steerQueued.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+    pending.reject(new Error('The agent is between turns; queue this instruction instead.'));
+
+    expect(await screen.findByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
+    expect(mocks.steerQueued).toHaveBeenCalledWith(active.id, 'queued-1');
+    expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+  });
+
+  it('re-enables the stop control and shows the failure when a cancel is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const active = { ...session('active'), status: 'running' as const };
+    mocks.cancel.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Stop coding agent' }));
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeDisabled();
+
+    pending.reject(new Error('The task computer did not acknowledge the stop request.'));
+
+    expect(await screen.findByText('The task computer did not acknowledge the stop request.')).toBeInTheDocument();
+    expect(mocks.cancel).toHaveBeenCalledWith(active.id);
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
   it('closes a delete confirmation when the selected task changes', async () => {

@@ -436,11 +436,9 @@ export default function CodeView({
               onPermissionChange={(permissionMode) => runAction(
                 () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
                 true,
-                true,
               )}
               onSteerQueued={(instructionId) => runAction(
                 () => codingApi.steerQueued(session.id, instructionId),
-                true,
                 true,
               )}
               history={promptHistory(detail.events)}
@@ -449,7 +447,6 @@ export default function CodeView({
               referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
               onRemoveQueued={(instructionId) => runAction(
                 () => codingApi.removeQueued(session.id, instructionId),
-                true,
                 true,
               )}
               onClientCommand={(command) => {

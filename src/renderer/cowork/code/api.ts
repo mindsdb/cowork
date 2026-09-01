@@ -257,7 +257,7 @@ export interface CodingEvent {
   schema_version: number;
   seq: number;
   timestamp: string;
-  type: 'session' | 'user_message' | 'agent_message' | 'reasoning' | 'plan' | 'tool' | 'command' | 'file_change' | 'diff' | 'child_work' | 'approval' | 'usage' | 'error';
+  type: 'session' | 'user_message' | 'agent_message' | 'reasoning' | 'plan' | 'tool' | 'command' | 'file_change' | 'diff' | 'child_work' | 'approval' | 'usage' | 'error' | 'command_result';
   title: string;
   text: string;
   phase?: 'started' | 'progress' | 'completed' | 'failed' | 'pending' | null;
@@ -651,7 +651,7 @@ export interface TerminalTabPage {
 
 const EVENT_TYPES = new Set<CodingEvent['type']>([
   'session', 'user_message', 'agent_message', 'reasoning', 'plan', 'tool',
-  'command', 'file_change', 'diff', 'child_work', 'approval', 'usage', 'error',
+  'command', 'file_change', 'diff', 'child_work', 'approval', 'usage', 'error', 'command_result',
 ]);
 const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
   'started', 'progress', 'completed', 'failed', 'pending',
