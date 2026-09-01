@@ -9,6 +9,27 @@ function includesPath(sources: ProjectSkillSource[], sourceId: string, path: str
   return sources.some((source) => source.source_id === sourceId && source.enabled_paths.includes(path));
 }
 
+function matchesQuery(item: SkillLibraryItem, normalized: string): boolean {
+  return `${item.name} ${item.description} ${item.source_name} ${item.path}`
+    .toLowerCase()
+    .includes(normalized);
+}
+
+function countLabel(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+}
+
+function joinedSummary(...parts: string[]): string {
+  return parts.filter(Boolean).join(' · ');
+}
+
+function skillPickerHeading(selectedCount: number, teamCount: number, maintainedCount: number): string {
+  if (selectedCount) return `${countLabel(selectedCount, 'skill')} added`;
+  if (teamCount) return 'Choose skills';
+  if (maintainedCount) return `${countLabel(maintainedCount, 'skill')} included`;
+  return 'Choose skills';
+}
+
 function toggleProjectSkill(
   sources: ProjectSkillSource[],
   sourceId: string,
@@ -49,30 +70,50 @@ export function ProjectSkillSelector({
     () => items.filter((item) => item.origin === 'team' && item.source_id),
     [items],
   );
-  const visibleItems = useMemo(() => {
+  const maintainedItems = useMemo(
+    () => items.filter((item) => item.origin === 'built_in' && item.enabled),
+    [items],
+  );
+  const visibleTeamItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return teamItems;
-    return teamItems.filter((item) => (
-      `${item.name} ${item.description} ${item.source_name} ${item.path}`.toLowerCase().includes(normalized)
-    ));
+    return teamItems.filter((item) => matchesQuery(item, normalized));
   }, [query, teamItems]);
+  const visibleMaintainedItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return maintainedItems;
+    return maintainedItems.filter((item) => matchesQuery(item, normalized));
+  }, [maintainedItems, query]);
   const groups = useMemo(() => {
     const result = new Map<string, { name: string; items: SkillLibraryItem[] }>();
-    for (const item of visibleItems) {
+    for (const item of visibleTeamItems) {
       const sourceId = item.source_id!;
       const group = result.get(sourceId) || { name: item.source_name, items: [] };
       group.items.push(item);
       result.set(sourceId, group);
     }
     return [...result.entries()];
-  }, [visibleItems]);
+  }, [visibleTeamItems]);
   const selectedCount = selected.reduce((total, source) => total + source.enabled_paths.length, 0);
   const selectedNames = teamItems
     .filter((item) => item.source_id && includesPath(selected, item.source_id, item.path))
     .map((item) => item.name);
-  const selectionSummary = selectedNames.length
+  const selectedNameSummary = selectedNames.length
     ? `${selectedNames.slice(0, 2).join(', ')}${selectedNames.length > 2 ? ` +${selectedNames.length - 2}` : ''}`
-    : selectedCount ? `${selectedCount} selected` : `${teamItems.length} available`;
+    : '';
+  const selectionSummary = selectedNameSummary
+    || (selectedCount ? `${selectedCount} selected` : '')
+    || joinedSummary(
+      teamItems.length ? `${teamItems.length} available` : '',
+      maintainedItems.length ? `${maintainedItems.length} included` : '',
+    )
+    || 'No Code skills available';
+  const pickerHeading = skillPickerHeading(selectedCount, teamItems.length, maintainedItems.length);
+  const footerSummary = joinedSummary(
+    selectedCount ? `${selectedCount} selected for this project` : '',
+    maintainedItems.length ? `${countLabel(maintainedItems.length, 'maintained skill')} included automatically` : '',
+  ) || 'Choose the guidance every task should receive';
+  const hasMatches = groups.length > 0 || visibleMaintainedItems.length > 0;
 
   return (
     <details
@@ -86,17 +127,17 @@ export function ProjectSkillSelector({
       <summary>
         <span className="code-project-skill-picker__icon" aria-hidden="true">{Ico.cube(15)}</span>
         <span className="code-project-skill-picker__summary">
-          <strong>{selectedCount ? `${selectedCount} skill${selectedCount === 1 ? '' : 's'} added` : 'Choose skills'}</strong>
+          <strong>{pickerHeading}</strong>
           <small>{loading ? 'Loading engineering skills…' : selectionSummary}</small>
         </span>
         <span className="code-project-skill-picker__chevron" aria-hidden="true">{Ico.chevDown(11)}</span>
       </summary>
 
       <div className="code-project-skill-picker__panel">
-        {teamItems.length > 0 && (
+        {teamItems.length + maintainedItems.length > 0 && (
           <label className="code-project-skill-picker__search">
             <span aria-hidden="true">{Ico.search(13)}</span>
-            <Input value={query} onChange={setQuery} placeholder="Search team skills" aria-label="Search team skills" />
+            <Input value={query} onChange={setQuery} placeholder="Search Code skills" aria-label="Search Code skills" />
           </label>
         )}
 
@@ -104,7 +145,7 @@ export function ProjectSkillSelector({
           <div className="code-project-skill-picker__message">Loading skills…</div>
         ) : error ? (
           <div className="code-project-skill-picker__message is-error">{error}</div>
-        ) : groups.length ? (
+        ) : hasMatches ? (
           <div className="code-project-skill-picker__groups">
             {groups.map(([sourceId, group]) => (
               <section key={sourceId}>
@@ -129,6 +170,20 @@ export function ProjectSkillSelector({
                 ))}
               </section>
             ))}
+            {visibleMaintainedItems.length > 0 && (
+              <section>
+                <header>MindsHub maintained</header>
+                {visibleMaintainedItems.map((item) => (
+                  <div className="code-project-skill-picker__included" key={item.id}>
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>{item.description || item.path}</small>
+                    </span>
+                    <em>Included</em>
+                  </div>
+                ))}
+              </section>
+            )}
           </div>
         ) : (
           <div className="code-project-skill-picker__message code-project-skill-picker__empty">
@@ -138,7 +193,7 @@ export function ProjectSkillSelector({
         )}
 
         <footer>
-          <span>{selectedCount ? `${selectedCount} selected for this project` : 'Choose the guidance every task should receive'}</span>
+          <span>{footerSummary}</span>
         </footer>
       </div>
     </details>
