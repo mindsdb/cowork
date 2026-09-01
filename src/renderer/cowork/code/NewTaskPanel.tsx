@@ -261,9 +261,6 @@ export function NewTaskPanel({
             availableConnections={connections}
             value={sourceContexts}
             onChange={setSourceContexts}
-            onContextAdded={(context) => {
-              if (!prompt.trim()) setPrompt(`Work on ${context.external_id}: ${context.title}`);
-            }}
             onOpenConnectors={onOpenConnectors}
             onProjectConnectionsChange={onProjectConnectionsChange}
             autoLinkUrl={autoLinkUrl}

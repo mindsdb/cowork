@@ -56,6 +56,16 @@ function folderName(path: string): string {
 }
 
 
+function sourcePrompt(contexts: SourceContext[]): string {
+  if (contexts.length === 0) return '';
+  if (contexts.length === 1) {
+    const [context] = contexts;
+    return `Work on ${context.external_id}: ${context.title}`;
+  }
+  return `Work on the ${contexts.length} linked work items.`;
+}
+
+
 export function useNewTaskDraft({
   busy,
   defaultEngineId,
@@ -71,7 +81,7 @@ export function useNewTaskDraft({
 }: NewTaskDraftOptions) {
   const localCatalog = useCodingCatalog(catalog === undefined);
   const codingCatalog = catalog || localCatalog;
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPromptState] = useState('');
   const [catalogError, setCatalogError] = useState('');
   const [engineId, setEngineId] = useState(defaultEngineId);
   const [model, setModel] = useState(defaultModel);
@@ -82,7 +92,8 @@ export function useNewTaskDraft({
   const [standaloneFolderIssue, setStandaloneFolderIssue] = useState('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
   const [attachments, setAttachments] = useState<InputReference[]>([]);
-  const [sourceContexts, setSourceContexts] = useState<SourceContext[]>([]);
+  const [sourceContexts, setSourceContextsState] = useState<SourceContext[]>([]);
+  const generatedSourcePrompt = useRef('');
   const [draggingFiles, setDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelRefreshedAt = useRef(-Infinity);
@@ -106,6 +117,21 @@ export function useNewTaskDraft({
   const engineLoading = codingCatalog.enginesLoading;
   const engineModelIds = codingCatalog.modelIds(engineId);
   const modelsLoading = codingCatalog.modelsLoading(engineId);
+
+  const setPrompt = useCallback((value: string) => {
+    if (value !== generatedSourcePrompt.current) generatedSourcePrompt.current = '';
+    setPromptState(value);
+  }, []);
+
+  const setSourceContexts = useCallback((contexts: SourceContext[]) => {
+    setSourceContextsState(contexts);
+    const generated = sourcePrompt(contexts);
+    setPromptState((current) => {
+      if (current.trim() && current !== generatedSourcePrompt.current) return current;
+      generatedSourcePrompt.current = generated;
+      return generated;
+    });
+  }, []);
 
   useEffect(() => {
     const preferred = engines.find((item) => item.id === defaultEngineId && item.available)
