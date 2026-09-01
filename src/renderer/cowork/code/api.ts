@@ -573,7 +573,11 @@ const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
   'started', 'progress', 'completed', 'failed', 'pending',
 ]);
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+interface RequestPolicy {
+  ensureService?: boolean;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit, policy: RequestPolicy = {}): Promise<T> {
   const url = `${getApiOrigin()}/api/v1/coding${path}`;
   const method = (init?.method || 'GET').toUpperCase();
   // Every write gets a sidecar preflight. Retrying after fetch fails would be
@@ -581,7 +585,9 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   // availability an invariant at this shared boundary gives projects, tasks,
   // approvals, and future writes the same recovery behavior without replaying
   // any of them.
-  if (method !== 'GET' && method !== 'HEAD') await ensureCodeService();
+  if (method !== 'GET' && method !== 'HEAD' && policy.ensureService !== false) {
+    await ensureCodeService();
+  }
   const request = {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -761,10 +767,14 @@ const liveCodingApi = {
   terminalInput: (id: string, terminalId: string, dataBase64: string) => requestJson<TerminalPage>(
     `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/input`,
     { method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }) },
+    // A terminal can only accept input after the backend created its process.
+    // Avoid an Electron lifecycle/keychain round-trip for every keystroke.
+    { ensureService: false },
   ),
   resizeTerminal: (id: string, terminalId: string, cols: number, rows: number) => requestJson<TerminalPage>(
     `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/resize`,
     { method: 'POST', body: JSON.stringify({ cols, rows }) },
+    { ensureService: false },
   ),
   stopTerminal: (id: string, terminalId: string) => requestJson<TerminalPage>(
     `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/stop`,

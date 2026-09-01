@@ -94,6 +94,21 @@ describe('coding API boundary', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it('sends live terminal input without restarting or resyncing the service', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'running', items: [], first_seq: 0, next_seq: 0 }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.terminalInput('task-1', 'terminal-1', 'YQ==');
+    await codingApi.resizeTerminal('task-1', 'terminal-1', 120, 40);
+
+    expect(hostMock.serverStart).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('promotes an exact queued instruction without resending its text from the renderer', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
