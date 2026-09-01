@@ -177,4 +177,12 @@ describe('organizationLabel', () => {
     expect(organizationLabel(null)).toBeNull();
     expect(organizationLabel(undefined)).toBeNull();
   });
+
+  it('is null rather than empty when an organization names itself nothing at all', () => {
+    // Defensive: `toMindsOrg` derives `name` from slug ?? name ?? id, so a
+    // nameless organization should not reach here. Null keeps the return type
+    // honest and lets every call site's `|| fallback` chain do its job, which
+    // an empty string would also do by accident but without saying so.
+    expect(organizationLabel({ ...ACME, displayName: '', name: '' })).toBeNull();
+  });
 });
