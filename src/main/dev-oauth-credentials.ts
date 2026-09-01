@@ -10,6 +10,7 @@ export const DEV_OAUTH_CREDENTIAL_KEYS = [
 ] as const;
 
 type DevOAuthCredential = (typeof DEV_OAUTH_CREDENTIAL_KEYS)[number];
+const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
 function parseDotenv(content: string): Record<string, string> {
   const values: Record<string, string> = {};
@@ -37,22 +38,27 @@ function parseDotenv(content: string): Record<string, string> {
 export function loadDevOAuthCredentials({
   isPackaged,
   env = process.env,
-  envFile = path.join(os.homedir(), '.cowork-dev', '.env'),
+  fileContent,
 }: {
   isPackaged: boolean;
   env?: NodeJS.ProcessEnv;
-  envFile?: string;
+  /** Test seam: undefined reads the fixed developer file; null represents no file. */
+  fileContent?: string | null;
 }): Partial<Record<DevOAuthCredential, string>> {
   if (isPackaged) return {};
 
   let fileValues: Record<string, string> = {};
-  try {
-    fileValues = parseDotenv(fs.readFileSync(envFile, 'utf8'));
-  } catch (reason) {
-    if ((reason as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`[credentials] could not read the local developer OAuth file at ${envFile}`);
+  let content = fileContent;
+  if (content === undefined) {
+    try {
+      content = fs.readFileSync(DEV_OAUTH_ENV_FILE, 'utf8');
+    } catch (reason) {
+      if ((reason as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn(`[credentials] could not read the local developer OAuth file at ${DEV_OAUTH_ENV_FILE}`);
+      }
     }
   }
+  if (content) fileValues = parseDotenv(content);
 
   const credentials: Partial<Record<DevOAuthCredential, string>> = {};
   for (const key of DEV_OAUTH_CREDENTIAL_KEYS) {

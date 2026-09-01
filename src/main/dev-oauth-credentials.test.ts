@@ -1,33 +1,15 @@
 import { randomUUID } from 'crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { loadDevOAuthCredentials } from './dev-oauth-credentials';
 
-const temporaryDirectories: string[] = [];
-
-function oauthEnv(content: string): string {
-  const directory = mkdtempSync(join(tmpdir(), 'cowork-dev-oauth-'));
-  temporaryDirectories.push(directory);
-  const file = join(directory, '.env');
-  writeFileSync(file, content, { mode: 0o600 });
-  return file;
-}
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-  vi.restoreAllMocks();
-});
-
 describe('loadDevOAuthCredentials', () => {
   it('never reads local credentials for packaged applications', () => {
-    const envFile = oauthEnv('GITHUB_CLIENT_ID=local-github\n');
-
-    expect(loadDevOAuthCredentials({ isPackaged: true, env: {}, envFile })).toEqual({});
+    expect(loadDevOAuthCredentials({
+      isPackaged: true,
+      env: {},
+      fileContent: 'GITHUB_CLIENT_ID=local-github\n',
+    })).toEqual({});
   });
 
   it('loads only the GitHub and Linear OAuth client fields', () => {
@@ -35,16 +17,16 @@ describe('loadDevOAuthCredentials', () => {
     const linearSecret = randomUUID();
     const excludedMindsKey = randomUUID();
     const excludedGithubToken = randomUUID();
-    const envFile = oauthEnv([
+    const fileContent = [
       'GITHUB_CLIENT_ID=github-id',
       `GITHUB_CLIENT_SECRET="${githubSecret}"`,
       "export LINEAR_CLIENT_ID='linear-id'",
       `LINEAR_CLIENT_SECRET=${linearSecret}`,
       `ANTON_MINDS_API_KEY=${excludedMindsKey}`,
       `GITHUB_ACCESS_TOKEN=${excludedGithubToken}`,
-    ].join('\n'));
+    ].join('\n');
 
-    expect(loadDevOAuthCredentials({ isPackaged: false, env: {}, envFile })).toEqual({
+    expect(loadDevOAuthCredentials({ isPackaged: false, env: {}, fileContent })).toEqual({
       GITHUB_CLIENT_ID: 'github-id',
       GITHUB_CLIENT_SECRET: githubSecret,
       LINEAR_CLIENT_ID: 'linear-id',
@@ -56,7 +38,7 @@ describe('loadDevOAuthCredentials', () => {
     expect(loadDevOAuthCredentials({
       isPackaged: false,
       env: { GITHUB_CLIENT_ID: 'explicit' },
-      envFile: '/missing/cowork-dev-oauth.env',
+      fileContent: null,
     })).toEqual({ GITHUB_CLIENT_ID: 'explicit' });
   });
 });
