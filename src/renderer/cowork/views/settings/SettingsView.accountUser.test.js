@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { providerStatusBadge } from './SettingsView';
-import { accountUserFromToken, accountInitials } from '../../lib/accountUser';
+import { accountUserFromToken, accountInitials, skillScopeKey } from '../../lib/accountUser';
 import { PERSONAL_ORG_LABEL } from '../../../../shared/minds-orgs';
 
 const jwt = (payload) =>
@@ -124,5 +124,27 @@ describe('providerStatusBadge', () => {
     [null, false, null],
   ])('maps %s (configured: %s) to %o', (status, configured, expected) => {
     expect(providerStatusBadge(status, configured)).toEqual(expected);
+  });
+});
+
+describe('skillScopeKey', () => {
+  // Every personal organization prints as PERSONAL_ORG_LABEL, so a key built
+  // from the label handed one person's cached skills to the next.
+  it('separates two organizations that share a label', () => {
+    const base = { sub: 'user-1', email: 'hazem@example.com' };
+    const keyA = skillScopeKey({ ...base, org: PERSONAL_ORG_LABEL, orgId: 'org-a' });
+    const keyB = skillScopeKey({ ...base, org: PERSONAL_ORG_LABEL, orgId: 'org-b' });
+    expect(keyA).not.toBe(keyB);
+    expect(keyA).toContain('org-a');
+    expect(keyA).not.toContain(PERSONAL_ORG_LABEL);
+  });
+
+  it('falls back to the label only when the claim carries no id', () => {
+    const user = { sub: 'user-1', email: 'hazem@example.com', org: 'acme.example', orgId: null };
+    expect(skillScopeKey(user)).toBe('user-1:hazem@example.com:acme.example');
+  });
+
+  it('keys a signed-out session as such', () => {
+    expect(skillScopeKey(null)).toBe('signed-out');
   });
 });

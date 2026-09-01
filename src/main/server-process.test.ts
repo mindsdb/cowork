@@ -13,6 +13,7 @@ import { EventEmitter } from 'events';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -42,17 +43,22 @@ vi.mock('./credential-provisioning', () => ({
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
+vi.mock('net');
 
 import { app } from 'electron';
 import {
   startServer,
   getServerDiagnostics,
   isServerRunning,
+  resolveServerPort,
   stopServer,
   setServerStartedHook,
 } from './server-process';
 
 const PORT = 27903;
+/** What the OS hands back when resolveServerPort asks for a free port. Outside
+ *  the per-user band so a test can tell a relocation from the preferred port. */
+const FREE_PORT = 41999;
 
 /** A stand-in for the spawned sidecar. Nothing is emitted until a test says
  *  so, so each test drives its own failure mode. */
@@ -120,6 +126,16 @@ beforeEach(() => {
   vi.mocked(fs.chmodSync).mockReturnValue(undefined);
   vi.mocked(fs.createWriteStream).mockImplementation((() => {
     return makeLogStream() as never;
+  }) as never);
+
+  vi.mocked(net.createServer).mockImplementation((() => {
+    const srv = {
+      once: () => srv,
+      listen: (_port: number, _host: string, cb: () => void) => { cb(); return srv; },
+      address: () => ({ port: FREE_PORT }),
+      close: (cb: () => void) => { cb(); return srv; },
+    };
+    return srv as never;
   }) as never);
 
   vi.mocked(cp.execFile).mockImplementation(((cmd: string, args: string[], _opts: unknown, cb: unknown) => {
@@ -337,6 +353,41 @@ describe('startServer failure diagnostics', () => {
     );
   });
 
+  it('checkpoints coding tasks on an adopted sidecar before reaping it by port', async () => {
+    // Adoption leaves no ChildProcess handle, and that branch of stopServer
+    // used to go straight to the port kill — the one stop path with no
+    // checkpoint, on exactly the sidecar most likely to hold live tasks.
+    // The owner token is minted at random on first use, so learn it from the
+    // env a real spawn is handed and answer /health with it from then on.
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const env = (vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions).env ?? {};
+    await stopServer();
+    vi.mocked(fetch).mockClear();
+    vi.mocked(cp.execFile).mockClear();
+    execCalls = [];
+
+    healthOwner = env.COWORK_SERVER_OWNER ?? null;
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(cp.spawn).toHaveBeenCalledTimes(1); // adopted, not respawned
+    await stopServer();
+
+    const checkpoint = vi.mocked(fetch);
+    expect(checkpoint).toHaveBeenCalledWith(
+      `http://127.0.0.1:${PORT}/api/v1/coding/runtime/prepare-shutdown`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const reapIndex = execCalls.findIndex((c) => c.cmd === 'lsof' && c.args.includes(`tcp:${PORT}`));
+    expect(reapIndex).toBeGreaterThanOrEqual(0);
+    expect(checkpoint.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(cp.execFile).mock.invocationCallOrder[reapIndex],
+    );
+  });
+
   it('says the backend was still starting when the cap runs out on a live child', async () => {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
@@ -517,6 +568,32 @@ describe('dev-mode uv resolution', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('uv not found');
     expect(cp.spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveServerPort', () => {
+  // stopServer clears the resolved-port memo so each case probes afresh.
+  afterEach(async () => { await stopServer(); });
+
+  it('moves off a port held by another install even when that server is too old to be compatible', async () => {
+    // An owned server predating the coding capability probed as incompatible,
+    // fell through to reap-and-respawn, and failed with EPERM then EADDRINUSE.
+    healthOwner = 'someone-elses-token';
+    healthCapabilities = [];
+
+    const port = await resolveServerPort();
+
+    expect(net.createServer).toHaveBeenCalled();
+    expect(port).toBe(FREE_PORT);
+  });
+
+  it('keeps the preferred port for an owner-less legacy server so startServer can reap it', async () => {
+    healthOwner = '';
+
+    const port = await resolveServerPort();
+
+    expect(net.createServer).not.toHaveBeenCalled();
+    expect(port).not.toBe(FREE_PORT);
   });
 });
 

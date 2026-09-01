@@ -59,13 +59,15 @@ export function exitCodeLabel(input: {
   // taskkill/SIGKILL rather than anything the backend chose. Reporting that
   // number as "the exit code" would be the same lie in a new costume.
   if (input.kind === 'timeout') return 'still starting';
+  // An incompatible backend booted and answered /health normally; the only
+  // exit code it can carry is from our own reap of it.
+  if (input.kind === 'incompatible') return 'not applicable';
   if (typeof input.exitCode === 'number') return String(input.exitCode);
   if (input.stopIntentional === true) return 'stopped';
   if (input.stopIntentional === false) return 'unknown';
   switch (input.kind) {
     case 'exited': return 'unknown';
     case 'spawn-error':
-    case 'incompatible':
     case 'not-installed': return 'never started';
     default: return 'never started';
   }
