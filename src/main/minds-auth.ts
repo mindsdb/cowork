@@ -827,11 +827,19 @@ export async function selectEntitledOrg(
   const startedInOrgId = getActiveOrgFromPayload(startedPayload)?.id ?? null;
   const userId = typeof startedPayload?.sub === 'string' ? startedPayload.sub : null;
   const stored = userId ? readStoredOrgPreference(userId) : null;
+  // `chosenByUser` says a person answered the question. It does NOT say the
+  // session reached their answer: `ensureActiveOrg` falls through to another
+  // organization when Keycloak refuses a switch, because everything downstream
+  // needs some claim and none of it cares which. An organization arrived at
+  // that way is not the person's choice, must not inherit its protection from
+  // the fallback, and must not be recorded as chosen — a stamp nothing would
+  // ever be able to correct.
+  const landedOnRequest = !options.preferOrgId || startedInOrgId === options.preferOrgId;
   // The hunt may only revise an organization nobody chose. "Chose" covers the
   // picker a moment ago AND a choice made on an earlier run: honouring one only
   // until the next Reconnect would reproduce the same bug on a delay.
   const activeWasChosen = Boolean(
-    options.chosenByUser
+    (options.chosenByUser && landedOnRequest)
     || (stored?.chosenByUser && startedInOrgId && stored.orgId === startedInOrgId),
   );
   // Which organization a token ends up naming, for the caller to display. The
@@ -939,9 +947,9 @@ export async function selectEntitledOrg(
   // the session elsewhere, and recording the organization we wanted would
   // recreate the divergence `settleOn` is here to prevent.
   const settled = getAccessToken() ?? accessToken;
-  // Provenance survives the round trip: if the restore put the person back in an
-  // organization they chose, it is still chosen.
-  return settleOn(settled, activeWasChosen);
+  // Not chosen, and it cannot be: a chosen organization returned at the
+  // short-circuit above and never reaches the hunt at all.
+  return settleOn(settled, false);
 }
 
 // ── Env commit ────────────────────────────────────────────────────

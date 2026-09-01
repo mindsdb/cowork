@@ -455,6 +455,7 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     memberships: Array<{ id: string; name: string; displayName?: string }>,
     startIn: { id: string; name: string },
     entitled: string[],
+    opts: { refuse?: string[] } = {},
   ) {
     let active = startIn;
     const calls = installRoutedFetch([
@@ -464,6 +465,9 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
         match: 'users/switch-organization',
         reply: (call) => {
           const id = JSON.parse(call.body!).id;
+          // `refuse` is Keycloak saying no to a switch the app asked for — a
+          // real answer, distinct from an organization the person is not in.
+          if (opts.refuse?.includes(id)) return { status: 403, body: {} };
           const found = memberships.find((o) => o.id === id);
           if (found) active = found;
           return { status: found ? 204 : 403, body: {} };
@@ -574,6 +578,29 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
 
     expect(result.organization?.id).toBe(BETA.id);
     expect(storedPick()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: false });
+  });
+
+  it('does not treat a fallen-back-to organization as the person\'s choice', async () => {
+    // `chosenByUser` says somebody answered, not that the session reached their
+    // answer. Keycloak can refuse the switch, and `ensureActiveOrg` then falls
+    // through to keep a usable claim — landing somewhere nobody picked. Left
+    // ungated, that organization both suppresses the fallback (parking the user
+    // somewhere that cannot pay while another organization could) and gets
+    // stamped `chosenByUser: true`, which nothing would ever correct.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [PERSONAL.id], {
+      refuse: [BETA.id],
+    });
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL), {
+      preferOrgId: BETA.id,
+      chosenByUser: true,
+    });
+
+    expect(net.switches()).toContain(BETA.id);
+    // Beta was refused, so nothing here is the person's choice: the hunt runs
+    // and finds the organization that can actually pay.
+    expect(result.organization?.id).toBe(PERSONAL.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: false });
   });
 
   it('never records an organization the person does not belong to', async () => {
