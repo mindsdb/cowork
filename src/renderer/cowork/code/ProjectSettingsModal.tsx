@@ -189,7 +189,10 @@ export function ProjectSettingsModal({
     setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
-      codingApi.playbook(project.id).then(setPlaybookStatus).catch((reason) => {
+      codingApi.playbook(project.id).then((status) => {
+        if (initializedProjectId.current === project.id) setPlaybookStatus(status);
+      }).catch((reason) => {
+        if (initializedProjectId.current !== project.id) return;
         setError(reason instanceof Error ? reason.message : 'Could not inspect the team playbook.');
       });
     }

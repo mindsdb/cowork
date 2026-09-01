@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
@@ -6,29 +6,53 @@ import type { CodingSession } from './api';
 
 const mocks = vi.hoisted(() => ({
   sessions: vi.fn(),
+  session: vi.fn(),
+  events: vi.fn(async () => ({ items: [], next_seq: 0 })),
   deleteSession: vi.fn(),
   steer: vi.fn(),
   turn: vi.fn(),
   runQueued: vi.fn(),
   approve: vi.fn(),
+  steerQueued: vi.fn(),
+  cancel: vi.fn(),
   runProjectAction: vi.fn(),
   useCodingSession: vi.fn(),
+  composerRender: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
   codingApi: {
     engines: vi.fn(async () => []),
     projectActions: vi.fn(async () => ({ items: [], preview_url: null })),
+    skillLibrary: vi.fn(async () => ({ sources: [], items: [] })),
+    git: vi.fn(async () => ({ is_git: false, detached: false, dirty: false, status_lines: [], worktree_path: '', source_path: '' })),
+    diff: vi.fn(async () => ({ files: [] })),
     sessions: mocks.sessions,
+    session: mocks.session,
+    events: mocks.events,
     deleteSession: mocks.deleteSession,
     steer: mocks.steer,
     turn: mocks.turn,
     runQueued: mocks.runQueued,
     approve: mocks.approve,
+    steerQueued: mocks.steerQueued,
+    cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
   },
+  openCodingEventStream: vi.fn(() => () => {}),
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
+vi.mock('./CodeCommandPalette', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./CodeCommandPalette')>();
+  return {
+    ...actual,
+    // Called once per CodeComposer render, so it doubles as a composer render probe.
+    useCodePaletteItems: (...args: Parameters<typeof actual.useCodePaletteItems>) => {
+      mocks.composerRender();
+      return actual.useCodePaletteItems(...args);
+    },
+  };
+});
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
   TaskBar: ({ onDelete, onStatus, onRunProjectAction }: {
@@ -47,7 +71,11 @@ vi.mock('./TaskBar', () => ({
 }));
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
-vi.mock('./CodeComposer', () => ({ CodeComposer: () => <div>Composer</div> }));
+vi.mock('./FilesPanel', () => ({
+  FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
+    <button type="button" onClick={() => onReference({ name: 'notes.md', path: '/work/first-task/notes.md', kind: 'mention' })}>Reference file</button>
+  ),
+}));
 vi.mock('./ApprovalCard', () => ({
   ApprovalCard: ({ onDecision }: { onDecision: (decision: 'approve_once') => void }) => (
     <button type="button" onClick={() => onDecision('approve_once')}>Approval</button>
@@ -67,6 +95,8 @@ vi.mock('../components/ConfirmModal', () => ({
 
 import CodeView from './CodeView';
 
+const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
+
 
 function session(id: string): CodingSession {
   return {
@@ -85,14 +115,19 @@ function session(id: string): CodingSession {
     event_count: 0,
     created_at: '2026-08-21T09:00:00Z',
     updated_at: '2026-08-21T09:05:00Z',
+    task_capabilities: {
+      files: true, review: true, terminal: true, project_actions: true, slash_commands: true,
+      task_controls: true, extensions: true, platform_settings: true, fork: true, open_workspace: true,
+    },
   };
 }
 
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 
@@ -174,8 +209,25 @@ describe('CodeView session-list reconciliation', () => {
     renderCode({ sessions: [cached], selectedId: cached.id });
 
     expect(screen.getByText('Timeline')).toBeInTheDocument();
-    expect(screen.getByText('Composer')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeInTheDocument();
     expect(screen.queryByText('Restoring task…')).toBeNull();
+  });
+
+  it('does not carry a file referenced in one task into the next task’s composer', async () => {
+    const first = session('first');
+    const second = session('second');
+    mocks.sessions.mockResolvedValue({ items: [first, second] });
+    const view = renderCode({ sessions: [first, second], selectedId: first.id });
+    await waitFor(() => expect(mocks.sessions).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reference file' }));
+    expect(screen.getByLabelText('Attached context')).toHaveTextContent('notes.md');
+
+    view.rerender(<CodeView {...view.props} selectedId={second.id} />);
+
+    expect(screen.queryByLabelText('Attached context')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reference file' }));
+    expect(screen.getByLabelText('Attached context')).toHaveTextContent('notes.md');
   });
 
   it('dismisses an approval immediately while the server confirms it', () => {
@@ -205,6 +257,78 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(screen.queryByRole('button', { name: 'Approval' })).toBeNull();
     expect(mocks.approve).toHaveBeenCalledWith(awaiting.id, 'approval-1', 'approve_once');
+  });
+
+  it('restores the approval card and shows the failure when the decision is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const awaiting = {
+      ...session('awaiting'),
+      status: 'awaiting_approval' as const,
+      pending_approval: {
+        id: 'approval-1', kind: 'command', title: 'Run command', detail: 'npm test',
+        risk: 'May run a command', scope: 'This task only', allow_session: false,
+      },
+    };
+    mocks.approve.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: awaiting, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(screen.queryByRole('button', { name: 'Approval' })).toBeNull();
+
+    pending.reject(new Error('The approval could not be delivered to the task computer.'));
+
+    expect(await screen.findByText('The approval could not be delivered to the task computer.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
+  });
+
+  it('re-enables the composer and shows the failure when a steer is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const active = {
+      ...session('active'),
+      status: 'running' as const,
+      queued_instructions: [{ id: 'queued-1', prompt: 'Run Windows tests', created_at: '2026-08-21T09:01:00Z' }],
+    };
+    mocks.steerQueued.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+    pending.reject(new Error('The agent is between turns; queue this instruction instead.'));
+
+    expect(await screen.findByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
+    expect(mocks.steerQueued).toHaveBeenCalledWith(active.id, 'queued-1');
+    expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+  });
+
+  it('re-enables the stop control and shows the failure when a cancel is rejected', async () => {
+    const pending = deferred<CodingSession>();
+    const active = { ...session('active'), status: 'running' as const };
+    mocks.cancel.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: active, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Stop coding agent' }));
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeDisabled();
+
+    pending.reject(new Error('The task computer did not acknowledge the stop request.'));
+
+    expect(await screen.findByText('The task computer did not acknowledge the stop request.')).toBeInTheDocument();
+    expect(mocks.cancel).toHaveBeenCalledWith(active.id);
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
   it('closes a delete confirmation when the selected task changes', async () => {
@@ -284,6 +408,51 @@ describe('CodeView session-list reconciliation', () => {
       preview_url: 'http://127.0.0.1:41004',
     });
     expect(await screen.findByText('Terminal terminal-preview')).toBeInTheDocument();
+  });
+
+  it('does not re-render the composer across a reconcile poll that returns identical data', async () => {
+    vi.useFakeTimers();
+    try {
+      const polled = session('polled');
+      mocks.sessions.mockResolvedValue({ items: [polled] });
+      mocks.session.mockImplementation(async () => ({ ...polled }));
+      mocks.useCodingSession.mockImplementation(actualUseCodingSession);
+      renderCode({ sessions: [polled], selectedId: polled.id });
+      await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
+      const loadsBeforePoll = mocks.session.mock.calls.length;
+      const rendersBeforePoll = mocks.composerRender.mock.calls.length;
+
+      await act(async () => {
+        vi.advanceTimersByTime(2_500);
+        for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      });
+
+      expect(mocks.session.mock.calls.length).toBeGreaterThan(loadsBeforePoll);
+      expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not re-render the composer when a poll changes only fields the composer ignores', async () => {
+    const streaming = { ...session('streaming'), status: 'running' as const, event_count: 4 };
+    mocks.sessions.mockResolvedValue({ items: [streaming] });
+    const detail = {
+      session: streaming, events: [], git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    };
+    mocks.useCodingSession.mockReturnValue(detail);
+    const view = renderCode({ sessions: [streaming], selectedId: streaming.id });
+    await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
+    const rendersBeforePoll = mocks.composerRender.mock.calls.length;
+
+    mocks.useCodingSession.mockReturnValue({
+      ...detail,
+      session: { ...streaming, event_count: 5, updated_at: '2026-08-21T09:06:00Z', task_capabilities: { ...streaming.task_capabilities! } },
+    });
+    view.rerender(<CodeView {...view.props} />);
+
+    expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
   });
 
   it('routes task status through steering while an agent turn is active', async () => {

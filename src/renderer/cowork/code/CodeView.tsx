@@ -97,7 +97,7 @@ export default function CodeView({
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryComputerId, setRecoveryComputerId] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
-  const [referenceRequest, setReferenceRequest] = useState<{ id: number; item: InputReference } | null>(null);
+  const [referenceRequest, setReferenceRequest] = useState<{ id: number; sessionId: string; item: InputReference } | null>(null);
   const catalog = useCodingCatalog();
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
@@ -138,18 +138,23 @@ export default function CodeView({
   const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
     session ? supportsTaskCapability(session, capability) : false
   );
+  const engineId = session?.engine_id;
+  const canSlashCommands = can('slash_commands');
+  const canFork = can('fork');
+  const canControls = can('task_controls');
+  const canTerminal = can('terminal');
+  const canExtensions = can('extensions');
   const commands = useMemo(() => {
-    const available = catalog.engines.find((engine) => engine.id === session?.engine_id)?.commands || [];
-    if (!session) return available;
+    const available = catalog.engines.find((engine) => engine.id === engineId)?.commands || [];
     return available.filter((command) => {
-      if (command.action !== 'client') return supportsTaskCapability(session, 'slash_commands');
-      if (command.client_action === 'fork') return supportsTaskCapability(session, 'fork');
-      if (command.client_action === 'controls') return supportsTaskCapability(session, 'task_controls');
-      if (command.client_action === 'terminal') return supportsTaskCapability(session, 'terminal');
-      if (command.client_action === 'skills' || command.client_action === 'mcp') return supportsTaskCapability(session, 'extensions');
+      if (command.action !== 'client') return canSlashCommands;
+      if (command.client_action === 'fork') return canFork;
+      if (command.client_action === 'controls') return canControls;
+      if (command.client_action === 'terminal') return canTerminal;
+      if (command.client_action === 'skills' || command.client_action === 'mcp') return canExtensions;
       return false;
     });
-  }, [catalog.engines, session]);
+  }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
   const project = useProjectActions(session?.id);
 
   useEffect(() => {
@@ -436,18 +441,17 @@ export default function CodeView({
               onPermissionChange={(permissionMode) => runAction(
                 () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
                 true,
-                true,
               )}
               onSteerQueued={(instructionId) => runAction(
                 () => codingApi.steerQueued(session.id, instructionId),
                 true,
-                true,
               )}
               history={promptHistory(detail.events)}
-              referenceRequest={referenceRequest}
+              // The effect that clears this runs after the next task's composer
+              // has already mounted and merged it.
+              referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
               onRemoveQueued={(instructionId) => runAction(
                 () => codingApi.removeQueued(session.id, instructionId),
-                true,
                 true,
               )}
               onClientCommand={(command) => {
@@ -539,7 +543,7 @@ export default function CodeView({
             open={filesOpen}
             sessionId={session.id}
             onClose={() => setFilesOpen(false)}
-            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, item }))}
+            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, sessionId: session.id, item }))}
           />}
           <PreviewPanel
             open={previewOpen}

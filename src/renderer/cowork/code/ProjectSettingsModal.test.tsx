@@ -1,13 +1,14 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CodeProject, SkillLibraryItem } from './api';
+import type { CodeProject, PlaybookStatus, SkillLibraryItem } from './api';
 
-const { engines, models, pickCodeFolder, skillLibrary } = vi.hoisted(() => ({
+const { engines, models, pickCodeFolder, playbook, skillLibrary } = vi.hoisted(() => ({
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
+  playbook: vi.fn<(id: string) => Promise<PlaybookStatus>>(),
   skillLibrary: vi.fn<() => Promise<{ sources: never[]; items: SkillLibraryItem[] }>>(async () => ({
     sources: [],
     items: [{
@@ -31,7 +32,7 @@ vi.mock('./api', () => ({
   codingApi: {
     engines,
     models,
-    playbook: vi.fn(),
+    playbook,
     skillLibrary,
     computers: vi.fn(async () => ({ items: [] })),
     projectResources: vi.fn(async () => ({ items: [] })),
@@ -353,5 +354,26 @@ describe('ProjectSettingsModal', () => {
     await user.click(screen.getByText('Task defaults and environment'));
     expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
+  });
+
+  it('ignores a playbook status that arrives after the editor moved to another project', async () => {
+    const late = new Promise<PlaybookStatus>((resolve) => {
+      setTimeout(() => resolve({ configured: true, update_available: true, current_revision: 'aaaaaaaa1111', items: [], diff: 'stale' }), 0);
+    });
+    playbook
+      .mockReturnValueOnce(late)
+      .mockResolvedValue({ configured: true, update_available: false, current_revision: 'bbbbbbbb2222', items: [], diff: '' });
+    const withPlaybook = (id: string): CodeProject => ({
+      ...project, id, name: id, playbook: { repository: `git@github.com:mindsdb/${id}.git`, branch: 'main' },
+    });
+    const props = { connections: [], busy: false, onClose: vi.fn(), onSave: vi.fn() };
+    const view = render(<ProjectSettingsModal {...props} open project={withPlaybook('project-a')} />);
+
+    view.rerender(<ProjectSettingsModal {...props} open project={withPlaybook('project-b')} />);
+    expect(await screen.findByText('bbbbbbbb')).toBeInTheDocument();
+    await act(async () => { await late; });
+
+    expect(screen.getByText('bbbbbbbb')).toBeInTheDocument();
+    expect(screen.queryByText('Update available')).toBeNull();
   });
 });

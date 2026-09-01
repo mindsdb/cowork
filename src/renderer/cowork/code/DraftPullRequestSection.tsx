@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
@@ -191,6 +191,7 @@ export function DraftPullRequestSection({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ item: DeliveryPlanItem; action: 'ready' | 'merge' | 'resolve_thread'; threadId?: string } | null>(null);
   const [policy, setPolicy] = useState(deliveryPolicy);
+  const requestGeneration = useRef(0);
   const githubConnections = useMemo(() => connections.filter((item) => item.provider === 'github'), [connections]);
   const githubStatuses = useMemo(
     () => plan?.integrations?.filter((item) => item.provider === 'github') || [],
@@ -219,17 +220,20 @@ export function DraftPullRequestSection({
   };
 
   const load = useCallback(async (quiet = false) => {
+    const generation = ++requestGeneration.current;
     if (!quiet) setLoading(true);
     try {
       const next = await codingApi.deliveryPlan(sessionId);
+      if (requestGeneration.current !== generation) return;
       setPlan(next);
       setError('');
       const readyIds = next.items.filter((item) => item.status === 'ready').map((item) => item.folder_id);
       setSelectedFolders((current) => current.length ? current.filter((id) => readyIds.includes(id)) : readyIds);
     } catch (reason) {
+      if (requestGeneration.current !== generation) return;
       setError(reason instanceof Error ? reason.message : 'Could not prepare GitHub delivery.');
     } finally {
-      setLoading(false);
+      if (requestGeneration.current === generation) setLoading(false);
     }
   }, [sessionId]);
 

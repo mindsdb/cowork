@@ -1,6 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { DeliveryPlan } from './api';
 
 const mocks = vi.hoisted(() => ({
   deliveryPlan: vi.fn(),
@@ -13,6 +15,12 @@ vi.mock('./api', () => ({
 }));
 
 import { DraftPullRequestSection } from './DraftPullRequestSection';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 const connection = { provider: 'github' as const, name: 'work', label: 'Work GitHub' };
 const integration = { provider: 'github' as const, connection_name: 'work', label: 'Work GitHub', status: 'connected' as const, detail: '' };
@@ -169,4 +177,20 @@ describe('DraftPullRequestSection', () => {
     await waitFor(() => expect(onPullRequestAction).toHaveBeenCalledWith(published, 'resolve_thread', 'thread-1'));
   });
 
+  it('ignores a delivery plan that arrives after the task changed', async () => {
+    const late = deferred<DeliveryPlan>();
+    mocks.deliveryPlan
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValue({ items: [readyItems[1]], integrations: [integration] });
+    const view = render(<DraftPullRequestSection {...defaults} sessionId="task-1" />);
+
+    view.rerender(<DraftPullRequestSection {...defaults} sessionId="task-2" />);
+    expect(await screen.findByText('Server')).toBeInTheDocument();
+
+    late.resolve({ items: readyItems, integrations: [integration] });
+    await act(async () => { await late.promise; });
+
+    expect(screen.queryByText('Frontend')).toBeNull();
+    expect(screen.getByText('Server')).toBeInTheDocument();
+  });
 });
