@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   type MindsOrg,
+  PERSONAL_ORG_LABEL,
   chooseMindsOrg,
   needsOrgPick,
+  organizationLabel,
   personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
@@ -135,5 +137,44 @@ describe('the stored pick', () => {
     expect(readOrgPreference({ preferences: 'nope' }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: 'nope' } }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: { sub: USER } } }, USER)).toBeNull();
+  });
+});
+
+/*
+ * ENG-2109. Two readers name an organization: the token claim, which already
+ * substituted PERSONAL_ORG_LABEL, and the membership listing, whose
+ * `displayName` for a personal organization is auth's generated
+ * `<email>'s organization`. Every call site read `displayName` inline and the
+ * listing won, so the label changed under the user a beat after first paint.
+ * This function is what makes the two agree.
+ */
+describe('organizationLabel', () => {
+  it('calls a personal organization Personal, not auth\'s generated label', () => {
+    const generated: MindsOrg = {
+      ...PERSONAL,
+      displayName: "someone@example.com's organization",
+    };
+    expect(organizationLabel(generated)).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('agrees with the label the token claim already used, so nothing changes on resolve', () => {
+    // The claim path produces PERSONAL_ORG_LABEL for a personal organization
+    // (accountUser.js). Same value from the listing path means no flash.
+    expect(organizationLabel({ ...PERSONAL, displayName: "a@b.com's organization" }))
+      .toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('keeps a company organization on its Keycloak display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: 'Acme Corporation' }))
+      .toBe('Acme Corporation');
+  });
+
+  it('falls back to the raw name when a company organization has no display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: '' })).toBe('acme.example');
+  });
+
+  it('is null for no organization, so a caller can chain its own fallback', () => {
+    expect(organizationLabel(null)).toBeNull();
+    expect(organizationLabel(undefined)).toBeNull();
   });
 });

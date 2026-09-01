@@ -51,6 +51,33 @@ export function personalOrgName(userId: string): string {
 export const PERSONAL_ORG_LABEL = 'Personal';
 
 /**
+ * What to print for an organization.
+ *
+ * `displayName` stays truthful — it is the name Keycloak holds — and this is
+ * the presentation layer over it. The two come apart for a personal
+ * organization: Keycloak's label is auth's generated `<email>'s organization`,
+ * which is both long and redundant beside the account name it sits next to, so
+ * `PERSONAL_ORG_LABEL` is what a reader sees instead.
+ *
+ * Why this exists at all. Every reader used to write `org.displayName` inline,
+ * which meant the label a personal organization got depended on whether the
+ * membership listing had resolved yet: the token-claim path already substituted
+ * `PERSONAL_ORG_LABEL`, the listing path did not, and the listing won. So the
+ * row painted `Personal` and then replaced it with the long name a beat later
+ * (ENG-2109). One function is what stops the two paths disagreeing.
+ *
+ * Deliberately NOT folded into `toMindsOrg`. `displayName` means "the name
+ * Keycloak gave this organization", other readers depend on that, and the two
+ * hosts already answer "what if there is no display name" differently. Keeping
+ * the substitution here leaves the data honest and the choice in one place.
+ */
+export function organizationLabel(org: MindsOrg | null | undefined): string | null {
+  if (!org) return null;
+  if (org.isPersonal) return PERSONAL_ORG_LABEL;
+  return org.displayName || org.name || null;
+}
+
+/**
  * Turn what Keycloak returned into the shape the UI reads.
  *
  * `displayName` deliberately falls back to the raw name rather than to a

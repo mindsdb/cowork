@@ -52,8 +52,14 @@ function activeOrgFromPayload(payload) {
   if (!org || typeof org !== 'object') return { org: null, orgId: null };
   const name = org.name || null;
   const isPersonal = Boolean(payload.sub) && name === personalOrgName(payload.sub);
+  // `isPersonal` short-circuits ahead of the claim's own display name, the same
+  // way `organizationLabel` does for the listing (ENG-2109). Auth generates
+  // `<email>'s organization` and the realm may put it in the claim as well as
+  // in the listing; wherever it arrives from, `PERSONAL_ORG_LABEL` is what the
+  // account row should read. Without this, the two readers could disagree again
+  // the moment the claim starts carrying that field.
   return {
-    org: org.displayName || (isPersonal ? PERSONAL_ORG_LABEL : name),
+    org: isPersonal ? PERSONAL_ORG_LABEL : (org.displayName || name),
     orgId: org.id || name || null,
   };
 }

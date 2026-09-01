@@ -31,6 +31,7 @@ vi.mock('../hooks/useMindsOrgs', () => ({
 }));
 
 import UserMenu from './UserMenu';
+import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import {
@@ -214,12 +215,41 @@ describe('UserMenu — organization picker', () => {
   };
 
   it('names the active organization from the listing, not from the token claim', () => {
-    // The claim carries no display name — a personal organization arrives as
-    // the raw `personal_<userId>` — so the listing is what can name it at all.
-    withOrgs([ACME, PERSONAL], PERSONAL);
+    // A company organization is where the listing genuinely knows more than the
+    // claim: the claim carries no display name, so without the listing there is
+    // nothing to print. Kept on ACME rather than the personal organization,
+    // which is the one case where the listing's own label is the wrong one.
+    withOrgs([ACME, PERSONAL], ACME);
     renderMenu(<UserMenu user={{ ...user, org: null }} />);
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent)
-      .toContain("hazem@example.com's organization");
+      .toContain('acme.example');
+  });
+
+  /*
+   * ENG-2109. This assertion used to read the other way — it expected
+   * "hazem@example.com's organization", auth's generated label, because the
+   * listing's `displayName` won unconditionally. That is what users saw: the
+   * row painted `Personal` from the claim and then swapped to the long name
+   * once the listing resolved.
+   *
+   * The pair below is the regression guard, and it has to be a pair. Either
+   * render passes on its own with the bug fully present — the claim-only case
+   * always said `Personal`, and asserting only the listing case would just
+   * re-encode the defect. What was broken is that the two DISAGREED.
+   */
+  it('names a personal organization Personal before the listing lands', () => {
+    withOrgs([], null);
+    renderMenu(<UserMenu user={{ ...user, org: PERSONAL_LABEL }} />);
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent)
+      .toContain(PERSONAL_LABEL);
+  });
+
+  it('still names it Personal after the listing lands, rather than swapping to auth\'s long label', () => {
+    withOrgs([ACME, PERSONAL], PERSONAL);
+    renderMenu(<UserMenu user={{ ...user, org: PERSONAL_LABEL }} />);
+    const footer = screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent;
+    expect(footer).toContain(PERSONAL_LABEL);
+    expect(footer).not.toContain("hazem@example.com's organization");
   });
 
   it('lists every organization with a check on the active one', () => {
@@ -227,7 +257,7 @@ describe('UserMenu — organization picker', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     const active = screen.getByRole('menuitem', { name: /acme\.example/ });
-    const other = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    const other = screen.getByRole('menuitem', { name: /Personal/ });
     expect(active).toHaveAttribute('data-disabled');
     expect(other).not.toHaveAttribute('data-disabled');
   });
@@ -236,7 +266,7 @@ describe('UserMenu — organization picker', () => {
     withOrgs([ACME, PERSONAL], ACME);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
@@ -251,7 +281,7 @@ describe('UserMenu — organization picker', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     expect(screen.getByText('Organization')).toBeInTheDocument();
-    const only = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    const only = screen.getByRole('menuitem', { name: /Personal/ });
     expect(only).toHaveAttribute('data-disabled');
   });
 
@@ -285,7 +315,7 @@ describe('UserMenu — organization picker', () => {
     withOrgs([ACME, PERSONAL], ACME);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
     expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
     // Nothing is applied optimistically, so the trigger still names the one
     // the app is actually working in.
@@ -301,7 +331,7 @@ describe('UserMenu — organization picker', () => {
     withOrgs([ACME, PERSONAL], ACME);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
 
     await waitFor(() => expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal'));
     expect(screen.queryByText('The tenant may already have changed.')).toBeNull();
