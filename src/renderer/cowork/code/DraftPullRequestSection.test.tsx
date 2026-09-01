@@ -4,17 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   deliveryPlan: vi.fn(),
-  openExternal: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
   codingApi: {
     deliveryPlan: mocks.deliveryPlan,
   },
-}));
-
-vi.mock('../../platform/host', () => ({
-  host: { openExternal: mocks.openExternal },
 }));
 
 import { DraftPullRequestSection } from './DraftPullRequestSection';
@@ -124,7 +119,8 @@ describe('DraftPullRequestSection', () => {
     render(<DraftPullRequestSection {...defaults} onPullRequestAction={onPullRequestAction} />);
 
     await user.click(await screen.findByText('Checks'));
-    expect(screen.getByText('Frontend tests')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Frontend tests' })).toHaveAttribute('href', 'https://github.com/checks/1');
+    expect(screen.getByRole('link', { name: 'Frontend #42' })).toHaveAttribute('rel', 'noopener noreferrer');
     await user.click(screen.getByRole('button', { name: 'Mark ready' }));
     await user.click(screen.getAllByRole('button', { name: 'Mark ready' }).at(-1)!);
 
