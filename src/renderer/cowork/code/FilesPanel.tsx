@@ -183,8 +183,9 @@ export function FilesPanel({
     const start = selectedRange?.[0];
     const end = selectedRange?.[1];
     const range = start ? `:${start}${end && end !== start ? `-${end}` : ''}` : '';
+    const visiblePath = resources.length > 1 ? `${file.resource_name}/${file.path}` : file.path;
     onReference({
-      name: `${file.resource_name}/${file.path}${range}`,
+      name: `${visiblePath}${range}`,
       path: `${file.resource_id}:${file.path}${range ? `#L${start}${end && end !== start ? `-${end}` : ''}` : ''}`,
       kind: 'mention',
       resource_id: file.resource_id,
