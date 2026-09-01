@@ -219,6 +219,7 @@ export default function Sidebar({
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
+  showWorkspaceSwitch = false,
   activeCodeRoute = null,
   codingSessions = [],
   activeCodingSessionId = null,
@@ -572,7 +573,7 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {!host.isWeb && (
+        {!host.isWeb && showWorkspaceSwitch && (
           <WorkspaceModeSwitch
             value={activeWorkspace}
             onChange={onWorkspaceChange}

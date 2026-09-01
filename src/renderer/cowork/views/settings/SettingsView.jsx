@@ -25,6 +25,7 @@ import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } f
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
+import { useCodeModeAccess } from '../../code/codeModeAccess';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -571,7 +572,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 // ───────────────────────── Nav sidebar ─────────────────────────
 
-function SettingsNav({ section, onSectionChange, serverOnline = true }) {
+function SettingsNav({ section, onSectionChange, serverOnline = true, items = [] }) {
   return (
     <nav
       role="navigation"
@@ -579,16 +580,16 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item, index, items) => {
+      {items.map((item, index) => {
         const active = section === item.id;
-        // `!host.isWeb &&`: the offline-disable exists because a dead local
-        // server can't accept a save, and Backend stays enabled as the escape
-        // hatch to restart it. On web there is no Backend row — and
-        // `serverOnline` DOES go false there: refreshData() polls /health on
-        // mount on both platforms (App.jsx), so a transient failure on hosted
-        // (proxy 502, auth blip) would otherwise disable EVERY row with no
-        // way out.
-        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+        // A dead local server cannot accept most settings saves. Keep Backend
+        // available as the recovery path and Coding agent available because
+        // the Code opt-in is device-local and works before the runtime starts.
+        // Hosted rows remain usable because those APIs are managed.
+        const disabled = !host.isWeb
+          && !serverOnline
+          && item.id !== 'backend'
+          && item.id !== 'codingAgent';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
@@ -649,6 +650,12 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const codeModeAccess = useCodeModeAccess();
+  const visibleNav = navItemsForHost(
+    host.isWeb,
+    codeModeAccess.available,
+    codeModeAccess.enabled,
+  );
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1990,52 +1997,15 @@ export default function SettingsView({
     reader.readAsDataURL(file);
   };
 
-  // Desktop-only (see the WEB_NAV_IDS comment on NAV_ITEMS above) — web
-  // never navigates here since 'codingMode' is absent from WEB_NAV_IDS.
-  const renderCodingModeSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
-      <SettingsGroup title="Coding Mode">
-        <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
-          <Switch
-            checked={settings.codingModeEnabled ?? false}
-            onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
-            aria-label="Coding mode"
-          />
-        </Section>
-      </SettingsGroup>
-
-      <SettingsGroup title="Available Agents">
-        {/* No Switch here — Anton is the default agent and can't be
-            turned off; a picker with every harness disabled would
-            have nothing to run. Still listed so it's clear it's
-            part of the picker. */}
-        <Section title="Anton">
-          <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
-        </Section>
-        {(settings.harnessOptions || []).includes('hermes') && (
-          <Section title="Hermes">
-            <Switch
-              checked={settings.harnessHermesEnabled ?? true}
-              onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
-              disabled={!settings.codingModeEnabled}
-              aria-label="Enable Hermes in the harness picker"
-            />
-          </Section>
-        )}
-        <Section title="Claude-Code">
-          <Switch
-            checked={settings.harnessClaudeCodeEnabled ?? true}
-            onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
-            disabled={!settings.codingModeEnabled}
-            aria-label="Enable Claude-Code in the harness picker"
-          />
-        </Section>
-      </SettingsGroup>
-    </SettingsSectionPanel>
-  );
-
   const renderCodingAgentSection = () => (
-    <CodingAgentSettingsSection settings={settings} setSetting={setSetting} footer={renderSaveFooter()} />
+    <CodingAgentSettingsSection
+      settings={settings}
+      setSetting={setSetting}
+      footer={renderSaveFooter()}
+      available={codeModeAccess.available}
+      enabled={codeModeAccess.enabled}
+      onEnabledChange={codeModeAccess.setEnabled}
+    />
   );
 
   const renderComputersSection = () => <ComputersSettingsSection />;
@@ -2296,18 +2266,6 @@ export default function SettingsView({
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
-          {host.codingModeOptionsEnabled && (
-            <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
-              <div className="flex items-center">
-                <Switch
-                  checked={settings.showCodingModeToggle !== false}
-                  onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
-                  aria-label="Coding mode toggle button"
-                />
-                <AutoSaveTag settingKey="showCodingModeToggle" />
-              </div>
-            </Section>
-          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
@@ -2361,7 +2319,6 @@ export default function SettingsView({
     const renderers = {
       agent: renderAgentSection,
       codingAgent: renderCodingAgentSection,
-      codingMode: renderCodingModeSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
@@ -2369,7 +2326,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).find((i) => i.id === section) || null;
+    const activeItem = visibleNav.find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2394,15 +2351,14 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item, index, items) => {
-                // `!host.isWeb &&`: the offline-disable exists because a dead local
-                // server can't accept a save, and Backend stays enabled as the
-                // escape hatch to restart it. On web there is no Backend row —
-                // and `serverOnline` DOES go false there: refreshData() polls
-                // /health on mount on both platforms (App.jsx), so a transient
-                // failure on hosted (proxy 502, auth blip) would otherwise
-                // disable EVERY row with no way out.
-                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+              {visibleNav.map((item, index, items) => {
+                // Match the desktop nav: Backend can recover a dead local
+                // server, while Coding agent owns a device-local opt-in and
+                // remains actionable without the runtime.
+                const disabled = !host.isWeb
+                  && !serverOnline
+                  && item.id !== 'backend'
+                  && item.id !== 'codingAgent';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <Fragment key={item.id}>
@@ -2441,18 +2397,16 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const visibleNav = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled);
   const effectiveSection = visibleNav.some((i) => i.id === section)
     ? section
     : visibleNav[0]?.id;
 
   return (
     <div className="flex-1 flex flex-row min-h-0">
-      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} items={visibleNav} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
-      {effectiveSection === 'codingMode' && renderCodingModeSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}

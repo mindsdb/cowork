@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ModelSelect from '../../components/ModelSelect';
 import { Select } from '../../components/ui';
+import { Switch } from '../../components/ui/Switch';
 import { host } from '../../../platform/host';
 import { codingApi } from '../../code/api';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from '../../code/defaults';
@@ -9,7 +10,14 @@ import { buildModelPickerOptions, withModelPickerFallback } from '../../lib/mode
 import { displayModelLabel, recommendedModelOptions } from '../../lib/settingsTransform';
 import { Section, SettingsGroup, SettingsSectionPanel } from './settingsLayout';
 
-export default function CodingAgentSettingsSection({ settings, setSetting, footer }) {
+export default function CodingAgentSettingsSection({
+  settings,
+  setSetting,
+  footer,
+  available,
+  enabled,
+  onEnabledChange,
+}) {
   const [engines, setEngines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +45,7 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
   }, [modelId, settings.modelEnabled, settings.modelFamilies, settings.modelLabels, settings.modelProviders, settings.recommendedModels]);
 
   useEffect(() => {
-    if (host.isWeb) return undefined;
+    if (host.isWeb || !enabled) return undefined;
     let active = true;
     setLoading(true);
     setError('');
@@ -51,10 +59,10 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
-    if (host.isWeb) return undefined;
+    if (host.isWeb || !enabled) return undefined;
     let active = true;
     setShellLoading(true);
     setShellError('');
@@ -75,7 +83,7 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
       })
       .finally(() => { if (active) setShellLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [enabled]);
 
   const engineOptions = engines.map((engine) => ({
     value: engine.id,
@@ -83,8 +91,36 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
     disabled: !engine.available,
     title: engine.available ? undefined : engine.reason || 'Unavailable',
   }));
+  if (!available) return null;
+
+  const accessControl = (
+    <SettingsGroup title="Code Mode">
+      <Section
+        title="Enable Code Mode"
+        subtitle={enabled
+          ? 'Code is available on this computer.'
+          : 'Build, test, and review code with an agent on this computer.'}
+      >
+        <Switch
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          aria-label="Enable Code Mode"
+        />
+      </Section>
+    </SettingsGroup>
+  );
+
+  if (!enabled) {
+    return (
+      <SettingsSectionPanel autoSaved>
+        {accessControl}
+      </SettingsSectionPanel>
+    );
+  }
+
   return (
     <SettingsSectionPanel footer={footer}>
+      {accessControl}
       <SettingsGroup title="Coding agent">
         <Section title="Agent" subtitle="The default coding agent for new projects and tasks. You can change it when starting a task.">
           <Select

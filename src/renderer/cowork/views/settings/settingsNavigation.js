@@ -1,7 +1,6 @@
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot', group: 'General' },
   { id: 'codingAgent', label: 'Coding agent', icon: 'code', group: 'Code' },
-  { id: 'codingMode', label: 'Coding Mode', icon: 'code', group: 'Code' },
   { id: 'computers', label: 'Computers', icon: 'computer', group: 'Code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
   { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
@@ -15,8 +14,11 @@ const NAV_ITEMS = [
 // or unsafe without their tenant-aware service counterparts.
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
 
-export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
-  const items = isWeb ? NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id)) : [...NAV_ITEMS];
-  if (codingModeOptionsEnabled) return items;
-  return items.filter((item) => item.id !== 'codingMode' && item.id !== 'computers');
+export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false) {
+  if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id));
+  if (!codeModeAvailable) {
+    return NAV_ITEMS.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');
+  }
+  if (!codeModeEnabled) return NAV_ITEMS.filter((item) => item.id !== 'computers');
+  return [...NAV_ITEMS];
 }
