@@ -22,10 +22,13 @@ function policyEnabled(session: CodingSession): boolean {
 }
 
 function canMonitor(session: CodingSession): boolean {
+  const hasGitWorktree = session.workspaces === undefined
+    ? session.workspace_kind === 'git_worktree'
+    : session.workspaces.some((workspace) => workspace.workspace_kind === 'git_worktree');
   return !session.archived
     && !!session.project_id
     && !isActiveStatus(session.status)
-    && !!session.workspaces?.some((workspace) => workspace.workspace_kind === 'git_worktree')
+    && hasGitWorktree
     && policyEnabled(session);
 }
 

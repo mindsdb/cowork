@@ -60,4 +60,47 @@ describe('nextDeliveryAutomationAction', () => {
 
     expect(action).toBeNull();
   });
+
+  it('does not complete or archive while another repository still needs delivery', () => {
+    const action = nextDeliveryAutomationAction({
+      sessionId: 'task-1',
+      plan: {
+        ...plan,
+        items: [
+          ...plan.items,
+          {
+            folder_id: 'server', folder_name: 'Server', workspace_path: '/task/server',
+            remote_url: 'https://github.com/mindsdb/server.git', base_branch: 'staging',
+            task_branch: 'cowork/task/server', status: 'ready', detail: '',
+          },
+        ],
+      },
+      policy: { ...policy, archive_after_merge: true },
+      sourceContexts: [],
+      deliveries: [],
+    });
+
+    expect(action).toBeNull();
+  });
+
+  it('allows no-change repositories once every published pull request is merged', () => {
+    const action = nextDeliveryAutomationAction({
+      sessionId: 'task-1',
+      plan: {
+        ...plan,
+        items: [
+          ...plan.items,
+          {
+            folder_id: 'docs', folder_name: 'Docs', workspace_path: '/task/docs',
+            status: 'no_changes', detail: '',
+          },
+        ],
+      },
+      policy: { ...policy, archive_after_merge: true },
+      sourceContexts: [],
+      deliveries: [],
+    });
+
+    expect(action).toEqual({ kind: 'archive', key: 'archive:task-1' });
+  });
 });

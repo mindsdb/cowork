@@ -95,4 +95,20 @@ describe('DeliveryAutomationMonitor', () => {
     await new Promise((resolve) => window.setTimeout(resolve, 20));
     expect(mocks.deliveryPlan).not.toHaveBeenCalled();
   });
+
+  it('continues to monitor legacy single-workspace tasks', async () => {
+    const legacy = session('task-legacy');
+    delete legacy.workspaces;
+    legacy.workspace_kind = 'git_worktree';
+
+    render(
+      <DeliveryAutomationMonitor
+        sessions={[legacy]}
+        onSessionsChange={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.deliveryPlan).toHaveBeenCalledWith('task-legacy'));
+  });
 });

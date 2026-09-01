@@ -64,9 +64,12 @@ export function nextDeliveryAutomationAction({
     }
   }
 
-  const allPublishedMerged = publishedItems.length > 0
-    && publishedItems.every((item) => item.pull_request_status?.state === 'merged');
-  if (!allPublishedMerged) return null;
+  const allDeliveriesSettled = publishedItems.length > 0
+    && plan.items.every((item) => (
+      item.status === 'no_changes'
+      || (item.status === 'published' && item.pull_request_status?.state === 'merged')
+    ));
+  if (!allDeliveriesSettled) return null;
   if (policy.complete_source_after_merge) {
     const context = sourceContexts.find((candidate) => (
       candidate.kind === 'issue'
