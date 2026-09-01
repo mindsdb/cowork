@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   codingApi,
   type ProjectActionRunResponse,
@@ -14,8 +14,13 @@ export function useProjectActions(sessionId: string | null | undefined) {
   const [actions, setActions] = useState<ProjectActionSummary[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const activeSession = useRef(sessionId);
+  const actionRequest = useRef(0);
+  activeSession.current = sessionId;
 
   useEffect(() => {
+    actionRequest.current += 1;
+    setBusy(false);
     let active = true;
     if (!sessionId) {
       setActions([]);
@@ -56,17 +61,24 @@ export function useProjectActions(sessionId: string | null | undefined) {
 
   const run = useCallback(async (action: ProjectActionSummary): Promise<ProjectActionRunResponse> => {
     if (!sessionId) throw new Error('Open a coding task before running a project action.');
+    const request = actionRequest.current + 1;
+    actionRequest.current = request;
+    const requestedSession = sessionId;
     setBusy(true);
     try {
-      const result = await codingApi.runProjectAction(sessionId, {
+      const result = await codingApi.runProjectAction(requestedSession, {
         resource_id: action.resource_id,
         command_id: action.id,
         shell: getTerminalShellPreference(),
       });
-      setPreviewUrl(result.preview_url || null);
+      if (actionRequest.current === request && activeSession.current === requestedSession) {
+        setPreviewUrl(result.preview_url || null);
+      }
       return result;
     } finally {
-      setBusy(false);
+      if (actionRequest.current === request && activeSession.current === requestedSession) {
+        setBusy(false);
+      }
     }
   }, [sessionId]);
 

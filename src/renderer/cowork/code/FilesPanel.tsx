@@ -63,11 +63,18 @@ export function FilesPanel({
   const lines = useMemo(() => file ? displayLines(file) : [], [file]);
 
   useEffect(() => {
+    fileRequest.current += 1;
+    setResources([]);
+    setResourceId('');
+    setPath('');
+    setEntries([]);
+    setFile(null);
+    setQuery('');
+    setResults([]);
+    setSelection(null);
     if (!open) {
-      fileRequest.current += 1;
       return undefined;
     }
-    fileRequest.current += 1;
     let alive = true;
     setLoading(true);
     setError('');

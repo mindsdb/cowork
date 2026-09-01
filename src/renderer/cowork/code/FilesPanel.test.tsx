@@ -148,4 +148,54 @@ describe('FilesPanel', () => {
     await waitFor(() => expect(screen.queryByText('stale')).not.toBeInTheDocument());
     expect(screen.getByText('second.ts')).toBeInTheDocument();
   });
+
+  it('clears file and selection state when switching tasks', async () => {
+    const user = userEvent.setup();
+    const onReference = vi.fn();
+    mocks.resources.mockImplementation((sessionId: string) => Promise.resolve({
+      items: [{ id: sessionId === 'task-1' ? 'api' : 'web', name: sessionId === 'task-1' ? 'API' : 'Web', kind: 'repository' }],
+    }));
+    mocks.entries.mockImplementation((sessionId: string, resourceId: string) => Promise.resolve({
+      resource_id: resourceId,
+      path: '',
+      truncated: false,
+      items: [{
+        resource_id: resourceId,
+        resource_name: sessionId === 'task-1' ? 'API' : 'Web',
+        path: sessionId === 'task-1' ? 'old.ts' : 'new.ts',
+        name: sessionId === 'task-1' ? 'old.ts' : 'new.ts',
+        kind: 'file',
+      }],
+    }));
+    mocks.file.mockImplementation((sessionId: string, resourceId: string, filePath: string) => Promise.resolve({
+      resource_id: resourceId,
+      resource_name: sessionId === 'task-1' ? 'API' : 'Web',
+      path: filePath,
+      name: filePath,
+      content: sessionId === 'task-1' ? 'old task\n' : 'new task\n',
+      content_hash: (sessionId === 'task-1' ? 'a' : 'b').repeat(64),
+      line_count: 1,
+      line_start: 1,
+      line_end: 1,
+      truncated: false,
+    }));
+
+    const { rerender } = render(
+      <FilesPanel open sessionId="task-1" onClose={vi.fn()} onReference={onReference} />,
+    );
+    await user.click(await screen.findByRole('button', { name: 'old.ts' }));
+    await user.click(await screen.findByRole('option'));
+    expect(screen.getByText('old task')).toBeInTheDocument();
+
+    rerender(<FilesPanel open sessionId="task-2" onClose={vi.fn()} onReference={onReference} />);
+    expect(screen.queryByText('old task')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'new.ts' }));
+    await user.click(await screen.findByRole('option'));
+    await user.click(screen.getByRole('button', { name: /Add to prompt/ }));
+
+    expect(onReference).toHaveBeenLastCalledWith(expect.objectContaining({
+      path: 'web:new.ts#L1',
+      content_hash: 'b'.repeat(64),
+    }));
+  });
 });

@@ -72,4 +72,27 @@ describe('useProjectActions', () => {
     expect(result.current.previewUrl).toBeNull();
     expect(codingApi.projectActions).toHaveBeenCalledTimes(2);
   });
+
+  it('does not apply an action result after the user switches tasks', async () => {
+    const action = { id: 'serve', resource_id: 'web', resource_name: 'Web', label: 'Dev server' };
+    let resolveRun!: (value: { terminal_id: string; label: string; preview_url: string }) => void;
+    vi.mocked(codingApi.projectActions).mockResolvedValue({ items: [action], preview_url: null });
+    vi.mocked(codingApi.runProjectAction).mockReturnValue(new Promise((resolve) => { resolveRun = resolve; }));
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }) => useProjectActions(sessionId),
+      { initialProps: { sessionId: 'task-1' } },
+    );
+    await waitFor(() => expect(result.current.actions).toHaveLength(1));
+
+    let runPromise!: Promise<unknown>;
+    act(() => { runPromise = result.current.run(action); });
+    rerender({ sessionId: 'task-2' });
+    await waitFor(() => expect(result.current.busy).toBe(false));
+
+    resolveRun({ terminal_id: 'terminal-1', label: 'Dev server', preview_url: 'http://127.0.0.1:4173' });
+    await act(async () => { await runPromise; });
+
+    expect(result.current.previewUrl).toBeNull();
+  });
 });
