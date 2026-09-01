@@ -1,4 +1,4 @@
-import { getApiOrigin } from '../../platform/host';
+import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 
 export type CodingStatus =
@@ -523,6 +523,13 @@ export interface EngineCommand {
 }
 
 export type TerminalStatus = 'stopped' | 'running' | 'exited' | 'failed';
+export type TerminalShellPreference = 'auto' | 'bash' | 'zsh' | 'fish' | 'system' | 'pwsh' | 'powershell' | 'cmd';
+
+export interface TerminalShellInventory {
+  platform: string;
+  resolved: TerminalShellPreference;
+  items: Array<{ id: TerminalShellPreference; label: string }>;
+}
 
 export interface TerminalChunk {
   seq: number;
@@ -542,6 +549,22 @@ export interface TerminalPage {
   error?: string | null;
 }
 
+export interface TerminalTab {
+  id: string;
+  label: string;
+  created_at: string;
+}
+
+export interface TerminalTabState extends TerminalTab {
+  status: TerminalStatus;
+  exit_code?: number | null;
+  error?: string | null;
+}
+
+export interface TerminalTabPage {
+  items: TerminalTabState[];
+}
+
 const EVENT_TYPES = new Set<CodingEvent['type']>([
   'session', 'user_message', 'agent_message', 'reasoning', 'plan', 'tool',
   'command', 'file_change', 'diff', 'approval', 'usage', 'error',
@@ -550,11 +573,39 @@ const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
   'started', 'progress', 'completed', 'failed', 'pending',
 ]);
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiOrigin()}/api/v1/coding${path}`, {
+interface RequestPolicy {
+  ensureService?: boolean;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit, policy: RequestPolicy = {}): Promise<T> {
+  const url = `${getApiOrigin()}/api/v1/coding${path}`;
+  const method = (init?.method || 'GET').toUpperCase();
+  // Every write gets a sidecar preflight. Retrying after fetch fails would be
+  // unsafe because the server may already have committed the mutation; making
+  // availability an invariant at this shared boundary gives projects, tasks,
+  // approvals, and future writes the same recovery behavior without replaying
+  // any of them.
+  if (method !== 'GET' && method !== 'HEAD' && policy.ensureService !== false) {
+    await ensureCodeService();
+  }
+  const request = {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-  });
+  };
+  let response: Response;
+  try {
+    response = await fetch(url, request);
+  } catch (error) {
+    // Reads are safe to repeat. If the desktop sidecar disappeared, ask main
+    // to recover it and retry once. Mutations are deliberately not replayed:
+    // the server may have committed one before the connection dropped.
+    if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
+    const recovered = await serverStart();
+    if (!recovered.running) {
+      throw new Error(recovered.error || 'The local Code service could not start.');
+    }
+    response = await fetch(url, request);
+  }
   if (!response.ok) {
     let detail = `Coding request failed (${response.status})`;
     try {
@@ -563,10 +614,21 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Preserve the status-based message when an intermediary returns HTML.
     }
+    if (response.status === 404 && detail === 'Not Found') {
+      detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
+    }
     throw new Error(detail);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function ensureCodeService(): Promise<void> {
+  if (!isElectron) return;
+  const result = await serverStart();
+  if (!result.running) {
+    throw new Error(result.error || 'The local Code service could not start.');
+  }
 }
 
 const liveCodingApi = {
@@ -682,17 +744,42 @@ const liveCodingApi = {
   completeSource: (id: string, body: { provider: 'github' | 'linear'; action: 'complete'; target_url: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/source-action`, {
     method: 'POST', body: JSON.stringify(body),
   }),
-  terminal: (id: string, after = 0) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal?after=${after}`),
-  startTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/start`, {
-    method: 'POST', body: JSON.stringify({ cols, rows }),
+  terminals: (id: string) => requestJson<TerminalTabPage>(`/sessions/${encodeURIComponent(id)}/terminals`),
+  terminalShells: () => requestJson<TerminalShellInventory>('/terminal-shells'),
+  createTerminal: (id: string, label?: string) => requestJson<TerminalTabState>(`/sessions/${encodeURIComponent(id)}/terminals`, {
+    method: 'POST', body: JSON.stringify({ label: label || null }),
   }),
-  terminalInput: (id: string, dataBase64: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/input`, {
-    method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }),
-  }),
-  resizeTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/resize`, {
-    method: 'POST', body: JSON.stringify({ cols, rows }),
-  }),
-  stopTerminal: (id: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/stop`, { method: 'POST' }),
+  renameTerminal: (id: string, terminalId: string, label: string) => requestJson<TerminalTabState>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}`,
+    { method: 'PATCH', body: JSON.stringify({ label }) },
+  ),
+  deleteTerminal: (id: string, terminalId: string) => requestJson<void>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}`,
+    { method: 'DELETE' },
+  ),
+  terminal: (id: string, terminalId: string, after = 0) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}?after=${after}`,
+  ),
+  startTerminal: (id: string, terminalId: string, cols: number, rows: number, shell: TerminalShellPreference = 'auto') => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/start`,
+    { method: 'POST', body: JSON.stringify({ cols, rows, shell }) },
+  ),
+  terminalInput: (id: string, terminalId: string, dataBase64: string) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/input`,
+    { method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }) },
+    // A terminal can only accept input after the backend created its process.
+    // Avoid an Electron lifecycle/keychain round-trip for every keystroke.
+    { ensureService: false },
+  ),
+  resizeTerminal: (id: string, terminalId: string, cols: number, rows: number) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/resize`,
+    { method: 'POST', body: JSON.stringify({ cols, rows }) },
+    { ensureService: false },
+  ),
+  stopTerminal: (id: string, terminalId: string) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/stop`,
+    { method: 'POST' },
+  ),
 };
 
 const fixtureCodingApi = getCodeFixtureApi();
@@ -722,13 +809,14 @@ export function openCodingEventStream(
 
 export function openCodingTerminalStream(
   sessionId: string,
+  terminalId: string,
   after: number,
   onOutput: (chunk: TerminalChunk) => void,
   onState: (state: TerminalPage) => void,
   onError: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
-  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/terminal/stream?after=${after}`;
+  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/terminals/${encodeURIComponent(terminalId)}/stream?after=${after}`;
   const source = new EventSource(url);
   source.addEventListener('terminal-output', (raw) => {
     try {

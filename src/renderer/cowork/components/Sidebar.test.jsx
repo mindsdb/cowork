@@ -99,6 +99,41 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
+  it('uses the canonical sidebar collapse control in Code', () => {
+    hostMock.isWeb = false;
+    const onToggleCollapsed = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onToggleCollapsed={onToggleCollapsed}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the collapse control out of the accessibility tree when unavailable', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+  });
+
+  it('removes every sidebar control from the accessibility tree while collapsed', () => {
+    hostMock.isWeb = false;
+    const { container } = render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        collapsed
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
+  });
+
   it('does not expose local coding on the hosted web shell', () => {
     hostMock.isWeb = true;
     render(<Sidebar {...baseProps} />);

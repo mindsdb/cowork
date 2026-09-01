@@ -1,9 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../platform/host', () => ({ getApiOrigin: () => 'http://127.0.0.1:26866' }));
+const hostMock = vi.hoisted(() => ({
+  serverStart: vi.fn(async () => ({ running: true })),
+}));
+
+vi.mock('../../platform/host', () => ({
+  getApiOrigin: () => 'http://127.0.0.1:26866',
+  isElectron: true,
+  serverStart: hostMock.serverStart,
+}));
 
 import { codingApi, isCodingEvent, isTerminalPage } from './api';
 
+
+beforeEach(() => {
+  hostMock.serverStart.mockReset().mockResolvedValue({ running: true });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +41,74 @@ describe('coding API boundary', () => {
     await expect(codingApi.deleteSession('task-1')).resolves.toBeUndefined();
   });
 
+  it('starts the local service before creating a project without replaying the write', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'project-1', name: 'Project One' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.createProject({
+      name: 'Project One',
+      folders: [],
+      connections: [],
+      environment: { variables: {}, port_names: [] },
+      skill_sources: [],
+      default_engine_id: 'codex',
+      default_model: 'gpt-5.6-sol',
+      permission_mode: 'supervised',
+    });
+
+    expect(hostMock.serverStart).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('recovers a failed read once after starting the local service', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ items: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(codingApi.projects()).resolves.toEqual({ items: [] });
+
+    expect(hostMock.serverStart).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never replays a project write after an ambiguous network failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(codingApi.createProject({
+      name: 'Project One',
+      folders: [],
+      connections: [],
+      environment: { variables: {}, port_names: [] },
+      skill_sources: [],
+      default_engine_id: 'codex',
+      default_model: 'gpt-5.6-sol',
+      permission_mode: 'supervised',
+    })).rejects.toThrow('Failed to fetch');
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('sends live terminal input without restarting or resyncing the service', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'running', items: [], first_seq: 0, next_seq: 0 }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.terminalInput('task-1', 'terminal-1', 'YQ==');
+    await codingApi.resizeTerminal('task-1', 'terminal-1', 120, 40);
+
+    expect(hostMock.serverStart).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('promotes an exact queued instruction without resending its text from the renderer', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -52,6 +132,18 @@ describe('coding API boundary', () => {
       json: async () => ({ detail: 'Handoff stopped before changing the source' }),
     })));
     await expect(codingApi.apply('task-1')).rejects.toThrow('Handoff stopped before changing the source');
+  });
+
+  it('explains the generic 404 produced by an incompatible backend', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Not Found' }),
+    })));
+
+    await expect(codingApi.projects()).rejects.toThrow(
+      'connected to an older backend that does not support Code Mode',
+    );
   });
 
   it('rejects malformed event frames at the renderer boundary', () => {

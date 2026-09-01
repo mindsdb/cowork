@@ -1256,13 +1256,6 @@ function AppCore() {
   // text-input focus so mobile browsers don't leave the app magnified.
   useViewportZoomLock(isMobile);
 
-  // Coding Mode gets the same off-canvas popout treatment as the narrow/
-  // tablet band (640-900): the docked sidebar is hidden entirely and
-  // replaced by the floating hamburger, sliding in over the content instead
-  // of pushing it — even on a full-width desktop viewport, since the
-  // composer needs the room for its harness-picker chrome. Desktop-only
-  // (Coding Mode doesn't exist on web) and never applies on true mobile
-  // (<640) — MobileShell already owns that layout outright.
   // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
   // defaults false when unset) while it's unfinished: this forces every
   // consumer of the user's own codingModeEnabled preference to read as off
@@ -1279,7 +1272,7 @@ function AppCore() {
     navPopoutOpen, setNavPopoutOpen,
     sidebarCollapsibleRoutes,
     sidebarPopout,
-  } = useSidebarNav({ isNarrow, isMobile, codingModeActive });
+  } = useSidebarNav({ isNarrow });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -1297,17 +1290,17 @@ function AppCore() {
   // a ref so the keydown listener (mounted once) sees the live route
   // without needing to rebind on every navigation.
   const routeRef = useRef('home');
-  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar (chat
-  // only), Cmd/Ctrl+K opens search, Cmd/Ctrl+N starts a new task.
+  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar in a Cowork
+  // task or anywhere in Code; Cmd/Ctrl+K opens search; Cmd/Ctrl+N starts a
+  // new task.
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
-        // Sidebar collapse is a chat-view affordance. Outside of
-        // task view we keep it expanded so the user can always see
-        // the navigation rail; swallow the shortcut quietly there.
+        // Cowork mirrors Main's task-only affordance; Code treats the whole
+        // workspace as one collapsible navigation scope.
         if (!sidebarCollapsibleRoutes.has(routeRef.current)) return;
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
@@ -1433,17 +1426,13 @@ function AppCore() {
     window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
   }, [route, workspaceMode]);
-  // Effective collapse state: only honor the user's preference while
-  // the route allows it (chat task). Everywhere else the sidebar
-  // stays expanded — gives the user permanent access to the nav. Never
-  // applies in popout mode (narrow band or Coding Mode) — there the
-  // sidebar is either fully hidden or slid in as an overlay, not docked
-  // at a collapsed width.
-  const sidebarCollapsedEffective =
-    workspaceMode === 'cowork'
-      && !sidebarPopout
-      && sidebarCollapsibleRoutes.has(route)
-      && sidebarCollapsed;
+  // Cowork preserves Main's focused task-only collapse behavior. Code's
+  // project, connector, skill, new-task, and task surfaces all share one
+  // stable desktop navigation pane, so collapse is available throughout the
+  // workspace. Narrow/tablet layouts continue to use the overlay drawer.
+  const activeSidebarRoute = workspaceMode === 'code' ? 'code' : route;
+  const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
+  const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
   // Set when the `/c/:id` loader hit an operational failure (not a 404): the
   // view offers a retry instead of losing the URL.
@@ -4412,13 +4401,9 @@ function AppCore() {
           onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
-          onToggleCollapsed={
-            sidebarPopout
-              ? () => setNavPopoutOpen(false)
-              : (workspaceMode === 'cowork' && sidebarCollapsibleRoutes.has(route)
-                  ? () => setSidebarCollapsed((c) => !c)
-                  : undefined)
-          }
+          onToggleCollapsed={sidebarPopout
+            ? () => setNavPopoutOpen(false)
+            : (sidebarCanCollapse ? () => setSidebarCollapsed((c) => !c) : undefined)}
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}

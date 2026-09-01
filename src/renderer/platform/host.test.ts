@@ -216,8 +216,8 @@ describe('web mode (no bridge)', () => {
 
   it('OS-level affordances return the documented unsupported shape', async () => {
     const host = await importHost();
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
-    await expect(host.serverStop()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
+    await expect(host.serverStop()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.openPath('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.showItemInFolder('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     expect(host.getPathForFile(new File([], 'x.txt'))).toBeNull();
@@ -292,13 +292,13 @@ describe('electron mode (bridge present)', () => {
   });
 
   it('IPC flows are used: getOAuthRedirectUri is null, calls delegate to the bridge', async () => {
-    const serverStart = vi.fn(async () => ({ ok: true }));
+    const serverStart = vi.fn(async () => ({ running: true }));
     const oauthConnect = vi.fn(async () => ({ ok: true, access_token: 't' }));
     (window as unknown as Record<string, unknown>).antontron = { serverStart, oauthConnect };
     const host = await importHost();
 
     expect(host.getOAuthRedirectUri('gmail')).toBeNull();
-    await expect(host.serverStart()).resolves.toEqual({ ok: true });
+    await expect(host.serverStart()).resolves.toEqual({ running: true });
     expect(serverStart).toHaveBeenCalledOnce();
     await expect(host.oauthConnect({ authUrl: 'a' } as never)).resolves.toMatchObject({ ok: true });
     expect(oauthConnect).toHaveBeenCalledWith({ authUrl: 'a' });
@@ -322,7 +322,7 @@ describe('electron mode (bridge present)', () => {
     (window as unknown as Record<string, unknown>).antontron = {};
     const host = await importHost();
     expect(host.getPlatform()).toBe('web');
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
   });

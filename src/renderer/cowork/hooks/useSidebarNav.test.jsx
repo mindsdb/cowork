@@ -1,11 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useSidebarNav } from './useSidebarNav';
-import { host } from '../../platform/host';
 
 const render = (props) =>
   renderHook((p) => useSidebarNav(p), {
-    initialProps: { isNarrow: false, isMobile: false, codingModeActive: false, ...props },
+    initialProps: { isNarrow: false, ...props },
   });
 
 afterEach(() => {
@@ -18,6 +17,7 @@ describe('useSidebarNav', () => {
     expect(result.current.sidebarCollapsed).toBe(false);
     expect(result.current.navPopoutOpen).toBe(false);
     expect(result.current.sidebarCollapsibleRoutes.has('task')).toBe(true);
+    expect(result.current.sidebarCollapsibleRoutes.has('code')).toBe(true);
     expect(result.current.sidebarCollapsibleRoutes.has('home')).toBe(false);
   });
 
@@ -26,20 +26,8 @@ describe('useSidebarNav', () => {
     expect(result.current.sidebarPopout).toBe(true);
   });
 
-  it('sidebarPopout is true for desktop coding mode (not web, not mobile)', () => {
-    vi.spyOn(host, 'isWeb', 'get').mockReturnValue(false);
-    const { result } = render({ isNarrow: false, isMobile: false, codingModeActive: true });
-    expect(result.current.sidebarPopout).toBe(true);
-  });
-
-  it('sidebarPopout is false for coding mode on web', () => {
-    vi.spyOn(host, 'isWeb', 'get').mockReturnValue(true);
-    const { result } = render({ isNarrow: false, isMobile: false, codingModeActive: true });
-    expect(result.current.sidebarPopout).toBe(false);
-  });
-
-  it('sidebarPopout is false for coding mode on true mobile', () => {
-    const { result } = render({ isNarrow: false, isMobile: true, codingModeActive: true });
+  it('sidebarPopout stays false on a wide desktop', () => {
+    const { result } = render({ isNarrow: false });
     expect(result.current.sidebarPopout).toBe(false);
   });
 
