@@ -49,11 +49,105 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 
-const baseProps = { tasks: [], onNavigate: () => {} };
+const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
+
+describe('Sidebar — persistent Cowork / Code workspace switch', () => {
+  it('hides the entire workspace switch until Code Mode is enabled', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+  });
+
+  it('switches to Code from the dedicated Electron workspace control', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(<Sidebar {...baseProps} onWorkspaceChange={onWorkspaceChange} />);
+    expect(screen.getByRole('button', { name: 'Cowork' })).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Code' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('code');
+  });
+
+  it('switches directly back to Cowork without using a Cowork navigation route', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onWorkspaceChange={onWorkspaceChange}
+      />
+    );
+    screen.getByRole('button', { name: 'Cowork' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
+  });
+
+  it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
+    hostMock.isWeb = false;
+    const onOpenCodingProjects = vi.fn();
+    const onOpenCodingConnectors = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onOpenCodingProjects={onOpenCodingProjects}
+        onOpenCodingConnectors={onOpenCodingConnectors}
+      />,
+    );
+    screen.getByRole('button', { name: 'Projects' }).click();
+    screen.getByRole('button', { name: 'Connectors' }).click();
+    expect(onOpenCodingProjects).toHaveBeenCalledOnce();
+    expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
+    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
+  });
+
+  it('uses the canonical sidebar collapse control in Code', () => {
+    hostMock.isWeb = false;
+    const onToggleCollapsed = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onToggleCollapsed={onToggleCollapsed}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the collapse control out of the accessibility tree when unavailable', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+  });
+
+  it('removes every sidebar control from the accessibility tree while collapsed', () => {
+    hostMock.isWeb = false;
+    const { container } = render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        collapsed
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
+  });
+
+  it('does not expose local coding on the hosted web shell', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+  });
+});
 
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid

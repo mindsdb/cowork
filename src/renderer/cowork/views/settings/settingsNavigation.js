@@ -1,0 +1,24 @@
+const NAV_ITEMS = [
+  { id: 'agent', label: 'Agent', icon: 'robot', group: 'General' },
+  { id: 'codingAgent', label: 'Coding agent', icon: 'code', group: 'Code' },
+  { id: 'computers', label: 'Computers', icon: 'computer', group: 'Code' },
+  { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
+  { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
+  { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
+  { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
+  { id: 'account', label: 'Account', icon: 'people', group: 'System' },
+];
+
+// Hosted does not expose controls for local processes, app updates, account
+// bootstrap, or desktop coding runtimes. Those surfaces would be misleading
+// or unsafe without their tenant-aware service counterparts.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+
+export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false) {
+  if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id));
+  if (!codeModeAvailable) {
+    return NAV_ITEMS.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');
+  }
+  if (!codeModeEnabled) return NAV_ITEMS.filter((item) => item.id !== 'computers');
+  return [...NAV_ITEMS];
+}

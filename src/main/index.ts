@@ -1,7 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store).
 import './app-identity';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -48,6 +48,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { normalizeExternalBrowserUrl } from './external-url';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -506,9 +507,8 @@ function createWindow() {
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
     return { action: 'deny' };
   });
 
@@ -517,9 +517,8 @@ function createWindow() {
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
     // Block navigation and open in OS browser
     event.preventDefault();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -793,8 +792,10 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
-    if (isServerRunning()) return { running: true, port: getServerPort() };
-    // If a start is already in progress, await it rather than spawn again.
+    // startServer is also the health-aware ensure path. Do not short-circuit on
+    // isServerRunning(): an adopted sidecar can disappear without an exit
+    // event, leaving that synchronous flag stale until startServer re-probes
+    // it. If a start is already in progress, startServer awaits it.
     const result = await startServer();
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
@@ -829,7 +830,11 @@ function setupIPC() {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
       if (!OAUTH_CREDENTIALS[engine]) {
-        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+        return {
+          ok: false,
+          code: 'oauth_credentials_missing',
+          reason: `No OAuth credentials configured for "${engine}".`,
+        };
       }
       let clientId: string;
       let clientSecret: string;
@@ -840,7 +845,11 @@ function setupIPC() {
         );
         if (!credsRes.ok) {
           const err = await credsRes.json().catch(() => ({})) as { detail?: string };
-          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+          return {
+            ok: false,
+            code: credsRes.status === 422 ? 'oauth_credentials_missing' : undefined,
+            reason: err.detail || `OAuth credentials not configured for "${engine}".`,
+          };
         }
         const credsData = await credsRes.json() as { client_id: string; client_secret: string };
         clientId = credsData.client_id;
@@ -917,6 +926,7 @@ function setupIPC() {
             connector_id: engine,
             method: 'browser_oauth_builtin',
             name: labelName,
+            replace_existing: Boolean(labelName),
             values: {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
@@ -1331,9 +1341,8 @@ function setupIPC() {
   );
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      await shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) await shell.openExternal(browserUrl);
   });
 
   // Open a local file/folder in the OS default app (Finder, browser,
@@ -1362,6 +1371,22 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  // Native directory selection for the first-class Code workspace. The
+  // renderer receives only the user-selected path; filesystem access and Git
+  // orchestration remain in the local sidecar.
+  ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder',
+      // `createDirectory` exposes New Folder in the macOS panel;
+      // `promptToCreate` provides the equivalent typed-path flow on Windows.
+      // The native default confirmation label (Open) matches both platforms.
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    return { ok: true, path: path.resolve(result.filePaths[0]) };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {

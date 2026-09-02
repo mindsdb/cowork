@@ -143,6 +143,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
         placeholder={placeholder}
         disabled={disabled}
         rows={4}
+        aria-label={field.label}
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
@@ -178,6 +179,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
     <Input
       ref={inputRef}
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
+      aria-label={field.label}
       value={displayValue}
       placeholder={placeholder}
       autoComplete={field.type === 'password' ? 'current-password' : 'off'}
@@ -194,6 +196,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
   userLabel, onUserLabelChange,
+  hideHeader = false,
 }) {
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
@@ -505,7 +508,7 @@ export function DataVaultForm({
           their own context. Hidden while the user is on the method
           picker for multi-method forms (the picker has its own
           "Pick how you want to connect:" caption). */}
-      {!(isMultiMethod && !activeMethod) && (
+      {!hideHeader && !(isMultiMethod && !activeMethod) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div style={{ minWidth: 0, flex: 1 }}>

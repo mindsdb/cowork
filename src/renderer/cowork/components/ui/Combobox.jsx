@@ -19,9 +19,9 @@
 //   />
 //
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
-// Item shape:   { value, label, disabled?, title?, tag?, ... }  — extra fields
+// Item shape:   { value, label, disabled?, title?, icon?, tag?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
-//   `tag` renders as a compact right-aligned pill on the row (a model's version
+//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (a model's version
 //   state, the "Needs credits" wallet state, or both) without touching the
 //   label, so search still matches the bare model name and nothing truncates.
 //
@@ -48,7 +48,7 @@ import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
-import { triggerVariants } from './Select.jsx';
+import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
 const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -74,6 +74,7 @@ export function Combobox({
   placeholder = 'Select',
   searchPlaceholder = 'Search',
   searchAriaLabel = 'Search',
+  menuLabel,
   emptyText = 'No results',
   variant = 'field',
   size = 'md',
@@ -107,7 +108,6 @@ export function Combobox({
     if (value == null || value === '') return null;
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
-
   const { contains } = BaseCombobox.useFilter();
 
   return (
@@ -131,6 +131,7 @@ export function Combobox({
       <BaseCombobox.Trigger
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel}
+        aria-description={selected?.label ? `Selected: ${selected.label}` : undefined}
         aria-invalid={invalid || undefined}
         aria-busy={loading || undefined}
         title={title}
@@ -170,6 +171,7 @@ export function Combobox({
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}
           >
+            <PickerMenuHeading>{menuLabel}</PickerMenuHeading>
             {/* Search row — pinned; only the list below scrolls. Border
                 widths are set per-side: with preflight disabled,
                 `border-solid` alone would resurrect the UA's `medium`
@@ -210,7 +212,7 @@ export function Combobox({
               )}
             >
               {(group) => (
-                <BaseCombobox.Group key={group.key} items={group.items}>
+                <BaseCombobox.Group key={group.key} items={group.items} className={group.className}>
                   {group.name && (
                     <BaseCombobox.GroupLabel className="pt-[8px] px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
                       {group.name}
@@ -225,18 +227,18 @@ export function Combobox({
                         title={item.title}
                         className={cn(
                           'grid items-center gap-[6px]',
-                          (item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
+                          (item.icon || item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
                           'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px]',
                           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
                           'data-[highlighted]:bg-surface-2',
                           'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
                         )}
                       >
-                        <span className="inline-flex justify-center text-accent">
-                          <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
+                        <span className={cn('inline-flex justify-center', item.icon ? 'text-ink-3' : 'text-accent')}>
+                          {item.icon || <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>}
                         </span>
                         <span className="min-w-0 truncate">{item.label}</span>
-                        {(item.tag || item.action) && (
+                        {(item.icon || item.tag || item.action) && (
                           <span className="shrink-0 flex items-center gap-[6px]">
                             {item.tag && (
                               <span className="rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
@@ -248,6 +250,11 @@ export function Combobox({
                                 owns its own onClick (must stopPropagation,
                                 or the click also selects this item). */}
                             {item.action}
+                            {item.icon && (
+                              <span className="inline-flex text-accent">
+                                <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
+                              </span>
+                            )}
                           </span>
                         )}
                       </BaseCombobox.Item>

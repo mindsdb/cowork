@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
-import { Button } from './ui';
+import { Alert, Button } from './ui';
 
 export function ConfirmModal({
   open,
@@ -24,6 +24,7 @@ export function ConfirmModal({
   // async action (e.g. a second sign-out request).
   busy = false,
   busyLabel,
+  error,
   onConfirm,
   onClose,
 }) {
@@ -51,7 +52,14 @@ export function ConfirmModal({
       {/* ModalBody sets no text typography — carry the muted body style
           (matches ModalHeader's s-h3) so the message stays 14px/--ink-2
           rather than inheriting the larger, darker root default. */}
-      {message && <ModalBody><div className="s-body">{message}</div></ModalBody>}
+      {(message || error) && (
+        <ModalBody>
+          <div className="grid gap-3">
+            {message && <div className="s-body">{message}</div>}
+            {error && <Alert variant="danger">{error}</Alert>}
+          </div>
+        </ModalBody>
+      )}
       <ModalFooter>
         <Button variant="subtle" onClick={onClose} disabled={busy}>
           {cancelLabel}

@@ -16,8 +16,31 @@ import {
   toDisplayUnits,
   toNaturalUnits,
   formatCount,
+  modelLabel,
+  transformSettingsRows,
   routerRoleSubtitle,
 } from './settingsTransform';
+
+describe('modelLabel', () => {
+  it('formats named GPT coding models without a version hyphen', () => {
+    expect(modelLabel('gpt-codex')).toBe('GPT Codex');
+    expect(modelLabel('gpt-5.6-sol')).toBe('GPT-5.6 Sol');
+  });
+});
+
+describe('coding-agent settings translation', () => {
+  it('round-trips the independent engine and model settings', () => {
+    const transformed = transformSettingsRows([
+      { key: 'coding_agent_engine', value: 'codex' },
+      { key: 'coding_agent_model', value: 'gpt-codex' },
+    ]);
+    expect(transformed).toMatchObject({ codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' });
+    expect(diffSettingsForWrite(
+      { codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' },
+      { codingAgentEngine: 'other', codingAgentModel: 'old' },
+    )).toEqual({ coding_agent_engine: 'codex', coding_agent_model: 'gpt-codex' });
+  });
+});
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
