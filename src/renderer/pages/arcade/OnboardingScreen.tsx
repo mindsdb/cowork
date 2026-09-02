@@ -696,11 +696,12 @@ export default function OnboardingScreen({
   // effect handles consent + entry itself (loading above, then success below).
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title="Welcome" subtitle="you're all set">
+      <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
           <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
-            Your workspace is ready to go.
+            Your workspace is ready. Give the agent a task. It does the work and hands back
+            the results.
           </div>
           <button
             className="arc-btn"

@@ -112,7 +112,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
 
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText(/Your workspace is ready to go/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Your workspace is ready/)).toBeInTheDocument());
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
     // The org-classified write never happens — that 403 is what trapped members.
     expect(syncSettingsToDb).not.toHaveBeenCalled();
