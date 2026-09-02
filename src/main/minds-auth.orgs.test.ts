@@ -519,6 +519,14 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
 
   const storedPick = () =>
     JSON.parse(fs.readFileSync(`${TEST_HOME}/state.json`, 'utf-8')).preferences.mindsOrganization;
+  /** The raw row, or null when nothing has been written. */
+  const storedRow = () => {
+    try { return storedPick(); } catch { return null; }
+  };
+  const seedRow = (sub: string, orgId: string, chosenByUser: boolean) => fs.writeFileSync(
+    `${TEST_HOME}/state.json`,
+    JSON.stringify({ preferences: { mindsOrganization: { sub, orgId, chosenByUser } } }),
+  );
 
   it('honours an organization the person picked, even though it cannot pay', async () => {
     // The reported bug. Picking Personal put the user in Robot.com, because an
@@ -546,9 +554,9 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     const result = await selectEntitledOrg(tokenFor(PERSONAL));
 
     expect(result.organization?.id).toBe(ACME.id);
-    // Recorded as NOT chosen, so a later run may still revise it. A landing that
-    // dressed itself up as somebody's decision could never be corrected.
-    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
+    // Recorded nowhere. Where a call happened to run is not evidence about what
+    // the person wants, and `state.json` has one slot to overwrite with it.
+    expect(storedRow()).toBeNull();
     expect(net.activeOrg().id).toBe(ACME.id);
   });
 
@@ -565,7 +573,7 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     expect(net.switches().at(-1)).toBe(ACME.id);
     expect(net.activeOrg().id).toBe(ACME.id);
     expect(result.organization?.id).toBe(ACME.id);
-    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
+    expect(storedRow()).toBeNull();
   });
 
   it('does not re-open a choice the person made on an earlier run', async () => {
@@ -588,16 +596,17 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
   it('treats an organization it landed on itself as still open to revision', async () => {
     // The other half of the provenance rule: "stored" must not mean "sacred", or
     // one automatic landing would pin the install to it permanently.
-    fs.writeFileSync(
-      `${TEST_HOME}/state.json`,
-      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: ACME.id, chosenByUser: false } } }),
-    );
+    // FORWARD GUARD. No code path writes `chosenByUser: false` any more, so this
+    // row is seeded by hand: it pins the rule for whoever next reaches for
+    // "remember where we ended up", which is the natural thing to try and the
+    // thing that quietly reintroduces this ticket.
+    seedRow(USER, ACME.id, false);
     entitlementRoutes([PERSONAL, ACME, BETA], ACME, [BETA.id]);
 
     const result = await selectEntitledOrg(tokenFor(ACME));
 
     expect(result.organization?.id).toBe(BETA.id);
-    expect(storedPick()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: false });
+    expect(storedRow()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
   });
 
   it('does not treat a fallen-back-to organization as the person\'s choice', async () => {
@@ -618,9 +627,10 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
 
     expect(net.switches()).toContain(BETA.id);
     // Beta was refused, so nothing here is the person's choice: the hunt runs
-    // and finds the organization that can actually pay.
+    // and finds the organization that can actually pay — and records nothing,
+    // because they never chose where they ended up.
     expect(result.organization?.id).toBe(PERSONAL.id);
-    expect(storedPick()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: false });
+    expect(storedRow()).toBeNull();
   });
 
   it('does not erase a standing choice when the membership read fails', async () => {
@@ -707,16 +717,89 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     // company-first default (ENG-1954) for good. Signing in with only a
     // personal organization and later joining a company one is the case: the
     // hunt never corrects it, because Personal can pay.
-    fs.writeFileSync(
-      `${TEST_HOME}/state.json`,
-      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: PERSONAL.id, chosenByUser: false } } }),
-    );
+    // FORWARD GUARD, seeded by hand — see the note on the revision test above.
+    seedRow(USER, PERSONAL.id, false);
     entitlementRoutes([PERSONAL, ACME], PERSONAL, [PERSONAL.id, ACME.id]);
 
     const result = await selectEntitledOrg(tokenFor(PERSONAL));
 
     expect(result.organization?.id).toBe(ACME.id);
-    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
+    expect(storedRow()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: false });
+  });
+
+  it("leaves another account's pick alone on an ordinary sign-in", async () => {
+    // `state.json` has ONE `mindsOrganization` slot. Account A switches to
+    // Personal from the account menu; account B then signs in on the same
+    // machine and never sees a picker. A write here would replace A's row —
+    // `readStoredOrgPreference(B)` returns null for it, so no guard keyed on the
+    // stored value can see it — and A never gets that choice back.
+    const OTHER = 'user-other';
+    seedRow(OTHER, BETA.id, true);
+    entitlementRoutes([PERSONAL, ACME], ACME, [ACME.id]);
+
+    await selectEntitledOrg(tokenFor(ACME));
+
+    expect(storedRow()).toEqual({ sub: OTHER, orgId: BETA.id, chosenByUser: true });
+  });
+
+  it('does not switch at all when the hunt had nowhere to go', async () => {
+    // A single-organization account that cannot pay: the loop skips the only
+    // candidate because it is already active, so nothing moved and there is
+    // nothing to put back. Restoring anyway would spend a Keycloak switch and a
+    // token exchange on every such sign-in, which previously spent neither.
+    const net = entitlementRoutes([PERSONAL], PERSONAL, []);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(net.switches()).toEqual([]);
+    expect(result.organization?.id).toBe(PERSONAL.id);
+  });
+
+  it('honours a pick the session has to switch into, and records it', async () => {
+    // The picker's own happy path, and the case the other `chosenByUser` tests
+    // miss: each of those either starts in the chosen organization or has
+    // Keycloak refuse the switch, so none of them proves a pick that must
+    // actually be switched into is honoured once it is reached.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [ACME.id]);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL), {
+      preferOrgId: BETA.id,
+      chosenByUser: true,
+    });
+
+    expect(net.switches()).toEqual([BETA.id]);
+    expect(net.activeOrg().id).toBe(BETA.id);
+    // Beta cannot pay and Acme can, so this is exactly where the hunt used to
+    // drag them away.
+    expect(result.organization?.id).toBe(BETA.id);
+    expect(storedRow()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: true });
+  });
+
+  it('refuses to run while an account-menu switch is in flight', async () => {
+    // Both drive the same server-side Keycloak session, and this one switches
+    // more than once. Interleaved, the restore lands after the switch and
+    // silently undoes a change the person watched succeed.
+    installRoutedFetch([
+      { method: 'GET', match: '/orgs', reply: () => ({ status: 200, body: [PERSONAL, ACME] }) },
+      { method: 'GET', match: '/authenticate/', reply: () => ({ status: 200, body: { entitlements: ENTITLED } }) },
+      { method: 'PUT', match: '/runtime-credential/minds', reply: () => ({ status: 200, body: { ok: true } }) },
+      { method: 'PUT', match: 'users/switch-organization', reply: () => ({ status: 204, body: {} }) },
+      {
+        method: 'POST',
+        match: 'openid-connect/token',
+        reply: () => ({ status: 200, body: { access_token: tokenFor(ACME), expires_in: 300, refresh_token: 'rt-2' } }),
+      },
+    ]);
+    (getAccessToken as Mock).mockReturnValue(tokenFor(PERSONAL));
+
+    const switching = switchMindsOrg(ACME.id);
+    // Yield so `switchMindsOrg` has taken the lock before we race it.
+    await Promise.resolve();
+    const raced = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(raced.token).toBeUndefined();
+    expect(raced.error).toMatch(/already running/i);
+    await switching;
   });
 
   it('never records an organization the person does not belong to', async () => {
@@ -731,6 +814,8 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     });
 
     expect(result.organization?.id).toBe(PERSONAL.id);
-    expect(storedPick().orgId).toBe(PERSONAL.id);
+    // The id failed the membership check, so it is not a pick at all — and an
+    // organization nobody chose is never written.
+    expect(storedRow()).toBeNull();
   });
 });

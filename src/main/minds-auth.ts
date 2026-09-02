@@ -818,7 +818,32 @@ function entitledToUseAnton(entitlements: any): boolean {
 // happens to be true of today's only caller, and a future one passing a stored
 // id would silently disable the fallback with nothing failing. This whole
 // function exists because two layers agreed implicitly once already (ENG-2199).
+// One lock for every path that moves the active organization. The account-menu
+// switch and the entitlement selection both drive the same server-side Keycloak
+// session, and the selection now switches more than once — per candidate, then
+// once more to put the session back.
+let _orgSwitchInFlight = false;
+
 export async function selectEntitledOrg(
+  initialToken: string,
+  options: { preferOrgId?: string; chosenByUser?: boolean } = {},
+): Promise<SelectedOrgResult> {
+  // Interleaved with an account-menu switch, the restore below lands after it
+  // and silently undoes a change the person watched succeed. Rejecting is the
+  // honest outcome — the two are alternatives, not concurrent work — and the
+  // caller retries (ENG-2199).
+  if (_orgSwitchInFlight) {
+    return { error: 'A change of organization is already running. Try again in a moment.' };
+  }
+  _orgSwitchInFlight = true;
+  try {
+    return await doSelectEntitledOrg(initialToken, options);
+  } finally {
+    _orgSwitchInFlight = false;
+  }
+}
+
+async function doSelectEntitledOrg(
   initialToken: string,
   options: { preferOrgId?: string; chosenByUser?: boolean } = {},
 ): Promise<SelectedOrgResult> {
@@ -860,34 +885,25 @@ export async function selectEntitledOrg(
     return id ? (orgResult.orgs || []).find((org) => org.id === id) : undefined;
   };
 
-  // Every non-error exit goes through here, so the stored preference and the
-  // live session cannot end up naming different organizations. The id is read
-  // back off the token rather than taken from what was asked for: on the
-  // exhausted path below that is the difference between recording where the
-  // user actually is and recording where we merely tried to put them back.
+  // Only a pick a person made is ever written. Where a call happened to run is
+  // not evidence about what they want, and recording it costs more than it buys
+  // in three separate ways:
+  //
+  //   - `state.json` holds ONE `mindsOrganization` slot, so an automatic write
+  //     on an ordinary sign-in replaces whatever is in it — including a
+  //     different account's deliberate pick, which that person never gets back.
+  //   - `listUserOrgs` folds a failed read, a timeout and a genuinely empty
+  //     membership into the same `[]`, so a Keycloak blip is enough to land
+  //     somewhere else and have it recorded as though it were settled.
+  //   - a row this build writes is read by an older one after a rollback, which
+  //     has no provenance flag and treats every row as somebody's choice.
+  //
+  // A hunt result or a restore therefore lives only in the session, and the
+  // next read recomputes it from the ranking. Nothing is lost by that: the
+  // organization a turn bills comes from the token, never from this file.
   const settleOn = (token: string, chosenByUser: boolean): SelectedOrgResult => {
     const id = getActiveOrgFromPayload(decodeJwtPayload(token))?.id;
-    // An automatic outcome never overwrites a person's standing choice. Where
-    // this call ran is not evidence about what they want: `listUserOrgs` folds
-    // a failed read, a timeout and a genuinely empty membership into the same
-    // `[]`, so a Keycloak blip is enough to land somewhere else — and a write
-    // here would delete the only record of their pick, permanently, on a
-    // session that merely reconnected.
-    //
-    // Leaving the record alone lets it disagree with the live session for the
-    // length of the outage, which is the honest state and a self-healing one:
-    // `chooseMindsOrg` switches back to the stored organization on the next
-    // read that can see it. It is also why a stale record is inert rather than
-    // dangerous — that function ignores a pick the person is no longer a member
-    // of, so a revoked organization stops being honoured without anything here
-    // having to decide whether the membership read could be trusted.
-    // Re-read rather than using the snapshot taken before the hunt: that is
-    // several network round-trips ago, `selectEntitledOrg` does not hold
-    // `_orgSwitchInFlight`, and an account-menu switch landing inside the
-    // window would otherwise be demoted by a guard reading stale state.
-    const wouldReplaceAChoice = !chosenByUser
-      && (userId ? readStoredOrgPreference(userId) : null)?.chosenByUser === true;
-    if (userId && id && !wouldReplaceAChoice) storeOrgPreference(userId, id, chosenByUser);
+    if (userId && id && chosenByUser) storeOrgPreference(userId, id, true);
     return { token, organization: namedOrg(token) };
   };
 
@@ -1330,7 +1346,6 @@ function scheduleRefreshIn(delayMs: number): void {
 
 // One switch at a time: two interleaving would race each other through the
 // token store and the hand-over.
-let _orgSwitchInFlight = false;
 
 /**
  * Put the active organization back, and say whether the token followed it.
