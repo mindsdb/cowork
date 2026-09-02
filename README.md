@@ -364,7 +364,7 @@ crosses over loopback rather than through a file: main holds it and PUTs it to
 `/api/v1/runtime-credential/minds`, which the sidecar keeps in memory and
 overlays onto its settings. `src/main/minds-credential.ts` owns that hand-over.
 
-Three consequences worth knowing:
+Four consequences worth knowing:
 
 - **Every sidecar start needs a fresh hand-over.** Nothing persists the value, so
   a sidecar that has just come up holds nothing and `/health` answers
@@ -374,12 +374,28 @@ Three consequences worth knowing:
   over-the-air update and its rollback, the sidebar's stop/start, and the
   installer's first start on a fresh machine. Wiring the push into each of those
   is how one gets missed, so it hangs off the single function they all call.
-  `src/main/index.ts` registers `syncMindsCredential` with
+  `src/main/index.ts` registers `handOffMindsCredentialToStartedSidecar` with
   `setServerStartedHook`, and `startServer` awaits it after every successful
-  start (`src/main/server-process.ts`). It is awaited rather than fired off,
+  start (`src/main/server-process.ts`). That hook also releases the wake barrier
+  below, because a sidecar restarting mid-hand-over is exactly when a turn is
+  parked waiting for one. It is awaited rather than fired off,
   because callers read `/health` as soon as `startServer` resolves. Sign-in and
   the token-refresh tick push on top of that, since both produce a new credential
   without restarting anything.
+- **A wake can hold your next message for up to 12 seconds.** Sleeping past the
+  access token's ten-minute life leaves the sidecar holding a JWT the gateway
+  will reject, so a resume near expiry arms a barrier over `POST
+  /api/v1/responses` and `/responses/answer` until the refreshed value has been
+  accepted. `src/main/minds-resume-gate.ts` owns it. Three things bound the
+  damage. It waits at most `MINDS_RESUME_READY_TIMEOUT_MS` (12s) and then
+  cancels the request, which stays under the renderer's ~13s stranded-reservation
+  reap so a held turn fails visibly instead of vanishing with its thinking
+  placeholder still on screen. It only arms when the sidecar's `/health` says a
+  resolved required planning or coding role actually uses the runtime MindsHub
+  credential, so direct OpenAI and Anthropic turns are never held. And `Stop`
+  is deliberately outside it. An unknown or unreachable health answer is
+  treated as "needs it", because an older sidecar cannot prove otherwise.
+
 - **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
   the sidecar's settings table. It wins over the session credential while it is
   set. `mindshub:set-user-key` is the IPC channel that carries it.

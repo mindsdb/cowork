@@ -16,9 +16,10 @@
 // **Nothing here survives the sidecar restarting**, which is the point and also
 // the trap. The sidecar restarts for an auto-update, a health failure, a crash
 // and every app launch, and a credential held only in its memory is gone each
-// time. Every one of those paths has to call `syncMindsCredential` again, so it
-// is not wired per path: `index.ts` registers it with `setServerStartedHook`,
-// and `startServer` runs it after every successful start. Sign-in and the
+// time. Every one of those paths has to hand the credential over again, so it
+// is not wired per path: `index.ts` registers
+// `handOffMindsCredentialToStartedSidecar` with `setServerStartedHook`, and
+// `startServer` runs it after every successful start. Sign-in and the
 // token-refresh tick push on top of that, because both produce a new credential
 // without restarting anything.
 //
@@ -96,6 +97,18 @@ function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
  */
 export function pushMindsCredential(value: string | null): Promise<boolean> {
   return enqueueCredentialPush(() => pushMindsCredentialNow(value));
+}
+
+/**
+ * Whether a sidecar exists to receive a hand-over right now.
+ *
+ * `pushMindsCredentialNow` returns the same `false` for "no sidecar yet" and
+ * "the sidecar refused", which are different failures: only the second is worth
+ * warning about or retrying on a timer. Boot refreshes tokens before it starts
+ * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ */
+export function isMindsCredentialSidecarReachable(): boolean {
+  return isServerRunning() || isServerStarting();
 }
 
 async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
