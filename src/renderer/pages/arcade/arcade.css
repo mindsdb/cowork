@@ -135,6 +135,30 @@
   text-overflow: ellipsis;
 }
 
+/* The HUD is one row: a hidden copyright mirror, the tracked title, then the
+   real copyright. That reserves ~93px on each side, and the title is nowrap +
+   ellipsis, so below ~600px a long title loses characters rather than shrinking.
+   Stack it instead — the name is the point of the screen. */
+@media (max-width: 600px) {
+  .arc-hud {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 16px 0;
+  }
+  .arc-hud-copy[aria-hidden] { display: none; }
+  .arc-hud-copy { font-size: 9px; }
+  .arc-hud-center { padding: 0; }
+  .arc-hud-title {
+    font-size: 20px;
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
 .arc-hud-sub {
   margin-top: 6px;
   font-size: 11.5px;

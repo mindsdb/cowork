@@ -113,7 +113,10 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
 
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText(/Your workspace is ready/)).toBeInTheDocument());
+    // Assert the product name and the new body outright: a regex loose enough to
+    // also match the old copy would pass whether or not this screen names itself.
+    await waitFor(() => expect(screen.getByText('MindsHub Cowork')).toBeInTheDocument());
+    expect(screen.getByText(/Give the agent a task/)).toBeInTheDocument();
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
     // The org-classified write never happens — that 403 is what trapped members.
     expect(syncSettingsToDb).not.toHaveBeenCalled();
