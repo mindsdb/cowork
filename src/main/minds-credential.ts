@@ -98,6 +98,18 @@ export function pushMindsCredential(value: string | null): Promise<boolean> {
   return enqueueCredentialPush(() => pushMindsCredentialNow(value));
 }
 
+/**
+ * Whether a sidecar exists to receive a hand-over right now.
+ *
+ * `pushMindsCredentialNow` returns the same `false` for "no sidecar yet" and
+ * "the sidecar refused", which are different failures: only the second is worth
+ * warning about or retrying on a timer. Boot refreshes tokens before it starts
+ * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ */
+export function isMindsCredentialSidecarReachable(): boolean {
+  return isServerRunning() || isServerStarting();
+}
+
 async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
   if (!isServerRunning() && !isServerStarting()) return false;
   const port = getServerPort();

@@ -4,7 +4,7 @@ import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
-import { hasUserSuppliedMindsCredential, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
+import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from './minds-resume-gate';
 import { retryOnTransientLock } from './fs-retry';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
@@ -247,28 +247,46 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'transient' };
     }
     const data = await res.json() as { access_token?: unknown; expires_in?: number; refresh_token?: string };
-    if (
-      credentialHandoffCancellationEpoch
-      !== _credentialHandoffCancellationEpoch
-    ) {
-      return { status: 'superseded' };
-    }
+    const cancelledMidExchange =
+      credentialHandoffCancellationEpoch !== _credentialHandoffCancellationEpoch;
     if (getTokenStoreVersion() !== tokenStoreVersion) {
-      if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
+      // A newer login already owns the store, so this exchange's tokens are the
+      // stale pair and must not overwrite it. Ordered ahead of the write below;
+      // the cancellation fence is not, because these two say opposite things
+      // about who holds the newer tokens.
+      if (!cancelledMidExchange && !suppressCredentialHandoff) {
+        void settleResumeGateFromSelectedCredential();
+      }
       return { status: 'superseded' };
     }
     if (typeof data.access_token !== 'string' || !data.access_token) {
       console.warn('[minds-auth] token refresh returned no access token — keeping session');
+      if (cancelledMidExchange) return { status: 'superseded' };
       if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
     }
     const expiresInSeconds = data.expires_in ?? 3600;
     const expiresAt = Date.now() + expiresInSeconds * 1000;
+    // Persist BEFORE the cancellation fence. Keycloak has already rotated the
+    // refresh token and invalidated the one we sent, so returning without
+    // writing hands `endKeycloakSession` a token the IdP rejects: the SSO
+    // session survives sign-out and the next sign-in silently reuses the same
+    // account with no picker. `getRevokeToken` reads the fresh access token
+    // back through `getAccessToken()` on this path.
+    //
+    // Sign-out still has to stop everything AFTER this write — handoff, retry,
+    // timer, gate — which is what the fence below does. Only the write escapes,
+    // because a rotation the IdP performed is already a fact locally.
     saveTokens(data.access_token, expiresInSeconds, data.refresh_token ?? refreshToken);
+    if (cancelledMidExchange) {
+      // Sign-out (or another explicit cancellation) began while this exchange
+      // was in flight, so it captured the pre-bump epoch and `false` for the
+      // suppression flag. Report superseded so no hand-over, retry, timer or
+      // gate settlement escapes the fence.
+      return { status: 'superseded' };
+    }
     if (suppressCredentialHandoff) {
-      // Persist a rotated refresh token for end-session, but keep this exchange
-      // strictly on the revoke path: no sidecar handoff, retry, timer, or gate
-      // settlement may escape the logout fence.
+      // Same fence, for an exchange that started after sign-out began.
       return { status: 'ok', token: data.access_token };
     }
     const refreshedTokenStoreVersion = getTokenStoreVersion();
@@ -304,8 +322,15 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     }
     scheduleRefreshAt(expiresAt);
     if (!handedOff) {
-      console.warn('[minds-auth] fresh credential was not handed to the sidecar — retrying hand-over');
-      scheduleCredentialHandoffRetry();
+      // Only a sidecar that exists can refuse. Boot refreshes tokens before it
+      // starts one (index.ts), so an unconditional warn-and-retry here fired on
+      // every launch of a signed-in install and buried the real hand-over
+      // failures it exists to surface. `setServerStartedHook` pushes as soon as
+      // the sidecar comes up, so a timer would only race that push.
+      if (isMindsCredentialSidecarReachable()) {
+        console.warn('[minds-auth] fresh credential was not handed to the sidecar — retrying hand-over');
+        scheduleCredentialHandoffRetry();
+      }
       return { status: 'handoff_pending', token: data.access_token };
     }
     cancelCredentialHandoffRetry();
@@ -1409,6 +1434,23 @@ function scheduleRefreshAt(expiresAt: number): void {
   scheduleRefreshIn(Math.max(expiresAt - Date.now() - 60_000, 10_000));
 }
 
+/* Hand the selected credential to a sidecar that has just started, and release
+ * whatever is waiting on that hand-over.
+ *
+ * Every other landing path settles the resume barrier and cancels the retry
+ * ladder; the server-start hook pushed and did neither. A sidecar that restarts
+ * during a post-wake retry therefore came back holding a usable credential
+ * while the barrier stayed armed, so `POST /api/v1/responses` kept being held
+ * its full bound and cancelled until the backed-off retry next came round. */
+export async function handOffMindsCredentialToStartedSidecar(): Promise<boolean> {
+  const usable = await syncUsableMindsCredential();
+  if (usable) {
+    cancelCredentialHandoffRetry();
+    settleMindsResumeCredentialGate(true);
+  }
+  return usable;
+}
+
 function cancelCredentialHandoffRetry(): void {
   _credentialHandoffRetryGeneration += 1;
   _credentialHandoffRetryAttempt = 0;
@@ -1424,8 +1466,8 @@ function scheduleCredentialHandoffRetry(): void {
   _credentialHandoffRetryAttempt = attempt + 1;
   const generation = _credentialHandoffRetryGeneration;
   // A sidecar that predates the hand-over route answers 404 and cannot recover
-  // without a restart, and setServerStartedHook(syncMindsCredential) already
-  // re-pushes on the next start. Back off rather than PUT every 10s forever.
+  // without a restart, and the server-start hook in index.ts already re-pushes
+  // on the next start. Back off rather than PUT every 10s forever.
   _credentialHandoffTimer = setTimeout(() => {
     _credentialHandoffTimer = null;
     void retryCredentialHandoff(generation);
