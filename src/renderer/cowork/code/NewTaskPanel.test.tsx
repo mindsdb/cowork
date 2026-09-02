@@ -384,6 +384,53 @@ describe('NewTaskPanel', () => {
     expect(screen.getByText('Project')).toBeVisible();
   });
 
+  it('preserves a task resource subset when refreshed project data has the same resources', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    const view = render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        {...projectProps}
+        onCreate={onCreate}
+      />,
+    );
+
+    await user.click(await screen.findByLabelText('Choose task resources'));
+    await user.click(screen.getByRole('checkbox', { name: /cowork-server/i }));
+    expect(screen.getByLabelText('Choose task resources')).toHaveTextContent('1 of 2 resources');
+
+    view.rerender(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[structuredClone(project)]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(screen.getByLabelText('Choose task resources')).toHaveTextContent('1 of 2 resources');
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Change the desktop only');
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: project.id,
+      resourceIds: ['cowork'],
+    })));
+  });
+
   it('offers a direct route to create another Code Project', async () => {
     const user = userEvent.setup();
     const onProjectChange = vi.fn();
