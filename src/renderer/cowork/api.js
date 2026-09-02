@@ -379,12 +379,30 @@ export async function fetchSessions({ onItems } = {}) {
   if (onItems) {
     for (const c of conversations.slice(0, EAGER)) {
       req(`/conversations/${encodeURIComponent(c.id)}/items`)
-        .then((r) => onItems(c.id, Array.isArray(r) ? r : []))
+        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+        // through _conversationToTask, so they got _hydrateAssistantEvents —
+        // which replays `events` into steps/startedAt and appends the synthetic
+        // `error` / `provider_required` message a failed turn renders its card
+        // from. Handing over the raw array silently dropped both.
+        .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
         .catch(() => {});
     }
   }
 
-  return conversations.map((c) => _conversationToTask(c, []));
+  // Guarded: the outer try/catch that used to wrap this whole function is gone,
+  // and _conversationToTask dereferences conv.title / conv.disabled_connections.
+  // One malformed row would reject a promise whose caller has no .catch, leaving
+  // tasksStatus stuck on 'loading' — skeleton rows forever, no retry reachable.
+  return conversations
+    .filter((c) => c && typeof c === 'object')
+    .map((c) => {
+      try {
+        return _conversationToTask(c, []);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 export async function fetchSession(id) {

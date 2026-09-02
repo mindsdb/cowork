@@ -536,6 +536,12 @@ function AppCore() {
   // work rather than as a wait (ENG-2246).
   const [tasksStatus, setTasksStatus] = useState('loading');
   const tasksRef = useRef(tasks);
+  // The transcript warm-up is worth doing once a session, not once per
+  // refreshData: refreshData re-fires the moment serverOnline flips false->true
+  // — a flip its own fetchHealth causes on every desktop cold start — and again
+  // on Retry, manual server start, and run-schedule-now. Each repeat is 50
+  // requests whose results the `local.length > 0` guard then discards.
+  const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   // IDs of tasks deleted this session. Used to filter them out of
   // subsequent fetchSessions responses so zombies can't reappear.
@@ -1492,25 +1498,26 @@ function AppCore() {
     // A retry after a failure must look like it did something; without this
     // the error copy sits there until the request resolves.
     setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
-    fetchSessions({
-      // The background transcript warm-up reports each bundle as it lands
-      // (ENG-2246). Merge it in without disturbing a live conversation:
-      // anything mid-stream already owns its messages locally.
-      onItems: (id, msgs) => setTasks((prev) => prev.map((t) => {
-        if (t.id !== id) return t;
-        const local = Array.isArray(t.messages) ? t.messages : [];
-        if (local.some((m) => m?.role === '_streaming') || local.length > 0) return t;
-        return { ...t, messages: msgs };
-      })),
-    }).then((data) => {
+    // Merges a warmed transcript in without disturbing a live conversation:
+    // anything mid-stream, or already filled, keeps what it has.
+    const warmTranscript = (id, msgs) => setTasks((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      const local = Array.isArray(t.messages) ? t.messages : [];
+      if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
+      return { ...t, messages: msgs };
+    }));
+    fetchSessions(warmedRef.current ? {} : { onItems: warmTranscript }).then((data) => {
       if (!Array.isArray(data)) {
-        // A failed list request must not read as "no tasks" — but only let it
-        // set the failed state while we have nothing to show. Once a list has
-        // landed, a later poll failing should leave the visible tasks alone.
-        setTasksStatus((prev) => (prev === 'ready' ? 'ready' : 'failed'));
+        // A failed list request must not read as "no tasks". Keyed on having rows
+        // on screen, not on having succeeded once: an empty
+        // account's first fetch succeeds with [] -> 'ready', and every later
+        // failure would then be swallowed, leaving "No tasks yet" and no Retry
+        // while the server is unreachable — the exact confusion this PR fixes.
+        setTasksStatus(tasksRef.current.length > 0 ? 'ready' : 'failed');
         return;
       }
       setTasksStatus('ready');
+      warmedRef.current = true;
       // One-time freshness decision for the onboarding checklist, taken on
       // the session's first successful fetch (refreshData also polls, hence
       // the ref guard): an account that already has tasks is not a first
@@ -3746,7 +3753,11 @@ function AppCore() {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      // Merge, never replace: since ENG-2246 these rows carry `messages: []`,
+      // so a wholesale replace blanks the open transcript (ChatView renders
+      // currentTask, and nothing refetches on a `tasks` change), drops
+      // `_streaming` placeholders, and wipes the client-only model pin.
+      if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
 
@@ -4013,7 +4024,10 @@ function AppCore() {
     }
     // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    // Merge, never replace — same reason as handleRenameTask above. Repro for
+    // the replace: open chat A, then Move to project on any task; the open
+    // transcript went blank with nothing to bring it back.
+    if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     const freshProjects = await fetchProjects();
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };

@@ -86,7 +86,10 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
     await expect(fetchSessions()).resolves.toEqual([]);
   });
 
-  it('hands each warmed transcript to onItems as it lands', async () => {
+  it('hands each warmed transcript to onItems, hydrated as the old path did', async () => {
+    // Hydration matters: the pre-ENG-2246 path ran these through
+    // _conversationToTask, so a failed turn arrived carrying its synthetic
+    // error/provider_required message. Raw passthrough dropped that card.
     global.fetch = vi.fn((url) => String(url).includes('/items')
       ? Promise.resolve(jsonRes([{ role: 'user', content: 'hi' }]))
       : Promise.resolve(jsonRes(conversations(2))));

@@ -194,3 +194,47 @@ describe('deleting a chat from the sidebar', () => {
     expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
   });
 });
+
+describe('the recents list tells loading, empty and failed apart end-to-end (ENG-2246)', () => {
+  // The Sidebar states and the api return shape each had their own tests, but
+  // nothing asserted App wires them: deleting both `setTasksStatus` calls from
+  // refreshData left the whole suite green. These mount the real App so the
+  // wiring itself is load-bearing.
+  it('shows a retry when the list fetch fails, and recovers when it succeeds', async () => {
+    const user = userEvent.setup();
+    spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 500 });
+
+    render(<App />);
+
+    // Failure must be visibly distinct from an empty account.
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+
+    // Retry has to actually re-fetch and clear the error.
+    spies.fetchSessions.mockResolvedValue(spies.sessions.map((s) => ({ ...s })));
+    await user.click(screen.getByText('Retry'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Daily report run' })).toBeTruthy();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('recovering into a genuinely empty account says so, and drops the alert', async () => {
+    // The two terminal states must stay distinguishable through a real
+    // transition, not just as isolated props: retrying a failed fetch into an
+    // account that really has no tasks has to land on "No tasks yet", never on
+    // a lingering alert.
+    const user = userEvent.setup();
+    spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 503 });
+
+    render(<App />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+
+    spies.fetchSessions.mockResolvedValue([]);
+    await user.click(screen.getByText('Retry'));
+
+    expect(await screen.findByText('No tasks yet')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
