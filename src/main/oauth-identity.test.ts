@@ -6,7 +6,8 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
   it('uses the US host when it succeeds', async () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const href = typeof url === 'string' ? url : url.toString();
-      expect(href).toBe('https://us.posthog.com/api/users/@me/');
+      expect(new URL(href).host).toBe('us.posthog.com');
+      if (href.endsWith('/api/organizations/')) return new Response(JSON.stringify({ results: [] }), { status: 200 });
       return new Response(JSON.stringify({ email: 'us-user@example.com' }), { status: 200 });
     }) as unknown as typeof fetch;
 
@@ -14,10 +15,14 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
   });
 
   it('falls back to the EU host when the US host rejects the token', async () => {
-    const calledHosts: string[] = [];
+    const calledUserEndpointHosts: string[] = [];
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const href = typeof url === 'string' ? url : url.toString();
-      calledHosts.push(href);
+      if (href.endsWith('/api/organizations/')) {
+        expect(new URL(href).host).toBe('eu.posthog.com');
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }
+      calledUserEndpointHosts.push(href);
       if (new URL(href).host === 'us.posthog.com') {
         return new Response('', { status: 401 });
       }
@@ -25,7 +30,7 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
     }) as unknown as typeof fetch;
 
     expect(await fetchAccountEmail('posthog', 'tok')).toBe('eu-user@example.com');
-    expect(calledHosts).toEqual([
+    expect(calledUserEndpointHosts).toEqual([
       'https://us.posthog.com/api/users/@me/',
       'https://eu.posthog.com/api/users/@me/',
     ]);
@@ -35,6 +40,90 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
     globalThis.fetch = vi.fn(async () => new Response('', { status: 401 })) as unknown as typeof fetch;
 
     expect(await fetchAccountEmail('posthog', 'tok')).toBe('');
+  });
+});
+
+// ENG-2240: a PostHog account can belong to several organizations under the
+// same email (unlike Google, where an account is an email), so the
+// organization id is folded into the returned email for dedup, and the
+// organization name - not the connecting person's own name - is returned as
+// `name`, the same convention fetchSupabaseIdentity uses for its own
+// per-organization identity. The organization lookup is a separate,
+// best-effort request from the required user query, routed here by which
+// endpoint path each fetch call carries.
+describe('fetchAccountIdentity — PostHog organization-aware identity', () => {
+  function stubPostHogCalls(opts: { user: object; organization?: object; organizationOk?: boolean }) {
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.endsWith('/api/organizations/')) {
+        return new Response(JSON.stringify(opts.organization ?? { results: [] }), {
+          status: opts.organizationOk === false ? 500 : 200,
+        });
+      }
+      return new Response(JSON.stringify(opts.user), { status: 200 });
+    }) as unknown as typeof fetch;
+  }
+
+  it('uses the organization name over the person name, and folds the organization id into email', async () => {
+    stubPostHogCalls({
+      user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
+      organization: { results: [{ id: 'org-123', name: 'Acme Org' }] },
+    });
+
+    await expect(fetchAccountIdentity('posthog', 'tok')).resolves.toEqual({
+      email: 'user@example.com:org-123',
+      name: 'Acme Org',
+    });
+  });
+
+  it('gives a second organization a distinct identity', async () => {
+    stubPostHogCalls({
+      user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
+      organization: { results: [{ id: 'org-456', name: 'Other Org' }] },
+    });
+
+    const identity = await fetchAccountIdentity('posthog', 'tok');
+    expect(identity.email).toBe('user@example.com:org-456');
+    expect(identity.email).not.toBe('user@example.com:org-123');
+  });
+
+  it('falls back to the person name when there are no organizations', async () => {
+    stubPostHogCalls({
+      user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
+      organization: { results: [] },
+    });
+
+    await expect(fetchAccountIdentity('posthog', 'tok')).resolves.toEqual({
+      email: 'user@example.com',
+      name: 'User Name',
+    });
+  });
+
+  it('degrades to bare email instead of failing when the organization request errors', async () => {
+    stubPostHogCalls({
+      user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
+      organizationOk: false,
+    });
+
+    await expect(fetchAccountIdentity('posthog', 'tok')).resolves.toEqual({
+      email: 'user@example.com',
+      name: 'User Name',
+    });
+  });
+
+  it('degrades to bare email instead of failing when the organization request throws', async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.endsWith('/api/organizations/')) throw new Error('network error');
+      return new Response(JSON.stringify({ email: 'user@example.com', first_name: 'User', last_name: 'Name' }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAccountIdentity('posthog', 'tok')).resolves.toEqual({
+      email: 'user@example.com',
+      name: 'User Name',
+    });
   });
 });
 
