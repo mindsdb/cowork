@@ -94,6 +94,7 @@ export function useNewTaskDraft({
   const [attachments, setAttachments] = useState<InputReference[]>([]);
   const [sourceContexts, setSourceContextsState] = useState<SourceContext[]>([]);
   const generatedSourcePrompt = useRef('');
+  const sourcePromptEdited = useRef(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelRefreshedAt = useRef(-Infinity);
@@ -119,7 +120,9 @@ export function useNewTaskDraft({
   const modelsLoading = codingCatalog.modelsLoading(engineId);
 
   const setPrompt = useCallback((value: string) => {
-    if (value !== generatedSourcePrompt.current) generatedSourcePrompt.current = '';
+    const matchesGeneratedPrompt = value === generatedSourcePrompt.current;
+    sourcePromptEdited.current = !!value.trim() && !matchesGeneratedPrompt;
+    if (!matchesGeneratedPrompt) generatedSourcePrompt.current = '';
     setPromptState(value);
   }, []);
 
@@ -127,7 +130,7 @@ export function useNewTaskDraft({
     setSourceContextsState(contexts);
     const generated = sourcePrompt(contexts);
     setPromptState((current) => {
-      if (current.trim() && current !== generatedSourcePrompt.current) return current;
+      if (sourcePromptEdited.current) return current;
       generatedSourcePrompt.current = generated;
       return generated;
     });

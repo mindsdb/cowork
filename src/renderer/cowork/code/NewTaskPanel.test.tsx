@@ -789,6 +789,57 @@ describe('NewTaskPanel', () => {
     expect(prompt).not.toHaveValue(expect.stringContaining('ENG-289'));
   });
 
+  it('keeps an untouched generated prompt in sync while linked work is added and removed', async () => {
+    const user = userEvent.setup();
+    const connectedProject = {
+      ...project,
+      connections: [
+        { provider: 'linear' as const, name: 'linear-work', label: 'Linear' },
+        { provider: 'github' as const, name: 'github-work', label: 'GitHub' },
+      ],
+    };
+    readSourceContext.mockImplementation(async (_id: string, body: { provider: 'github' | 'linear'; kind: string; url: string; connection_name?: string | null }) => (
+      body.provider === 'linear'
+        ? { ...body, title: 'Fix the schedule', external_id: 'ENG-289', body: 'Linear context' }
+        : { ...body, title: 'Ship the fix', external_id: 'mindsdb/cowork#84', body: 'Pull-request context' }
+    ));
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+    const prompt = screen.getByRole('textbox', { name: 'Coding task' });
+
+    await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://linear.app/mindsdb/issue/ENG-289/fix-the-schedule',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(prompt).toHaveValue('Work on ENG-289: Fix the schedule'));
+
+    await user.click(screen.getByRole('button', { name: 'Add another issue or PR' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://github.com/mindsdb/cowork/pull/84',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(prompt).toHaveValue('Work on the 2 linked work items.'));
+
+    await user.click(screen.getByRole('button', { name: 'Remove ENG-289' }));
+    await waitFor(() => expect(prompt).toHaveValue('Work on mindsdb/cowork#84: Ship the fix'));
+  });
+
   it('never overwrites a user-authored prompt when linked work changes', async () => {
     const user = userEvent.setup();
     const connectedProject = {
