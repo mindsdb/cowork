@@ -25,6 +25,7 @@ const codingSpies = vi.hoisted(() => ({
     ],
   })),
 }));
+const deployment = vi.hoisted(() => ({ isWeb: false, orgMode: false }));
 
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({ server_version: '0.1.0', anton_version: '0.1.0' })),
@@ -36,7 +37,7 @@ vi.mock('../../api', () => ({
 vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
-    isWeb: false,
+    get isWeb() { return deployment.isWeb; },
     codeModeAvailable: true,
     isMac: () => false,
     openExternal: vi.fn(),
@@ -48,6 +49,9 @@ vi.mock('../../../platform/host', () => ({
   getCodeControlPlaneOrigin: () => 'https://code.example.test',
   isElectron: true,
   getAccessToken: spies.getAccessToken,
+}));
+vi.mock('../../../lib/orgMode', () => ({
+  useOrgMode: () => deployment.orgMode,
 }));
 vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
@@ -119,6 +123,11 @@ function Harness({ section }) {
   );
 }
 
+beforeEach(() => {
+  deployment.isWeb = false;
+  deployment.orgMode = false;
+});
+
 describe('SettingsView — every section mounts (behavior lock)', () => {
   beforeEach(() => {
     Object.values(spies).forEach((s) => s.mockClear());
@@ -182,6 +191,31 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     render(<Harness section="account" />);
     expect(await screen.findByText(/Sign in \/ Sign up to MindsHub/i)).toBeInTheDocument();
     expect(spies.getAccessToken).toHaveBeenCalled();
+  });
+});
+
+describe('SettingsView — LLM provider visibility (ENG-2185)', () => {
+  it('hides the entire provider-management card on SaaS Cowork', async () => {
+    deployment.isWeb = true;
+    deployment.orgMode = true;
+
+    render(<Harness section="agent" />);
+
+    expect(await screen.findByText('Model Router')).toBeInTheDocument();
+    expect(screen.queryByText('LLM Providers')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add provider' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['standalone self-hosted web', true],
+    ['desktop', false],
+  ])('keeps provider management on %s', async (_deployment, isWeb) => {
+    deployment.isWeb = isWeb;
+
+    render(<Harness section="agent" />);
+
+    expect(await screen.findByText('LLM Providers')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add provider' })).toBeInTheDocument();
   });
 });
 

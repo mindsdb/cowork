@@ -48,11 +48,13 @@ RUN npm run build:web
 # Output: /build/dist/renderer-web/ (shell index-web.html, relative asset base)
 
 # Stage 2: runtime. nginx serving the static SPA, non-root on 8080.
-# Pinned to the current stable line on Alpine 3.24, which ships patched
-# openssl/libxml2/libpng/expat. The older 1.27-alpine tag is stuck on Alpine
-# 3.21 with known CVEs. Bump this tag when a newer stable release lands rather
-# than patching packages in-image.
-FROM nginxinc/nginx-unprivileged:1.30-alpine AS runtime
+# Pinned to the current stable line on Alpine 3.24. The older 1.27-alpine tag is
+# stuck on Alpine 3.21 with known CVEs. Bump this tag when a newer stable release
+# lands rather than patching packages in-image.
+# -slim, not -alpine: the full tag adds xslt/geoip/image-filter/njs, which this
+# config never loads and which pull gd -> fontconfig -> expat. Keep it slim
+# unless a directive here needs a dynamic module.
+FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
 
 LABEL org.opencontainers.image.title="cowork-frontend"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"

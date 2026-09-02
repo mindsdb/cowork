@@ -16,6 +16,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { SKINS, normalizeSkin } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
@@ -656,6 +657,7 @@ export default function SettingsView({
     codeModeAccess.available,
     codeModeAccess.enabled,
   );
+  const orgMode = useOrgMode();
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1163,7 +1165,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
+          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
@@ -1423,7 +1426,7 @@ export default function SettingsView({
                 </div>
               </div>
             </SettingsGroup>
-          </div>
+          </div>}
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
@@ -1679,7 +1682,9 @@ export default function SettingsView({
                                       // fetch itself failed, and assigning those straight through
                                       // would empty the dropdown the user just clicked (for every
                                       // role — the keys are shared) until the app restarts.
-                                      const merged = mergeRecommendedModels(settings, data);
+                                      // keepOrder: the dropdown is open on the list we hold
+                                      // when this lands; a reordered list jumps under the cursor.
+                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
                                       for (const [key, value] of Object.entries(merged)) setSetting(key, value);
                                       openState.refreshedAt = performance.now();

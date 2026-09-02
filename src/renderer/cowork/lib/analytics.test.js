@@ -448,6 +448,46 @@ describe('resolveIsInternal (ENG-672)', () => {
   });
 });
 
+describe('non-ASCII person properties (ENG-2138)', () => {
+  // `name` rides `$set` on every authenticated event, so the Latin-1 JWT
+  // decode did not just mis-render the account menu — it wrote the mangled
+  // name into the PostHog person record, over and over. `fakeJwt` encodes via
+  // Buffer's utf-8 default, so the fixture is a faithful token.
+  it('sends the accented name to PostHog intact', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'u-accent', email: 'g@example.com', name: 'Genesis Solórzano' })
+    );
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const event = fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'app_installed');
+    expect(event.properties.$set.name).toBe('Genesis Solórzano');
+  });
+
+  it('sends an accented organization name intact', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: 'u-org',
+        email: 'g@example.com',
+        activate_organization: { id: 'org-1', name: 'Açaí Ltda' },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const event = fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'app_installed');
+    expect(event.properties.$set.organization_name).toBe('Açaí Ltda');
+  });
+});
+
 describe('is_internal on captured events (ENG-672)', () => {
   it('stamps is_internal true (event + person $set) for a staff-role user on a non-mindsdb email', async () => {
     getAccessToken.mockResolvedValue(

@@ -382,6 +382,28 @@ describe('mergeRecommendedModels', () => {
     expect(merged.modelEfforts).toEqual(held.modelEfforts);
   });
 
+  it('keeps the held order on an on-open refresh, appending new ids and dropping gone ones', () => {
+    // ENG-1737: the picker refetches as it opens, so the response lands on a
+    // list that is already on screen. The server's order can differ between
+    // calls (auth served its catalog in two orders); the rows must not move.
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'], anthropic: ['claude-sonnet-5'] },
+      recommendedPair: { 'minds-cloud': ['haiku', 'sonnet', 'kimi'] },
+    }, { keepOrder: true });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet', 'opus']);
+    // A bucket with nothing in common takes the server's list.
+    expect(merged.recommendedModels.anthropic).toEqual(['claude-sonnet-5']);
+    // The pair is positional (planning, coding, router): never reordered.
+    expect(merged.recommendedPair['minds-cloud']).toEqual(['haiku', 'sonnet', 'kimi']);
+  });
+
+  it('takes the server order without keepOrder (the mount-time load)', () => {
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'] },
+    });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['opus', 'sonnet', 'mindshub_air']);
+  });
+
   it('keeps the model list when the MindsHub fetch failed behind a 200', () => {
     // What cowork-server answers when its own /v1/models call fails:
     // RECOMMENDED_MODELS['minds-cloud'] is an empty placeholder, and the live
