@@ -121,6 +121,33 @@ it('restores the last selected terminal for each task', async () => {
 });
 
 
+it('does not connect a previous task terminal while the next task loads', async () => {
+  let resolveSecond: ((value: { items: Array<{ id: string; label: string; created_at: string; status: 'stopped' }> }) => void) | undefined;
+  api.terminals
+    .mockResolvedValueOnce({ items: [{
+      id: 'terminal-1', label: 'Terminal 1', created_at: '2026-08-29T12:00:00Z', status: 'stopped',
+    }] })
+    .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+  const { rerender } = render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
+  await screen.findByRole('tab', { name: 'Terminal 1, Running' });
+  api.terminal.mockClear();
+  api.startTerminal.mockClear();
+
+  rerender(<TaskTerminal sessionId="task-2" onClose={vi.fn()} />);
+
+  expect(await screen.findByText('Opening terminal…')).toBeInTheDocument();
+  expect(api.terminal).not.toHaveBeenCalledWith('task-2', 'terminal-1');
+  resolveSecond?.({ items: [{
+    id: 'terminal-2', label: 'Terminal 1', created_at: '2026-08-29T12:01:00Z', status: 'stopped',
+  }] });
+
+  await waitFor(() => expect(api.startTerminal).toHaveBeenCalledWith('task-2', 'terminal-2', 80, 24, 'auto'));
+  expect(api.terminal).not.toHaveBeenCalledWith('task-2', 'terminal-1');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+
 it('refreshes and focuses a terminal created by a project action', async () => {
   const { rerender } = render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
   await screen.findByRole('tab', { name: 'Terminal 1, Running' });
