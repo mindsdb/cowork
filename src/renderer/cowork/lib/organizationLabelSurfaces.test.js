@@ -16,39 +16,54 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const RENDERER = resolve(import.meta.dirname, '../../');
+// `src/`, not `src/renderer/`. The first version of this file walked only the
+// renderer, and that is exactly how the switch-failure toasts in
+// `main/minds-auth.ts` kept saying `<email>'s organization` after every
+// renderer surface had stopped -- caught in review, not by this guard. The
+// main process builds user-facing text too, so a guard scoped to one process
+// is a guard with a hole in it.
+const SRC = resolve(import.meta.dirname, '../../../');
 
+// `presentationOnly` says whether EVERY `.displayName` read in the file is a
+// label. True for the renderer surfaces, which only render. False for
+// `minds-auth.ts`, which also *ingests*: `normalizeOrgRef` reads
+// `raw.displayName` off the untyped Keycloak payload, and that is the wire
+// field, not a label -- banning it would be banning the thing that feeds
+// `toMindsOrg` in the first place.
 const SURFACES = [
-  ['sidebar account menu', 'cowork/components/UserMenu.jsx'],
-  ['Settings → Account organization row', 'cowork/views/settings/AccountSection.jsx'],
-  ['onboarding organization picker', 'pages/arcade/OnboardingScreen.tsx'],
+  ['sidebar account menu', 'renderer/cowork/components/UserMenu.jsx', true],
+  ['Settings → Account organization row', 'renderer/cowork/views/settings/AccountSection.jsx', true],
+  ['onboarding organization picker', 'renderer/pages/arcade/OnboardingScreen.tsx', true],
+  ['main-process switch failure toasts', 'main/minds-auth.ts', false],
 ];
 
-describe.each(SURFACES)('%s', (_name, rel) => {
-  const src = readFileSync(resolve(RENDERER, rel), 'utf-8');
+describe.each(SURFACES)('%s', (_name, rel, presentationOnly) => {
+  const src = readFileSync(resolve(SRC, rel), 'utf-8');
 
   it('routes the organization name through organizationLabel', () => {
     expect(src).toContain('organizationLabel');
   });
 
-  it('never reads an organization displayName directly', () => {
+  it('never interpolates a displayName into user-facing text', () => {
     /*
-     * `organizationLabel` substitutes PERSONAL_ORG_LABEL for a personal
-     * organization, whose Keycloak displayName is auth's generated
-     * `<email>'s organization`. A surface reading displayName itself gets the
-     * long label and, where the token claim is also in play, disagrees with
-     * the other reader for as long as the listing takes to resolve.
-     *
-     * Any `.displayName` property access at all, not a list of variable names
-     * a surface might happen to use. The first version keyed on `org|activeOrg|
-     * mintedOrg|organization` and missed `orgs.map((o) => o.displayName)`,
-     * `selected.displayName` and destructuring — a guard whose job is catching
-     * the NEXT surface cannot depend on that surface naming its variable `org`.
-     * Verified safe: zero `.displayName` accesses remain in these three files,
-     * and `UserMenu`'s `const displayName = user.name` is a variable rather
-     * than a property read, so it does not match.
+     * The defect class, stated exactly: a `.displayName` inside a template
+     * literal or JSX expression is a string a person reads. This is what the
+     * renderer-only version of this guard could not see, and it is why the
+     * switch-failure toasts in `main/minds-auth.ts` still said
+     * `<email>'s organization` after every renderer surface had stopped.
      */
-    const direct = [...src.matchAll(/\.displayName\b/g)];
-    expect(direct.map((m) => m[0])).toEqual([]);
+    const interpolated = [...src.matchAll(/\$\{[^}]*\.displayName[^}]*\}/g)].map((m) => m[0]);
+    expect(interpolated).toEqual([]);
+  });
+
+  it('never reads an organization displayName at all', () => {
+    /*
+     * Stronger, and only fair where every read would be a label. A file that
+     * also ingests the raw Keycloak shape is exempt -- the interpolation rule
+     * above is what guards it.
+     */
+    if (!presentationOnly) return;
+    const direct = [...src.matchAll(/\.displayName\b/g)].map((m) => m[0]);
+    expect(direct).toEqual([]);
   });
 });

@@ -38,12 +38,17 @@ export function accountUserFromToken(token) {
 // worse than the generic label below, and rebuilding auth's string here would
 // put a third copy of a rule that already lives in auth and in Keycloak.
 //
-// So a personal organization gets a readable placeholder rather than nothing.
-// The listing is an async, failable source, and it is the only thing that can
-// produce auth's real label. The menu still has to name the organization on
-// first paint and when that read never lands. `useMindsOrgs` upgrades this
-// to the Keycloak-held name as soon as it arrives, because `UserMenu` prefers
-// the listing's `displayName` over this value.
+// So a personal organization reads `PERSONAL_ORG_LABEL` here, and the
+// `isPersonal` check short-circuits ahead of the claim's own display name --
+// the realm may carry auth's generated `<email>'s organization` in the claim
+// too, and that is the label we are replacing, wherever it arrives from.
+//
+// This used to say the listing upgraded the value once it arrived, because
+// every reader preferred the listing's `displayName`. It no longer does:
+// `organizationLabel` (shared/minds-orgs.ts) substitutes the same short label
+// on the listing side, so both readers now answer identically and there is
+// nothing left to upgrade. That disagreement was ENG-2109 -- the row painted
+// `Personal` and then swapped to the long name a beat later.
 function activeOrgFromPayload(payload) {
   let org = payload.activate_organization ?? payload.active_organization ?? payload.organization;
   if (typeof org === 'string') {

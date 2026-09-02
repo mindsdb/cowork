@@ -12,6 +12,7 @@ import {
   type MindsOrg,
   type MindsOrgList,
   chooseMindsOrg,
+  organizationLabel,
   personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
@@ -1307,7 +1308,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
       ok: false,
       activeOrgId: sourceOrgId,
       orgs,
-      error: `MindsHub would not switch to ${target.displayName}. Nothing changed.`,
+      error: `MindsHub would not switch to ${organizationLabel(target)}. Nothing changed.`,
     };
   }
 
@@ -1320,7 +1321,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
       ok: false,
       activeOrgId: sourceOrgId,
       orgs,
-      error: `Could not refresh the session for ${target.displayName}. Nothing changed.`,
+      error: `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`,
     };
   }
 
