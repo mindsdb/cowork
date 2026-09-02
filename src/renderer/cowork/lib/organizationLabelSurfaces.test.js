@@ -56,13 +56,16 @@ describe.each(SURFACES)('%s', (_name, rel, presentationOnly) => {
     expect(interpolated).toEqual([]);
   });
 
-  it('never reads an organization displayName at all', () => {
-    /*
-     * Stronger, and only fair where every read would be a label. A file that
-     * also ingests the raw Keycloak shape is exempt -- the interpolation rule
-     * above is what guards it.
-     */
-    if (!presentationOnly) return;
+  /*
+   * Stronger, and only fair where every read would be a label. A file that also
+   * ingests the raw Keycloak shape is exempt -- the interpolation rule above is
+   * what guards it.
+   *
+   * `skipIf`, not an early `return`: returning would report a PASS for the
+   * exempt surface while asserting nothing, and a green tick that proves
+   * nothing is worse than an honest skip.
+   */
+  it.skipIf(!presentationOnly)('never reads an organization displayName at all', () => {
     const direct = [...src.matchAll(/\.displayName\b/g)].map((m) => m[0]);
     expect(direct).toEqual([]);
   });
