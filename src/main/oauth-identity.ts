@@ -26,10 +26,6 @@ async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> 
 // broken/unverified `organization` field degrades to "no workspace split"
 // instead of failing the whole connection. Mirrors cowork-server's
 // _fetch_linear_workspace (oauth/google.py) and auth's counterpart.
-//
-// TEMP (ENG-2188): the `organization { id name }` shape is unverified
-// against Linear's real schema. Logs the raw response once to confirm the
-// real shape from a live reconnect, then remove the console.warn.
 async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; name: string }> {
   try {
     const res = await fetch('https://api.linear.app/graphql', {
@@ -45,7 +41,6 @@ async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; 
       data?: { organization?: { id?: string; name?: string } };
       errors?: unknown;
     };
-    console.warn('[oauth-identity] Linear organization raw GraphQL response (TEMP diagnostic):', JSON.stringify(data));
     if (data.errors) return { id: '', name: '' };
     return { id: data.data?.organization?.id || '', name: data.data?.organization?.name || '' };
   } catch (err) {
