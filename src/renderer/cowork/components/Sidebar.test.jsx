@@ -314,6 +314,24 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
     expect(onRetryTasks).toHaveBeenCalledTimes(1);
   });
 
+  it('never claims "no tasks" to a user whose tasks are all pinned', () => {
+    // recents deliberately excludes pinned items, so keying the empty state on
+    // it told an all-pinned user they had nothing — with their pinned tasks
+    // visible directly above.
+    const t = { id: 'p1', title: 'Pinned thing', messages: [], updatedAt: '2026-09-02T10:00:00Z' };
+    const pins = [{ item_type: 'conversation', item_id: 'p1' }];
+    render(<Sidebar {...baseProps} tasks={[t]} pins={pins} tasksStatus="ready" />);
+    expect(screen.getByText('Pinned thing')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+  });
+
+  it('shows no skeleton while loading if pinned tasks are already on screen', () => {
+    const t = { id: 'p1', title: 'Pinned thing', messages: [], updatedAt: '2026-09-02T10:00:00Z' };
+    const pins = [{ item_type: 'conversation', item_id: 'p1' }];
+    render(<Sidebar {...baseProps} tasks={[t]} pins={pins} tasksStatus="loading" />);
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+  });
+
   it('never shows loading or empty copy once tasks exist', () => {
     const tasks = [{ id: 't1', title: 'Real task', messages: [], updatedAt: '2026-09-02T10:00:00Z' }];
     render(<Sidebar {...baseProps} tasks={tasks} tasksStatus="loading" />);

@@ -367,10 +367,18 @@ export async function fetchSessions({ onItems } = {}) {
   // Background: fire-and-forget, one callback per conversation as it lands.
   // Failures are per-conversation and silent — a warm-up that misses costs a
   // slower open, never a blocked list.
-  for (const c of conversations.slice(0, EAGER)) {
-    req(`/conversations/${encodeURIComponent(c.id)}/items`)
-      .then((r) => onItems?.(c.id, Array.isArray(r) ? r : []))
-      .catch(() => {});
+  //
+  // Only warmed when a caller is actually listening. Seven of the eight
+  // `fetchSessions` call sites want the list and nothing else (every task
+  // open is one of them); warming for those fetched 50 transcripts and threw
+  // every one away, which is 50 wasted requests on the app's most common
+  // interaction.
+  if (onItems) {
+    for (const c of conversations.slice(0, EAGER)) {
+      req(`/conversations/${encodeURIComponent(c.id)}/items`)
+        .then((r) => onItems(c.id, Array.isArray(r) ? r : []))
+        .catch(() => {});
+    }
   }
 
   return conversations.map((c) => _conversationToTask(c, []));

@@ -1489,6 +1489,9 @@ function AppCore() {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
+    // A retry after a failure must look like it did something; without this
+    // the error copy sits there until the request resolves.
+    setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
     fetchSessions({
       // The background transcript warm-up reports each bundle as it lands
       // (ENG-2246). Merge it in without disturbing a live conversation:

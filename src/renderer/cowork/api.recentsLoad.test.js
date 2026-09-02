@@ -51,13 +51,27 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
       return Promise.resolve(jsonRes(conversations(60)));
     });
 
-    const tasks = await fetchSessions();   // must not hang
+    const tasks = await fetchSessions({ onItems: () => {} });   // must not hang
 
     expect(Array.isArray(tasks)).toBe(true);
     expect(tasks).toHaveLength(60);
     expect(tasks[0].title).toBe('Task 0');
     // The warm-up still fires, at the original depth, just not awaited.
     expect(itemsRequested).toBe(50);
+  });
+
+  it('skips the warm-up entirely when no caller is listening', async () => {
+    // Seven of the eight call sites — every task open among them — want the
+    // list and nothing else. Warming for them fetched 50 transcripts and
+    // discarded every one.
+    let itemsRequested = 0;
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/items')) { itemsRequested += 1; return new Promise(() => {}); }
+      return Promise.resolve(jsonRes(conversations(60)));
+    });
+
+    await expect(fetchSessions()).resolves.toHaveLength(60);
+    expect(itemsRequested).toBe(0);
   });
 
   it('reports a failed list as an error, not as an empty account', async () => {

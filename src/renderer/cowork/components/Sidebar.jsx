@@ -694,7 +694,11 @@ export default function Sidebar({
           </Tooltip>
         </div>
         <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
-          {tasksStatus === 'loading' && recents.length === 0 && (
+          {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
+              excludes pinned items, so keying on it told a user whose tasks
+              are all pinned that they have none — while their pinned tasks
+              were on screen above. */}
+          {tasksStatus === 'loading' && tasksWithPin.length === 0 && (
             // Skeleton rows rather than a spinner: the list is about to be
             // rows, so reserving their shape avoids the jump when they land.
             <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
@@ -708,7 +712,7 @@ export default function Sidebar({
               ))}
             </div>
           )}
-          {tasksStatus === 'failed' && recents.length === 0 && (
+          {tasksStatus === 'failed' && tasksWithPin.length === 0 && (
             // Distinct from "No tasks yet" on purpose: an empty list after a
             // failed fetch reads as lost work, which is the bug this fixes.
             <div role="alert" className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
@@ -725,7 +729,7 @@ export default function Sidebar({
               )}
             </div>
           )}
-          {tasksStatus === 'ready' && recents.length === 0 && (
+          {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
             <div className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
               No tasks yet
             </div>
