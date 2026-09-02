@@ -106,6 +106,11 @@ async function launch(sb: Sandbox, manifestUrl?: string): Promise<Page> {
       ...(clean as Record<string, string>),
       HOME: sb.home, // clean profile: no real ~/.cowork*/.env → DEV_MODE stays off
       USERPROFILE: sb.home,
+      COWORK_DEV_HOME: path.join(sb.home, '.cowork-e2e'),
+      // Keep app.setName() from replacing the unique --user-data-dir with the
+      // shared development profile. OTA_UI explicitly enables the OTA paths
+      // this unpackaged lifecycle suite exercises.
+      COWORK_BUILD_KIND: 'prod',
       OTA_UI: 'on', // force the build-channel gate on for this unpackaged build
       ...(manifestUrl ? { COWORK_OTA_MANIFEST_URL: manifestUrl } : {}),
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
@@ -123,7 +128,11 @@ async function waitForBridge(page: Page) {
   );
 }
 
-type CheckResult = { updateAvailable: boolean; applied: boolean; newVersion?: string; skippedReason?: string };
+type CheckResult = {
+  updateAvailable: boolean;
+  uiUpdateAvailable: boolean;
+  uiVersion?: string;
+};
 const checkUpdate = (page: Page) =>
   page.evaluate(() => (window as unknown as { antontron: { checkForUpdate: () => Promise<CheckResult> } }).antontron.checkForUpdate());
 const applyUpdate = (page: Page) =>
@@ -239,8 +248,10 @@ test.describe('OTA lifecycle (live)', () => {
     await waitForBridge(page);
 
     const checked = await checkUpdate(page);
-    expect(checked.updateAvailable).toBe(false);
-    expect(checked.skippedReason ?? '').toMatch(/server version unknown/);
+    // The public bridge returns the unified UI/server/shell summary. A
+    // compatibility reason is intentionally internal, so assert the observable
+    // contract: the UI is withheld and cannot be applied or staged.
+    expect(checked.uiUpdateAvailable).toBe(false);
 
     // The apply path withholds too, and never creates a cache slot.
     expect(await applyUpdate(page)).toBe(false);
@@ -258,13 +269,13 @@ test.describe('OTA lifecycle (live)', () => {
     await waitForBridge(page);
 
     // Same version as the quarantine → withheld.
-    expect((await checkUpdate(page)).updateAvailable).toBe(false);
+    expect((await checkUpdate(page)).uiUpdateAvailable).toBe(false);
 
     // Manifest advances → quarantine clears, the newer bundle is offered.
     const next = bumpYears(NEWER, 1);
     server.setFixture({ version: next } as OtaFixture);
     const after = await checkUpdate(page);
-    expect(after.updateAvailable).toBe(true);
-    expect(after.newVersion).toBe(next);
+    expect(after.uiUpdateAvailable).toBe(true);
+    expect(after.uiVersion).toBe(next);
   });
 });

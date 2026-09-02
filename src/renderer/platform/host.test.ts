@@ -188,9 +188,9 @@ describe('web mode (no bridge)', () => {
     await expect(host.getUIVersion()).resolves.toBe('web');
   });
 
-  it('codingModeOptionsEnabled is always false on web — no bridge to read the flag from', async () => {
+  it('codeModeAvailable is always false on web — no desktop capability bridge exists', async () => {
     const host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
   });
 
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
@@ -216,8 +216,8 @@ describe('web mode (no bridge)', () => {
 
   it('OS-level affordances return the documented unsupported shape', async () => {
     const host = await importHost();
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
-    await expect(host.serverStop()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
+    await expect(host.serverStop()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.openPath('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.showItemInFolder('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     expect(host.getPathForFile(new File([], 'x.txt'))).toBeNull();
@@ -264,19 +264,19 @@ describe('electron mode (bridge present)', () => {
     expect(host.isMac()).toBe(true);
   });
 
-  it('codingModeOptionsEnabled mirrors the bridge value exactly — only literal true counts', async () => {
-    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: true };
+  it('codeModeAvailable mirrors the bridge value exactly — only literal true counts', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { codeModeAvailable: true };
     let host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(true);
+    expect(host.codeModeAvailable).toBe(true);
 
-    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: false };
+    (window as unknown as Record<string, unknown>).antontron = { codeModeAvailable: false };
     host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
 
     // Missing field (older/partial bridge) defaults to off, same as web.
     (window as unknown as Record<string, unknown>).antontron = {};
     host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
   });
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
@@ -284,6 +284,7 @@ describe('electron mode (bridge present)', () => {
     setUrl('file:///Applications/app/index.html');
     let host = await importHost();
     expect(host.getApiOrigin()).toBe('http://127.0.0.1:12345');
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
 
     (window as unknown as Record<string, unknown>).antontron = {}; // bridge without serverPort
     host = await importHost();
@@ -291,17 +292,49 @@ describe('electron mode (bridge present)', () => {
     expect(host.isLocalApiOrigin()).toBe(true); // loopback → shell-openable
   });
 
+  it('uses a validated reachable control-plane origin for outbound Code runtimes', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://code.example.test',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('https://code.example.test');
+  });
+
+  it('rejects control-plane URLs with credentials or non-origin paths', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://user:secret@code.example.test/runtime',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
+  });
+
   it('IPC flows are used: getOAuthRedirectUri is null, calls delegate to the bridge', async () => {
-    const serverStart = vi.fn(async () => ({ ok: true }));
+    const serverStart = vi.fn(async () => ({ running: true }));
     const oauthConnect = vi.fn(async () => ({ ok: true, access_token: 't' }));
     (window as unknown as Record<string, unknown>).antontron = { serverStart, oauthConnect };
     const host = await importHost();
 
     expect(host.getOAuthRedirectUri('gmail')).toBeNull();
-    await expect(host.serverStart()).resolves.toEqual({ ok: true });
+    await expect(host.serverStart()).resolves.toEqual({ running: true });
     expect(serverStart).toHaveBeenCalledOnce();
     await expect(host.oauthConnect({ authUrl: 'a' } as never)).resolves.toMatchObject({ ok: true });
     expect(oauthConnect).toHaveBeenCalledWith({ authUrl: 'a' });
+  });
+
+  it('pickCodeFolder delegates to the desktop bridge and partial shells fail closed', async () => {
+    const pickCodeFolder = vi.fn(async () => ({ ok: true, path: 'C:\\work\\repo' }));
+    (window as unknown as Record<string, unknown>).antontron = { pickCodeFolder };
+    let host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toEqual({ ok: true, path: 'C:\\work\\repo' });
+    expect(pickCodeFolder).toHaveBeenCalledOnce();
+
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toMatchObject({ ok: false });
   });
 
   it('a partial bridge (method missing) falls back to the web stub, never throws', async () => {
@@ -310,7 +343,7 @@ describe('electron mode (bridge present)', () => {
     (window as unknown as Record<string, unknown>).antontron = {};
     const host = await importHost();
     expect(host.getPlatform()).toBe('web');
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
   });

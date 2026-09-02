@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { providerStatusBadge } from './SettingsView';
-import { accountUserFromToken, accountInitials } from '../../lib/accountUser';
+import { accountUserFromToken, accountInitials, skillScopeKey } from '../../lib/accountUser';
 import { PERSONAL_ORG_LABEL } from '../../../../shared/minds-orgs';
 
 const jwt = (payload) =>
@@ -63,11 +63,34 @@ describe('accountUserFromToken', () => {
   });
 
   it('uses a display name on the claim when one is there', () => {
+    // A company organization: the claim's own display name is the best label
+    // available, so it wins. Moved off the personal organization, which is the
+    // one case where it does not (see below).
     const user = accountUserFromToken(jwt({
       sub: 'user-1',
-      activate_organization: { id: 'org-personal', name: 'personal_user-1', displayName: "hazem@example.com's organization" },
+      activate_organization: { id: 'org-acme', name: 'acme.example', displayName: 'Acme Corporation' },
     }));
-    expect(user.org).toBe("hazem@example.com's organization");
+    expect(user.org).toBe('Acme Corporation');
+  });
+
+  /*
+   * ENG-2109. This used to assert the claim's display name won for a personal
+   * organization too, which meant that if the realm put auth's generated
+   * `<email>'s organization` in the claim, the account row showed the long
+   * label from the very first paint — and the listing-side fix would not help,
+   * because this value is also the fallback for when the listing never lands.
+   * Both readers now answer the same way.
+   */
+  it('prefers Personal over the generated label even when the claim carries it', () => {
+    const user = accountUserFromToken(jwt({
+      sub: 'user-1',
+      activate_organization: {
+        id: 'org-personal',
+        name: 'personal_user-1',
+        displayName: "hazem@example.com's organization",
+      },
+    }));
+    expect(user.org).toBe(PERSONAL_ORG_LABEL);
   });
 
   it('still reads the older claim spellings', () => {
@@ -124,5 +147,27 @@ describe('providerStatusBadge', () => {
     [null, false, null],
   ])('maps %s (configured: %s) to %o', (status, configured, expected) => {
     expect(providerStatusBadge(status, configured)).toEqual(expected);
+  });
+});
+
+describe('skillScopeKey', () => {
+  // Every personal organization prints as PERSONAL_ORG_LABEL, so a key built
+  // from the label handed one person's cached skills to the next.
+  it('separates two organizations that share a label', () => {
+    const base = { sub: 'user-1', email: 'hazem@example.com' };
+    const keyA = skillScopeKey({ ...base, org: PERSONAL_ORG_LABEL, orgId: 'org-a' });
+    const keyB = skillScopeKey({ ...base, org: PERSONAL_ORG_LABEL, orgId: 'org-b' });
+    expect(keyA).not.toBe(keyB);
+    expect(keyA).toContain('org-a');
+    expect(keyA).not.toContain(PERSONAL_ORG_LABEL);
+  });
+
+  it('falls back to the label only when the claim carries no id', () => {
+    const user = { sub: 'user-1', email: 'hazem@example.com', org: 'acme.example', orgId: null };
+    expect(skillScopeKey(user)).toBe('user-1:hazem@example.com:acme.example');
+  });
+
+  it('keys a signed-out session as such', () => {
+    expect(skillScopeKey(null)).toBe('signed-out');
   });
 });

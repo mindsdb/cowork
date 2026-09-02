@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PERSONAL_ORG_LABEL } from '../../../shared/minds-orgs';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // Mutable host mock — flip isWeb / checkConfigured per test. ENG-912: a
@@ -455,7 +456,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     // ranking would have reached on its own.
     expect(screen.getByRole('radio', { name: /acme\.example/ })).toBeChecked();
     // The personal organization is offered too: someone may deliberately want it.
-    expect(screen.getByRole('radio', { name: /hazem@example\.com's organization/ })).toBeInTheDocument();
+    // Listed as `Personal`, not as auth's generated `<email>'s organization` —
+    // the picker names it the same way the account menu does (ENG-2109).
+    expect(screen.getByRole('radio', { name: new RegExp(PERSONAL_ORG_LABEL) })).toBeInTheDocument();
   });
 
   it('mints in the organization that was picked', async () => {
@@ -476,7 +479,10 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: PERSONAL }));
     await signIn();
     await waitFor(() => expect(screen.getByText(/Working in/)).toBeInTheDocument());
-    expect(screen.getByText("hazem@example.com's organization")).toBeInTheDocument();
+    // `Personal` rather than auth's generated label, same rule as everywhere
+    // else the product names an organization (ENG-2109). The assertion that
+    // matters is unchanged: it names the organization the key LANDED in.
+    expect(screen.getByText(PERSONAL_ORG_LABEL)).toBeInTheDocument();
   });
 
   it('says nothing about an organization when the mint did not report one', async () => {

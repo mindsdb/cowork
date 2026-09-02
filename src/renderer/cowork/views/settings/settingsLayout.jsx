@@ -1,4 +1,4 @@
-import { useContext, createContext, Children } from 'react';
+import { useContext, createContext, Children, useState } from 'react';
 import Ico from '../../components/Icons';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
@@ -9,6 +9,43 @@ import { Switch } from '../../components/ui/Switch';
 // so the whole page scrolls. SettingsSectionPanel reads this to drop its
 // flex-fill / internal scroll / sticky footer on mobile.
 export const SettingsLayoutContext = createContext({ mobile: false });
+
+// A titled card shared by settings pages. Keeping it in the canonical layout
+// module lets focused settings sections live outside the already-large parent
+// view without copying desktop/mobile chrome.
+export function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
+  const headingClass =
+    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const heading = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setCollapsed((current) => !current)}
+      aria-expanded={!collapsed}
+      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
+    >
+      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
+        {Ico.chevRight(12)}
+      </span>
+      {title}
+    </button>
+  ) : title;
+  if (mobile) {
+    return (
+      <div className="mb-1.5">
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
+      </div>
+    );
+  }
+  return (
+    <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
+      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
+    </div>
+  );
+}
 
 export function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);

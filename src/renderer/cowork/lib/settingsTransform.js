@@ -36,6 +36,8 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
+  coding_agent_engine: 'codingAgentEngine',
+  coding_agent_model: 'codingAgentModel',
   // Router role — history summarization, on the user's pick. The
   // respond-or-delegate gate ahead of each turn resolves its own model
   // server-side (ENG-1851; `settings.gate`, see routerRoleSubtitle) and only
@@ -199,7 +201,8 @@ export function modelLabel(id) {
   }
   if (s.startsWith('gpt-')) {
     const [head, ...rest] = s.slice(4).split('-');
-    return `GPT-${head}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
+    const family = /^\d/.test(head) ? `GPT-${head}` : `GPT ${_cap(head)}`;
+    return `${family}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
   }
   if (s.startsWith('gemini-')) {
     return `Gemini ${s.slice(7).split('-').map(_cap).join(' ')}`;

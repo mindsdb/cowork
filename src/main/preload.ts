@@ -14,10 +14,14 @@ function parseServerPort(): number | null {
 contextBridge.exposeInMainWorld('antontron', {
   // Resolved loopback server port (ENG-439); null if main didn't pass one.
   serverPort: parseServerPort(),
-  // Coding Mode kill switch: the feature (its Settings section, the toggle,
-  // the floating corner button) is parked behind this while unfinished.
-  // Unset/anything other than 'true' defaults to off.
-  codingModeOptionsEnabled: process.env.CODING_MODE_OPTIONS_ENABLED === 'true',
+  // Optional reachable control-plane origin for connecting another physical
+  // computer. The renderer validates this before placing it in setup commands.
+  codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
+  // Deployment capability, deliberately separate from the user's local
+  // opt-in. Desktop builds expose Code unless an emergency rollout kill
+  // switch explicitly disables it; hosted web receives no Electron bridge
+  // and therefore cannot expose the feature.
+  codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
@@ -79,6 +83,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+  pickCodeFolder: () => ipcRenderer.invoke(IPC.CODE_PICK_FOLDER),
 
   // Coding mode (MVP): detect a local `claude` CLI, run it in an embedded PTY.
   detectClaudeCode: () => ipcRenderer.invoke(IPC.CODING_DETECT_CLI),
