@@ -22,7 +22,7 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { refreshTokensOnly, refreshMindsCredentialAfterResume, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { refreshTokensOnly, refreshMindsCredentialAfterResume, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
@@ -557,6 +557,15 @@ const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
 // minted device key at boot. Extracted verbatim — the ordering inside it is
 // load-bearing and is explained step by step.
 async function performMindsSignOut() {
+  beginMindsCredentialSignOut();
+  try {
+    await performMindsSignOutCleanup();
+  } finally {
+    endMindsCredentialSignOut();
+  }
+}
+
+async function performMindsSignOutCleanup() {
   // Full sign-out: clear every credential + LLM-config key so the
   // next launch's checkConfigured() returns false and the user is
   // routed straight to onboarding. We deliberately keep
@@ -581,6 +590,9 @@ async function performMindsSignOut() {
   // superseded token.
   const logoutRefreshToken = getRefreshToken();
   void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
+  // Fence again after the bounded lookup. If its Keycloak request outlives the
+  // timeout, this new cancellation epoch prevents the late response from
+  // writing tokens after the local session is cleared below.
   cancelScheduledRefresh();
   // Resolve any request already held across wake, and keep later turns blocked
   // until a new selected credential is explicitly handed over.

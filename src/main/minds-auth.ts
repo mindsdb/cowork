@@ -119,6 +119,23 @@ export type TokenRefreshResult =
 // configured to rotate refresh tokens, so parallel exchanges with the
 // same token are not just wasteful but potentially self-invalidating.
 let _inflightRefresh: Promise<TokenRefreshResult> | null = null;
+let _mindsCredentialSignOutDepth = 0;
+
+/**
+ * Fence ordinary credential readiness before logout performs any awaited
+ * revoke work. A revoke-only refresh may rotate the persisted refresh token,
+ * but it must never hand that credential to the sidecar or reopen the wake
+ * barrier while sign-out is in progress.
+ */
+export function beginMindsCredentialSignOut(): void {
+  _mindsCredentialSignOutDepth += 1;
+  cancelScheduledRefresh();
+  settleMindsResumeCredentialGate(false);
+}
+
+export function endMindsCredentialSignOut(): void {
+  _mindsCredentialSignOutDepth = Math.max(0, _mindsCredentialSignOutDepth - 1);
+}
 
 export function refreshTokensOnly(): Promise<TokenRefreshResult> {
   if (!_inflightRefresh) {
@@ -178,6 +195,9 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
 }
 
 async function doRefreshTokens(): Promise<TokenRefreshResult> {
+  // Capture this for the full exchange: getRevokeToken has its own deadline,
+  // so the request can finish after the enclosing sign-out has returned.
+  const suppressCredentialHandoff = _mindsCredentialSignOutDepth > 0;
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     settleMindsResumeCredentialGate(false);
@@ -208,7 +228,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         return { status: 'superseded' };
       }
       if (getTokenStoreVersion() !== tokenStoreVersion) {
-        void settleResumeGateFromSelectedCredential();
+        if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
         return { status: 'superseded' };
       }
       if ((res.status === 400 || res.status === 401) && oauthError === 'invalid_grant') {
@@ -219,11 +239,11 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         // Re-resolve rather than blindly clearing: a user-supplied mdb_ key is
         // independent of the dead SSO session and keeps its explicit priority;
         // without one, the same call clears the expired JWT.
-        void settleResumeGateFromSelectedCredential();
+        if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
         return { status: 'invalid_grant' };
       }
       console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
-      scheduleRefreshRetry();
+      if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
     }
     const data = await res.json() as { access_token?: unknown; expires_in?: number; refresh_token?: string };
@@ -234,17 +254,23 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'superseded' };
     }
     if (getTokenStoreVersion() !== tokenStoreVersion) {
-      void settleResumeGateFromSelectedCredential();
+      if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
       return { status: 'superseded' };
     }
     if (typeof data.access_token !== 'string' || !data.access_token) {
       console.warn('[minds-auth] token refresh returned no access token — keeping session');
-      scheduleRefreshRetry();
+      if (!suppressCredentialHandoff) scheduleRefreshRetry();
       return { status: 'transient' };
     }
     const expiresInSeconds = data.expires_in ?? 3600;
     const expiresAt = Date.now() + expiresInSeconds * 1000;
     saveTokens(data.access_token, expiresInSeconds, data.refresh_token ?? refreshToken);
+    if (suppressCredentialHandoff) {
+      // Persist a rotated refresh token for end-session, but keep this exchange
+      // strictly on the revoke path: no sidecar handoff, retry, timer, or gate
+      // settlement may escape the logout fence.
+      return { status: 'ok', token: data.access_token };
+    }
     const refreshedTokenStoreVersion = getTokenStoreVersion();
     // The exchange is not usable by a turn until the sidecar has accepted the
     // selected credential. `syncUsableMindsCredential` intentionally re-resolves
@@ -293,12 +319,12 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'superseded' };
     }
     if (getTokenStoreVersion() !== tokenStoreVersion) {
-      void settleResumeGateFromSelectedCredential();
+      if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
       return { status: 'superseded' };
     }
     // Network failure / timeout — the token itself is fine. Retry later.
     console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', describeFetchError(e));
-    scheduleRefreshRetry();
+    if (!suppressCredentialHandoff) scheduleRefreshRetry();
     return { status: 'transient' };
   }
 }
@@ -1336,7 +1362,7 @@ const CREDENTIAL_HANDOFF_RETRIES_INSIDE_BUFFER = 5;
 function retryDelay(attempt: number, baseMs: number, maxMs: number, fastAttempts: number): number {
   if (attempt < fastAttempts) return baseMs;
   const backedOff = Math.min(baseMs * 2 ** (attempt - fastAttempts + 1), maxMs);
-  return backedOff + Math.floor(Math.random() * 2_000);
+  return Math.min(backedOff + Math.floor(Math.random() * 2_000), maxMs);
 }
 
 let _refreshRetryAttempt = 0;

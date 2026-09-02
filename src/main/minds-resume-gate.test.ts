@@ -16,6 +16,10 @@ afterEach(() => {
 });
 
 describe('Minds resume credential gate', () => {
+  it('keeps its timeout below the renderer reservation reap floor', () => {
+    expect(MINDS_RESUME_READY_TIMEOUT_MS).toBeLessThan(13_000);
+  });
+
   it('releases waiters only after readiness is observed', async () => {
     beginMindsResumeCredentialGate();
     let settled = false;
