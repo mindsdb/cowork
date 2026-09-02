@@ -31,8 +31,34 @@ import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-s
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
+import { settleMindsResumeCredentialGate } from './minds-resume-gate';
 
 const PUSH_TIMEOUT_MS = 10_000;
+
+interface ResolvedMindsCredential {
+  value: string | null;
+  userSupplied: boolean;
+  usable: boolean;
+}
+
+async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredential> {
+  try {
+    const supplied = await getMindsApiKey();
+    if (supplied) return { value: supplied, userSupplied: true, usable: true };
+  } catch (error) {
+    // A keychain that cannot be read must not cost a signed-in user their
+    // session credential too. keychain-service already falls back to its
+    // encrypted file when keytar throws, so reaching here means both stores
+    // failed — fall through and present the token rather than nothing.
+    console.warn('[minds-credential] could not read the stored key', error);
+  }
+  const accessToken = getAccessToken();
+  return {
+    value: accessToken,
+    userSupplied: false,
+    usable: Boolean(accessToken) && !isAccessTokenExpired(),
+  };
+}
 
 /**
  * The credential the sidecar should present, or null when there is none.
@@ -42,27 +68,49 @@ const PUSH_TIMEOUT_MS = 10_000;
  * run on it even while they are also signed in.
  */
 export async function resolveMindsCredential(): Promise<string | null> {
-  try {
-    const supplied = await getMindsApiKey();
-    if (supplied) return supplied;
-  } catch (error) {
-    // A keychain that cannot be read must not cost a signed-in user their
-    // session credential too. keychain-service already falls back to its
-    // encrypted file when keytar throws, so reaching here means both stores
-    // failed — fall through and present the token rather than nothing.
-    console.warn('[minds-credential] could not read the stored key', error);
-  }
-  return getAccessToken();
+  return (await resolveMindsCredentialSelection()).value;
+}
+
+/** Whether the selected credential is independent of the Keycloak session. */
+export async function hasUserSuppliedMindsCredential(): Promise<boolean> {
+  return (await resolveMindsCredentialSelection()).userSupplied;
+}
+
+// Every caller crosses the same sidecar endpoint. Serialize those PUTs so an
+// older, slower request can never finish after a newer refresh/logout handoff
+// and restore the credential the newer operation just replaced.
+let _credentialPushTail: Promise<void> = Promise.resolve();
+
+function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
+  const queued = _credentialPushTail.then(operation);
+  _credentialPushTail = queued.then(() => undefined, () => undefined);
+  return queued;
 }
 
 /**
  * Hand `value` to the sidecar. A null or empty value clears it there.
  *
- * Returns whether the push landed. Callers that are establishing the credential
- * (sign-in, boot) care about the answer; the refresh timer does not, because the
- * next tick pushes again anyway.
+ * Returns whether the push landed. Refresh waits for this answer before it can
+ * report success and schedules a handoff-only retry on failure; boot and sign-in
+ * use the same signal to avoid claiming the sidecar is configured prematurely.
  */
-export async function pushMindsCredential(value: string | null): Promise<boolean> {
+export function pushMindsCredential(value: string | null): Promise<boolean> {
+  return enqueueCredentialPush(() => pushMindsCredentialNow(value));
+}
+
+/**
+ * Whether a sidecar exists to receive a hand-over right now.
+ *
+ * `pushMindsCredentialNow` returns the same `false` for "no sidecar yet" and
+ * "the sidecar refused", which are different failures: only the second is worth
+ * warning about or retrying on a timer. Boot refreshes tokens before it starts
+ * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ */
+export function isMindsCredentialSidecarReachable(): boolean {
+  return isServerRunning() || isServerStarting();
+}
+
+async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
   if (!isServerRunning() && !isServerStarting()) return false;
   const port = getServerPort();
   if (!port) return false;
@@ -102,13 +150,40 @@ export async function pushMindsCredential(value: string | null): Promise<boolean
  *
  * Never rejects, and there is no try/catch here doing it: both halves already
  * swallow their own failures, so adding one would be a branch nothing can
- * reach. That matters because two callers start this with `void` — the refresh
- * path and the invalid-grant path, neither of which can usefully wait — so a
- * rejection would surface as an unhandled rejection in the main process rather
- * than as a failed push. `minds-credential.test.ts` pins the contract.
+ * reach. Awaited refresh and boot callers therefore receive a simple landed/not
+ * landed result, and fire-and-forget lifecycle hooks cannot create an unhandled
+ * rejection. `minds-credential.test.ts` pins the contract.
  */
+export interface MindsCredentialSyncResult {
+  landed: boolean;
+  usable: boolean;
+}
+
+/** Resolve and synchronize once, retaining whether the selected value exists. */
+export function syncMindsCredentialSelection(): Promise<MindsCredentialSyncResult> {
+  // Resolve inside the queue. Otherwise an older sync stalled on an async
+  // keychain read could enqueue its stale selection after a newer refresh.
+  return enqueueCredentialPush(async () => {
+    const credential = await resolveMindsCredentialSelection();
+    return {
+      landed: await pushMindsCredentialNow(credential.value),
+      usable: credential.usable,
+    };
+  });
+}
+
 export async function syncMindsCredential(): Promise<boolean> {
-  return pushMindsCredential(await resolveMindsCredential());
+  return (await syncMindsCredentialSelection()).landed;
+}
+
+/**
+ * Synchronize the selected credential and report whether a usable value landed.
+ * Unlike `syncMindsCredential`, clearing the sidecar successfully returns false:
+ * a resumed turn cannot proceed merely because an empty hand-over succeeded.
+ */
+export async function syncUsableMindsCredential(): Promise<boolean> {
+  const result = await syncMindsCredentialSelection();
+  return result.usable && result.landed;
 }
 
 /**
@@ -135,15 +210,19 @@ export async function establishMindsCredential(
   // The in-memory access token is process-lifetime only and a laptop may have
   // slept past its expiry, so refresh before handing anything over.
   if (getRefreshToken() && isAccessTokenExpired()) await refresh();
-  const credential = await resolveMindsCredential();
-  if (!credential) return false;
-  return pushMindsCredential(credential);
+  return enqueueCredentialPush(async () => {
+    const credential = await resolveMindsCredentialSelection();
+    if (!credential.value) return false;
+    return pushMindsCredentialNow(credential.value);
+  });
 }
 
 /** Store a user-supplied MindsHub key and hand it to the sidecar immediately. */
 export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
   await setMindsApiKey(key);
-  return pushMindsCredential(key);
+  const landed = await pushMindsCredential(key);
+  if (landed) settleMindsResumeCredentialGate(true);
+  return landed;
 }
 
 /**
@@ -155,7 +234,9 @@ export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
  */
 export async function clearUserSuppliedMindsKey(): Promise<boolean> {
   await forgetStoredKey();
-  return syncMindsCredential();
+  const result = await syncMindsCredentialSelection();
+  if (result.usable && result.landed) settleMindsResumeCredentialGate(true);
+  return result.landed;
 }
 
 /**
