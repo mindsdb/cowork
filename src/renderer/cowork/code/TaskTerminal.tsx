@@ -64,12 +64,15 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
     let disposed = false;
     loadedSessionRef.current = null;
     focusRefreshRef.current = '';
+    setTabs([]);
+    setSelectedId(null);
     setLoading(true);
     setError('');
     void ensureTerminalTabs(sessionId).then((items) => {
       if (disposed) return;
       const preferred = savedTerminalId(sessionId);
       const nextSelected = items.some((item) => item.id === preferred) ? preferred! : items[0]?.id || null;
+      setError('');
       setTabs(items);
       setSelectedId(nextSelected);
       loadedSessionRef.current = sessionId;
@@ -116,6 +119,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const selected = tabs.find((tab) => tab.id === selectedId) || null;
+  const sessionLoaded = loadedSessionRef.current === sessionId;
 
   const updateState = useCallback((terminalId: string, state: TerminalPage) => {
     setTabs((current) => current.map((tab) => tab.id === terminalId ? {
@@ -345,9 +349,9 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         </div>
       </header>
       {error && <div className="code-terminal__error" role="alert">{error}</div>}
-      {selectedId ? (
+      {selectedId && sessionLoaded ? (
         <TerminalScreen
-          key={`${selectedId}:${screenGeneration}`}
+          key={`${sessionId}:${selectedId}:${screenGeneration}`}
           sessionId={sessionId}
           terminalId={selectedId}
           onState={handleSelectedState}
@@ -356,8 +360,8 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         />
       ) : (
         <div className="code-terminal__empty">
-          <span>{loading ? 'Opening terminal…' : 'No terminals open'}</span>
-          {!loading && <Button size="sm" variant="subtle" onClick={() => void addTerminal()}>{Ico.plus(12)} New terminal</Button>}
+          <span>{loading || !sessionLoaded ? 'Opening terminal…' : 'No terminals open'}</span>
+          {!loading && sessionLoaded && <Button size="sm" variant="subtle" onClick={() => void addTerminal()}>{Ico.plus(12)} New terminal</Button>}
         </div>
       )}
     </section>
