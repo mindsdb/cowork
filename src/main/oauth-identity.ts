@@ -104,14 +104,64 @@ async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> 
 // project-discovery step here.
 export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
 
+// Deliberately a separate request from fetchPostHogIdentity's user query,
+// not one combined call: the organization lookup is best-effort, so an
+// unexpected response shape degrades to "no organization split" instead of
+// failing the whole PostHog connection. Mirrors cowork-server's
+// _fetch_posthog_organization (oauth/google.py). Queries the SAME regional
+// host the user lookup already succeeded against, for the reason
+// fetchPostHogIdentity documents above.
+//
+// PostHog's consent screen lets a user select multiple organizations in a
+// single authorization — unlike Linear, where one grant is exactly one
+// workspace — so `name` joins every organization the token can see (e.g.
+// "Acme, Other Org"), not just the first, so the tile accurately shows
+// everything the connection actually covers. `id` still keys off the first
+// organization only: it's used solely for dedup, and a full
+// multi-organization-aware dedup key is a separate, not-yet-scoped
+// improvement.
+async function fetchPostHogOrganization(accessToken: string, apiHost: string): Promise<{ id: string; name: string }> {
+  try {
+    const res = await fetch(`${apiHost}/api/organizations/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return { id: '', name: '' };
+    const data = await res.json() as
+      Array<{ id?: string; name?: string }> |
+      { results?: Array<{ id?: string; name?: string }> };
+    const organizations = Array.isArray(data) ? data : (data.results || []);
+    if (organizations.length === 0) return { id: '', name: '' };
+    const id = organizations[0].id || '';
+    const name = organizations.map((org) => org.name || '').filter(Boolean).join(', ');
+    return { id, name };
+  } catch {
+    return { id: '', name: '' };
+  }
+}
+
+// Unlike Google, a PostHog account isn't one-account-one-email: the same
+// email can belong to several organizations. Folding the organization id
+// (from fetchPostHogOrganization, best-effort) into the returned identity —
+// the same trick fetchSupabaseIdentity below uses for its own
+// per-organization identity — means connecting a second organization gets
+// its own connection tile instead of silently overwriting the first.
 async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity> {
   for (const apiHost of POSTHOG_API_HOSTS) {
     const res = await fetch(`${apiHost}/api/users/@me/`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (res.ok) {
-      const data = await res.json() as { email?: string };
-      return { email: data.email || '' };
+      const data = await res.json() as { email?: string; first_name?: string; last_name?: string };
+      const email = data.email || '';
+      const name = [data.first_name, data.last_name].filter(Boolean).join(' ');
+      const organization = await fetchPostHogOrganization(accessToken, apiHost);
+      return {
+        email: organization.id ? `${email}:${organization.id}` : email,
+        // Organization name first, matching fetchSupabaseIdentity's
+        // per-organization identity convention below — the tile shows the
+        // org, not the connecting individual.
+        name: organization.name || name || undefined,
+      };
     }
   }
   return { email: '' };
