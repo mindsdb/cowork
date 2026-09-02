@@ -15,6 +15,15 @@ function sidebarProjectionChanged(previous: CodingSession, next: CodingSession):
 }
 
 
+function sessionListChanged(previous: CodingSession[], next: CodingSession[]): boolean {
+  if (previous.length !== next.length) return true;
+  return next.some((session, index) => {
+    const previousSession = previous[index];
+    return !previousSession || JSON.stringify(previousSession) !== JSON.stringify(session);
+  });
+}
+
+
 export function useCodeTaskList({
   active = true,
   sessions,
@@ -48,7 +57,12 @@ export function useCodeTaskList({
   const load = useCallback(async (preferId?: string) => {
     const page = await codingApi.sessions(true);
     setError('');
-    onSessionsChangeRef.current(page.items);
+    // Polling returns fresh object identities even when no task changed. Keep
+    // the existing list in that common case so large histories do not force a
+    // full Code surface render every five seconds.
+    if (sessionListChanged(sessionsRef.current, page.items)) {
+      onSessionsChangeRef.current(page.items);
+    }
     const currentId = selectedIdRef.current;
     const currentExists = !!currentId && page.items.some((item) => item.id === currentId);
     const firstVisible = page.items.find((item) => !item.archived)?.id || page.items[0]?.id;
