@@ -353,8 +353,11 @@ const EAGER = 50;
  * `onItems` so the caller can merge it in as it arrives.
  *
  * Returns `Task[]` on success and `{ error: true, status }` on a failed list
- * request — every existing call site already guards with `Array.isArray`, so
- * the failure is inert for them and actionable for the one that cares. */
+ * request. Seven of the eight call sites guard with `Array.isArray`, so the
+ * failure is inert for them and actionable for the one that cares; the eighth
+ * (`App.jsx` delete-rollback) checks the shape explicitly for the same reason.
+ * Any new caller must do one or the other — a bare truthiness check would
+ * treat the error object as a task list. */
 export async function fetchSessions({ onItems } = {}) {
   let conversations;
   try {

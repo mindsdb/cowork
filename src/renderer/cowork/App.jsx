@@ -3823,16 +3823,24 @@ function AppCore() {
       const fresh = await fetchSessions().catch(() => null);
       setTasks((prev) => {
         /*
-          fetchSessions resolves [] when the server is unreachable, so treat
-          an empty answer as no answer — replacing the list with it would
-          blank every chat in the sidebar. mergeTasksFromServer, same as
+          fetchSessions resolves `{ error: true }` on a failed list and `[]`
+          for an empty account — treat either as no answer, because
+          replacing the list with one would blank every chat in the
+          sidebar. mergeTasksFromServer, same as
           every other consumer, keeps streaming messages, model pins and
           tmp- rows that a wholesale replace would clobber. prev already
           lost this row to the optimistic filter above, so when the refetch
           brought nothing back, re-seat the captured task — the toast says
           the chat is back in the list, and it has to be true.
         */
-        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        // Shape-checked rather than truthiness-checked, to say what is meant:
+        // fetchSessions can resolve a non-array error object, and this line
+        // previously excluded it only because `{ error: true }?.length` is
+        // undefined. mergeTasksFromServer shape-guards too (`if
+        // (!Array.isArray(serverTasks)) return local`), so neither form can
+        // blank the sidebar — verified by mutation. This is about intent, not
+        // a latent bug.
+        const merged = mergeTasksFromServer(Array.isArray(fresh) && fresh.length ? fresh : null, prev);
         if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
         return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
       });

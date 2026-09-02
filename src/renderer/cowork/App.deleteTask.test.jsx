@@ -154,12 +154,37 @@ describe('deleting a chat from the sidebar', () => {
     const user = userEvent.setup();
     spies.deleteConversation.mockRejectedValue(new Error('Delete failed (500)'));
 
-    // fetchSessions never rejects — it resolves [] when the server is
-    // unreachable — so this is the delete failing AND the refetch coming
-    // back empty. The restore must re-seat the deleted row from the captured
+    // fetchSessions resolves rather than rejecting: `[]` for an empty
+    // account, `{ error: true }` for a failed list (ENG-2246). This is the
+    // empty-answer arm — the delete failing AND the refetch coming back
+    // empty. The restore must re-seat the deleted row from the captured
     // task, not blank the sidebar with the empty answer.
     await deleteFromSidebar(user, 'Daily report run', {
       beforeConfirm: () => spies.fetchSessions.mockResolvedValue([]),
+    });
+
+    expect(await screen.findByText(/Couldn't delete this chat/)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Daily report run' })).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
+  });
+
+  it('keeps the rest of the list when the restore refetch fails outright', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversation.mockRejectedValue(new Error('Delete failed (500)'));
+
+    // The other arm: since ENG-2246 a failed list resolves `{ error: true }`,
+    // not `[]`. What this pins is the re-seat — the toast says the chat is
+    // back in the list, and on this path the refetch brings nothing to put
+    // it back with. Mutation-verified: dropping the `merged.unshift(task)`
+    // re-seat fails this test and its empty-answer sibling.
+    //
+    // It does NOT pin the shape guard above it. mergeTasksFromServer returns
+    // `local` for any non-array input, so passing the error object straight
+    // through would also be safe — checked by mutation before writing this.
+    await deleteFromSidebar(user, 'Daily report run', {
+      beforeConfirm: () => spies.fetchSessions.mockResolvedValue({ error: true, status: 500 }),
     });
 
     expect(await screen.findByText(/Couldn't delete this chat/)).toBeTruthy();
