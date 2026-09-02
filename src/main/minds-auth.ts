@@ -841,8 +841,12 @@ export async function selectEntitledOrg(
   // it records its organization as a person's choice, so the run that follows
   // short-circuits on it instead of hunting them out of it again. The loop
   // re-checks because another waiter may take the lock first.
+  // Awaited bare: the handle is only ever resolved — it is created two lines
+  // below with no `reject` in scope, and settled in a `finally` — so there is no
+  // rejection here to swallow, and a `catch` would only hide one if that ever
+  // changed.
   while (_orgSwitchInFlight) {
-    try { await _orgSwitchInFlight; } catch { /* its failure is its caller's */ }
+    await _orgSwitchInFlight;
   }
   let release: () => void = () => {};
   _orgSwitchInFlight = new Promise<void>((resolve) => { release = resolve; });
@@ -1420,7 +1424,11 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
       ok: false,
       activeOrgId: null,
       orgs: [],
-      error: 'A change of organization is already running. Try again in a moment.',
+      // Not necessarily "a change": since ENG-2199 the holder is just as likely
+      // to be a sign-in or a Reconnect working out which organization this
+      // computer is in, which the person did not ask for and would not
+      // recognise. Name the state, not an action they think they took.
+      error: 'Cowork is still settling which organization this computer is in. Try again in a moment.',
     };
   }
   let release: () => void = () => {};

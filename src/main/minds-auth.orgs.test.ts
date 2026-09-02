@@ -420,7 +420,7 @@ describe('switchMindsOrg', () => {
     const [done, refused] = first.ok ? [first, second] : [second, first];
     expect(done.ok).toBe(true);
     expect(refused.ok).toBe(false);
-    expect(refused.error).toMatch(/already running/);
+    expect(refused.error).toMatch(/still settling which organization/i);
   });
 });
 
