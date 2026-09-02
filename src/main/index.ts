@@ -21,9 +21,14 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
+import { refreshTokensOnly, refreshMindsCredentialAfterResume, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
+import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
+import {
+  gateMindsResponseCreationRequest,
+  mindsRuntimeCredentialRequirementFromHealth,
+} from './minds-response-request-gate';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -141,7 +146,11 @@ let bootUpdateSettled: Promise<void> = Promise.resolve();
 // routing and the chat gate read one identical value and cannot disagree.
 // Returns null when the server can't be reached/answered, so the caller falls
 // back to the .env heuristic.
-async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+async function serverConfigured(): Promise<{
+  configured: boolean;
+  provider: string;
+  mindsRuntimeCredentialRequired: boolean | null;
+} | null> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
   try {
@@ -152,12 +161,20 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
       console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
       return null;
     }
-    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    const data = await res.json() as {
+      config_ready?: boolean;
+      provider?: string;
+      minds_runtime_credential_required?: boolean;
+    };
     if (typeof data.config_ready !== 'boolean') {
       console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
       return null;
     }
-    return { configured: data.config_ready, provider: data.provider ?? '' };
+    return {
+      configured: data.config_ready,
+      provider: data.provider ?? '',
+      mindsRuntimeCredentialRequired: mindsRuntimeCredentialRequirementFromHealth(data),
+    };
   } catch (err) {
     console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
     return null;
@@ -181,6 +198,13 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
+  const configured = await serverConfigured();
+  // A missing field identifies an older or unreachable sidecar. The request
+  // gate treats that as unknown and preserves the conservative wait.
+  return configured?.mindsRuntimeCredentialRequired ?? null;
 }
 
 // Map a server-updater notification onto the UI update-status shape the renderer
@@ -377,17 +401,36 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
-      const token = getServerAuthToken();
-      if (token) {
-        try {
-          if (new URL(details.url).port === String(getServerPort())) {
-            details.requestHeaders['Authorization'] = `Bearer ${token}`;
+      const forward = () => {
+        const token = getServerAuthToken();
+        if (token) {
+          try {
+            if (new URL(details.url).port === String(getServerPort())) {
+              details.requestHeaders['Authorization'] = `Bearer ${token}`;
+            }
+          } catch {
+            // Malformed URL — leave the headers untouched.
           }
-        } catch {
-          // Malformed URL — leave the headers untouched.
         }
-      }
-      callback({ requestHeaders: details.requestHeaders });
+        callback({ requestHeaders: details.requestHeaders });
+      };
+
+      const gated = gateMindsResponseCreationRequest(
+        details,
+        getServerPort(),
+        isMindsResumeCredentialGateActive(),
+        runtimeMindsCredentialRequirement,
+        waitForMindsResumeCredential,
+        (ready) => {
+          if (!ready) {
+            console.warn('[minds-auth] response creation aborted while the resumed credential remained unavailable');
+            callback({ cancel: true });
+            return;
+          }
+          forward();
+        },
+      );
+      if (!gated) forward();
     },
   );
 
@@ -514,6 +557,15 @@ const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
 // minted device key at boot. Extracted verbatim — the ordering inside it is
 // load-bearing and is explained step by step.
 async function performMindsSignOut() {
+  beginMindsCredentialSignOut();
+  try {
+    await performMindsSignOutCleanup();
+  } finally {
+    endMindsCredentialSignOut();
+  }
+}
+
+async function performMindsSignOutCleanup() {
   // Full sign-out: clear every credential + LLM-config key so the
   // next launch's checkConfigured() returns false and the user is
   // routed straight to onboarding. We deliberately keep
@@ -538,7 +590,13 @@ async function performMindsSignOut() {
   // superseded token.
   const logoutRefreshToken = getRefreshToken();
   void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
+  // Fence again after the bounded lookup. If its Keycloak request outlives the
+  // timeout, this new cancellation epoch prevents the late response from
+  // writing tokens after the local session is cleared below.
   cancelScheduledRefresh();
+  // Resolve any request already held across wake, and keep later turns blocked
+  // until a new selected credential is explicitly handed over.
+  settleMindsResumeCredentialGate(false);
   // Take every MindsHub credential away first and await it, unlike the
   // detached revoke above. This is the step that actually stops this
   // install's turns, and the renderer treats the IPC resolving as "signed
@@ -559,6 +617,13 @@ async function performMindsSignOut() {
   // an explicit logout.
   cancelCurrentOAuth();
   clearTokens();
+  // A refresh that was already inside its awaited handoff can settle true
+  // between the early barrier above and this token-store transition. Drop the
+  // barrier outright rather than reasserting a blocked state: a signed-out
+  // install has no resumed credential to wait for, and nothing in that state
+  // can ever settle it true again. Leaving it blocked would cancel every later
+  // turn, including the direct-provider turns that never touch MindsHub.
+  resetMindsResumeCredentialGate();
 
   // Clear credentials from the server's SQLite DB (the authoritative
   // source for config_ready). A single POST /settings/logout atomically
@@ -1050,7 +1115,12 @@ function setupIPC() {
   // can re-decode roles and confirm the user is now paid.
   ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
     const result = await refreshTokensOnly();
-    if (result.status === 'ok') return { ok: true, access_token: result.token };
+    // This bridge returns the refreshed JWT so the renderer can re-decode
+    // roles after checkout. A pending sidecar handoff does not make that JWT
+    // unusable for the caller; the handoff keeps its own bounded retry.
+    if (result.status === 'ok' || result.status === 'handoff_pending') {
+      return { ok: true, access_token: result.token };
+    }
     // Superseded means a newer login/logout won the race while this
     // refresh was in flight — the store, not this exchange, holds the
     // truth. Report the current session instead of a false failure.
@@ -1382,7 +1452,7 @@ app.whenReady().then(async () => {
   // (ENG-761 — the Windows-sleep flavour of "signed in but shows
   // signed out"). powerMonitor is only usable after app ready.
   powerMonitor.on('resume', () => {
-    if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
+    void refreshMindsCredentialAfterResume();
   });
 
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
@@ -1602,6 +1672,8 @@ app.whenReady().then(async () => {
         }
       } else if (outcome.status === 'transient') {
         console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
+      } else if (outcome.status === 'handoff_pending') {
+        console.warn('[auth] boot token refreshed — sidecar credential hand-over retry scheduled');
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
