@@ -1517,7 +1517,11 @@ function AppCore() {
         return;
       }
       setTasksStatus('ready');
-      warmedRef.current = true;
+      // Only latch once a warm-up actually ran. fetchSessions returns early on
+      // an empty account, before it fires a single /items — latching there
+      // would mean tasks that show up later (synced from another client) are
+      // never warmed for the rest of the session.
+      if (data.length > 0) warmedRef.current = true;
       // One-time freshness decision for the onboarding checklist, taken on
       // the session's first successful fetch (refreshData also polls, hence
       // the ref guard): an account that already has tasks is not a first

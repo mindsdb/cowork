@@ -87,21 +87,55 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
   });
 
   it('hands each warmed transcript to onItems, hydrated as the old path did', async () => {
-    // Hydration matters: the pre-ENG-2246 path ran these through
-    // _conversationToTask, so a failed turn arrived carrying its synthetic
-    // error/provider_required message. Raw passthrough dropped that card.
+    // Hydration matters, and asserting only the message COUNT does not prove
+    // it happened — a user message survives raw passthrough unchanged. The
+    // load-bearing case is a failed turn: hydration replays `events` and
+    // appends the synthetic `error` row the card renders from. Raw passthrough
+    // hands over the assistant message with no card at all.
+    const failedTurn = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
+      ] },
+    ];
     global.fetch = vi.fn((url) => String(url).includes('/items')
-      ? Promise.resolve(jsonRes([{ role: 'user', content: 'hi' }]))
+      ? Promise.resolve(jsonRes(failedTurn))
       : Promise.resolve(jsonRes(conversations(2))));
 
-    const seen = [];
-    const tasks = await fetchSessions({ onItems: (id, msgs) => seen.push([id, msgs.length]) });
+    const seen = new Map();
+    const tasks = await fetchSessions({ onItems: (id, msgs) => seen.set(id, msgs) });
 
     // The list resolves with empty transcripts...
     expect(tasks.every((t) => t.messages.length === 0)).toBe(true);
-    // ...and the warm-up reports them afterwards.
-    await vi.waitFor(() => expect(seen).toHaveLength(2));
-    expect(seen.map(([id]) => id).sort()).toEqual(['c0', 'c1']);
+    // ...and the warm-up reports them afterwards, hydrated.
+    await vi.waitFor(() => expect(seen.size).toBe(2));
+    expect([...seen.keys()].sort()).toEqual(['c0', 'c1']);
+
+    const msgs = seen.get('c0');
+    const err = msgs.find((m) => m.role === 'error');
+    expect(err).toBeTruthy();                 // absent on raw passthrough
+    expect(err.requestId).toBe('corr-abc');
+    // The replayed assistant message loses its raw `events` and gains the
+    // completion flag — the other half of what _conversationToTask used to do.
+    expect(msgs.find((m) => m.role === 'assistant').events).toBeUndefined();
+  });
+
+  it('drops a malformed conversation row instead of rejecting the whole list', async () => {
+    // _conversationToTask dereferences conv.disabled_connections, so a null
+    // row threw. The rejection had no .catch at the call site, so App never
+    // left 'loading': skeleton rows forever with the Retry unreachable.
+    global.fetch = vi.fn((url) => String(url).includes('/items')
+      ? Promise.resolve(jsonRes([]))
+      : Promise.resolve(jsonRes({ conversations: [
+        null,
+        'nonsense',
+        { id: 'c-good', title: 'Survivor', project: 'general', updated_at: '2026-09-02T10:00:00Z' },
+      ] })));
+
+    const tasks = await fetchSessions();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe('Survivor');
   });
 
   it('a failing /items never rejects the list', async () => {
