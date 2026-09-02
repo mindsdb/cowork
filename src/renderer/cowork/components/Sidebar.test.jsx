@@ -287,3 +287,38 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
   });
 });
+
+describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', () => {
+  // Before this, all three rendered as an unexplained blank list: `tasks`
+  // started as `[]` with no status, and a failed fetch was collapsed to `[]`
+  // too. A returning user reads an empty sidebar as lost work, not as a wait.
+  it('shows skeleton rows, and no empty-state copy, while loading', () => {
+    render(<Sidebar {...baseProps} tasksStatus="loading" />);
+    expect(screen.getByLabelText('Loading tasks')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+    expect(screen.queryByText(/Couldn’t load your tasks/)).toBeNull();
+  });
+
+  it('shows the empty state only once the fetch has succeeded', () => {
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(screen.getByText('No tasks yet')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+  });
+
+  it('shows a distinct failure with a retry, never the empty state', () => {
+    const onRetryTasks = vi.fn();
+    render(<Sidebar {...baseProps} tasksStatus="failed" onRetryTasks={onRetryTasks} />);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+    fireEvent.click(screen.getByText('Retry'));
+    expect(onRetryTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('never shows loading or empty copy once tasks exist', () => {
+    const tasks = [{ id: 't1', title: 'Real task', messages: [], updatedAt: '2026-09-02T10:00:00Z' }];
+    render(<Sidebar {...baseProps} tasks={tasks} tasksStatus="loading" />);
+    expect(screen.getByText('Real task')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+  });
+});

@@ -530,6 +530,11 @@ function AppCore() {
   const agentLabel = getAgentLabel(settings);
 
   const [tasks, setTasks] = useState([]);
+  // 'loading' until the first list response lands, then 'ready' or 'failed'.
+  // Without this an in-flight load and a genuinely empty account render the
+  // same, and so does a failed one — a returning user reads that as lost
+  // work rather than as a wait (ENG-2246).
+  const [tasksStatus, setTasksStatus] = useState('loading');
   const tasksRef = useRef(tasks);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   // IDs of tasks deleted this session. Used to filter them out of
@@ -1484,8 +1489,25 @@ function AppCore() {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
-    fetchSessions().then((data) => {
-      if (!Array.isArray(data)) return;
+    fetchSessions({
+      // The background transcript warm-up reports each bundle as it lands
+      // (ENG-2246). Merge it in without disturbing a live conversation:
+      // anything mid-stream already owns its messages locally.
+      onItems: (id, msgs) => setTasks((prev) => prev.map((t) => {
+        if (t.id !== id) return t;
+        const local = Array.isArray(t.messages) ? t.messages : [];
+        if (local.some((m) => m?.role === '_streaming') || local.length > 0) return t;
+        return { ...t, messages: msgs };
+      })),
+    }).then((data) => {
+      if (!Array.isArray(data)) {
+        // A failed list request must not read as "no tasks" — but only let it
+        // set the failed state while we have nothing to show. Once a list has
+        // landed, a later poll failing should leave the visible tasks alone.
+        setTasksStatus((prev) => (prev === 'ready' ? 'ready' : 'failed'));
+        return;
+      }
+      setTasksStatus('ready');
       // One-time freshness decision for the onboarding checklist, taken on
       // the session's first successful fetch (refreshData also polls, hence
       // the ref guard): an account that already has tasks is not a first
@@ -4293,6 +4315,8 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          tasksStatus={tasksStatus}
+          onRetryTasks={refreshData}
           pins={pins}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}

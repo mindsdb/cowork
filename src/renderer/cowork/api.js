@@ -307,15 +307,22 @@ function _conversationToTask(conv, messages = []) {
   };
 }
 
+/** The raw list request. Throws on failure so callers that need to tell an
+ * empty account from a broken fetch can (ENG-2246) — `fetchConversationList`
+ * below keeps the swallowing contract its other caller relies on. */
+async function requestConversationList() {
+  // Critical: pass `project=all` so we list conversations across
+  // every project, not just the active one. Without this, a task
+  // created in project A vanishes from `tasks` the moment we
+  // refresh while the user is "in" project B (because the server
+  // defaults to the active project's episodes/ dir).
+  const list = await req('/conversations/?project=all&limit=200');
+  return Array.isArray(list?.conversations) ? list.conversations : [];
+}
+
 export async function fetchConversationList() {
   try {
-    // Critical: pass `project=all` so we list conversations across
-    // every project, not just the active one. Without this, a task
-    // created in project A vanishes from `tasks` the moment we
-    // refresh while the user is "in" project B (because the server
-    // defaults to the active project's episodes/ dir).
-    const list = await req('/conversations/?project=all&limit=200');
-    return Array.isArray(list?.conversations) ? list.conversations : [];
+    return await requestConversationList();
   } catch {
     return [];
   }
@@ -331,28 +338,42 @@ export async function createConversation({ project, projectId, topic, harness, m
   });
 }
 
-export async function fetchSessions() {
+/** How many recent conversations get their transcript warmed in the
+ * background. Unchanged from the original eager fan-out — see ENG-2246's
+ * "deliberately not in scope" for why the depth is left alone. */
+const EAGER = 50;
+
+/** Resolves as soon as the conversation LIST lands — one request. Everything
+ * the sidebar renders comes from that response (`_conversationToTask` reads
+ * `messages` for nothing but `messages`), so waiting on the per-conversation
+ * transcripts only delayed first paint (ENG-2246).
+ *
+ * The transcript warm-up still runs, at the same depth, but off the critical
+ * path: it is deliberately NOT awaited, and reports each bundle through
+ * `onItems` so the caller can merge it in as it arrives.
+ *
+ * Returns `Task[]` on success and `{ error: true, status }` on a failed list
+ * request — every existing call site already guards with `Array.isArray`, so
+ * the failure is inert for them and actionable for the one that cares. */
+export async function fetchSessions({ onItems } = {}) {
+  let conversations;
   try {
-    const conversations = await fetchConversationList();
-    if (conversations.length === 0) return [];
-    // Fan out for the most recent N — full message history isn't
-    // needed for the sidebar/projects-list rendering, but loading
-    // it eagerly for recent ones keeps clicks instant. Older tasks
-    // get an empty messages array; ChatView fetches them on open.
-    const EAGER = 50;
-    const eager = conversations.slice(0, EAGER);
-    const messageBundles = await Promise.all(
-      eager.map((c) =>
-        req(`/conversations/${encodeURIComponent(c.id)}/items`)
-          .then((r) => Array.isArray(r) ? r : [])
-          .catch(() => [])
-      )
-    );
-    const messagesById = new Map(eager.map((c, i) => [c.id, messageBundles[i]]));
-    return conversations.map((c) => _conversationToTask(c, messagesById.get(c.id) || []));
-  } catch {
-    return [];
+    conversations = await requestConversationList();
+  } catch (err) {
+    return { error: true, status: (err && err.status) || 0 };
   }
+  if (conversations.length === 0) return [];
+
+  // Background: fire-and-forget, one callback per conversation as it lands.
+  // Failures are per-conversation and silent — a warm-up that misses costs a
+  // slower open, never a blocked list.
+  for (const c of conversations.slice(0, EAGER)) {
+    req(`/conversations/${encodeURIComponent(c.id)}/items`)
+      .then((r) => onItems?.(c.id, Array.isArray(r) ? r : []))
+      .catch(() => {});
+  }
+
+  return conversations.map((c) => _conversationToTask(c, []));
 }
 
 export async function fetchSession(id) {
