@@ -20,6 +20,46 @@ async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> 
   return { email: data.email || '' };
 }
 
+// Deliberately a separate request from fetchLinearIdentity's viewer query,
+// not one combined query: unlike the viewer query (required — no identity,
+// no connection), the workspace lookup is best-effort, so a
+// broken/unverified `organization` field degrades to "no workspace split"
+// instead of failing the whole connection. Mirrors cowork-server's
+// _fetch_linear_workspace (oauth/google.py) and auth's counterpart.
+//
+// TEMP (ENG-2188): the `organization { id name }` shape is unverified
+// against Linear's real schema. Logs the raw response once to confirm the
+// real shape from a live reconnect, then remove the console.warn.
+async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; name: string }> {
+  try {
+    const res = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: 'query { organization { id name } }' }),
+    });
+    if (!res.ok) return { id: '', name: '' };
+    const data = await res.json() as {
+      data?: { organization?: { id?: string; name?: string } };
+      errors?: unknown;
+    };
+    console.warn('[oauth-identity] Linear organization raw GraphQL response (TEMP diagnostic):', JSON.stringify(data));
+    if (data.errors) return { id: '', name: '' };
+    return { id: data.data?.organization?.id || '', name: data.data?.organization?.name || '' };
+  } catch (err) {
+    console.warn('[oauth-identity] Could not fetch Linear workspace identity — falling back to bare email:', err);
+    return { id: '', name: '' };
+  }
+}
+
+// Unlike Google, a Linear account isn't one-account-one-email: the same
+// email can belong to several workspaces. Folding the workspace id (from
+// fetchLinearWorkspace, best-effort) into the returned identity — the same
+// trick fetchSupabaseIdentity below uses for its own per-organization
+// identity — means connecting a second workspace gets its own connection
+// tile instead of silently overwriting the first.
 async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
@@ -27,11 +67,20 @@ async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> 
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query: 'query { viewer { email } }' }),
+    body: JSON.stringify({ query: 'query { viewer { email name } }' }),
   });
   if (!res.ok) return { email: '' };
-  const data = await res.json() as { data?: { viewer?: { email?: string } } };
-  return { email: data.data?.viewer?.email || '' };
+  const data = await res.json() as { data?: { viewer?: { email?: string; name?: string } } };
+  const email = data.data?.viewer?.email || '';
+  if (!email) return { email: '' };
+  const workspace = await fetchLinearWorkspace(accessToken);
+  return {
+    email: workspace.id ? `${email}:${workspace.id}` : email,
+    // Workspace name first, matching fetchSupabaseIdentity's
+    // per-organization identity convention below — the tile shows the
+    // workspace/org, not the connecting individual.
+    name: workspace.name || data.data?.viewer?.name || undefined,
+  };
 }
 
 async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> {
