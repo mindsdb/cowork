@@ -34,6 +34,9 @@ import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
+import { trackBillingOpened } from '../lib/analytics';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { openCodeExternalUrl } from './shellLinks';
 import './code.css';
 
 
@@ -405,8 +408,14 @@ export default function CodeView({
                 events={detail.events}
                 latestEvents={detail.latestEvents}
                 session={session}
+                modelName={models.find((model) => model.id === session.model)?.name || session.model}
                 recovering={recoveringTaskId === session.id}
                 onRecover={() => recoverTask(session.id)}
+                onChooseModel={() => setControlsOpen(true)}
+                onAddCredits={() => {
+                  trackBillingOpened('token_limit');
+                  void openCodeExternalUrl(MINDS_BILLING_URL);
+                }}
               />
               {approval && (
                 <ApprovalCard

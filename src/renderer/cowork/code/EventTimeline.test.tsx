@@ -119,6 +119,39 @@ describe('EventTimeline', () => {
     expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
   });
 
+  it('turns a credit failure into concise recovery actions with technical detail on demand', () => {
+    const onChooseModel = vi.fn();
+    const onAddCredits = vi.fn();
+    const creditError = {
+      ...event(1, 'error', 'This model needs credits. Add credits or choose another model.'),
+      data: {
+        code: 'insufficient_credits',
+        detail: 'server returned 402 Payment Required: You have 0 weighted tokens left',
+        model: 'gpt-5.6-sol',
+      },
+    };
+
+    render(
+      <EventTimeline
+        {...timelineProps([creditError])}
+        session={{ ...session('failed'), model: 'gpt-5.6-sol', last_error: creditError.text }}
+        modelName="GPT 5.6 Sol"
+        onChooseModel={onChooseModel}
+        onAddCredits={onAddCredits}
+      />,
+    );
+
+    expect(screen.getByText('GPT 5.6 Sol needs credits')).toBeInTheDocument();
+    expect(screen.getByText('Add credits or choose another model, then continue in this task.')).toBeInTheDocument();
+    expect(screen.getByText(/server returned 402/)).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+    expect(onAddCredits).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText(/server returned 402 Payment Required/)).toBeVisible();
+  });
+
   it('hides raw session events because status is represented once in the outcome', () => {
     render(
       <EventTimeline
