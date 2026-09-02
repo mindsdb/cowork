@@ -497,7 +497,17 @@ export async function ensureActiveOrg(
   // different organizations (ENG-2199). `selectEntitledOrg` records whichever
   // organization the call actually ends on — the same rule `doSwitchMindsOrg`
   // already follows, for the same reason.
-  const chosen = chooseMindsOrg(orgs, options.preferOrgId ?? readStoredOrgPreference(userId)?.orgId ?? null);
+  // Only a pick a person made outranks the ranking. The stored row also
+  // records organizations this app landed on by itself, and letting one of
+  // those win would retire the company-first default (ENG-1954) after a single
+  // launch: someone who signed in with only a personal organization, then
+  // joined a company one, would stay in Personal for good, because the
+  // entitlement hunt only revises the row when the organization cannot pay.
+  const storedPick = readStoredOrgPreference(userId);
+  const chosen = chooseMindsOrg(
+    orgs,
+    options.preferOrgId ?? (storedPick?.chosenByUser ? storedPick.orgId : null),
+  );
 
   if (chosen && hasClaim && chosen.id === activeOrgId) {
     return { token: accessToken, candidates, orgs, activeOrgId };
@@ -871,7 +881,12 @@ export async function selectEntitledOrg(
     // dangerous — that function ignores a pick the person is no longer a member
     // of, so a revoked organization stops being honoured without anything here
     // having to decide whether the membership read could be trusted.
-    const wouldReplaceAChoice = !chosenByUser && stored?.chosenByUser === true;
+    // Re-read rather than using the snapshot taken before the hunt: that is
+    // several network round-trips ago, `selectEntitledOrg` does not hold
+    // `_orgSwitchInFlight`, and an account-menu switch landing inside the
+    // window would otherwise be demoted by a guard reading stale state.
+    const wouldReplaceAChoice = !chosenByUser
+      && (userId ? readStoredOrgPreference(userId) : null)?.chosenByUser === true;
     if (userId && id && !wouldReplaceAChoice) storeOrgPreference(userId, id, chosenByUser);
     return { token, organization: namedOrg(token) };
   };
@@ -948,9 +963,9 @@ export async function selectEntitledOrg(
   // branches. Left un-restored, the user lands in whichever organization the
   // loop happened to try last: an artifact of Keycloak's list order rather
   // than anybody's choice (ENG-2199).
-  if (moved) {
-    await restoreActiveOrg(getAccessToken() ?? accessToken, startedInOrgId);
-  }
+  const tokenDescribesSession = moved
+    ? await restoreActiveOrg(getAccessToken() ?? accessToken, startedInOrgId)
+    : true;
   const norm = normalizeHubEntitlements(ctx.entitlements);
   console.warn(
     '[minds-auth] signed in without a HUB entitlement in any organization '
@@ -962,6 +977,13 @@ export async function selectEntitledOrg(
   // the session elsewhere, and recording the organization we wanted would
   // recreate the divergence `settleOn` is here to prevent.
   const settled = getAccessToken() ?? accessToken;
+  if (!tokenDescribesSession) {
+    // The session is at `startedInOrgId` and this token is not. Recording
+    // either one is a guess, and the wrong guess is the expensive direction:
+    // `chooseMindsOrg` would move the user to it on the next launch and keep
+    // them there. Write nothing and let the next refresh settle it.
+    return { token: settled, organization: namedOrg(settled) };
+  }
   // Not chosen, and it cannot be: a chosen organization returned at the
   // short-circuit above and never reaches the hunt at all.
   return settleOn(settled, false);
@@ -1310,13 +1332,33 @@ function scheduleRefreshIn(delayMs: number): void {
 // token store and the hand-over.
 let _orgSwitchInFlight = false;
 
-async function restoreActiveOrg(token: string, orgId: string | null): Promise<void> {
-  if (!orgId) return;
-  if (await switchActiveOrg(token, orgId)) {
-    await refreshAfterOrgSwitch();
-    return;
+/**
+ * Put the active organization back, and say whether the token followed it.
+ *
+ * The two failures are not the same. Keycloak refusing the switch leaves the
+ * session exactly where it was, so the token still describes it and a caller
+ * may act on that. A switch that lands while its refresh fails moves the
+ * session and leaves the token naming the organization it came from — the
+ * refresh keeps the old tokens on anything short of `invalid_grant` — so the
+ * token stops being evidence of where the session is, and anything recorded
+ * from it is a guess (ENG-2199).
+ */
+async function restoreActiveOrg(token: string, orgId: string | null): Promise<boolean> {
+  if (!orgId) return true;
+  if (!(await switchActiveOrg(token, orgId))) {
+    console.warn('[minds-auth] could not put the active organization back to %s', orgId);
+    return true;
   }
-  console.warn('[minds-auth] could not put the active organization back to %s', orgId);
+  const refreshed = await refreshAfterOrgSwitch();
+  const followed = Boolean(refreshed)
+    && getActiveOrgFromPayload(decodeJwtPayload(refreshed as string))?.id === orgId;
+  if (!followed) {
+    console.warn(
+      '[minds-auth] restored the active organization to %s but the token did not follow it',
+      orgId,
+    );
+  }
+  return followed;
 }
 
 /** Every organization the signed-in person belongs to, company ones first. */

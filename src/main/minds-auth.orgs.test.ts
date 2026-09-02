@@ -455,9 +455,11 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     memberships: Array<{ id: string; name: string; displayName?: string }>,
     startIn: { id: string; name: string },
     entitled: string[],
-    opts: { refuse?: string[]; orgsStatus?: number } = {},
+    opts: { refuse?: string[]; orgsStatus?: number; failRefreshFrom?: number } = {},
   ) {
     let active = startIn;
+    let tokenOrg = startIn;
+    let refreshes = 0;
     const calls = installRoutedFetch([
       // `orgsStatus` is Keycloak failing the membership read. It matters
       // because `listUserOrgs` returns `[]` for a failed read AND for a
@@ -483,7 +485,17 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
       {
         method: 'POST',
         match: 'openid-connect/token',
-        reply: () => ({ status: 200, body: { access_token: tokenFor(active), expires_in: 300, refresh_token: 'rt-2' } }),
+        reply: () => {
+          refreshes += 1;
+          // A 503 is the transient branch of `doRefreshTokens`: it keeps the
+          // existing tokens rather than clearing them, so the store goes on
+          // naming the organization the previous refresh landed in.
+          if (opts.failRefreshFrom && refreshes >= opts.failRefreshFrom) {
+            return { status: 503, body: {} };
+          }
+          tokenOrg = active;
+          return { status: 200, body: { access_token: tokenFor(active), expires_in: 300, refresh_token: 'rt-2' } };
+        },
       },
       {
         method: 'GET',
@@ -496,11 +508,12 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     ]);
     // main reads the settled token back out of the store, so the store has to
     // follow the switches the same way the real token-store does.
-    (getAccessToken as Mock).mockImplementation(() => tokenFor(active));
+    (getAccessToken as Mock).mockImplementation(() => tokenFor(tokenOrg));
     return {
       calls,
       switches: () => calls.filter((c) => c.url.includes('switch-organization')).map((c) => JSON.parse(c.body!).id),
       activeOrg: () => active,
+      tokenOrg: () => tokenOrg,
     };
   }
 
@@ -667,6 +680,43 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     const result = await selectEntitledOrg(tokenFor(PERSONAL));
 
     expect(result.organization?.id).toBe(PERSONAL.id);
+  });
+
+  it('records nothing when the restore lands but the token does not follow', async () => {
+    // Nothing qualifies, so the hunt exhausts and restores. If that switch
+    // lands while its refresh fails transiently, Keycloak sits in the starting
+    // organization and the token still names the last one tried — the refresh
+    // keeps the old tokens on anything short of `invalid_grant`. Writing from
+    // that token would record an organization the session is not in, and
+    // `chooseMindsOrg` would move the user there on the next launch and keep
+    // them there. A no-pick user has no `chosenByUser` row to be protected by
+    // the other guard, so this is the only thing standing between them and it.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [], { failRefreshFrom: 4 });
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(net.tokenOrg().id).not.toBe(net.activeOrg().id);
+    expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
+    expect(result.token).toBeTruthy();
+  });
+
+  it('does not let an organization it landed on outrank the ranking later', async () => {
+    // `settleOn` records automatic landings so the row cannot disagree with the
+    // session — but `chooseMindsOrg` prefers any stored id over
+    // `rankMindsOrgs`, so without provenance one landing would retire the
+    // company-first default (ENG-1954) for good. Signing in with only a
+    // personal organization and later joining a company one is the case: the
+    // hunt never corrects it, because Personal can pay.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: PERSONAL.id, chosenByUser: false } } }),
+    );
+    entitlementRoutes([PERSONAL, ACME], PERSONAL, [PERSONAL.id, ACME.id]);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(result.organization?.id).toBe(ACME.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
   });
 
   it('never records an organization the person does not belong to', async () => {
