@@ -367,6 +367,31 @@ describe('composer send while a question is pending', () => {
     expect(spies.streamMessage.mock.calls[1][1]).toBe('a brand new message');
   });
 
+  // Characterization for the shared onEvent factory (ENG-1917): every stream's
+  // onEvent opens with the same generation guard, now in one place. A late event
+  // from a stream Stop already abandoned must be dropped — otherwise it would
+  // re-open a question the composer answers into instead of sending.
+  it('drops a late onEvent from a stream abandoned by Stop (generation guard)', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    const stale = streams[streams.length - 1];
+    await emitOn(stale, ASK_EVENT);
+
+    // Stop bumps the stream generation and abandons this stream.
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // A late event on the now-stale handle must be ignored, not re-open a question.
+    await emitOn(stale, { ...ASK_EVENT, question_id: 'ask:late' });
+
+    await send(user, composer, 'a brand new message');
+    expect(spies.submitAnswer).not.toHaveBeenCalled();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('a brand new message');
+  });
+
   it('does not survive a cancelled stream error either', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

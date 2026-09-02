@@ -63,7 +63,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey } from './api';
-import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { initialStreamState, reduceStream, findOpenScratchpadTabId } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -952,6 +952,44 @@ function AppCore() {
     }));
   };
 
+  // One shared factory for every live stream's onEvent — the send-from-home,
+  // new-session, send-in-task, and data-vault-submission paths each hand-rolled
+  // the identical spine: drop stale-generation events, fold the event through
+  // reduceStream, mirror the steps into liveSteps + drain the queue, track the
+  // open scratchpad cell, then flushSync the streaming row. Only the per-site
+  // bits stay parameters — which task ids own the steps (evaluated per event,
+  // since a server-adopted id shifts them), whether to adopt a server-minted
+  // conversation id, an optional extra step (the data-vault form patch), whether
+  // the path tracks the scratchpad, and how it flushes. `streamState` stays a
+  // local `let` at each site (onDone/flush still read it directly); the factory
+  // reads and writes it through getState/setState, so those closures are
+  // untouched.
+  const makeStreamOnEvent = ({
+    streamGen,
+    getState,
+    setState,
+    taskIds,
+    adoptServerId,
+    onEventExtra,
+    trackScratchpad = true,
+    flush,
+  }) => (ev) => {
+    if (streamGen !== activeStreamGenerationRef.current) return;
+    if (adoptServerId) {
+      const sid = ev?.conversation_id || ev?.response?.conversation_id;
+      if (sid) adoptServerId(sid);
+    }
+    const next = reduceStream(getState(), ev);
+    setState(next);
+    updateLiveStepsAndDrainQueue(taskIds(), next.steps);
+    if (onEventExtra) onEventExtra(ev, next);
+    if (trackScratchpad) {
+      const tabId = findOpenScratchpadTabId(next.steps);
+      if (tabId) activeScratchpadRef.current = tabId;
+    }
+    flushSync(() => flush());
+  };
+
   // Drops any pending question these conversations were blocked on, so the
   // composer stops redirecting typed text into a question nobody can answer
   // any more. Called from every terminal path (done, error, cancel, Stop) —
@@ -1761,14 +1799,13 @@ function AppCore() {
                   // over text deltas, and from_seq=0 keeps the rebuild
                   // simple. A per-task last-seen-seq optimisation is
                   // possible later if we see network overhead.
-      onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        streamState = reduceStream(streamState, ev);
-        updateLiveStepsAndDrainQueue([taskId], streamState.steps);
-        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
-        flushSync(() => flushStreaming());
-      },
+      onEvent: makeStreamOnEvent({
+        streamGen,
+        getState: () => streamState,
+        setState: (s) => { streamState = s; },
+        taskIds: () => [taskId],
+        flush: flushStreaming,
+      }),
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -2827,18 +2864,16 @@ function AppCore() {
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
-      onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        const sid = ev?.conversation_id || ev?.response?.conversation_id;
-        if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
-        updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
-        // Track latest in-progress scratchpad so the Stop button
-        // can cancel anton's current cell, not just abort our stream.
-        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
-        flushSync(() => flushStreamingMessage());
-      },
+      onEvent: makeStreamOnEvent({
+        streamGen,
+        getState: () => streamState,
+        setState: (s) => { streamState = s; },
+        // resolvedId is reassigned by adoptServerId, so evaluate the ids fresh
+        // per event.
+        taskIds: () => [resolvedId, taskId],
+        adoptServerId,
+        flush: flushStreamingMessage,
+      }),
       onProgress(event, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
@@ -3278,19 +3313,17 @@ function AppCore() {
       reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
-      onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        // Adopt the server's canonical id as soon as it lands. The
-        // server's `chat_stream` strips `tmp-` prefixes and mints a
-        // fresh id; the new value rides on `response.created`.
-        const sid = ev?.conversation_id || ev?.response?.conversation_id;
-        if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
-        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
-        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
-        flushSync(() => flushStreaming());
-      },
+      onEvent: makeStreamOnEvent({
+        streamGen,
+        getState: () => streamState,
+        setState: (s) => { streamState = s; },
+        // Adopt the server's canonical id as soon as it lands (chat_stream
+        // strips tmp- prefixes and mints a fresh id on response.created);
+        // resolvedId shifts under adoptServerId, so evaluate the ids per event.
+        taskIds: () => [resolvedId, id],
+        adoptServerId,
+        flush: flushStreaming,
+      }),
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -3552,45 +3585,48 @@ function AppCore() {
       skipped,
       name,
       method,
-      onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        const sid = ev?.conversation_id || ev?.response?.conversation_id;
-        if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
-        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
-        // The probe's `data-vault-form-patch` success signal travels
-        // inside the SSE body text, but MarkdownCode can't process it
-        // (the streaming message has complete=false, and the final
-        // assistant message mounts as historical). Detect the terminal
-        // `response.completed` event with status "success" and flip
-        // the form store directly so the DataVaultFormPanel shows the
-        // success state and the user can dismiss the modal.
-        if (ev?.type === 'response.completed') {
-          const cid = resolvedId || id;
-          const currentForm = getDataVaultForm(cid);
-          if (currentForm) {
-            const respStatus = ev?.response?.status;
-            if (respStatus === 'success') {
-              patchDataVaultForm(cid, {
-                form_id: currentForm.form_id,
-                _is_probing: false,
-                _is_success: true,
-                status_text: null,
-                form_error: null,
-              });
-              trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
-            } else if (respStatus === 'retry' || respStatus === 'failed') {
-              patchDataVaultForm(cid, {
-                form_id: currentForm.form_id,
-                _is_probing: false,
-                _is_success: false,
-                status_text: null,
-              });
+      onEvent: makeStreamOnEvent({
+        streamGen,
+        getState: () => streamState,
+        setState: (s) => { streamState = s; },
+        taskIds: () => [resolvedId, id],
+        adoptServerId,
+        // The data-vault path does not track the scratchpad; instead it flips the
+        // form store on the terminal event. The `data-vault-form-patch` success
+        // signal travels inside the SSE body text, but MarkdownCode can't process
+        // it (the streaming message has complete=false, and the final assistant
+        // message mounts as historical), so detect the terminal
+        // `response.completed` event here and flip the form store directly so the
+        // DataVaultFormPanel shows the success state and the user can dismiss.
+        trackScratchpad: false,
+        onEventExtra: (ev) => {
+          if (ev?.type === 'response.completed') {
+            const cid = resolvedId || id;
+            const currentForm = getDataVaultForm(cid);
+            if (currentForm) {
+              const respStatus = ev?.response?.status;
+              if (respStatus === 'success') {
+                patchDataVaultForm(cid, {
+                  form_id: currentForm.form_id,
+                  _is_probing: false,
+                  _is_success: true,
+                  status_text: null,
+                  form_error: null,
+                });
+                trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
+              } else if (respStatus === 'retry' || respStatus === 'failed') {
+                patchDataVaultForm(cid, {
+                  form_id: currentForm.form_id,
+                  _is_probing: false,
+                  _is_success: false,
+                  status_text: null,
+                });
+              }
             }
           }
-        }
-        flushSync(() => flushStreaming());
-      },
+        },
+        flush: flushStreaming,
+      }),
       onChunk(chunk, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
