@@ -8,6 +8,8 @@ import {
   type ProjectResourceState,
 } from './api';
 
+const EXECUTION_CAPACITY_REFRESH_MS = 5_000;
+
 
 export function useTaskExecutionTarget(selectedProject: CodeProject | null, engineId: string) {
   const resources = useMemo(
@@ -86,6 +88,32 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     });
     return () => { active = false; };
   }, [engineId, refreshRevision, resourceIds, resources, selectedProject]);
+
+  useEffect(() => {
+    const waitingForCapacity = !!selectedProject
+      && resourceIds.length > 0
+      && !loading
+      && computers.length === 0
+      && !!issue;
+    if (!waitingForCapacity) return undefined;
+
+    let timer: number | undefined;
+    const scheduleRefresh = () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === 'visible') {
+        timer = window.setTimeout(
+          () => setRefreshRevision((current) => current + 1),
+          EXECUTION_CAPACITY_REFRESH_MS,
+        );
+      }
+    };
+    scheduleRefresh();
+    document.addEventListener('visibilitychange', scheduleRefresh);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', scheduleRefresh);
+    };
+  }, [computers.length, issue, loading, resourceIds.length, selectedProject]);
 
   return {
     projectResources: resources,
