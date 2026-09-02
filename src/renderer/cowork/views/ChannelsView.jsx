@@ -13,7 +13,6 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
-import { useOrgMode } from '../../lib/orgMode';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -280,7 +279,6 @@ function ChannelCard({ plugin, status, onChanged }) {
 }
 
 export default function ChannelsView() {
-  const orgMode = useOrgMode();
   const [plugins, setPlugins] = useState([]);
   const [statusByType, setStatusByType] = useState({});
   const [loading, setLoading] = useState(true);
@@ -318,7 +316,7 @@ export default function ChannelsView() {
         <p className="channels-muted channels-pad">Loading channels…</p>
       ) : plugins.length === 0 ? (
         <p className="channels-muted channels-pad">
-          {orgMode ? "Channels aren't available on Cloud just yet." : 'No channels available. Is the server running?'}
+          No channels available. Is the server running?
         </p>
       ) : (
         <main className="channels-body">

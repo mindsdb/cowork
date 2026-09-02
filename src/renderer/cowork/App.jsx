@@ -2383,12 +2383,6 @@ function AppCore() {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
-    // Channels lives inside Settings, not behind its own route, so it needs
-    // its own org-mode intercept here rather than reusing navigate()'s.
-    if (orgMode && section === 'channels') {
-      setComingSoonFeature('Channels');
-      return;
-    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
@@ -2415,14 +2409,6 @@ function AppCore() {
     setRoute(key);
   };
 
-  // Same safety net for Channels: the in-Settings nav calls onSectionChange
-  // (= setSettingsSection) directly, bypassing openSettings entirely.
-  useEffect(() => {
-    if (orgMode && settingsSection === 'channels') {
-      setComingSoonFeature('Channels');
-      setSettingsSection('agent');
-    }
-  }, [orgMode, settingsSection]);
 
   // URL → state sync for the route elements. enterRoute is the single place a
   // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
