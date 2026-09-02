@@ -26,13 +26,16 @@ vi.mock('./token-store', () => ({
 }));
 vi.mock('./minds-credential', () => ({
   hasUserSuppliedMindsCredential: vi.fn(async () => false),
+  // Default true: every hand-over test below is about a sidecar that REFUSED,
+  // which presupposes one exists. The boot case sets it false explicitly.
+  isMindsCredentialSidecarReachable: vi.fn(() => true),
   syncMindsCredential: vi.fn(async () => true),
   syncMindsCredentialSelection: vi.fn(async () => ({ landed: true, usable: true })),
   syncUsableMindsCredential: vi.fn(async () => true),
 }));
 
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, getTokenStoreVersion, isAccessTokenExpired } from './token-store';
-import { hasUserSuppliedMindsCredential, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
+import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import {
   beginMindsCredentialSignOut,
   cancelScheduledRefresh,
@@ -40,6 +43,7 @@ import {
   freshAccessToken,
   getRevokeToken,
   refreshMindsCredentialAfterResume,
+  handOffMindsCredentialToStartedSidecar,
   refreshTokensOnly,
   scheduleRefreshRetry,
 } from './minds-auth';
@@ -81,6 +85,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     (clearTokens as Mock).mockClear();
     (syncUsableMindsCredential as Mock).mockReset().mockResolvedValue(true);
     (syncMindsCredentialSelection as Mock).mockReset().mockResolvedValue({ landed: true, usable: true });
+    (isMindsCredentialSidecarReachable as Mock).mockReset().mockReturnValue(true);
     settleMindsResumeCredentialGate(true);
   });
 
@@ -128,6 +133,65 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(clearTokens).not.toHaveBeenCalled();
     // Next refresh armed at expiry - 60s.
     expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('persists a rotated refresh token when sign-out lands mid-exchange', async () => {
+    // The exchange starts BEFORE sign-out, so it captured the pre-bump epoch and
+    // false for the suppression flag. Keycloak still rotates the refresh token
+    // and invalidates the one we sent, so dropping the response would hand
+    // end-session a token the IdP rejects and leave the SSO session alive.
+    (getAccessToken as Mock).mockReturnValue('stale-access-token');
+    (isAccessTokenExpired as Mock).mockReturnValue(true);
+    let releaseRefresh!: (response: unknown) => void;
+    const fetch = mockFetchOnce(async () => new Promise((resolve) => { releaseRefresh = resolve; }));
+
+    const inflight = refreshTokensOnly();
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    beginMindsCredentialSignOut();
+    releaseRefresh(jsonResponse(200, {
+      access_token: 'at-rotated',
+      expires_in: 300,
+      refresh_token: 'rt-rotated',
+    }));
+
+    await expect(inflight).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).toHaveBeenCalledWith('at-rotated', 300, 'rt-rotated');
+    // The write escapes the fence; nothing else does.
+    expect(syncUsableMindsCredential).not.toHaveBeenCalled();
+  });
+
+  it('does not arm a hand-over retry when no sidecar exists yet', async () => {
+    // Boot refreshes tokens before it starts the sidecar, so an unconditional
+    // retry here fires on every launch and races the server-start hook.
+    (isMindsCredentialSidecarReachable as Mock).mockReturnValue(false);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
+    mockFetchOnce(async () => jsonResponse(200, {
+      access_token: 'at-boot',
+      expires_in: 300,
+      refresh_token: 'rt-boot',
+    }));
+
+    await expect(refreshTokensOnly()).resolves.toEqual({ status: 'handoff_pending', token: 'at-boot' });
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncMindsCredentialSelection).not.toHaveBeenCalled();
+  });
+
+  it('releases the resume barrier when a restarted sidecar takes the credential', async () => {
+    // The server-start hook is the one landing path that used to push without
+    // settling, so a sidecar restarting mid-handoff left turns held and
+    // cancelled until the backed-off retry next came round.
+    beginMindsResumeCredentialGate();
+    const held = waitForMindsResumeCredential();
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(true);
+
+    await expect(held).resolves.toBe(true);
+    expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
 
   it('retries a failed sidecar PUT without rotating the Keycloak token again', async () => {

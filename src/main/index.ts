@@ -22,8 +22,8 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { refreshTokensOnly, refreshMindsCredentialAfterResume, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
-import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
+import { refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
   gateMindsResponseCreationRequest,
@@ -65,8 +65,11 @@ import {
  * nothing: an auto-update, the sidebar's stop/start, and the installer's first
  * start all leave a signed-in user with `config_ready: false` until something
  * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first. */
-setServerStartedHook(syncMindsCredential);
+ * first start, whichever path gets there first.
+ *
+ * It settles the resume barrier too: a sidecar restarting mid-handoff is
+ * exactly when a turn is parked waiting for one. */
+setServerStartedHook(handOffMindsCredentialToStartedSidecar);
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -1698,7 +1701,8 @@ app.whenReady().then(async () => {
       } else if (outcome.status === 'transient') {
         console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
       } else if (outcome.status === 'handoff_pending') {
-        console.warn('[auth] boot token refreshed — sidecar credential hand-over retry scheduled');
+        // Expected at boot: the sidecar starts below, and its start hook pushes.
+        console.log('[auth] boot token refreshed — sidecar gets it when it starts');
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }

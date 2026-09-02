@@ -45,6 +45,7 @@ import {
   setUserSuppliedMindsKey,
   clearUserSuppliedMindsKey,
   forgetMindsCredential,
+  isMindsCredentialSidecarReachable,
 } from './minds-credential';
 
 interface Call { method: string; url: string; body?: string; auth?: string }
@@ -73,6 +74,29 @@ beforeEach(() => {
   (getServerPort as Mock).mockReturnValue(8765);
   (getRefreshToken as Mock).mockReturnValue('a-refresh-token');
   (isAccessTokenExpired as Mock).mockReturnValue(false);
+});
+
+describe('isMindsCredentialSidecarReachable', () => {
+  // `pushMindsCredentialNow` flattens "no sidecar yet" and "the sidecar
+  // refused" into the same false. Only the second deserves a warning and a
+  // retry timer, so this predicate has to answer for both liveness states.
+  it('is true while the sidecar runs', () => {
+    (isServerRunning as Mock).mockReturnValue(true);
+    (isServerStarting as Mock).mockReturnValue(false);
+    expect(isMindsCredentialSidecarReachable()).toBe(true);
+  });
+
+  it('is true while the sidecar is still starting', () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(true);
+    expect(isMindsCredentialSidecarReachable()).toBe(true);
+  });
+
+  it('is false at boot, before any sidecar exists', () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(false);
+    expect(isMindsCredentialSidecarReachable()).toBe(false);
+  });
 });
 
 describe('resolveMindsCredential', () => {
