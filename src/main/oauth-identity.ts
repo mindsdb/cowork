@@ -111,6 +111,15 @@ export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.
 // _fetch_posthog_organization (oauth/google.py). Queries the SAME regional
 // host the user lookup already succeeded against, for the reason
 // fetchPostHogIdentity documents above.
+//
+// PostHog's consent screen lets a user select multiple organizations in a
+// single authorization — unlike Linear, where one grant is exactly one
+// workspace — so `name` joins every organization the token can see (e.g.
+// "Acme, Other Org"), not just the first, so the tile accurately shows
+// everything the connection actually covers. `id` still keys off the first
+// organization only: it's used solely for dedup, and a full
+// multi-organization-aware dedup key is a separate, not-yet-scoped
+// improvement.
 async function fetchPostHogOrganization(accessToken: string, apiHost: string): Promise<{ id: string; name: string }> {
   try {
     const res = await fetch(`${apiHost}/api/organizations/`, {
@@ -121,8 +130,10 @@ async function fetchPostHogOrganization(accessToken: string, apiHost: string): P
       Array<{ id?: string; name?: string }> |
       { results?: Array<{ id?: string; name?: string }> };
     const organizations = Array.isArray(data) ? data : (data.results || []);
-    const organization = organizations[0] || {};
-    return { id: organization.id || '', name: organization.name || '' };
+    if (organizations.length === 0) return { id: '', name: '' };
+    const id = organizations[0].id || '';
+    const name = organizations.map((org) => org.name || '').filter(Boolean).join(', ');
+    return { id, name };
   } catch {
     return { id: '', name: '' };
   }

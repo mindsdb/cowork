@@ -76,6 +76,22 @@ describe('fetchAccountIdentity — PostHog organization-aware identity', () => {
     });
   });
 
+  it('names every organization selected at consent, not just the first', async () => {
+    // ENG-2240 follow-up: PostHog's consent screen lets a user select
+    // several organizations in one authorization (unlike Linear, one grant
+    // = one workspace) - the tile must name all of them.
+    stubPostHogCalls({
+      user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
+      organization: { results: [{ id: 'org-123', name: 'Acme Org' }, { id: 'org-456', name: 'Other Org' }] },
+    });
+
+    await expect(fetchAccountIdentity('posthog', 'tok')).resolves.toEqual({
+      // Dedup key still keys off the first organization only.
+      email: 'user@example.com:org-123',
+      name: 'Acme Org, Other Org',
+    });
+  });
+
   it('gives a second organization a distinct identity', async () => {
     stubPostHogCalls({
       user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
