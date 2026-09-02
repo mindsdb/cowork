@@ -14,6 +14,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     () => selectedProject ? projectResources(selectedProject) : [],
     [selectedProject],
   );
+  const defaultResourceIdsJson = JSON.stringify(resources.map((resource) => resource.id));
   const [resourceIds, setResourceIds] = useState<string[]>([]);
   const [resourceStates, setResourceStates] = useState<ProjectResourceState[]>([]);
   const [computers, setComputers] = useState<CodeComputer[]>([]);
@@ -24,13 +25,13 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
   const [refreshRevision, setRefreshRevision] = useState(0);
 
   useEffect(() => {
-    setResourceIds(resources.map((resource) => resource.id));
+    setResourceIds(JSON.parse(defaultResourceIdsJson) as string[]);
     setResourceStates([]);
     setComputers([]);
     setAllComputers([]);
     setComputerId('');
     setIssue('');
-  }, [resources, selectedProject?.id]);
+  }, [defaultResourceIdsJson, selectedProject?.id]);
 
   useEffect(() => {
     let active = true;
