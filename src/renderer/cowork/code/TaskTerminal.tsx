@@ -79,6 +79,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       setLoading(false);
     }).catch((reason) => {
       if (disposed) return;
+      loadedSessionRef.current = sessionId;
       setError(reason instanceof Error ? reason.message : 'Could not open the terminal.');
       setLoading(false);
     });

@@ -148,6 +148,22 @@ it('does not connect a previous task terminal while the next task loads', async 
 });
 
 
+it('offers terminal recovery when loading the task terminal list fails', async () => {
+  const user = userEvent.setup();
+  api.terminals.mockRejectedValueOnce(new Error('Could not load terminals.'));
+
+  render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load terminals.');
+  expect(screen.queryByText('Opening terminal…')).not.toBeInTheDocument();
+  await user.click(screen.getByText('New terminal'));
+
+  await waitFor(() => expect(api.createTerminal).toHaveBeenCalledWith('task-1'));
+  expect(api.startTerminal).toHaveBeenCalledWith('task-1', 'terminal-2', 80, 24, 'auto');
+  expect(await screen.findByRole('tab', { name: 'Terminal 2, Running' })).toBeInTheDocument();
+});
+
+
 it('refreshes and focuses a terminal created by a project action', async () => {
   const { rerender } = render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
   await screen.findByRole('tab', { name: 'Terminal 1, Running' });
