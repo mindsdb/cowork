@@ -775,31 +775,77 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     expect(storedRow()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: true });
   });
 
-  it('refuses to run while an account-menu switch is in flight', async () => {
+  it('waits for an account-menu switch instead of refusing', async () => {
     // Both drive the same server-side Keycloak session, and this one switches
     // more than once. Interleaved, the restore lands after the switch and
     // silently undoes a change the person watched succeed.
-    installRoutedFetch([
-      { method: 'GET', match: '/orgs', reply: () => ({ status: 200, body: [PERSONAL, ACME] }) },
-      { method: 'GET', match: '/authenticate/', reply: () => ({ status: 200, body: { entitlements: ENTITLED } }) },
-      { method: 'PUT', match: '/runtime-credential/minds', reply: () => ({ status: 200, body: { ok: true } }) },
-      { method: 'PUT', match: 'users/switch-organization', reply: () => ({ status: 204, body: {} }) },
-      {
-        method: 'POST',
-        match: 'openid-connect/token',
-        reply: () => ({ status: 200, body: { access_token: tokenFor(ACME), expires_in: 300, refresh_token: 'rt-2' } }),
-      },
-    ]);
-    (getAccessToken as Mock).mockReturnValue(tokenFor(PERSONAL));
+    //
+    // It waits rather than refusing because `ReconnectCard` escalates any
+    // `ok: false` straight to `mindshubLogin()`, so refusing would put a full
+    // browser sign-in in front of someone whose session was fine.
+    let releaseSwitch: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { releaseSwitch = resolve; });
+    const members = [PERSONAL, ACME];
+    let active = PERSONAL;
+    let switchReached = false;
+    // Every request, so "did the selection start work?" is answerable. Pending
+    // is NOT enough on its own: with no lock the selection would run and block
+    // on this same gate, which looks identical from the outside.
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      seen.push(url);
+      const method = (init?.method || 'GET').toUpperCase();
+      const reply = (status: number, body: unknown) =>
+        ({ ok: status >= 200 && status < 400, status, json: async () => body });
+      if (url.includes('/orgs')) return reply(200, members);
+      if (method === 'PUT' && url.includes('users/switch-organization')) {
+        switchReached = true;
+        await gate;                       // hold the switch open
+        const id = JSON.parse(init!.body as string).id;
+        const found = members.find((o) => o.id === id);
+        if (found) active = found;
+        return reply(found ? 204 : 403, {});
+      }
+      if (url.includes('openid-connect/token')) {
+        return reply(200, { access_token: tokenFor(active), expires_in: 300, refresh_token: 'rt-2' });
+      }
+      if (url.includes('/authenticate/')) return reply(200, { entitlements: ENTITLED });
+      if (url.includes('/runtime-credential/minds')) return reply(200, { ok: true });
+      return reply(500, {});
+    }) as unknown as typeof fetch;
+    (getAccessToken as Mock).mockImplementation(() => tokenFor(active));
 
     const switching = switchMindsOrg(ACME.id);
-    // Yield so `switchMindsOrg` has taken the lock before we race it.
-    await Promise.resolve();
-    const raced = await selectEntitledOrg(tokenFor(PERSONAL));
+    for (let i = 0; i < 50 && !switchReached; i++) await Promise.resolve();
+    expect(switchReached).toBe(true);
 
-    expect(raced.token).toBeUndefined();
-    expect(raced.error).toMatch(/already running/i);
-    await switching;
+    const before = seen.length;
+    let selectSettled = false;
+    const selecting = selectEntitledOrg(tokenFor(PERSONAL))
+      .then((r) => { selectSettled = true; return r; })
+      .catch((e) => { selectSettled = true; throw e; });
+    try {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      // Not refused...
+      expect(selectSettled).toBe(false);
+      // ...and not merely blocked on the same gate: it has issued nothing at
+      // all, because it is parked on the lock. Without the lock it reaches
+      // `/orgs` immediately.
+      expect(seen.slice(before)).toEqual([]);
+    } finally {
+      // Release even on failure, or the lock outlives this test and every
+      // later one waits on a promise that never settles.
+      releaseSwitch();
+    }
+
+    const [switched, selected] = await Promise.all([switching, selecting]);
+
+    expect(switched.ok).toBe(true);
+    expect(selected.error).toBeUndefined();
+    expect(selected.token).toBeTruthy();
+    // And it did run, once the switch was done.
+    expect(seen.length).toBeGreaterThan(before);
   });
 
   it('never records an organization the person does not belong to', async () => {

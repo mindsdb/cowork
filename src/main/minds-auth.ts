@@ -795,6 +795,16 @@ function entitledToUseAnton(entitlements: any): boolean {
   );
 }
 
+// Held while any path is moving the active organization. The account-menu switch
+// and the entitlement selection both drive the same server-side Keycloak session,
+// and the selection switches more than once — per candidate, then once more to
+// put the session back — so interleaving them leaves the two disagreeing.
+//
+// A promise rather than a boolean because the two contenders want different
+// answers to "someone else is going": a second switch is refused, while a
+// selection waits (ENG-2199).
+let _orgSwitchInFlight: Promise<void> | null = null;
+
 // Pick the organization the presented token will name, and return that token.
 //
 // The active-organization claim is not a nicety: auth's `/v1/authenticate/`
@@ -818,28 +828,29 @@ function entitledToUseAnton(entitlements: any): boolean {
 // happens to be true of today's only caller, and a future one passing a stored
 // id would silently disable the fallback with nothing failing. This whole
 // function exists because two layers agreed implicitly once already (ENG-2199).
-// One lock for every path that moves the active organization. The account-menu
-// switch and the entitlement selection both drive the same server-side Keycloak
-// session, and the selection now switches more than once — per candidate, then
-// once more to put the session back.
-let _orgSwitchInFlight = false;
-
 export async function selectEntitledOrg(
   initialToken: string,
   options: { preferOrgId?: string; chosenByUser?: boolean } = {},
 ): Promise<SelectedOrgResult> {
-  // Interleaved with an account-menu switch, the restore below lands after it
-  // and silently undoes a change the person watched succeed. Rejecting is the
-  // honest outcome — the two are alternatives, not concurrent work — and the
-  // caller retries (ENG-2199).
-  if (_orgSwitchInFlight) {
-    return { error: 'A change of organization is already running. Try again in a moment.' };
+  // Wait rather than refuse. Refusing looks tidier but is the worse answer:
+  // `ReconnectCard` escalates any `ok: false` straight to `mindshubLogin()`
+  // (ChatView.jsx), so a moment's contention would put a full browser sign-in in
+  // front of someone whose session was fine.
+  //
+  // Waiting is also correct rather than merely kinder. Once the switch commits
+  // it records its organization as a person's choice, so the run that follows
+  // short-circuits on it instead of hunting them out of it again. The loop
+  // re-checks because another waiter may take the lock first.
+  while (_orgSwitchInFlight) {
+    try { await _orgSwitchInFlight; } catch { /* its failure is its caller's */ }
   }
-  _orgSwitchInFlight = true;
+  let release: () => void = () => {};
+  _orgSwitchInFlight = new Promise<void>((resolve) => { release = resolve; });
   try {
     return await doSelectEntitledOrg(initialToken, options);
   } finally {
-    _orgSwitchInFlight = false;
+    _orgSwitchInFlight = null;
+    release();
   }
 }
 
@@ -1412,11 +1423,13 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
       error: 'A change of organization is already running. Try again in a moment.',
     };
   }
-  _orgSwitchInFlight = true;
+  let release: () => void = () => {};
+  _orgSwitchInFlight = new Promise<void>((resolve) => { release = resolve; });
   try {
     return await doSwitchMindsOrg(targetOrgId);
   } finally {
-    _orgSwitchInFlight = false;
+    _orgSwitchInFlight = null;
+    release();
   }
 }
 
