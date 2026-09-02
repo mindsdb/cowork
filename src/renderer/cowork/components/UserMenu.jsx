@@ -39,6 +39,7 @@ import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
+import { organizationLabel } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
@@ -108,7 +109,12 @@ export function UserMenu({ user, onOpenSettings }) {
   // while Keycloak holds the label auth generated for it. `user.org` is the
   // fallback for the moments the listing has not arrived, and it is already
   // null rather than the raw slug.
-  const activeOrgName = activeOrg?.displayName || user.org || null;
+  //
+  // Both sides go through `organizationLabel`, so a personal organization reads
+  // `Personal` whether or not the listing has landed. Reading `displayName`
+  // directly here is what made the row paint `Personal` and then swap to auth's
+  // long `<email>'s organization` (ENG-2109).
+  const activeOrgName = organizationLabel(activeOrg) || user.org || null;
   // The console heads its menu with the email; fall back to whatever else names
   // the account so the header is never empty.
   const identity = user.email || user.username || user.name || null;
@@ -141,11 +147,12 @@ export function UserMenu({ user, onOpenSettings }) {
    */
   const listedOrgRows = orgs.map((org) => {
     const isActive = org.id === activeOrg?.id;
+    const label = organizationLabel(org);
     return {
       id: `organization-${org.id}`,
-      label: org.displayName,
+      label,
       // Long names truncate in the row, so hover carries the whole one.
-      title: org.displayName,
+      title: label,
       hint: isActive ? activeRowHint : undefined,
       disabled: isActive || switching,
       onClick: isActive ? undefined : () => pick(org.id),

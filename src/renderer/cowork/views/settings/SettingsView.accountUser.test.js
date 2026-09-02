@@ -63,11 +63,34 @@ describe('accountUserFromToken', () => {
   });
 
   it('uses a display name on the claim when one is there', () => {
+    // A company organization: the claim's own display name is the best label
+    // available, so it wins. Moved off the personal organization, which is the
+    // one case where it does not (see below).
     const user = accountUserFromToken(jwt({
       sub: 'user-1',
-      activate_organization: { id: 'org-personal', name: 'personal_user-1', displayName: "hazem@example.com's organization" },
+      activate_organization: { id: 'org-acme', name: 'acme.example', displayName: 'Acme Corporation' },
     }));
-    expect(user.org).toBe("hazem@example.com's organization");
+    expect(user.org).toBe('Acme Corporation');
+  });
+
+  /*
+   * ENG-2109. This used to assert the claim's display name won for a personal
+   * organization too, which meant that if the realm put auth's generated
+   * `<email>'s organization` in the claim, the account row showed the long
+   * label from the very first paint — and the listing-side fix would not help,
+   * because this value is also the fallback for when the listing never lands.
+   * Both readers now answer the same way.
+   */
+  it('prefers Personal over the generated label even when the claim carries it', () => {
+    const user = accountUserFromToken(jwt({
+      sub: 'user-1',
+      activate_organization: {
+        id: 'org-personal',
+        name: 'personal_user-1',
+        displayName: "hazem@example.com's organization",
+      },
+    }));
+    expect(user.org).toBe(PERSONAL_ORG_LABEL);
   });
 
   it('still reads the older claim spellings', () => {

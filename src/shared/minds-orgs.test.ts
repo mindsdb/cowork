@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   type MindsOrg,
+  PERSONAL_ORG_LABEL,
   chooseMindsOrg,
   needsOrgPick,
+  organizationLabel,
   personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
@@ -135,5 +137,79 @@ describe('the stored pick', () => {
     expect(readOrgPreference({ preferences: 'nope' }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: 'nope' } }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: { sub: USER } } }, USER)).toBeNull();
+  });
+});
+
+/*
+ * ENG-2109. Two readers name an organization: the token claim, which already
+ * substituted PERSONAL_ORG_LABEL, and the membership listing, whose
+ * `displayName` for a personal organization is auth's generated
+ * `<email>'s organization`. Every call site read `displayName` inline and the
+ * listing won, so the label changed under the user a beat after first paint.
+ * This function is what makes the two agree.
+ */
+describe('organizationLabel', () => {
+  it('calls a personal organization Personal, not auth\'s generated label', () => {
+    const generated: MindsOrg = {
+      ...PERSONAL,
+      displayName: "someone@example.com's organization",
+    };
+    expect(organizationLabel(generated)).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('agrees with the label the token claim already used, so nothing changes on resolve', () => {
+    // The claim path produces PERSONAL_ORG_LABEL for a personal organization
+    // (accountUser.js). Same value from the listing path means no flash.
+    expect(organizationLabel({ ...PERSONAL, displayName: "a@b.com's organization" }))
+      .toBe(PERSONAL_ORG_LABEL);
+  });
+
+  /*
+   * Renaming an organization is a shipped feature (auth's
+   * organization_admin.rename, no personal-org guard) and auth's own sync
+   * deliberately leaves a customized name alone. Substituting unconditionally
+   * would discard it at the last hop, which is the same class of bug as
+   * ENG-2109 with the sign flipped.
+   */
+  it("keeps a personal organization's name when the user renamed it", () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: 'Acme Consulting' }))
+      .toBe('Acme Consulting');
+  });
+
+  it.each([
+    ['the full-email rule (current)', "someone@example.com's organization"],
+    ['the local-part rule (legacy)', "someone's organization"],
+    ['the first-name rule (legacy)', "Alejandro's organization"],
+    ["auth's own fallback", 'Personal'],
+    ['a blank display name', ''],
+    ['the raw slug', personalOrgName(USER)],
+  ])('substitutes over %s', (_label, displayName) => {
+    expect(organizationLabel({ ...PERSONAL, displayName })).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('substitutes over a generated name with stray whitespace', () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: '   ' })).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('keeps a company organization on its Keycloak display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: 'Acme Corporation' }))
+      .toBe('Acme Corporation');
+  });
+
+  it('falls back to the raw name when a company organization has no display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: '' })).toBe('acme.example');
+  });
+
+  it('is null for no organization, so a caller can chain its own fallback', () => {
+    expect(organizationLabel(null)).toBeNull();
+    expect(organizationLabel(undefined)).toBeNull();
+  });
+
+  it('is null rather than empty when an organization names itself nothing at all', () => {
+    // Defensive: `toMindsOrg` derives `name` from slug ?? name ?? id, so a
+    // nameless organization should not reach here. Null keeps the return type
+    // honest and lets every call site's `|| fallback` chain do its job, which
+    // an empty string would also do by accident but without saying so.
+    expect(organizationLabel({ ...ACME, displayName: '', name: '' })).toBeNull();
   });
 });

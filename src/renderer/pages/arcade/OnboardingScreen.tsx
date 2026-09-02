@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
-import { type MindsOrg, needsOrgPick, rankMindsOrgs } from '../../../shared/minds-orgs';
+import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '../../../shared/minds-orgs';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
@@ -746,8 +746,8 @@ export default function OnboardingScreen({
                   checked={pickedOrgId === org.id}
                   onChange={() => setPickedOrgId(org.id)}
                 />
-                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={org.displayName}>
-                  {org.displayName}
+                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={organizationLabel(org) ?? undefined}>
+                  {organizationLabel(org)}
                 </span>
               </label>
             ))}
@@ -777,7 +777,7 @@ export default function OnboardingScreen({
           </div>
           {mintedOrg && (
             <div style={{ fontSize: 11.5, letterSpacing: '0.06em', color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 340 }}>
-              Working in <strong>{mintedOrg.displayName}</strong>
+              Working in <strong>{organizationLabel(mintedOrg)}</strong>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>
