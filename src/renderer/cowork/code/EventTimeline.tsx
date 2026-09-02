@@ -272,20 +272,28 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
 function TaskOutcome({
   session,
   latestError,
+  modelName,
   recovering,
   onRecover,
+  onChooseModel,
+  onAddCredits,
 }: {
   session: CodingSession;
   latestError: CodingEvent | undefined;
+  modelName: string;
   recovering: boolean;
   onRecover: () => Promise<void>;
+  onChooseModel: () => void;
+  onAddCredits: () => void;
 }) {
   const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
-  const errorDetail = session.last_error || latestError?.text || '';
+  const creditBlocked = latestError?.data.code === 'insufficient_credits';
+  const technicalDetail = typeof latestError?.data.detail === 'string' ? latestError.data.detail : '';
+  const errorDetail = technicalDetail || session.last_error || latestError?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = session.status === 'completed'
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
@@ -298,8 +306,12 @@ function TaskOutcome({
     <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
       <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : detail}</p>
+        <strong>{creditBlocked ? `${modelName || 'This model'} needs credits` : recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
+        <p>{recoveryInProgress
+          ? 'Reconnecting to the task files…'
+          : creditBlocked
+            ? 'Add credits or choose another model, then continue in this task.'
+            : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>
@@ -307,7 +319,12 @@ function TaskOutcome({
           </details>
         )}
       </div>
-      {recoverable && (
+      {creditBlocked ? (
+        <div className="code-task-outcome__actions">
+          <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>
+          <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>
+        </div>
+      ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
           {recoveryInProgress ? 'Resuming…' : 'Resume task'}
         </Button>
@@ -321,14 +338,20 @@ export const EventTimeline = memo(function EventTimeline({
   events,
   latestEvents,
   session,
+  modelName = '',
   recovering = false,
   onRecover = async () => {},
+  onChooseModel = () => {},
+  onAddCredits = () => {},
 }: {
   events: CodingEvent[];
   latestEvents: LatestEvents;
   session: CodingSession;
+  modelName?: string;
   recovering?: boolean;
   onRecover?: () => Promise<void>;
+  onChooseModel?: () => void;
+  onAddCredits?: () => void;
 }) {
   const items = useTimelineItems(events, session.id);
   const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
@@ -384,7 +407,15 @@ export const EventTimeline = memo(function EventTimeline({
         {session.status === 'running' && (
           <div className="code-running-indicator"><Spinner className="text-sm" /><span>The coding agent is working…</span></div>
         )}
-        <TaskOutcome session={session} latestError={latestError} recovering={recovering} onRecover={onRecover} />
+        <TaskOutcome
+          session={session}
+          latestError={latestError}
+          modelName={modelName}
+          recovering={recovering}
+          onRecover={onRecover}
+          onChooseModel={onChooseModel}
+          onAddCredits={onAddCredits}
+        />
       </div>
     </div>
   );
@@ -395,5 +426,6 @@ export const EventTimeline = memo(function EventTimeline({
   && left.session.run_status === right.session.run_status
   && left.session.computer_status === right.session.computer_status
   && left.session.last_error === right.session.last_error
+  && left.modelName === right.modelName
   && left.recovering === right.recovering
 ));
