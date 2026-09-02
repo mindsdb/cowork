@@ -33,8 +33,22 @@ vi.mock('./minds-credential', () => ({
 
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, getTokenStoreVersion, isAccessTokenExpired } from './token-store';
 import { hasUserSuppliedMindsCredential, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
-import { freshAccessToken, refreshTokensOnly, refreshMindsCredentialAfterResume, cancelScheduledRefresh } from './minds-auth';
-import { isMindsResumeCredentialGateActive, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
+import {
+  beginMindsCredentialSignOut,
+  cancelScheduledRefresh,
+  endMindsCredentialSignOut,
+  freshAccessToken,
+  getRevokeToken,
+  refreshMindsCredentialAfterResume,
+  refreshTokensOnly,
+  scheduleRefreshRetry,
+} from './minds-auth';
+import {
+  beginMindsResumeCredentialGate,
+  isMindsResumeCredentialGateActive,
+  settleMindsResumeCredentialGate,
+  waitForMindsResumeCredential,
+} from './minds-resume-gate';
 
 const mockFetchOnce = (impl: () => Promise<unknown>) => {
   const fn = vi.fn(impl);
@@ -57,6 +71,7 @@ const jsonResponse = (status: number, body: unknown) => ({
 describe('refreshTokensOnly outcome mapping', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    endMindsCredentialSignOut();
     (getRefreshToken as Mock).mockReturnValue('rt-1');
     (getTokenStoreVersion as Mock).mockReturnValue(0);
     (getAccessToken as Mock).mockReturnValue(null);
@@ -70,6 +85,7 @@ describe('refreshTokensOnly outcome mapping', () => {
   });
 
   afterEach(() => {
+    endMindsCredentialSignOut();
     cancelScheduledRefresh();
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -244,6 +260,24 @@ describe('refreshTokensOnly outcome mapping', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(fn).toHaveBeenCalledTimes(2);
     expect(saveTokens).toHaveBeenCalledWith('at-after-retry', 300, 'rt-2');
+  });
+
+  it('never lets jitter push refresh backoff past its strict ceiling', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.9999);
+    const fetch = mockFetchOnce(async () => jsonResponse(200, {
+      access_token: 'at-after-max-delay',
+      expires_in: 300,
+    }));
+    try {
+      for (let attempt = 0; attempt < 8; attempt += 1) scheduleRefreshRetry();
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it('holds an immediate post-resume turn until refresh and handoff finish', async () => {
@@ -497,6 +531,46 @@ describe('refreshTokensOnly outcome mapping', () => {
     releaseHandoff(true);
 
     await expect(refresh).resolves.toEqual({ status: 'superseded' });
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+    await expect(waitForMindsResumeCredential()).resolves.toBe(false);
+  });
+
+  it('keeps a revoke-only refresh from reopening credential readiness during logout', async () => {
+    (getAccessToken as Mock).mockReturnValue('expired-access-token');
+    (isAccessTokenExpired as Mock).mockReturnValue(true);
+    let releaseRefresh!: (response: unknown) => void;
+    const refreshResponse = new Promise<unknown>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const fetch = mockFetchOnce(async () => refreshResponse);
+
+    beginMindsResumeCredentialGate();
+    const heldResponse = waitForMindsResumeCredential();
+    beginMindsCredentialSignOut();
+
+    await expect(heldResponse).resolves.toBe(false);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+
+    const revokeToken = getRevokeToken();
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).not.toHaveBeenCalled();
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+    await expect(waitForMindsResumeCredential()).resolves.toBe(false);
+
+    releaseRefresh(jsonResponse(200, {
+      access_token: 'revoke-access-token',
+      expires_in: 300,
+      refresh_token: 'rotated-revoke-token',
+    }));
+
+    await expect(revokeToken).resolves.toBe('revoke-access-token');
+    expect(saveTokens).toHaveBeenCalledWith(
+      'revoke-access-token',
+      300,
+      'rotated-revoke-token',
+    );
+    expect(syncUsableMindsCredential).not.toHaveBeenCalled();
     expect(isMindsResumeCredentialGateActive()).toBe(true);
     await expect(waitForMindsResumeCredential()).resolves.toBe(false);
   });

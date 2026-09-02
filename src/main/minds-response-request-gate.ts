@@ -13,8 +13,8 @@ export function mindsRuntimeCredentialRequirementFromHealth(data: unknown): bool
 }
 
 /**
- * The requests that put LLM work on the wire and therefore need the Minds
- * credential settled first.
+ * Response routes whose renderer reservation could be stranded if the Minds
+ * credential is not settled before the request reaches the sidecar.
  *
  * `/responses` starts a turn. `/responses/answer` releases a turn parked on an
  * elicitation card, whose next model call runs on whatever credential the
@@ -22,6 +22,12 @@ export function mindsRuntimeCredentialRequirementFromHealth(data: unknown): bool
  * the access token's life lands exactly there. Reads, cancels and the SSE tail
  * are deliberately absent: none of them spends the credential, and gating the
  * cancel would make Stop unusable while the barrier is up.
+ *
+ * `/connectors/submissions` is intentionally outside this wake barrier. It is
+ * a retryable connector probe, not a response turn governed by the renderer's
+ * reservation/reap lifecycle that forces the 12-second ceiling here. Its Anton
+ * calls still use cowork-server's live per-request credential contract; adding
+ * a form-submission hold would be a separate UX contract.
  */
 const GATED_RESPONSE_PATHS = new Set([
   '/api/v1/responses',
