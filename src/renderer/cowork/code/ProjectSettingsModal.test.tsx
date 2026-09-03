@@ -388,7 +388,7 @@ describe('ProjectSettingsModal', () => {
 
     rerender(<ProjectSettingsModal {...props} open />);
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
