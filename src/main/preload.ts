@@ -143,6 +143,12 @@ contextBridge.exposeInMainWorld('antontron', {
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
   accountOwnershipPending: () => ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_PENDING),
+  // Resolved at preload time, which re-runs on every reload, so it is never the
+  // stale value an additionalArguments entry would be after a sign-out reload.
+  signedInAccountId: (() => {
+    try { return ipcRenderer.sendSync(IPC.ACCOUNT_SIGNED_IN_SYNC) as string | null; }
+    catch { return null; }
+  })(),
   decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
     ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),
 

@@ -3,7 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot } from './account-data';
 import { accountIdFromToken, decodeJwtPayload } from './jwt';
-import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -577,7 +577,7 @@ function readStoredOrgPreference(userId: string): string | null {
 
 function storeOrgPreference(userId: string, orgId: string): void {
   try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     const next = writeOrgPreference(readCoworkState(), userId, orgId);
     fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
   } catch (error) {
@@ -1236,12 +1236,10 @@ export async function writeEnvFileAtomic(
  * the previous account's database.
  */
 export async function commitMindsSignIn(): Promise<void> {
-  const homeDir = coworkHome();
-  // ~/.cowork normally exists by the time SSO finalize runs (the server creates
-  // it on boot), but if the server failed to start the write would ENOENT.
-  if (!fs.existsSync(homeDir)) {
-    fs.mkdirSync(homeDir, { recursive: true });
-  }
+  // The account's own root, not the shared home: on a second account's first
+  // sign-in nothing has created it yet, and writeEnvFileAtomic puts its temp
+  // file beside the target, so writing first would ENOENT and drop the value.
+  const homeDir = ensureAccountDataRoot();
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
@@ -1275,7 +1273,7 @@ export async function commitMindsSignIn(): Promise<void> {
     const mindsEntry = existingProviders.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
     mindsEntry.isDefault = true;
     state.preferences.providers = [mindsEntry];
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
     console.warn('[minds-auth] failed to set provider state', error);

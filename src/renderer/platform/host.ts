@@ -1434,6 +1434,17 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+/**
+ * The signed-in account, resolved at preload time and therefore readable
+ * synchronously. The async accessors cannot serve the one caller that needs it —
+ * the browser-cache purge, which has to run before React mounts.
+ */
+export function signedInAccountIdSync(): string | null {
+  if (!isElectron) return null;
+  const value = (bridge as { signedInAccountId?: unknown }).signedInAccountId;
+  return typeof value === 'string' && value ? value : null;
+}
+
 export interface AccountOwnershipQuestion {
   accountId: string;
   accountLabel: string | null;
@@ -1492,6 +1503,7 @@ export const host = {
   isLocalApiOrigin,
   accountOwnershipPending,
   decideAccountOwnership,
+  signedInAccountIdSync,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,

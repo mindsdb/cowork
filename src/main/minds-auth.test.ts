@@ -49,17 +49,37 @@ vi.mock('fs', async (importActual) => {
 // explicit paths and don't hit these.)
 // Hoisted: token-store reads coworkHome() at module load, before a plain const
 // would initialize, so the holder must exist during the mock-hoist phase.
-const homeHolder = vi.hoisted(() => ({ home: '', env: '', state: '', antonInstalled: false }));
-vi.mock('./cowork-home', () => ({
-  coworkHome: () => homeHolder.home,
-  coworkEnvPath: () => homeHolder.env,
-  coworkStatePath: () => homeHolder.state,
-  readEnvFile: () => ({}),
-  // Other consumers (server-process, minds-urls) read the build kind at load.
-  buildKind: () => 'prod',
-  buildKindStrict: () => 'prod',
-  migrateLegacyHome: () => {},
+const homeHolder = vi.hoisted(() => ({
+  home: '',
+  antonInstalled: false,
+  // Which root the account's own files resolve to. Set per test: the shared home
+  // for the account that owns it, a subtree for anyone else.
+  accountRoot: '',
 }));
+// The env and state paths are NOT stubbed to a flat temp file. They resolve to
+// an account root that may not exist yet, and `ensureAccountDataRoot` is what
+// creates it — a stub that flattened them could not see a writer that creates
+// the wrong directory, which is exactly the bug this mock previously hid.
+vi.mock('./cowork-home', async () => {
+  const fs = await import('fs');
+  const path = await import('path');
+  const root = () => homeHolder.accountRoot || homeHolder.home;
+  return {
+    coworkHome: () => homeHolder.home,
+    accountDataRoot: root,
+    ensureAccountDataRoot: () => {
+      fs.mkdirSync(root(), { recursive: true });
+      return root();
+    },
+    coworkEnvPath: () => path.join(root(), '.env'),
+    coworkStatePath: () => path.join(root(), 'state.json'),
+    readEnvFile: () => ({}),
+    // Other consumers (server-process, minds-urls) read the build kind at load.
+    buildKind: () => 'prod',
+    buildKindStrict: () => 'prod',
+    migrateLegacyHome: () => {},
+  };
+});
 vi.mock('./installer', () => ({
   checkInstallStatus: async () => ({ antonInstalled: homeHolder.antonInstalled }),
 }));
@@ -101,8 +121,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'minds-env-'));
   target = path.join(dir, '.env');
   homeHolder.home = dir;
-  homeHolder.env = target;
-  homeHolder.state = path.join(dir, 'state.json');
+  homeHolder.accountRoot = '';
   homeHolder.antonInstalled = false;
   serverState.running = false;
   serverState.onCurrentRoot = true;
@@ -316,5 +335,36 @@ describe('commitMindsSignIn — the account-switch restart', () => {
 
     expect(serverState.stops).toBe(0);
     expect(serverState.starts).toBe(0);
+  });
+});
+
+describe('commitMindsSignIn — a second account writing to a root that does not exist yet', () => {
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+  const asAccount = (sub: string) => {
+    const payload = Buffer.from(JSON.stringify({ sub })).toString('base64url');
+    saveTokens(`header.${payload}.signature`, 3600, '');
+  };
+
+  afterEach(() => { clearTokens(); });
+
+  it('creates the account root and lands the sign-in writes in it', async () => {
+    // The load-bearing case: on a second account's first sign-in nothing has
+    // created accounts/<B> yet, and writeEnvFileAtomic puts its temp file beside
+    // the target — so a writer that creates the SHARED home instead throws
+    // ENOENT and silently drops the value.
+    homeHolder.antonInstalled = false;
+    homeHolder.accountRoot = path.join(dir, 'accounts', ACCOUNT_B);
+    expect(fs.existsSync(homeHolder.accountRoot)).toBe(false);
+    asAccount(ACCOUNT_B);
+
+    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+
+    expect(fs.existsSync(path.join(homeHolder.accountRoot, '.env'))).toBe(true);
+    expect(fs.readFileSync(path.join(homeHolder.accountRoot, '.env'), 'utf-8'))
+      .toContain('ANTON_MINDS');
+    expect(fs.existsSync(path.join(homeHolder.accountRoot, 'state.json'))).toBe(true);
+    // And nothing was written to the shared home's own files.
+    expect(fs.existsSync(path.join(dir, '.env'))).toBe(false);
   });
 });

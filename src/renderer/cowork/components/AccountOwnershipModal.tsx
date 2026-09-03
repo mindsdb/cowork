@@ -11,9 +11,16 @@ import Button from './ui/Button';
 // than guess (showing one person another's work) or refuse (making a single
 // user's own history look deleted), the shell asks the one party who knows.
 //
-// Until it is answered the signed-in account is already on its own empty data,
-// so nothing is exposed while the question is open. Closing without choosing is
-// allowed: the question comes back on the next launch.
+// Dismissable on purpose. The other branch, "start fresh", is remembered
+// permanently, so a forced choice turns a mis-click into an install whose
+// history is unreachable from the app. Closing answers nothing and the question
+// returns on the next launch.
+//
+// While the question is open the account is already on its own root in the
+// common case. The exception is a launch that began before the account record
+// named anyone — an offline start on an upgraded install, where the refresh
+// lands later — so the sidecar can still be on the default root while this is
+// being asked.
 interface AccountOwnershipModalProps {
   open: boolean;
   /** Something the person recognises, or null when the token carries none. */
@@ -21,6 +28,8 @@ interface AccountOwnershipModalProps {
   /** Why the last answer did not take effect, so the dialog can stay open. */
   error?: string | null;
   onDecide: (keepExisting: boolean) => Promise<void> | void;
+  /** Close without answering. The question returns next launch. */
+  onDismiss: () => void;
 }
 
 export default function AccountOwnershipModal({
@@ -28,6 +37,7 @@ export default function AccountOwnershipModal({
   accountLabel,
   error = null,
   onDecide,
+  onDismiss,
 }: AccountOwnershipModalProps) {
   const [busy, setBusy] = useState<'keep' | 'fresh' | null>(null);
 
@@ -44,8 +54,17 @@ export default function AccountOwnershipModal({
   const who = accountLabel ? <strong>{accountLabel}</strong> : 'this account';
 
   return (
-    <Modal open={open} size="md" labelledBy="account-ownership-title" onClose={() => {}}>
-      <ModalHeader id="account-ownership-title" title="Whose tasks are these?" />
+    <Modal
+      open={open}
+      size="md"
+      labelledBy="account-ownership-title"
+      onClose={busy ? () => {} : onDismiss}
+    >
+      <ModalHeader
+        id="account-ownership-title"
+        title="Whose tasks are these?"
+        onClose={busy ? undefined : onDismiss}
+      />
       <ModalBody>
         <p style={{ margin: 0, lineHeight: 1.5 }}>
           There is existing history on this computer from before accounts were kept

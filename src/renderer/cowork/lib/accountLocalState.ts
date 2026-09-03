@@ -30,7 +30,7 @@ const ACCOUNT_SCOPED_PREFIXES = [
   'mindshub-code-terminal:', // TaskTerminal.tsx — per coding session, one each
 ];
 
-function isAccountScoped(key) {
+function isAccountScoped(key: string): boolean {
   return ACCOUNT_SCOPED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
@@ -44,10 +44,10 @@ function isAccountScoped(key) {
  * useless without. The first run with no record purges nothing — there is no
  * previous account to have left anything behind.
  */
-export function purgeStaleAccountState(accountId) {
+export function purgeStaleAccountState(accountId: string | null): boolean {
   if (!accountId) return false;
 
-  let store;
+  let store: Storage | undefined;
   try {
     store = globalThis.localStorage;
     if (!store) return false;
@@ -63,7 +63,7 @@ export function purgeStaleAccountState(accountId) {
     let removed = 0;
     if (last !== null) {
       // Collect first: removeItem during the index walk reshuffles the keys.
-      const doomed = [];
+      const doomed: string[] = [];
       for (let i = 0; i < store.length; i += 1) {
         const key = store.key(i);
         if (key && isAccountScoped(key)) doomed.push(key);

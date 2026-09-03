@@ -50,6 +50,9 @@ export const IPC = {
   // once, of the only party who knows.
   ACCOUNT_OWNERSHIP_PENDING: 'account:ownership-pending',
   ACCOUNT_OWNERSHIP_DECIDE: 'account:ownership-decide',
+  // Read synchronously in preload, before any page script runs, so the previous
+  // account's browser caches are gone before React can seed state from them.
+  ACCOUNT_SIGNED_IN_SYNC: 'account:signed-in-sync',
 
   // Keychain — where the refresh token is stored (file vs macOS keychain)
   KEYCHAIN_PREF_GET: 'keychain:get',

@@ -62,8 +62,8 @@ export default defineConfig({
         // invisible at runtime — one account quietly reading another's tasks
         // looks exactly like reading its own. The branch table is the only thing
         // that proves the refusals still fire.
-        'src/main/account-data.ts': { statements: 92, branches: 90 },
-        'src/renderer/cowork/lib/accountLocalState.js': { statements: 88, branches: 90 },
+        'src/main/account-data.ts': { statements: 98, branches: 96 },
+        'src/renderer/cowork/lib/accountLocalState.ts': { statements: 89, branches: 91 },
       },
     },
     projects: [

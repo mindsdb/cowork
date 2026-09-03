@@ -154,20 +154,28 @@ export function readAccountClaim(home: string): ClaimState {
 }
 
 function writeClaim(home: string, accountId: string): ClaimState {
+  // Written whole to a temp and then LINKED into place. link() fails with
+  // EEXIST if the target is there, so it keeps the exclusive-create semantics
+  // that make the claim safe against two launches racing — while never leaving a
+  // half-written claim behind. A torn claim reads as `unreadable`, which sends
+  // every account to its own root and can never be repaired, so this file is one
+  // that must not be writable in a partial state.
+  const target = path.join(home, CLAIM_FILE);
+  const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
   try {
     fs.mkdirSync(home, { recursive: true });
-    // wx: an exclusive create IS the claim, so two accounts racing cannot both
-    // win and neither can clobber a claim that already exists.
-    fs.writeFileSync(path.join(home, CLAIM_FILE), JSON.stringify({ accountId }) + '\n', {
+    fs.writeFileSync(tmp, JSON.stringify({ accountId }) + '\n', {
       encoding: 'utf-8',
       mode: 0o600,
-      flag: 'wx',
     });
+    fs.linkSync(tmp, target);
     return { kind: 'claimed', accountId };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return { kind: 'unreadable' };
+    return readAccountClaim(home);
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
   }
-  return readAccountClaim(home);
 }
 
 /**

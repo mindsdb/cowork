@@ -49,7 +49,7 @@ import {
   readActiveAccount,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -1247,6 +1247,16 @@ function setupIPC() {
   // account cannot be shown to own? Only the person at the keyboard knows, so
   // the shell asks them once. Until they answer, the account is already on its
   // own empty root, so nothing is exposed while the question is open.
+  // Synchronous on purpose, and the only sendSync in the app. The renderer has
+  // to purge the previous account's localStorage BEFORE React mounts, because
+  // useDraft seeds its state during render from a key ('new') that every account
+  // shares — an async answer arrives a frame too late and the previous account's
+  // unsent text is already on screen and in state.
+  ipcMain.on(IPC.ACCOUNT_SIGNED_IN_SYNC, (event) => {
+    const active = readActiveAccount(coworkHome());
+    event.returnValue = active.kind === 'signed-in' ? active.accountId : null;
+  });
+
   ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_PENDING, () => {
     const home = coworkHome();
     const active = readActiveAccount(home);
@@ -1342,9 +1352,7 @@ function setupIPC() {
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
     const homeDir = coworkHome();
-    if (!fs.existsSync(homeDir)) {
-      fs.mkdirSync(homeDir, { recursive: true });
-    }
+    ensureAccountDataRoot();
     const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
@@ -1386,7 +1394,7 @@ function setupIPC() {
     try {
       const homeDir = coworkHome();
       if (!fs.existsSync(homeDir)) {
-        fs.mkdirSync(homeDir, { recursive: true });
+        ensureAccountDataRoot();
       }
       const envPath = coworkEnvPath();
       const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';

@@ -303,6 +303,7 @@ export default function App() {
           accountLabel={ownership.accountLabel}
           error={ownershipError}
           onDecide={decideOwnership}
+          onDismiss={() => { setOwnershipError(null); setOwnership(null); }}
         />
       )}
 

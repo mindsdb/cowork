@@ -167,6 +167,20 @@ export function accountDataRoot(): string {
  * preference travel with the account, so a second account on one machine
  * accepts terms again.
  */
+/**
+ * The account's data root, created if it is not there yet.
+ *
+ * Every writer of `coworkEnvPath()` or `coworkStatePath()` must go through this
+ * rather than creating `coworkHome()`: a second account's root does not exist
+ * until something makes it, and an atomic write puts its temp file in the target
+ * directory, so writing first would fail with ENOENT and lose the value.
+ */
+export function ensureAccountDataRoot(): string {
+  const root = accountDataRoot();
+  fs.mkdirSync(root, { recursive: true });
+  return root;
+}
+
 export function coworkEnvPath(): string {
   return path.join(accountDataRoot(), '.env');
 }
