@@ -123,8 +123,9 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 
 # Record the installed bundle name so the postinstall can hand the .app to the
 # console user — a pkg installs root-owned, which forces a Touch ID prompt on
-# every auto-update; a user-owned bundle (like a DMG install) swaps silently.
-# Packaged into --scripts and read by build/pkg-scripts/postinstall.
+# auto-update; a user-owned bundle (like a DMG install) swaps silently for an
+# admin console user. Packaged into --scripts and read by
+# build/pkg-scripts/postinstall.
 printf '%s.app\n' "$PRODUCT_NAME" > build/pkg-scripts/installed-app-name
 
 echo "==> Building component pkg (non-relocatable)"

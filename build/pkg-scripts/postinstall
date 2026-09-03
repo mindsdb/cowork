@@ -75,9 +75,9 @@ stage_shared_fallback() {
 #
 # Only clears the prompt for an admin console user: Squirrel also escalates when
 # the bundle's parent is unwritable, and /Applications is 0775 root:admin —
-# writable by admins, not by standard users, who keep the manual-installer
-# fallback. A true prompt-free path for non-admins needs a privileged helper or
-# a per-user install.
+# writable by admins, not by standard users, who still get the prompt (and a
+# recoverable Retry if they cancel, not the manual-installer notice). A
+# prompt-free path for non-admins is tracked separately.
 #
 # Best-effort and non-fatal: a headless/MDM install with no console user stays
 # root-owned. The bundle name is written alongside this script by
