@@ -1529,13 +1529,12 @@ function AppCore() {
         return;
       }
       setTasksStatus('ready');
-      // One-time freshness decision for the onboarding checklist, taken on
-      // the session's first successful fetch (refreshData re-fires — on the
-      // serverOnline flip, Retry, SSO, manual start and run-schedule-now; no
-      // timer drives it, the only setInterval here is refreshInFlightSet —
-      // hence
-      // the ref guard): an account that already has tasks is not a first
-      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+      // One-time freshness decision for the onboarding checklist, taken on the
+      // session's first successful fetch: an account that already has tasks is
+      // not a first run, and would otherwise sit on a permanent, undismissable
+      // 0/4 card. Hence the ref guard — refreshData re-fires on the
+      // serverOnline flip, Retry, SSO, manual start and run-schedule-now.
+      // No timer drives it; the only setInterval here is refreshInFlightSet.
       if (!onboardingFreshnessResolvedRef.current) {
         onboardingFreshnessResolvedRef.current = true;
         if (data.length > 0) dismissIfUntouched();
