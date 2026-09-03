@@ -258,7 +258,15 @@ export function useCodingSession(sessionId: string | null, active = true) {
             scheduleReview(sessionId);
           }
         }
-        if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') setError('');
+        if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') {
+          setError('');
+        } else {
+          // Both reads failed: the backend is unreachable or answering errors.
+          // Say so instead of leaving the last known state on screen as if it
+          // were live.
+          const reason = sessionResult.reason;
+          setError(reason instanceof Error && reason.message ? reason.message : 'Could not refresh this coding task.');
+        }
       });
     };
     const onVisibilityChange = () => {
