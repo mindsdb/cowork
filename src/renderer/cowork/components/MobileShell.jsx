@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { projectLabel } from '../lib/projectLabel';
+import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Badge } from './ui';
 
@@ -390,7 +390,7 @@ export default function MobileShell({
                     <ListRow
                       key={t.id}
                       primary={t.title || 'Untitled task'}
-                      secondary={t.projectName || ''}
+                      secondary={projectLabelByName(projects, t.projectName) || ''}
                       onClick={() => handleTaskTap(t.id)}
                     />
                   ))}

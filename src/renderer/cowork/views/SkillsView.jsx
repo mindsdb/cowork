@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
@@ -32,9 +33,11 @@ function EmptyState({ children }) {
 }
 
 
-function SkillGridCard({ skill, onClick }) {
+function SkillGridCard({ skill, onClick, projects = [] }) {
   const age = relativeAge(skill.updatedAt);
-  const project = skill.projects?.[0] || skill.project;
+  // `skill.projects` holds project *names*, not objects, so the slug has to be
+  // resolved against the list before a person sees it (ENG-1676).
+  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
   return (
     <Card
       as="button"
@@ -178,7 +181,9 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
                 // leading icon and a divider.
                 { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
                 { separator: true },
-                ...projects.map((p) => ({ value: p.name, label: p.name })),
+                // value stays the slug -- it is what `submit` persists into
+                // `skill.projects`. Only the label is for reading.
+                ...projects.map((p) => ({ value: p.name, label: projectLabel(p) })),
               ]}
             />
           </Field>
@@ -522,7 +527,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <div className="mb-4">
             <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
-              {selected.projects?.[0] || 'All projects'}
+              {projectLabelByName(projects, selected.projects?.[0]) || 'All projects'}
             </p>
           </div>
 
@@ -600,7 +605,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           ) : (
             <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
               {sorted.map((skill) => (
-                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} />
+                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
               ))}
             </div>
           )}

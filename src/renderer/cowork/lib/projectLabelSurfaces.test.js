@@ -39,6 +39,19 @@ const SURFACES = [
   ['schedule card', 'cowork/components/schedule/ScheduleCard.jsx'],
   ['schedule detail hint', 'cowork/views/ScheduleDetailView.jsx'],
   ['channel bindings', 'cowork/views/ChannelBindings.jsx'],
+  // Round five, and the first round prompted by the question "did we check
+  // skills?" rather than by a rule. These hold a project as a NAME STRING --
+  // `skill.projects` is an array of names, and these rows carry `projectName`
+  // -- so there is no `.name` anywhere for the rules above to catch, and no
+  // project object to hand `projectLabel`. `projectLabelByName` resolves them.
+  ['skills scope picker + card + detail', 'cowork/views/SkillsView.jsx'],
+  ['recents modal', 'cowork/components/RecentsModal.jsx'],
+  ['rail context card heading', 'cowork/components/rail/ContextCard.jsx'],
+  ['utilities / memory headings', 'cowork/views/UtilitiesView.jsx'],
+  // Neither of these was ever in this list; both were found only by running
+  // the rules across the whole renderer rather than across the list itself.
+  ['data-vault project picker', 'cowork/components/datavault/DataVaultFormPanel.jsx'],
+  ['schedule task modal picker', 'cowork/components/schedule/ScheduleTaskModal.jsx'],
 ];
 
 /*
@@ -107,6 +120,36 @@ const RENDERED_SLUG_LOCAL = new RegExp(
   + '|\\b(?:primary|secondary|label|title|content|placeholder|defaultValue)=\\{\\s*projectName\\s*\\})',
 );
 
+/*
+ * Round five's two shapes, both invisible to everything above.
+ *
+ * SLUG_FIELD: these rows store the project as `.projectName`, not `.name`, so
+ * every rule keyed on `.name` slid straight past them. Excluded on any line
+ * carrying `key=`, because a React key built from the slug is correct.
+ *
+ * OBJECT_LABEL: `{ value: p.name, label: p.name }` in the skills scope picker.
+ * An object property, not a JSX attribute, so DISPLAY_ATTR could not see it --
+ * and `value` genuinely must stay the slug, since that is what gets persisted
+ * into `skill.projects`. Only the label is for reading.
+ *
+ * STORED_SLUG_ARRAY: `{selected.projects?.[0]}` renders an element of that
+ * array of names directly.
+ */
+const SLUG_FIELD = new RegExp(
+  '(?:>\\{[^}\\n]*\\.projectName\\b[^}\\n]*\\}'
+  + '|\\$\\{[^}\\n]*\\.projectName\\b[^}\\n]*\\}'
+  + '|\\b(?:primary|secondary|label|title|content|heading|placeholder|defaultValue)=\\{[^}\\n]*\\.projectName\\b)',
+);
+const OBJECT_LABEL = new RegExp(`\\blabel:\\s*${PROJECT_VAR}\\??\\.name\\b`);
+// Rendering an element of that array -- a standalone JSX expression line, or
+// one opened right after a tag. NOT `setDraft({ project: initial.projects?.[0] })`,
+// which stores the slug into form state and is exactly right: that value is
+// what gets persisted back.
+const STORED_SLUG_ARRAY = new RegExp(
+  '(?:^\\s*|>\\s*)\\{[^}\\n]*\\.projects\\?\\.\\[0\\]'
+  + '|\\b(?:primary|secondary|label|title|content|heading)=\\{[^}\\n]*\\.projects\\?\\.\\[0\\]',
+);
+
 describe.each(SURFACES)('%s', (_name, rel) => {
   const src = readFileSync(resolve(RENDERER, rel), 'utf-8');
 
@@ -125,7 +168,13 @@ describe.each(SURFACES)('%s', (_name, rel) => {
       .map((line, i) => [i + 1, line])
       .filter(([, line]) => DISPLAY_ATTR.test(line) || JSX_CHILD.test(line)
         || BARE_INTERP.test(line) || LAUNDERED.test(line)
-        || RENDERED_SLUG_LOCAL.test(line))
+        || RENDERED_SLUG_LOCAL.test(line)
+        // These three describe an UNRESOLVED display read. A line that already
+        // calls the resolver is the fix, not the defect -- without this,
+        // `{projectLabelByName(projects, row.projectName)}` flags itself. And a
+        // slug used as a React key is correct, so `key=` is exempt too.
+        || (!/\bkey=\{/.test(line) && !/projectLabel/.test(line)
+            && (SLUG_FIELD.test(line) || OBJECT_LABEL.test(line) || STORED_SLUG_ARRAY.test(line))))
       .map(([n, line]) => `${n}: ${line.trim()}`);
     expect(offenders).toEqual([]);
   });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
@@ -57,7 +58,7 @@ function shouldUseTextarea(field) {
   return isLongField(field) && !field.secret;
 }
 
-export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
+export default function UtilitiesView({ kind, project, onRefreshArtifacts, projects = [],}) {
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');
@@ -238,7 +239,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={`Project · ${section.projectName}`}
+              heading={`Project · ${projectLabelByName(projects, section.projectName)}`}
               files={section.files || []}
               selected={selected}
               onSelect={selectEntry}
@@ -257,7 +258,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
                     {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${selected.projectName}`
+                      ? `Project · ${projectLabelByName(projects, selected.projectName)}`
                       : selected.scope}
                   </div>
                   <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
@@ -280,7 +281,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
                     {displayed.scope === 'Project' && displayed.projectName
-                      ? `Project · ${displayed.projectName}`
+                      ? `Project · ${projectLabelByName(projects, displayed.projectName)}`
                       : displayed.scope}
                   </div>
                   <SharedResourceAttribution resource={displayed} className="mt-1" />

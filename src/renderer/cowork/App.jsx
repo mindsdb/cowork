@@ -4910,6 +4910,7 @@ function AppCore() {
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
+            projects={projects}
             kind={route}
             project={selectedProject}
             onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}

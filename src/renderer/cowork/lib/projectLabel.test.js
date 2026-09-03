@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectLabel, projectMatches, projectNamed } from './projectLabel';
+import { projectLabel, projectLabelByName, projectMatches, projectNamed } from './projectLabel';
 
 /*
  * ENG-1676. `name` is the slug an ASCII allowlist produced, so a Cyrillic or
@@ -87,5 +87,45 @@ describe('sorting by the label', () => {
     const b = { name: 'untitled-project-3', display_name: 'Абрикос' };
     const sorted = [a, b].sort((x, y) => projectLabel(x).localeCompare(projectLabel(y)));
     expect(sorted.map(projectLabel)).toEqual(['Абрикос', 'Яблуко']);
+  });
+});
+
+/*
+ * The slug-string surfaces: `skill.projects` is an array of names, and
+ * task/schedule/memory rows carry `projectName`. They hold no project object,
+ * so they could not call projectLabel at all -- which is why they kept
+ * rendering slugs after every other surface was fixed (ENG-1676, round five).
+ */
+describe('projectLabelByName', () => {
+  const LIST = [
+    { id: '1', name: 'untitled-project-2', display_name: 'Мій тестовий проєкт' },
+    { id: '2', name: 'reports', display_name: null },
+  ];
+
+  it('resolves a slug string to the label', () => {
+    expect(projectLabelByName(LIST, 'untitled-project-2')).toBe('Мій тестовий проєкт');
+  });
+
+  it('falls back to the slug for a project that predates the column', () => {
+    expect(projectLabelByName(LIST, 'reports')).toBe('reports');
+  });
+
+  it('falls back to the slug when the list has not loaded', () => {
+    // Every one of these surfaces renders before its projects fetch resolves.
+    expect(projectLabelByName([], 'untitled-project-2')).toBe('untitled-project-2');
+    expect(projectLabelByName(undefined, 'untitled-project-2')).toBe('untitled-project-2');
+  });
+
+  it('falls back to the slug for a project no longer in the list', () => {
+    expect(projectLabelByName(LIST, 'deleted-project')).toBe('deleted-project');
+  });
+
+  it('is null for no name, so callers can chain their own fallback', () => {
+    expect(projectLabelByName(LIST, '')).toBeNull();
+    expect(projectLabelByName(LIST, null)).toBeNull();
+  });
+
+  it('survives a malformed list entry', () => {
+    expect(projectLabelByName([null, undefined, { name: 'reports' }], 'reports')).toBe('reports');
   });
 });

@@ -49,3 +49,20 @@ export function projectNamed(project, query) {
   return (projectLabel(project) || '').toLowerCase() === q
     || (project?.name || '').toLowerCase() === q;
 }
+
+/**
+ * The label for a project you only have the *slug* for.
+ *
+ * Several surfaces store a project as its `name` string rather than as an
+ * object: `skill.projects` is an array of names, and task/schedule/memory rows
+ * carry `projectName`. Those cannot call `projectLabel` directly — they have to
+ * resolve the slug against the projects list first.
+ *
+ * Falls back to the slug itself when the list has not loaded or no longer
+ * contains that project, so a row never renders blank (ENG-1676).
+ */
+export function projectLabelByName(projects, name) {
+  if (!name) return null;
+  const match = (projects || []).find((p) => p?.name === name);
+  return projectLabel(match) || name;
+}

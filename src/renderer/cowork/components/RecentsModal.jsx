@@ -7,6 +7,7 @@
 // needs to scroll back further than the inline list can show.
 
 import { useEffect, useRef, useState } from 'react';
+import { projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { relativeAge } from '../lib/formatTime';
@@ -104,7 +105,7 @@ function groupByProject(tasks) {
   return groups;
 }
 
-export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDelete }) {
+export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDelete, projects = [],}) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
 
@@ -241,7 +242,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
                   <span style={{
                     minWidth: 0,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{group.projectName}</span>
+                  }}>{projectLabelByName(projects, group.projectName)}</span>
                   <span style={{
                     flex: 1, height: 1, background: 'var(--line)',
                   }} />

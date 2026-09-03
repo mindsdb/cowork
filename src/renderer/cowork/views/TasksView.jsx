@@ -489,7 +489,7 @@ export default function TasksView({
     for (const p of projects) {
       if (!projectsWithTasks.has(p.name) || seen.has(p.name)) continue;
       seen.add(p.name);
-      opts.push({ id: p.name, label: p.name });
+      opts.push({ id: p.name, label: projectLabel(p) });
     }
     // Catch any task whose project isn't in the registered project
     // list (e.g. project was deleted but tasks linger).

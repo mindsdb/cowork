@@ -2638,6 +2638,7 @@ export default function ChatView({
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
+          projects={projects}
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}

@@ -838,6 +838,7 @@ function ProjectDetail({
           </div>
           <WorkingFolderBox project={project} />
           <ContextBox
+            projects={projects}
             project={project}
             onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
             onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}

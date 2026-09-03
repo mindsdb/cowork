@@ -126,7 +126,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
           ariaLabel="Project"
           options={[
             { value: '', label: 'Project: default' },
-            ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ...projects.map((p) => ({ value: p.id, label: projectLabel(p) })),
           ]}
         />
         <Button variant="primary" onClick={addRow}>
@@ -177,7 +177,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
                       ariaLabel="Project"
                       options={[
                         { value: '', label: 'default' },
-                        ...projects.map((p) => ({ value: p.id, label: p.name })),
+                        ...projects.map((p) => ({ value: p.id, label: projectLabel(p) })),
                       ]}
                     />
                   </td>

@@ -5,6 +5,7 @@
 // (and legacy context paths).
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { projectLabelByName } from '../../lib/projectLabel';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import { Tooltip } from '../ui';
@@ -327,7 +328,9 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile }) {
+export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+  projects = [],
+}) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   // Google Drive files the user picked via "Attach Google Drive files"
@@ -973,7 +976,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         title={labelCategory(openEntry?.category) || openEntry?.name || ''}
         subtitle={
           openEntry?.scope === 'Project' && openEntry?.projectName
-            ? `Project · ${openEntry.projectName}`
+            ? `Project · ${projectLabelByName(projects, openEntry.projectName)}`
             : (openEntry?.scope || '')
         }
         initialContent={openEntry?.content || ''}
