@@ -108,7 +108,7 @@ describe('useTaskExecutionTarget', () => {
     }
   });
 
-  it('does not re-poll when the issue is not a capacity shortage', async () => {
+  it('keeps rechecking while a resource waits for its computer to come back online', async () => {
     vi.useFakeTimers();
     try {
       projectResources.mockResolvedValue({ items: [{
@@ -120,7 +120,9 @@ describe('useTaskExecutionTarget', () => {
           detail: '',
         },
       }] });
-      projectComputers.mockResolvedValue({ items: [] });
+      projectComputers
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: [localComputer] });
       const { result } = renderHook(() => useTaskExecutionTarget(project, 'codex'));
 
       await act(async () => {
@@ -129,6 +131,33 @@ describe('useTaskExecutionTarget', () => {
         await Promise.resolve();
       });
       expect(result.current.executionIssue).toBe('cowork is on a computer that is offline.');
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.computerId).toBe('local');
+      expect(result.current.executionIssue).toBe('');
+      expect(projectComputers).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not re-poll when the capacity check itself failed', async () => {
+    vi.useFakeTimers();
+    try {
+      projectComputers.mockRejectedValue('network down');
+      const { result } = renderHook(() => useTaskExecutionTarget(project, 'codex'));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.executionIssue).toBe('Could not check where this task can run.');
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);

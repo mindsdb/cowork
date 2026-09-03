@@ -10,6 +10,10 @@ import {
 
 const EXECUTION_CAPACITY_REFRESH_MS = 5_000;
 const CAPACITY_ISSUE = 'No online computer can run this task right now.';
+const OFFLINE_ISSUE_SUFFIX = ' is on a computer that is offline.';
+
+const offlineIssue = (resourceName: string) => `${resourceName}${OFFLINE_ISSUE_SUFFIX}`;
+const isTransientIssue = (issue: string) => issue === CAPACITY_ISSUE || issue.endsWith(OFFLINE_ISSUE_SUFFIX);
 
 
 export function useTaskExecutionTarget(selectedProject: CodeProject | null, engineId: string) {
@@ -78,9 +82,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       if (!computerPage.items.length) {
         const selectedStates = resourcePage.items.filter((item) => resourceIds.includes(item.resource.id));
         const offline = selectedStates.find((item) => item.availability.status === 'offline');
-        setIssue(offline
-          ? `${offline.resource.name} is on a computer that is offline.`
-          : CAPACITY_ISSUE);
+        setIssue(offline ? offlineIssue(offline.resource.name) : CAPACITY_ISSUE);
       }
     }).catch((reason) => {
       if (active) setIssue(reason instanceof Error ? reason.message : 'Could not check where this task can run.');
@@ -95,7 +97,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       && resourceIds.length > 0
       && !loading
       && computers.length === 0
-      && issue === CAPACITY_ISSUE;
+      && isTransientIssue(issue);
     if (!waitingForCapacity) return undefined;
 
     let timer: number | undefined;
