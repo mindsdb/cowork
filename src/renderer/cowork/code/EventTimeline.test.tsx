@@ -152,6 +152,66 @@ describe('EventTimeline', () => {
     expect(screen.getByText(/server returned 402 Payment Required/)).toBeVisible();
   });
 
+  function failedTask(code: string, detail: string) {
+    const failure = { ...event(1, 'error', 'The turn failed.'), data: { code, detail, model: 'gpt-5.6-sol' } };
+    return {
+      ...timelineProps([failure]),
+      session: { ...session('failed'), run_status: 'failed' as const, model: 'gpt-5.6-sol', last_error: failure.text },
+      modelName: 'GPT 5.6 Sol',
+    };
+  }
+
+  it('asks for a fresh sign-in when the model credential is rejected, with no invented sign-in action', () => {
+    const onChooseModel = vi.fn();
+    const onAddCredits = vi.fn();
+    render(
+      <EventTimeline
+        {...failedTask('model_authentication_failed', 'server returned 401 Unauthorized')}
+        onChooseModel={onChooseModel}
+        onAddCredits={onAddCredits}
+      />,
+    );
+
+    expect(screen.getByText('Your sign-in does not match this server')).toBeInTheDocument();
+    expect(screen.getByText('Sign in again, or switch back to the environment you signed into, then continue in this task.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+    expect(onAddCredits).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText('server returned 401 Unauthorized')).toBeVisible();
+  });
+
+  it('offers a model change when the chosen model is not available', () => {
+    const onChooseModel = vi.fn();
+    render(
+      <EventTimeline
+        {...failedTask('model_unavailable', 'server returned 404 model not found')}
+        onChooseModel={onChooseModel}
+      />,
+    );
+
+    expect(screen.getByText('GPT 5.6 Sol is not available')).toBeInTheDocument();
+    expect(screen.getByText('Choose another model, then continue in this task.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText('server returned 404 model not found')).toBeVisible();
+  });
+
+  it('keeps the generic paused-task recovery for failure codes it does not know', () => {
+    render(<EventTimeline {...failedTask('runtime_crashed', 'worker exited with code 137')} />);
+
+    expect(screen.getByText('Task paused')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resume task' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText('worker exited with code 137')).toBeVisible();
+  });
+
   it('hides raw session events because status is represented once in the outcome', () => {
     render(
       <EventTimeline

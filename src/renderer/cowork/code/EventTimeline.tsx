@@ -269,6 +269,29 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
 }
 
 
+interface FailureRecovery {
+  title: (modelName: string) => string;
+  body: string;
+  addCredits?: boolean;
+}
+
+const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
+  insufficient_credits: {
+    title: (modelName) => `${modelName} needs credits`,
+    body: 'Add credits or choose another model, then continue in this task.',
+    addCredits: true,
+  },
+  model_authentication_failed: {
+    title: () => 'Your sign-in does not match this server',
+    body: 'Sign in again, or switch back to the environment you signed into, then continue in this task.',
+  },
+  model_unavailable: {
+    title: (modelName) => `${modelName} is not available`,
+    body: 'Choose another model, then continue in this task.',
+  },
+};
+
+
 function TaskOutcome({
   session,
   latestError,
@@ -291,7 +314,8 @@ function TaskOutcome({
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
-  const creditBlocked = latestError?.data.code === 'insufficient_credits';
+  const code = latestError?.data.code;
+  const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
   const technicalDetail = typeof latestError?.data.detail === 'string' ? latestError.data.detail : '';
   const errorDetail = technicalDetail || session.last_error || latestError?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
@@ -306,12 +330,8 @@ function TaskOutcome({
     <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
       <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{creditBlocked ? `${modelName || 'This model'} needs credits` : recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress
-          ? 'Reconnecting to the task files…'
-          : creditBlocked
-            ? 'Add credits or choose another model, then continue in this task.'
-            : detail}</p>
+        <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
+        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>
@@ -319,10 +339,10 @@ function TaskOutcome({
           </details>
         )}
       </div>
-      {creditBlocked ? (
+      {recovery ? (
         <div className="code-task-outcome__actions">
           <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>
-          <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>
+          {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
         </div>
       ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
