@@ -426,7 +426,10 @@ describe('ProjectSettingsModal', () => {
         connections={[]}
         busy={false}
         models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
-        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
+        modelMeta={{
+          modelProviders: { 'gpt-5.6-sol': 'openai' },
+          modelEfforts: { 'gpt-5.6-sol': { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' } },
+        }}
         onClose={vi.fn()}
         onSave={onSave}
       />,
@@ -434,11 +437,34 @@ describe('ProjectSettingsModal', () => {
 
     await user.click(screen.getByText('Task defaults and environment'));
     const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
-    expect(effort).toHaveTextContent('Default');
+    expect(effort).toHaveTextContent('Model default');
     await user.click(effort);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Model defaultMedium', 'None', 'Low', 'Medium', 'High', 'Xhigh', 'Max',
+    ]);
     await user.click(screen.getByRole('option', { name: /^Low/ }));
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_reasoning_effort: 'low' })));
+  });
+
+  it('offers no reasoning default for a model that advertises no levels', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
+        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' }, modelEfforts: {} }}
+        onClose={vi.fn()}
+        onSave={vi.fn(async () => project)}
+      />,
+    );
+
+    await user.click(screen.getByText('Task defaults and environment'));
+    expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
   });
 });
