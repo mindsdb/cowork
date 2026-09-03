@@ -99,7 +99,25 @@ const JSX_CHILD = new RegExp(`>\\{\\s*${PROJECT_VAR}\\??\\.name\\b[^\\n]*?\\}\\s
  * ScheduledView's search, ScheduleDetailView and ChannelBindings surfaced.
  */
 const BARE_INTERP = new RegExp(`\\$\\{\\s*${PROJECT_VAR}\\??\\.name\\s*\\}`);
-const LAUNDERED = /\bconst\s+project(?:Name|Label|Title)\s*=\s*[^;\n]*\.name\b/;
+// The allowlist of local names is deliberate, and it is this rule's known
+// weakness: renaming a local moves its file out of reach. That is not
+// hypothetical -- collapsing ScheduleCard/ScheduledView/ScheduleDetailView onto
+// `projectDisplay` un-protected all three, and the laundering mutation that was
+// caught before the rename sailed through after it. `Display` is here because
+// of that.
+//
+// Widening to `project\w*` does not work, and the two attempts are worth
+// recording so nobody repeats them: it then flags
+// `const projectMatch = projects.find((p) => p.name === projectName)`, where the
+// `.name` is a lookup predicate. Excluding lines containing `=>`/`===` fixes
+// that but re-breaks `projects.find((p) => p.id === task.projectId)?.name`,
+// which launders on a line holding both; and attaching the exclusion to the
+// `.name` token instead flags
+// `(tasks || []).filter((t) => t.projectName === project.name || ...)`, where
+// `.name` is a comparison's right-hand operand. Telling "inside a predicate"
+// from "read as a value" needs a parser, not a regex -- so the allowlist stays,
+// and a NEW local name for a slug needs adding here.
+const LAUNDERED = /\bconst\s+project(?:Name|Label|Title|Display)\s*=\s*[^;\n]*\.name\b/;
 
 /*
  * RENDERED_SLUG_LOCAL — the shape LAUNDERED cannot see, found in review.
