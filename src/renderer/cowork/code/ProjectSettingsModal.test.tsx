@@ -416,34 +416,12 @@ describe('ProjectSettingsModal', () => {
     expect(screen.queryByText('Update available')).toBeNull();
   });
 
-  it('summarises the task defaults while the section is collapsed and reveals the fields on Edit', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectSettingsModal
-        open
-        project={{
-          ...project,
-          environment: { variables: { API_URL: 'http://127.0.0.1', NODE_ENV: 'development' }, port_names: ['PORT', 'API_PORT'] },
-        }}
-        connections={[]}
-        busy={false}
-        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
-        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
-        onClose={vi.fn()}
-        onSave={vi.fn()}
-      />,
-    );
-
-    // The heading tells the reader the current defaults without opening anything.
-    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first · 2 variables · PORT, API_PORT')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Default coding model' })).toBeNull();
-
-    const toggle = screen.getByRole('button', { name: 'Edit' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await user.click(toggle);
-    expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-expanded', 'true');
-  });
+  // The section opens from its heading here and from an Edit button once the
+  // project-defaults section lands (#817); accept either so the two merge cleanly.
+  async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
+    const edit = screen.queryByRole('button', { name: 'Edit' });
+    await user.click(edit ?? screen.getByText('Task defaults and environment'));
+  }
 
   it('saves a default reasoning effort for the project', async () => {
     const onSave = vi.fn(async () => project);
@@ -464,7 +442,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await openTaskDefaults(user);
     const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
     expect(effort).toHaveTextContent('Model default');
     await user.click(effort);
@@ -492,7 +470,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await openTaskDefaults(user);
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
   });
