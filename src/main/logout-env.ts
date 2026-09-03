@@ -23,23 +23,6 @@ export const LOGOUT_ENV_KEYS = [
   'ANTON_CODING_PROVIDER',
 ];
 
-/**
- * The same keys, removed from a dotenv snapshot rather than from the file.
- *
- * The dotenv belongs to whichever account owns the DEFAULT data root. An account
- * served from its own root must not receive it, because the renderer's post-auth
- * handshake pushes every key it is handed through `PUT /settings/<key>` into
- * whatever database is current — so one leftover key from the owning account
- * would become this account's, permanently, and bill to the wrong person.
- * Non-credential keys (terms consent, DEV_MODE, the keychain flag) are
- * machine-level and stay.
- */
-export function redactProviderCredentials(vars: Record<string, string>): Record<string, string> {
-  const redacted = { ...vars };
-  for (const key of LOGOUT_ENV_KEYS) delete redacted[key];
-  return redacted;
-}
-
 // Remove the credential keys from the .env file and from this process's
 // inherited copies. The file write goes through writeEnvFileAtomic, which
 // retries transient Windows share-mode locks (the server holds this same file

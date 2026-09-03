@@ -25,7 +25,7 @@ import {
 import { coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
-import { authHeader } from './server-auth';
+import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
@@ -196,6 +196,9 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   console.log('[server] running on another account data root — restarting');
   try {
     await stopServer();
+    // The bearer token lives in the account's own dotenv, so a cached one from
+    // the previous root would be sent to the new server and refused.
+    resetServerAuthTokenCache();
     const result = await startServer();
     return result.ok && sidecarIsOnCurrentAccountRoot();
   } catch (err) {

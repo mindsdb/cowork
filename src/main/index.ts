@@ -30,7 +30,7 @@ import {
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
 import { accountLabelFromToken } from './jwt';
-import { redactProviderCredentials, scrubEnvCredentials } from './logout-env';
+import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
   validateAnthropic,
@@ -1319,13 +1319,10 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_READ, async () => {
-    const vars = readEnvFile();
-    // The dotenv is the DEFAULT root's file, so hand it over only to the account
-    // that owns that root. See redactProviderCredentials for what the renderer
-    // does with these and why that matters.
-    const home = coworkHome();
-    if (accountDataHome(home, readActiveAccount(home)) === home) return vars;
-    return redactProviderCredentials(vars);
+    // No account gate: readEnvFile now resolves to the signed-in account's own
+    // dotenv, so there is nothing here belonging to anyone else. Redacting would
+    // strip this account's own keys from its own file.
+    return readEnvFile();
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
