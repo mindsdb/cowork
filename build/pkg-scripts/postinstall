@@ -67,6 +67,42 @@ stage_shared_fallback() {
     && chmod 640 "$dest_file"
 }
 
+# ENG-2295: hand the freshly-installed .app to the console user so Squirrel.Mac
+# auto-updates can swap it in place without an admin (Touch ID) auth prompt on
+# every update. A pkg installs to /Applications root-owned; a user-owned bundle
+# — exactly what a DMG drag-install produces — is what the in-place update
+# needs. Ownership metadata does not affect the code signature or stapled
+# notarization, so Gatekeeper is unchanged. Best-effort and non-fatal: a
+# headless/MDM install with no console user stays root-owned and falls back to
+# the manual installer notice (ENG-849). The installed bundle name is written
+# alongside this script by release-mac-pkg-notarized.sh.
+chown_app_bundle() {
+  local user="$1"
+  local name_file="$SCRIPT_DIR/installed-app-name"
+  if [ ! -f "$name_file" ]; then
+    log "no installed-app-name packaged — leaving app bundle ownership unchanged"
+    return 1
+  fi
+  # Command substitution strips the trailing newline while preserving the
+  # internal space in names like "MindsHub Cowork.app".
+  local app_name
+  app_name="$(cat "$name_file")"
+  # Expect a bare "Something.app"; reject empty or path-bearing values so a
+  # malformed marker can never redirect the recursive chown outside /Applications.
+  case "$app_name" in
+    "" | */* | ..*)
+      log "unexpected installed-app-name '$app_name' — skipping bundle chown"
+      return 1
+      ;;
+  esac
+  local app_path="/Applications/$app_name"
+  if [ ! -d "$app_path" ]; then
+    log "installed bundle not found at $app_path — skipping bundle chown"
+    return 1
+  fi
+  chown -R "$user:staff" "$app_path"
+}
+
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 CONSOLE_HOME=""
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
@@ -79,6 +115,14 @@ elif stage_shared_fallback; then
   log "no usable console user session — staged credentials at the shared fallback location"
 else
   log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
+fi
+
+# Bundle ownership is independent of credential staging (ENG-2295): attempt it
+# whenever a real console user exists, regardless of how staging resolved above.
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+  if chown_app_bundle "$CONSOLE_USER"; then
+    log "handed the app bundle to $CONSOLE_USER for prompt-free auto-update"
+  fi
 fi
 
 exit 0

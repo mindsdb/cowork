@@ -121,6 +121,14 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 # Disable relocation so macOS always installs to /Applications, even on reinstall.
 /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
 
+# ENG-2295: record the installed bundle name so the postinstall can hand the
+# .app to the console user. A pkg installs to /Applications root-owned, which
+# forces an admin (Touch ID) auth prompt on every Squirrel.Mac auto-update; a
+# user-owned bundle — what a DMG drag-install produces — swaps in place
+# silently. Packaged into --scripts alongside the credentials below and read by
+# build/pkg-scripts/postinstall.
+printf '%s.app\n' "$PRODUCT_NAME" > build/pkg-scripts/installed-app-name
+
 echo "==> Building component pkg (non-relocatable)"
 # --scripts (ENG-1241): runs build/pkg-scripts/postinstall as root right
 # after the payload lands, to stage the OAuth credentials CI writes to
@@ -222,6 +230,8 @@ fi
 
 # Clean up intermediate files so `release/*.pkg` glob matches only the final artifact.
 rm -f "$COMPONENT_PKG" "$COMPONENT_PLIST" "$DIST_XML"
+# The name marker (ENG-2295) was only needed inside the packaged --scripts dir.
+rm -f build/pkg-scripts/installed-app-name
 
 echo "==> Final artifact hash"
 shasum -a 256 "$PKG_PATH"
