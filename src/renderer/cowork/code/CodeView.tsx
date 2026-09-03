@@ -196,6 +196,12 @@ export default function CodeView({
     setProjectEditor(resumeId ? { id: resumeId } : null);
   }, [newTask, projectsOpen, skillsOpen, selectedId]);
 
+  // Leaving Connectors by any other route (the sidebar, opening a task) ends
+  // the hand-back, so a later standalone visit adds nothing to that project.
+  useEffect(() => {
+    if (!connectorsOpen) setConnectorReturn(null);
+  }, [connectorsOpen]);
+
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
@@ -354,7 +360,10 @@ export default function CodeView({
               if (!project) return;
               const connections = withProjectConnection(project, provider, connection);
               if (!connections) return;
-              await codingApi.updateProject(project.id, { connections });
+              const saved = await codingApi.updateProject(project.id, { connections });
+              // Keep the saved list even if the refresh fails, so the next
+              // account is added on top of this one rather than replacing it.
+              projects.replace(saved);
               await projects.load();
             } : undefined}
           />
