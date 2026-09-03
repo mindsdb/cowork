@@ -318,6 +318,8 @@ export interface ProjectActionRunResponse {
   terminal_id: string;
   label: string;
   preview_url?: string | null;
+  /** A run action is live but nothing answers on its port yet. */
+  preview_pending?: boolean;
 }
 
 export interface ProjectActionSummary {
@@ -330,6 +332,7 @@ export interface ProjectActionSummary {
 export interface ProjectActionPage {
   items: ProjectActionSummary[];
   preview_url?: string | null;
+  preview_pending?: boolean;
 }
 
 export interface ProjectFolderInspection {
