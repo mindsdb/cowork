@@ -10,7 +10,7 @@ vi.mock('../../platform/host', () => ({
   serverStart: hostMock.serverStart,
 }));
 
-import { codingApi, isCodingEvent, isTerminalPage } from './api';
+import { codingApi, isCodingEvent, isTerminalPage, codingErrorCode } from './api';
 
 
 beforeEach(() => {
@@ -147,6 +147,21 @@ describe('coding API boundary', () => {
       message: 'Handoff stopped before changing the source',
       status: 409,
     });
+  });
+
+  it('carries the error code the server names in a header', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'git_identity_missing' }),
+      json: async () => ({ detail: 'Git needs your name and email before it can commit on this computer.' }),
+    })));
+
+    const failure = await codingApi.commit('task-1', 'Prepare change').catch((reason: unknown) => reason);
+
+    expect(failure).toMatchObject({ status: 409, code: 'git_identity_missing' });
+    expect(codingErrorCode(failure)).toBe('git_identity_missing');
+    expect(codingErrorCode(new Error('plain'))).toBeUndefined();
   });
 
   it('explains the generic 404 produced by an incompatible backend', async () => {

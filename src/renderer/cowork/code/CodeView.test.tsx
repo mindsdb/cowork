@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
+  commit: vi.fn(),
+  setGitIdentity: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
 }));
@@ -43,8 +45,11 @@ vi.mock('./api', () => ({
     cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
     updateProject: mocks.updateProject,
+    commit: mocks.commit,
+    setGitIdentity: mocks.setGitIdentity,
   },
   openCodingEventStream: vi.fn(() => () => {}),
+  codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
 vi.mock('./CodeCommandPalette', async (importOriginal) => {
@@ -60,14 +65,16 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
     onDelete: () => void;
     onStatus: () => void;
+    onToggleReview: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
+      <button type="button" onClick={onToggleReview}>Review menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
@@ -117,7 +124,24 @@ vi.mock('./ApprovalCard', () => ({
     <button type="button" disabled={busy} onClick={() => onDecision('approve_once')}>Approval</button>
   ),
 }));
-vi.mock('./ReviewPanel', () => ({ ReviewPanel: () => null }));
+vi.mock('./ReviewPanel', () => ({
+  ReviewPanel: ({ open, error, onCommit, gitIdentitySetup }: {
+    open: boolean;
+    error: string;
+    onCommit: (message: string) => Promise<void>;
+    gitIdentitySetup?: { name: string; email: string; onSubmit: (name: string, email: string) => Promise<void> } | null;
+  }) => (open ? (
+    <div>
+      {error && <div role="alert">{error}</div>}
+      <button type="button" onClick={() => void onCommit('Prepare change').catch(() => {})}>Commit stub</button>
+      {gitIdentitySetup && (
+        <button type="button" onClick={() => void gitIdentitySetup.onSubmit(gitIdentitySetup.name, gitIdentitySetup.email)}>
+          Identity stub {gitIdentitySetup.name} {gitIdentitySetup.email}
+        </button>
+      )}
+    </div>
+  ) : null),
+}));
 vi.mock('./TaskTerminal', () => ({
   TaskTerminal: ({ focusTerminalId }: { focusTerminalId?: string | null }) => <div>Terminal {focusTerminalId || 'loading'}</div>,
 }));
@@ -712,3 +736,46 @@ describe('CodeView connector return flow', () => {
   });
 });
 
+
+describe('CodeView commit without a Git identity', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.sessions.mockResolvedValue({ items: [session('task-1')] });
+    mocks.useCodingSession.mockReturnValue({
+      session: session('task-1'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+  });
+
+  it('asks for the identity, prefilled from the account, then saves it and reruns the same commit', async () => {
+    const missing = Object.assign(new Error('Git needs your name and email before it can commit on this computer.'), { status: 409, code: 'git_identity_missing' });
+    mocks.commit.mockRejectedValueOnce(missing).mockResolvedValueOnce({ is_git: true, worktree_path: '', source_path: '' });
+    mocks.setGitIdentity.mockResolvedValue({ name: 'Ian Unsworth', email: 'ian@example.com' });
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1', account: { name: 'Ian Unsworth', email: 'ian@example.com' } });
+    fireEvent.click(await screen.findByText('Review menu action'));
+
+    fireEvent.click(await screen.findByText('Commit stub'));
+
+    const identity = await screen.findByText('Identity stub Ian Unsworth ian@example.com');
+    // The missing identity is a setup step, not an error banner.
+    expect(screen.queryByText(/Git needs your name and email/)).toBeNull();
+
+    fireEvent.click(identity);
+
+    await waitFor(() => expect(mocks.setGitIdentity).toHaveBeenCalledWith({ name: 'Ian Unsworth', email: 'ian@example.com' }));
+    await waitFor(() => expect(mocks.commit).toHaveBeenCalledTimes(2));
+    expect(mocks.commit).toHaveBeenLastCalledWith('task-1', 'Prepare change');
+    await waitFor(() => expect(screen.queryByText(/Identity stub/)).toBeNull());
+  });
+
+  it('still reports any other commit failure', async () => {
+    mocks.commit.mockRejectedValueOnce(Object.assign(new Error('No repositories were committed: hook failed. All task changes remain available to retry.'), { status: 409 }));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
+    fireEvent.click(await screen.findByText('Review menu action'));
+
+    fireEvent.click(await screen.findByText('Commit stub'));
+
+    expect(await screen.findByText(/hook failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Identity stub/)).toBeNull();
+  });
+});

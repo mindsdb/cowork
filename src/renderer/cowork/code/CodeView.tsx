@@ -3,7 +3,7 @@ import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { codingApi, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
+import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
@@ -56,6 +56,7 @@ export default function CodeView({
   defaultModel,
   models,
   modelMeta,
+  account = null,
   skillScopeKey = 'signed-out',
   connections = [],
   onConnectionsChange = () => {},
@@ -77,6 +78,8 @@ export default function CodeView({
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  /** The signed-in account, used to prefill a Git identity when a commit needs one. */
+  account?: { name?: string | null; email?: string | null } | null;
   skillScopeKey?: string;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
@@ -91,6 +94,9 @@ export default function CodeView({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  // A commit that stopped because Git has no author identity on this
+  // computer; Review › Deliver shows a setup card and retries this message.
+  const [gitIdentitySetup, setGitIdentitySetup] = useState<{ message: string } | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -147,6 +153,17 @@ export default function CodeView({
     remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
+  const commitTask = (sessionId: string, message: string) => runAction(async () => {
+    try {
+      await codingApi.commit(sessionId, message);
+      setGitIdentitySetup(null);
+    } catch (reason) {
+      if (codingErrorCode(reason) !== 'git_identity_missing') throw reason;
+      // Not a failure to report: the Deliver tab asks for the identity and
+      // retries this very message once it is saved.
+      setGitIdentitySetup({ message });
+    }
+  }, false, true);
   const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
     session ? supportsTaskCapability(session, capability) : false
   );
@@ -509,7 +526,15 @@ export default function CodeView({
               error={actionError || automationError}
               onClose={() => setReviewOpen(false)}
               onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
-              onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
+              onCommit={(message) => commitTask(session.id, message)}
+              gitIdentitySetup={gitIdentitySetup ? {
+                name: account?.name || '',
+                email: account?.email || '',
+                onSubmit: async (name, email) => {
+                  await codingApi.setGitIdentity({ name, email });
+                  await commitTask(session.id, gitIdentitySetup.message);
+                },
+              } : null}
               onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
               onValidate={async () => (await runResult(
                 () => codingApi.validate(session.id),

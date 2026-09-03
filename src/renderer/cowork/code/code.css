@@ -802,6 +802,10 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-readiness li > span { min-width: 0; margin-left: 14px; grid-column: 1; grid-row: 1; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 580; }
 .code-delivery-readiness li > small { color: var(--ink-4); font-size: 9px; text-align: right; }
 .code-delivery-resolve { padding-top: 2px; display: flex; align-items: center; gap: 7px; }
+.code-git-identity { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.code-git-identity__intro p { margin: 2px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+.code-git-identity__form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 720px) { .code-git-identity__form { grid-template-columns: 1fr; } }
 .code-delivery-resolve > :first-child { min-width: 0; flex: 1; }
 .code-delivery-compose { padding-top: 3px; display: grid; gap: 7px; border-top: 1px solid var(--line); }
 .code-delivery-compose > textarea,

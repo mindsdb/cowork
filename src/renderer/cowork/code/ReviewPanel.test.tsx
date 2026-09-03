@@ -332,4 +332,30 @@ describe('ReviewPanel', () => {
 
     await waitFor(() => expect(onCompleteSource).toHaveBeenCalledWith(context));
   });
+
+  it('asks for a Git identity on Deliver when a commit stopped for lack of one', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => {});
+    render(
+      <ReviewPanel
+        open
+        session={directSession}
+        git={null}
+        files={[]}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        gitIdentitySetup={{ name: 'Ian Unsworth', email: 'ian@example.com', onSubmit }}
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
+    expect(screen.getByRole('region', { name: 'Git needs to know who you are' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save and commit' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Ian Unsworth', 'ian@example.com'));
+  });
+
 });
