@@ -1434,6 +1434,33 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+/**
+ * Whether the shell needs to ask who owns the data already on this machine.
+ * Desktop-only: on web the server is org-scoped, so there is no shared local
+ * store to be ambiguous about. Fail-closed to "no question" — a bridge that
+ * cannot answer must not raise a modal the user cannot act on.
+ */
+export async function accountOwnershipPending(): Promise<boolean> {
+  if (!isElectron || typeof bridge.accountOwnershipPending !== 'function') return false;
+  try {
+    const result = await bridge.accountOwnershipPending();
+    return Boolean(result?.pending);
+  } catch {
+    return false;
+  }
+}
+
+/** Answer it. `keepExisting` takes the existing data for the signed-in account. */
+export async function decideAccountOwnership(keepExisting: boolean): Promise<boolean> {
+  if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') return false;
+  try {
+    const result = await bridge.decideAccountOwnership(keepExisting);
+    return Boolean(result?.ok);
+  } catch {
+    return false;
+  }
+}
+
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
@@ -1443,6 +1470,8 @@ export const host = {
   isMac,
   getApiOrigin,
   isLocalApiOrigin,
+  accountOwnershipPending,
+  decideAccountOwnership,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,

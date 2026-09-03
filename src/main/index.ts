@@ -39,7 +39,13 @@ import {
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { reconcileAccountRoot } from './account-data';
+import {
+  adoptDefaultRootAsIncumbent,
+  declineDefaultRoot,
+  needsOwnershipDecision,
+  readActiveAccount,
+  reconcileAccountRoot,
+} from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
@@ -1228,6 +1234,44 @@ function setupIPC() {
   ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => freshAccessToken());
 
   ipcMain.handle(IPC.AUTH_LOGOUT, performMindsSignOut);
+
+  // Is there data on this machine that nobody has claimed and that the signed-in
+  // account cannot be shown to own? Only the person at the keyboard knows, so
+  // the shell asks them once. Until they answer, the account is already on its
+  // own empty root, so nothing is exposed while the question is open.
+  ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_PENDING, () => {
+    const home = coworkHome();
+    return { pending: needsOwnershipDecision(home, readActiveAccount(home)) };
+  });
+
+  ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_DECIDE, async (_event, payload: unknown) => {
+    const keepExisting = Boolean((payload as { keepExisting?: unknown } | null)?.keepExisting);
+    const home = coworkHome();
+    const active = readActiveAccount(home);
+    // Re-check rather than trusting the renderer: the answer is only meaningful
+    // for the state that actually prompted it.
+    if (active.kind !== 'signed-in' || !needsOwnershipDecision(home, active)) {
+      return { ok: false, reason: 'not-pending' };
+    }
+    if (!keepExisting) {
+      // Starting fresh needs nothing: the account is already on its own root,
+      // and the existing data stays where it is for whoever does own it.
+      declineDefaultRoot(home, active.accountId);
+      return { ok: true, keptExisting: false };
+    }
+    adoptDefaultRootAsIncumbent(home, active.accountId);
+    // The stores are process environment, so the sidecar has to be restarted to
+    // read the root it now owns.
+    if (isServerRunning() || isServerStarting()) {
+      try {
+        await stopServer();
+        await startServer();
+      } catch (err) {
+        console.warn('[account] could not restart onto the adopted root', err);
+      }
+    }
+    return { ok: true, keptExisting: true };
+  });
 
   ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
     if (!activeInstall) return false;

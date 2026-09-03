@@ -10,6 +10,8 @@ import * as path from 'path';
 import {
   accountOwnerToken,
   adoptDefaultRootAsIncumbent,
+  declineDefaultRoot,
+  hasDeclinedDefaultRoot,
   isSoleOccupant,
   needsOwnershipDecision,
   claimDefaultRoot,
@@ -435,5 +437,68 @@ describe('stale quarantine roots', () => {
     const real = quarantine(ACCOUNT_B);
     await reconcileAccountRoot(home, ACCOUNT_A);
     expect(fs.existsSync(real)).toBe(true);
+  });
+});
+
+
+describe('the ownership question, once asked and answered', () => {
+  const ambiguous = () => {
+    withData();
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_A), { recursive: true });
+  };
+
+  it('is asked when nothing on disk can say whose the data is', () => {
+    ambiguous();
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(true);
+  });
+
+  it('stops being asked once the account starts fresh', () => {
+    ambiguous();
+    declineDefaultRoot(home, ACCOUNT_B);
+    expect(hasDeclinedDefaultRoot(home, ACCOUNT_B)).toBe(true);
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(false);
+    // And the existing data is still there for whoever does own it.
+    expect(fs.existsSync(path.join(home, 'cowork.db'))).toBe(true);
+  });
+
+  it('remembers the choice per account, not per install', () => {
+    ambiguous();
+    declineDefaultRoot(home, ACCOUNT_B);
+    // A third account arriving later has not answered anything yet.
+    expect(hasDeclinedDefaultRoot(home, '33333333-3333-4333-8333-333333333333')).toBe(false);
+  });
+
+  it('survives the record being rewritten, which happens on every token save', async () => {
+    ambiguous();
+    declineDefaultRoot(home, ACCOUNT_B);
+    await writeActiveAccount(home, ACCOUNT_B);
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(false);
+  });
+
+  it('stops being asked once the account takes the data instead', () => {
+    ambiguous();
+    adoptDefaultRootAsIncumbent(home, ACCOUNT_B);
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(false);
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBeNull();
+  });
+});
+
+
+describe('the ownership question when the disk will not cooperate', () => {
+  it('does not throw when the choice cannot be recorded', () => {
+    // A file where the accounts directory belongs, so mkdir cannot succeed.
+    fs.writeFileSync(path.join(home, 'accounts'), 'not a directory', 'utf-8');
+    expect(() => declineDefaultRoot(home, ACCOUNT_B)).not.toThrow();
+  });
+
+  it('reads a broken layout as not-yet-answered, so the question comes back', () => {
+    // existsSync returns false for a non-traversable path rather than throwing.
+    // Asking twice costs a dialog; the account is on its own root either way.
+    fs.writeFileSync(path.join(home, 'accounts'), 'not a directory', 'utf-8');
+    expect(hasDeclinedDefaultRoot(home, ACCOUNT_B)).toBe(false);
+  });
+
+  it('refuses to record a choice for an unusable account id', () => {
+    expect(() => declineDefaultRoot(home, '../escape')).toThrow(/unexpected account id/);
   });
 });

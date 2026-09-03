@@ -361,11 +361,42 @@ export function resolveAccountRoot(home: string, active: ActiveAccount): string 
 export function needsOwnershipDecision(home: string, active: ActiveAccount): boolean {
   if (active.kind !== 'signed-in') return false;
   if (!isUsableAsPathSegment(active.accountId)) return false;
+  if (hasDeclinedDefaultRoot(home, active.accountId)) return false;
   return (
     readAccountClaim(home).kind === 'unclaimed'
     && defaultRootHasData(home)
     && !isSoleOccupant(home, active.accountId)
   );
+}
+
+// Remembers "start fresh", so the question is asked once and not on every
+// launch. Kept in the account's own root rather than the shared record, which is
+// rewritten on every token save.
+const DECLINED_FILE = '.declined-default-root';
+
+function declinedPath(home: string, accountId: string): string {
+  return path.join(home, ACCOUNTS_DIR, accountId, DECLINED_FILE);
+}
+
+export function hasDeclinedDefaultRoot(home: string, accountId: string): boolean {
+  // existsSync answers false for a missing OR non-traversable path rather than
+  // throwing, so a broken layout reads as "not answered" and the question is
+  // asked again. Harmless: asking twice costs a dialog, and the account is on
+  // its own root either way.
+  return fs.existsSync(declinedPath(home, accountId));
+}
+
+/** Record that this account chose not to take the unclaimed data. */
+export function declineDefaultRoot(home: string, accountId: string): void {
+  assertUsableAsPathSegment(accountId);
+  const target = declinedPath(home, accountId);
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, '', { encoding: 'utf-8', mode: 0o600 });
+  } catch (err) {
+    // Worst case the question is asked again; nothing is lost either way.
+    console.warn('[account-data] could not record the ownership choice', err);
+  }
 }
 
 /**

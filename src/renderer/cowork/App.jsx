@@ -50,6 +50,7 @@ import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
 import { purgeStaleAccountState } from './lib/accountLocalState';
+import AccountOwnershipModal from './components/AccountOwnershipModal';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2513,6 +2514,26 @@ function AppCore() {
   useEffect(() => {
     purgeStaleAccountState(codeAccountUser?.sub ?? null);
   }, [codeAccountUser?.sub]);
+
+  // Ask who owns pre-existing data when nothing on disk can say. Desktop-only
+  // and normally never shown; see AccountOwnershipModal for why it exists.
+  const [ownershipPending, setOwnershipPending] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!codeAccountUser?.sub) { setOwnershipPending(false); return undefined; }
+    host.accountOwnershipPending().then((pending) => {
+      if (!cancelled) setOwnershipPending(pending);
+    }).catch(() => { });
+    return () => { cancelled = true; };
+  }, [codeAccountUser?.sub]);
+
+  const decideOwnership = useCallback(async (keepExisting) => {
+    const ok = await host.decideAccountOwnership(keepExisting);
+    setOwnershipPending(false);
+    // Keeping the existing data restarted the sidecar onto it, so everything on
+    // screen was read from the wrong database. Reload rather than reconcile.
+    if (ok && keepExisting) window.location.reload();
+  }, []);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -5033,6 +5054,14 @@ function AppCore() {
         feature={comingSoonFeature}
         onClose={() => setComingSoonFeature(null)}
       />
+
+      {ownershipPending && (
+        <AccountOwnershipModal
+          open
+          accountLabel={codeAccountUser?.email || codeAccountUser?.name || null}
+          onDecide={decideOwnership}
+        />
+      )}
 
       {!host.isWeb && (
       <ServerOfflineHelpModal
