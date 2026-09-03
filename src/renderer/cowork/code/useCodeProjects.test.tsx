@@ -62,6 +62,7 @@ describe('useCodeProjects', () => {
 
     expect(result.current.projects[0].connections).toEqual([{ provider: 'github', name: 'octo', label: 'Octo Cat' }]);
     expect(listProjects).not.toHaveBeenCalled();
+  });
 
   it('keeps a reasoning default chosen while creating a project', async () => {
     createProject.mockImplementation(async (body: Record<string, unknown>) => ({ ...project, ...body, id: 'project-2' }));
@@ -74,5 +75,4 @@ describe('useCodeProjects', () => {
 
     expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ name: 'Effort', default_reasoning_effort: 'low' }));
   });
-
 });
