@@ -75,7 +75,8 @@ export type CreateCodeTaskInput = CreateCodeTaskBase & (
   | { projectId: null; path: string }
 );
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+/** A reasoning effort level in the model gateway's own vocabulary, advertised per model (see code/reasoning.ts). */
+export type ReasoningEffort = string;
 export type ServiceTier = 'standard' | 'priority';
 export type Personality = 'none' | 'friendly' | 'pragmatic';
 

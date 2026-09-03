@@ -10,8 +10,8 @@ import {
   type ModelPickerMeta,
   type ModelPickerSource,
 } from '../lib/modelPickerOptions';
-import { codingApi, type PermissionMode, type Personality, type ReasoningEffort, type RuntimeControls } from './api';
-import { REASONING_EFFORTS } from './reasoning';
+import { codingApi, type PermissionMode, type Personality, type RuntimeControls } from './api';
+import { effortLabel, effortLevelsFor, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
 import { PERMISSION_OPTIONS } from './permissions';
 
@@ -73,6 +73,17 @@ export function RuntimeControlsModal({
   const update = <Key extends keyof RuntimeControls>(key: Key, next: RuntimeControls[Key]) => {
     setDraft((current) => ({ ...current, [key]: next }));
   };
+  // Effort levels are whatever the gateway advertises for the model in hand.
+  // Switching to a model that lacks the current level moves to its default, so
+  // the update never carries a level the new model cannot run.
+  const effortLevels = useMemo(() => effortLevelsFor(draft.model, modelMeta.modelEfforts), [draft.model, modelMeta.modelEfforts]);
+  const chooseModel = (next: string) => {
+    setDraft((current) => {
+      const levels = effortLevelsFor(next, modelMeta.modelEfforts);
+      const keepEffort = !levels || !current.reasoning_effort || levels.levels.includes(current.reasoning_effort);
+      return { ...current, model: next, reasoning_effort: keepEffort ? current.reasoning_effort : levels.modelDefault };
+    });
+  };
   const addFolder = async () => {
     setFolderError('');
     const result = await host.pickCodeFolder();
@@ -105,23 +116,30 @@ export function RuntimeControlsModal({
             <span>Model</span>
             <ModelSelect
               value={draft.model}
-              onValueChange={(next: string) => update('model', next)}
+              onValueChange={chooseModel}
               options={modelOptions}
               variant="field"
               ariaLabel="Task model"
               disabled={busy}
             />
           </label>
-          <label className="code-controls-field">
-            <span>Reasoning</span>
-            <Select
-              value={draft.reasoning_effort || 'high'}
-              onValueChange={(next: string) => update('reasoning_effort', next as ReasoningEffort)}
-              options={REASONING_EFFORTS}
-              ariaLabel="Reasoning effort"
-              disabled={busy}
-            />
-          </label>
+          {effortLevels && (
+            <label className="code-controls-field">
+              <span>Reasoning</span>
+              <Select
+                value={resolveEffort(draft.reasoning_effort, null, effortLevels) || ''}
+                onValueChange={(next: string) => update('reasoning_effort', next)}
+                options={effortLevels.levels.map((level) => ({
+                  value: level,
+                  label: effortLabel(level),
+                  description: level === effortLevels.modelDefault ? 'Model default' : undefined,
+                }))}
+                ariaLabel="Reasoning effort"
+                placeholder="Effort"
+                disabled={busy}
+              />
+            </label>
+          )}
           <label className="code-controls-field">
             <span>Permissions</span>
             <Select

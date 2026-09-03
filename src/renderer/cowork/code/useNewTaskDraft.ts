@@ -7,6 +7,7 @@ import {
 } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import { modelLabel } from '../lib/settingsTransform';
+import { effortLevelsFor, requestedEffort, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
 import {
   codingApi,
@@ -170,8 +171,8 @@ export function useNewTaskDraft({
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
     setModel(selectedProject?.default_model || defaultModel);
     setPermissionMode(selectedProject?.permission_mode || 'supervised');
-    setReasoningEffort(selectedProject?.default_reasoning_effort || null);
-  }, [defaultEngineId, defaultModel, selectedProject?.default_engine_id, selectedProject?.default_model, selectedProject?.default_reasoning_effort, selectedProject?.id, selectedProject?.permission_mode]);
+    setReasoningEffort(null);
+  }, [defaultEngineId, defaultModel, selectedProject?.default_engine_id, selectedProject?.default_model, selectedProject?.id, selectedProject?.permission_mode]);
 
   const engineModels = useMemo(() => {
     if (!engineModelIds) return [];
@@ -183,6 +184,16 @@ export function useNewTaskDraft({
     () => buildModelPickerOptions(engineModels, modelMeta),
     [engineModels, modelMeta],
   );
+  // The effort levels the selected model advertises; a choice the next model
+  // does not offer is dropped so the pill never names a level that cannot run.
+  const effortLevels = useMemo(() => effortLevelsFor(model, modelMeta.modelEfforts), [model, modelMeta.modelEfforts]);
+  useEffect(() => {
+    setReasoningEffort((current) => (current && effortLevels?.levels.includes(current) ? current : null));
+  }, [effortLevels]);
+  const resolvedEffort = effortLevels ? resolveEffort(reasoningEffort, selectedProject?.default_reasoning_effort, effortLevels) : null;
+  // Sent only when the task names a level (chosen here or the project's); a
+  // task that names none runs at whatever default the gateway has for the model.
+  const explicitEffort = effortLevels ? requestedEffort(reasoningEffort, selectedProject?.default_reasoning_effort, effortLevels) : null;
   const enabledModelOptions = useMemo(
     () => modelOptions.filter((option) => !option.disabled),
     [modelOptions],
@@ -313,7 +324,7 @@ export function useNewTaskDraft({
       prompt: prompt.trim(),
       engineId,
       model,
-      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(explicitEffort ? { reasoningEffort: explicitEffort } : {}),
       permissionMode,
       attachments,
       sourceContexts: selectedProject ? sourceContexts : [],
@@ -338,6 +349,8 @@ export function useNewTaskDraft({
     setPermissionMode,
     reasoningEffort,
     setReasoningEffort,
+    effortLevels,
+    resolvedEffort,
     attachments,
     setAttachments,
     sourceContexts,

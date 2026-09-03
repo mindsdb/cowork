@@ -30,7 +30,7 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { countEnvironmentLines, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
-import { DEFAULT_EFFORT_VALUE, isReasoningEffort, reasoningEffortOptions } from './reasoning';
+import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -231,6 +231,12 @@ export function ProjectSettingsModal({
       modelMeta,
     );
   }, [engineModelIds, modelMeta, models, projectModel]);
+  // A project default only makes sense among the levels its default model
+  // advertises; changing the model drops a default the new one lacks.
+  const projectEffortLevels = useMemo(() => effortLevelsFor(projectModel, modelMeta.modelEfforts), [modelMeta.modelEfforts, projectModel]);
+  useEffect(() => {
+    setProjectReasoningEffort((current) => (current && projectEffortLevels?.levels.includes(current) ? current : null));
+  }, [projectEffortLevels]);
 
   const availableEngines = engines.filter((engine) => engine.available);
   const defaultsSummary = describeTaskDefaults({
@@ -438,7 +444,9 @@ export function ProjectSettingsModal({
                   <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
                     if (isPermissionMode(value)) setProjectPermission(value);
                   }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
-                  <label><span>Reasoning</span><Select value={projectReasoningEffort || DEFAULT_EFFORT_VALUE} onValueChange={(value) => setProjectReasoningEffort(isReasoningEffort(value) ? value : null)} options={reasoningEffortOptions("The model's own default")} size="sm" ariaLabel="Default reasoning effort" /></label>
+                  {projectEffortLevels && (
+                    <label><span>Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} size="sm" ariaLabel="Default reasoning effort" /></label>
+                  )}
                 </div>
                 <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
                 <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
