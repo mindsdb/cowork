@@ -171,7 +171,9 @@ function appendStderr(chunk: string) {
    dies with the app; the log file gives the user (and the Help > Reveal
    Logs menu item) the full server output for the current session,
    surviving until the next start. Opened fresh on each spawn so the file
-   reflects the live session rather than growing unbounded across runs. */
+   reflects the live session rather than growing unbounded across runs; the
+   previous run is kept as cowork-server.log.1, because users relaunch
+   precisely when something went wrong and that log is the evidence. */
 let logStream: fs.WriteStream | null = null;
 
 export function getServerLogPath(): string {
@@ -195,6 +197,12 @@ function openLogStream(): void {
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    try {
+      fs.renameSync(logPath, `${logPath}.1`);
+    } catch {
+      /* First launch, or a locked file — rotation is best-effort and must
+         never keep the fresh log (or the spawn) from happening. */
+    }
     const stream = fs.createWriteStream(logPath, { flags: 'w' });
     /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
        throw from createWriteStream — so the try/catch alone never sees it. With
