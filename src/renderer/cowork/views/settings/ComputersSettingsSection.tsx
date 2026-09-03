@@ -3,6 +3,7 @@ import { Cloud, Monitor, Pencil, Plus } from 'lucide-react';
 
 import type { CodeComputer } from '../../code/api';
 import { codingApi } from '../../code/api';
+import { isAppVisible, subscribeAppVisibility } from '../../code/useAppVisible';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -79,15 +80,15 @@ export default function ComputersSettingsSection() {
       inFlight = false;
       if (disposed) return;
       delay = ok ? POLL_INTERVAL_MS : Math.min(delay * 2, MAX_POLL_INTERVAL_MS);
-      timer = window.setTimeout(() => { if (document.visibilityState === 'visible') void poll(true); }, delay);
+      timer = window.setTimeout(() => { if (isAppVisible()) void poll(true); }, delay);
     };
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void poll(true); };
+    const onVisibilityChange = () => { if (isAppVisible()) void poll(true); };
     void poll(false);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    const unsubscribeVisibility = subscribeAppVisibility(onVisibilityChange);
     return () => {
       disposed = true;
       window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      unsubscribeVisibility();
     };
   }, [refresh]);
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { codingApi, type CodingSession } from './api';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
 
 function sidebarProjectionChanged(previous: CodingSession, next: CodingSession): boolean {
@@ -81,17 +82,17 @@ export function useCodeTaskList({
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
       .finally(() => setLoading(false));
     const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (!isAppVisible()) return;
       load().catch(() => {
         // The selected-task stream owns connectivity feedback during a
         // transient background-list refresh.
       });
     };
     const interval = window.setInterval(refresh, 5_000);
-    document.addEventListener('visibilitychange', refresh);
+    const unsubscribeVisibility = subscribeAppVisibility(refresh);
     return () => {
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refresh);
+      unsubscribeVisibility();
     };
   }, [active, load]);
 

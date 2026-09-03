@@ -6,9 +6,15 @@ import { resetDocumentVisibility, setDocumentVisibility } from '../../../../test
 
 
 const sessions = vi.hoisted(() => vi.fn());
+const windowSignal = vi.hoisted(() => ({ send: null as ((visible: boolean) => void) | null }));
 
 vi.mock('./api', () => ({
   codingApi: { sessions },
+}));
+vi.mock('../../platform/host', () => ({
+  host: {
+    onWindowVisibility: (cb: (visible: boolean) => void) => { windowSignal.send = cb; return () => {}; },
+  },
 }));
 
 import { useCodeTaskList } from './useCodeTaskList';
@@ -171,6 +177,25 @@ describe('useCodeTaskList', () => {
       expect(sessions).toHaveBeenCalledTimes(2);
     } finally {
       resetDocumentVisibility();
+      vi.useRealTimers();
+    }
+  });
+
+  it('pauses the list refresh when the main window hides while the document still reads visible', async () => {
+    vi.useFakeTimers();
+    try {
+      renderTaskList(true);
+      await act(async () => { await Promise.resolve(); });
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => windowSignal.send!(false));
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(document.visibilityState).toBe('visible');
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => windowSignal.send!(true));
+      expect(sessions).toHaveBeenCalledTimes(2);
+    } finally {
       vi.useRealTimers();
     }
   });

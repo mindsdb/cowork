@@ -7,6 +7,7 @@ import {
   type DeliveryAutomationAction,
 } from './deliveryAutomation';
 import { isActiveStatus } from './presentation';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -155,12 +156,12 @@ export function DeliveryAutomationMonitor({
   }, [eligibilityKey, runAll]);
 
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') void runAll(); };
+    const refresh = () => { if (isAppVisible()) void runAll(); };
     const timer = window.setInterval(refresh, POLL_INTERVAL_MS);
-    document.addEventListener('visibilitychange', refresh);
+    const unsubscribeVisibility = subscribeAppVisibility(refresh);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', refresh);
+      unsubscribeVisibility();
     };
   }, [runAll]);
 

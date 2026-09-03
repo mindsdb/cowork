@@ -8,6 +8,7 @@ import Menu from '../components/ui/Menu';
 import Select from '../components/ui/Select';
 import { deliveryFixCheckPrompt } from './deliveryAutomation';
 import { SafeCodeExternalLink } from './SafeCodeExternalLink';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 import {
   codingApi,
   type DeliveryPlan,
@@ -256,10 +257,10 @@ export function DraftPullRequestSection({
   const hasPublishedPullRequests = !!plan?.items.some((item) => item.status === 'published');
   useEffect(() => {
     if (!hasPublishedPullRequests) return undefined;
-    const refresh = () => { if (document.visibilityState === 'visible') void load(true); };
+    const refresh = () => { if (isAppVisible()) void load(true); };
     const timer = window.setInterval(refresh, REFRESH_INTERVAL_MS);
-    document.addEventListener('visibilitychange', refresh);
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+    const unsubscribeVisibility = subscribeAppVisibility(refresh);
+    return () => { window.clearInterval(timer); unsubscribeVisibility(); };
   }, [hasPublishedPullRequests, load]);
 
   if (!loading && !plan?.items.length && !error) return null;
