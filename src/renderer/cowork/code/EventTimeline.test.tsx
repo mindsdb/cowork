@@ -253,7 +253,7 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...failedTask('runtime_crashed', 'worker exited with code 137')} />);
 
     expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resume task' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Failure details'));
     expect(screen.getByText('worker exited with code 137')).toBeVisible();
