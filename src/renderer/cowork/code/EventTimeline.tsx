@@ -294,6 +294,7 @@ const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
 
 function TaskOutcome({
   session,
+  latestSession,
   latestError,
   modelName,
   recovering,
@@ -302,6 +303,7 @@ function TaskOutcome({
   onAddCredits,
 }: {
   session: CodingSession;
+  latestSession: CodingEvent | undefined;
   latestError: CodingEvent | undefined;
   modelName: string;
   recovering: boolean;
@@ -314,10 +316,13 @@ function TaskOutcome({
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
-  const code = latestError?.data.code;
+  const failure = latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string'
+    ? latestSession
+    : latestError;
+  const code = failure?.data.code;
   const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
-  const technicalDetail = typeof latestError?.data.detail === 'string' ? latestError.data.detail : '';
-  const errorDetail = technicalDetail || session.last_error || latestError?.text || '';
+  const technicalDetail = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
+  const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = session.status === 'completed'
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
@@ -429,6 +434,7 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         <TaskOutcome
           session={session}
+          latestSession={latestEvents.session?.latest}
           latestError={latestError}
           modelName={modelName}
           recovering={recovering}

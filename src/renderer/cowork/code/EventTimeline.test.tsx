@@ -161,6 +161,39 @@ describe('EventTimeline', () => {
     };
   }
 
+  it('reads the failure code from the terminal session event when the raw agent error carries none', () => {
+    const onChooseModel = vi.fn();
+    const onAddCredits = vi.fn();
+    const events: CodingEvent[] = [
+      event(1, 'error', 'Agent error: You have 0 weighted tokens left'),
+      {
+        ...event(2, 'session', 'The task failed.'),
+        title: 'Task failed',
+        phase: 'failed',
+        data: { status: 'failed', code: 'insufficient_credits', detail: 'server returned 402 Payment Required', model: 'gpt' },
+      },
+    ];
+
+    render(
+      <EventTimeline
+        {...timelineProps(events)}
+        session={{ ...session('failed'), run_status: 'failed', model: 'gpt', last_error: events[0].text }}
+        modelName="GPT 5.6 Sol"
+        onChooseModel={onChooseModel}
+        onAddCredits={onAddCredits}
+      />,
+    );
+
+    expect(screen.getByText('GPT 5.6 Sol needs credits')).toBeInTheDocument();
+    expect(screen.getByText('Add credits or choose another model, then continue in this task.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+    expect(onAddCredits).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText('server returned 402 Payment Required')).toBeVisible();
+  });
+
   it('asks for a fresh sign-in when the model credential is rejected, with no invented sign-in action', () => {
     const onChooseModel = vi.fn();
     const onAddCredits = vi.fn();
