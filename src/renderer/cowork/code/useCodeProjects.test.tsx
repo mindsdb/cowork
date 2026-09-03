@@ -1,12 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { listProjects } = vi.hoisted(() => ({
+const { listProjects, createProject } = vi.hoisted(() => ({
   listProjects: vi.fn(),
+  createProject: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
-  codingApi: { projects: listProjects },
+  codingApi: { projects: listProjects, createProject },
 }));
 
 import { useCodeProjects } from './useCodeProjects';
@@ -61,6 +62,17 @@ describe('useCodeProjects', () => {
 
     expect(result.current.projects[0].connections).toEqual([{ provider: 'github', name: 'octo', label: 'Octo Cat' }]);
     expect(listProjects).not.toHaveBeenCalled();
+
+  it('keeps a reasoning default chosen while creating a project', async () => {
+    createProject.mockImplementation(async (body: Record<string, unknown>) => ({ ...project, ...body, id: 'project-2' }));
+    const { result } = renderHook(() => useCodeProjects());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.save(null, { name: 'Effort', resources: [], default_reasoning_effort: 'low' } as never);
+    });
+
+    expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ name: 'Effort', default_reasoning_effort: 'low' }));
   });
 
 });
