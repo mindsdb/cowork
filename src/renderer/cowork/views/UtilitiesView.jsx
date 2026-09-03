@@ -99,6 +99,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
           selected={selected}
           onSelect={setSelected}
           project={project}
+          projects={projects}
           setData={setData}
           setStatus={setStatus}
         />
@@ -111,7 +112,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
   );
 }
 
-function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
+function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');

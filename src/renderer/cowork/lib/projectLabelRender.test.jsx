@@ -38,14 +38,17 @@ vi.mock('../api', async (importOriginal) => ({
       trigger_rule: 'always', anton_project_id: 'p1' },
   ])),
   fetchMemory: vi.fn(async () => ({
-    sections: [{ scope: 'Project', files: [
-      { path: 'p/lessons.md', name: 'lessons.md', category: 'lessons',
-        scope: 'Project', projectName: SLUG, projectId: 'p1', content: 'x' },
+    sections: [{ scope: 'Project', projectName: SLUG, projectId: 'p1', files: [
+      { path: `Project:p1:lessons`, name: 'lessons.md', category: 'lessons',
+        scope: 'Project', projectName: SLUG, projectId: 'p1', content: 'x',
+        capabilities: { canEdit: true, canDelete: true } },
     ] }],
   })),
   fetchAttachments: vi.fn(async () => []),
   listProjectFiles: vi.fn(async () => ({ files: [] })),
   fetchProjectFile: vi.fn(async () => ''),
+  fetchDatasources: vi.fn(async () => ({})),
+  fetchPublishable: vi.fn(async () => ({})),
 }));
 
 
@@ -103,6 +106,23 @@ describe('ENG-1676 render coverage — components no other test mounts', () => {
     const { default: ChannelBindings } = await import('../views/ChannelBindings');
     render(<ChannelBindings plugins={[{ channel_type: 'slack', display_name: 'Slack' }]} />);
     await waitFor(() => expectLabelNotSlug());
+  });
+
+  /**
+   * The seventh, and the one that justifies this file existing. This surface
+   * shipped BROKEN on the branch: the three `projects` references live inside
+   * `MemoryView`, a sibling function that never received the prop, so every
+   * one of them was an unbound `ReferenceError` at runtime. A grep-shaped
+   * "is the identifier in scope" check said it was fine. Mounting it says
+   * otherwise in about a millisecond.
+   */
+  it('UtilitiesView shows the display name on the project memory heading', async () => {
+    const { default: UtilitiesView } = await import('../views/UtilitiesView');
+    render(<UtilitiesView kind="memory" projects={PROJECTS} />);
+    await waitFor(() => {
+      expect(screen.getByText(`Project · ${LABEL}`)).toBeTruthy();
+      expect(screen.queryByText(`Project · ${SLUG}`)).toBeNull();
+    });
   });
 
   it('ContextBox shows the display name in the opened memory entry', async () => {
