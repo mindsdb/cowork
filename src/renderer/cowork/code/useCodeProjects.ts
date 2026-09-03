@@ -63,6 +63,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
           skill_sources: values.skill_sources || [],
           default_engine_id: values.default_engine_id || 'codex',
           default_model: values.default_model || DEFAULT_CODING_AGENT_MODEL,
+          default_reasoning_effort: values.default_reasoning_effort ?? null,
           permission_mode: values.permission_mode || 'supervised',
         });
     await load();

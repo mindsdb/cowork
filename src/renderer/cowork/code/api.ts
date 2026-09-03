@@ -754,7 +754,7 @@ const liveCodingApi = {
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
-  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'default_reasoning_effort' | 'permission_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
