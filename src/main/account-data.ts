@@ -77,3 +77,63 @@ export function claimDefaultRoot(home: string, accountId: string): ClaimState {
   }
   return readAccountClaim(home);
 }
+
+// Per-account roots live under here, one subdirectory per account.
+export const ACCOUNTS_DIR = 'accounts';
+
+// A Keycloak `sub` is a UUID; this only has to be a safe single path segment.
+const SAFE_ACCOUNT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+function assertUsableAsPathSegment(accountId: string): void {
+  if (!SAFE_ACCOUNT_ID.test(accountId) || accountId === '.' || accountId === '..') {
+    // Refusing beats falling back to the shared root, which would be the leak.
+    throw new Error('[account-data] refusing to derive a data root from an unexpected account id');
+  }
+}
+
+/**
+ * The store paths the sidecar gets for `root`, mirroring cowork-server's own
+ * defaults so the layout beside a claimed root reads the same. COWORK_ACCOUNT_ID
+ * is what tells the server it is NOT on the shared root, so it skips the
+ * one-time `.env` and memory seeds that would otherwise import the previous
+ * account's keys and profile.
+ */
+export function accountStoreEnv(root: string, accountId: string): Record<string, string> {
+  const at = (name: string) => path.join(root, name);
+  return {
+    COWORK_ACCOUNT_ID: accountId,
+    DATABASE_URI: `sqlite:///${at('cowork.db')}`,
+    COWORK_PROJECTS_DIR: at('projects'),
+    COWORK_FILES_DIR: at('files'),
+    COWORK_MEMORY_DIR: at('memory'),
+    COWORK_VAULT_DIR: at('data-vault'),
+    COWORK_STREAMS_DIR: at('streams'),
+    COWORK_CODING_DIR: at('coding'),
+    HERMES_ROOT_DIR: at('hermes'),
+    ANTON_COWORK_STATE_DIR: at('publish'),
+  };
+}
+
+/**
+ * The environment additions for the account the sidecar is about to serve.
+ *
+ * Empty for a signed-out app and for the account that owns the default root, so
+ * both keep exactly the environment they have today. Any other account gets its
+ * own subtree.
+ *
+ * Claims the default root as a side effect when it is unclaimed, because the
+ * claim has to be durable BEFORE the sidecar is pointed at that root — a claim
+ * written afterwards could be lost and let the next account adopt the same data.
+ */
+export function sidecarEnvForAccount(home: string, accountId: string | null): Record<string, string> {
+  const trimmed = (accountId ?? '').trim();
+  if (!trimmed) return {};
+  // Before the claim, not after: an id we would refuse to build a path from must
+  // not end up owning the shared root either.
+  assertUsableAsPathSegment(trimmed);
+
+  const claim = claimDefaultRoot(home, trimmed);
+  if (claim.kind === 'claimed' && claim.accountId === trimmed) return {};
+
+  return accountStoreEnv(path.join(home, ACCOUNTS_DIR, trimmed), trimmed);
+}
