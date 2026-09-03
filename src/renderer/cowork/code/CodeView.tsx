@@ -28,6 +28,7 @@ import { useCodeTaskActions } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 import { ConnectComputerModal } from '../views/settings/ConnectComputerModal';
+import { codeControlPlaneReachable } from './controlPlane';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
 import { useProjectActions } from './useProjectActions';
@@ -390,7 +391,7 @@ export default function CodeView({
               onOpenConnectors();
             }}
             onCreateProject={() => setProjectEditor({ id: null })}
-            onAddComputer={() => setConnectComputerOpen(true)}
+            onAddComputer={codeControlPlaneReachable() ? () => setConnectComputerOpen(true) : undefined}
           />
         ) : restoring && !session ? (
           <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>

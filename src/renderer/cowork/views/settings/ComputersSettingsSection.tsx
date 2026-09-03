@@ -6,6 +6,7 @@ import { codingApi } from '../../code/api';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { UNREACHABLE_EXPLANATION, UNREACHABLE_TITLE, codeControlPlaneReachable } from '../../code/controlPlane';
 import { ConnectComputerModal } from './ConnectComputerModal';
 import { SettingsGroup, SettingsSectionPanel } from './settingsLayout';
 
@@ -59,6 +60,9 @@ export default function ComputersSettingsSection() {
   const [editingId, setEditingId] = useState('');
   const [editingName, setEditingName] = useState('');
   const [revokingId, setRevokingId] = useState('');
+  // A plain desktop's Code service is private to this machine: nothing can
+  // connect, so the section says so instead of offering a form and a code.
+  const reachable = codeControlPlaneReachable();
 
   const refresh = useCallback(async (quiet = false): Promise<boolean> => {
     if (!quiet) setLoading(true);
@@ -146,10 +150,18 @@ export default function ComputersSettingsSection() {
             <h3 className="m-0 text-base font-semibold text-ink">Run Code beyond this computer</h3>
             <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">Connected computers can run portable Git projects. Local folders stay on the computer where you added them.</p>
           </div>
-          <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
-            <Plus size={13} strokeWidth={1.5} /> Connect computer
-          </Button>
+          {reachable && (
+            <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
+              <Plus size={13} strokeWidth={1.5} /> Connect computer
+            </Button>
+          )}
         </div>
+        {!reachable && (
+          <div role="status" className="mt-4 rounded-[10px] border border-solid border-line bg-surface-2 p-3.5">
+            <div className="mb-1 text-sm font-semibold text-ink">{UNREACHABLE_TITLE}</div>
+            <p className="m-0 max-w-[600px] text-sm leading-5 text-ink-3">{UNREACHABLE_EXPLANATION}</p>
+          </div>
+        )}
 
         <div className="divide-y divide-line">
           {loading && !computers.length && !pending.length && <div className="py-5 text-sm text-ink-3">Finding computers…</div>}
@@ -226,12 +238,16 @@ export default function ComputersSettingsSection() {
                   <Badge size="xs" variant="muted">Waiting to connect</Badge>
                 </div>
                 <div className="mt-0.5 truncate text-xs text-ink-4">
-                  {platformLabel(item.platform)} · {item.expired ? 'Connection code expired' : `Connection code expires ${expiryLabel(item.expires_at)}`}
+                  {platformLabel(item.platform)} · {!reachable
+                    ? 'Cannot connect from this desktop'
+                    : item.expired ? 'Connection code expired' : `Connection code expires ${expiryLabel(item.expires_at)}`}
                 </div>
               </div>
-              <Button size="xs" variant="subtle" onClick={() => { setRecoding(item); setConnectOpen(true); }}>
-                <RotateCw size={12} strokeWidth={1.5} /> New code
-              </Button>
+              {reachable && (
+                <Button size="xs" variant="subtle" onClick={() => { setRecoding(item); setConnectOpen(true); }}>
+                  <RotateCw size={12} strokeWidth={1.5} /> New code
+                </Button>
+              )}
               <Button size="xs" variant="danger" onClick={() => void removePending(item)}>Remove</Button>
             </div>
           ))}
