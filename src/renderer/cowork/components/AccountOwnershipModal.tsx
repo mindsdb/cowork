@@ -18,12 +18,15 @@ interface AccountOwnershipModalProps {
   open: boolean;
   /** Something the person recognises, or null when the token carries none. */
   accountLabel: string | null;
+  /** Why the last answer did not take effect, so the dialog can stay open. */
+  error?: string | null;
   onDecide: (keepExisting: boolean) => Promise<void> | void;
 }
 
 export default function AccountOwnershipModal({
   open,
   accountLabel,
+  error = null,
   onDecide,
 }: AccountOwnershipModalProps) {
   const [busy, setBusy] = useState<'keep' | 'fresh' | null>(null);
@@ -52,6 +55,11 @@ export default function AccountOwnershipModal({
           Nothing is deleted either way. If you start fresh, the existing history
           stays on this computer for whoever it belongs to.
         </p>
+        {error && (
+          <p style={{ margin: '12px 0 0', lineHeight: 1.5, color: 'var(--danger, #c0392b)' }}>
+            {error}
+          </p>
+        )}
       </ModalBody>
       <ModalFooter align="space-between">
         <Button variant="subtle" disabled={busy !== null} onClick={() => decide(false)}>

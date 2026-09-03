@@ -1466,13 +1466,18 @@ export async function accountOwnershipPending(): Promise<AccountOwnershipQuestio
 export async function decideAccountOwnership(
   accountId: string,
   keepExisting: boolean,
-): Promise<boolean> {
-  if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') return false;
+): Promise<{ ok: boolean; reason: string | null }> {
+  if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') {
+    return { ok: false, reason: 'unsupported' };
+  }
   try {
     const result = await bridge.decideAccountOwnership(accountId, keepExisting);
-    return Boolean(result?.ok);
+    return {
+      ok: Boolean(result?.ok),
+      reason: typeof result?.reason === 'string' ? result.reason : null,
+    };
   } catch {
-    return false;
+    return { ok: false, reason: 'unavailable' };
   }
 }
 

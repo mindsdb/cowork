@@ -267,13 +267,26 @@ export default function App() {
     return () => { cancelled = true; };
   }, [page]);
 
+  const [ownershipError, setOwnershipError] = useState<string | null>(null);
   const decideOwnership = useCallback(async (keepExisting: boolean) => {
     if (!ownership) return;
-    const ok = await host.decideAccountOwnership(ownership.accountId, keepExisting);
+    const { ok, reason } = await host.decideAccountOwnership(ownership.accountId, keepExisting);
+    if (!ok) {
+      // The claim can fail to write or lose a race to another launch. Closing
+      // the dialog here would leave the person on an empty app having just said
+      // the history was theirs, with nothing said about why it is not.
+      setOwnershipError(
+        reason === 'account-changed'
+          ? 'The signed-in account changed. Sign in again to answer this.'
+          : 'Could not take that history. Nothing was changed — try again.',
+      );
+      return;
+    }
+    setOwnershipError(null);
     setOwnership(null);
     // Taking the existing data restarted the sidecar onto it, so everything
     // already on screen was read from the other database. Reload, don't patch.
-    if (ok && keepExisting) window.location.reload();
+    if (keepExisting) window.location.reload();
   }, [ownership]);
 
   const isMac = host.isMac();
@@ -288,6 +301,7 @@ export default function App() {
         <AccountOwnershipModal
           open
           accountLabel={ownership.accountLabel}
+          error={ownershipError}
           onDecide={decideOwnership}
         />
       )}

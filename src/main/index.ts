@@ -9,7 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -167,6 +167,11 @@ async function serverConfigured(): Promise<{
 } | null> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
+  // Never read readiness off a sidecar serving another account's database. The
+  // account is recorded at the auth choke point, long before a sign-in reaches
+  // commitMindsSignIn — and some never reach it — so without this a reload in
+  // that window routes straight into the previous account's data.
+  if (!(await ensureSidecarOnCurrentAccountRoot())) return null;
   try {
     const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
       signal: AbortSignal.timeout(3000),
@@ -1276,9 +1281,12 @@ function setupIPC() {
     }
 
     if (!keepExisting) {
-      // Starting fresh needs nothing moved: the account is already on its own
-      // root, and the existing data stays for whoever does own it.
+      // The account is already resolved to its own root and the existing data
+      // stays for whoever owns it — but a sidecar started before the record
+      // named this account may still be serving the default root, so it has to
+      // be moved off the data the person just disclaimed.
       declineDefaultRoot(home, active.accountId);
+      await ensureSidecarOnCurrentAccountRoot();
       return { ok: true, keptExisting: false };
     }
 

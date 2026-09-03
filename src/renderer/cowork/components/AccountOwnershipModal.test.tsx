@@ -61,3 +61,27 @@ describe('AccountOwnershipModal', () => {
     expect(onDecide).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('when the answer does not take effect', () => {
+  it('shows why, and keeps both answers available', () => {
+    // Main can refuse: the claim failed to write, or another launch won it, or
+    // the signed-in account changed. Closing on that would leave the person on
+    // an empty app having just said the history was theirs.
+    render(
+      <AccountOwnershipModal
+        open
+        accountLabel="a@example.com"
+        error="Could not take that history. Nothing was changed — try again."
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/could not take that history/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /this history is mine/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start fresh/i })).toBeTruthy();
+  });
+
+  it('says nothing about failure when there is none', () => {
+    render(<AccountOwnershipModal open accountLabel={null} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/could not/i)).toBeNull();
+  });
+});

@@ -176,6 +176,35 @@ export function sidecarIsOnCurrentAccountRoot(): boolean {
 }
 
 /**
+ * Bring the running sidecar onto the current session's data root, restarting it
+ * if it is serving another account's.
+ *
+ * The account is recorded at the auth choke point, which happens well before any
+ * sign-in reaches `commitMindsSignIn` — and some sign-ins never reach it at all
+ * (organization pick still pending, a network failure in org selection). In that
+ * window the app is signed in as one account while the sidecar still serves
+ * another's database, and any reload routes off THAT server's readiness. So this
+ * runs on the readiness path too, which every boot and every reload passes
+ * through, not only on the sign-in path.
+ *
+ * Returns whether the sidecar can be trusted for the current session.
+ */
+export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
+  if (!isServerRunning() && !isServerStarting()) return false;
+  if (isServerStarting()) return false; // a start in flight will use the current root
+  if (sidecarIsOnCurrentAccountRoot()) return true;
+  console.log('[server] running on another account data root — restarting');
+  try {
+    await stopServer();
+    const result = await startServer();
+    return result.ok && sidecarIsOnCurrentAccountRoot();
+  } catch (err) {
+    console.warn('[server] could not move the sidecar onto this account root', err);
+    return false;
+  }
+}
+
+/**
  * Run a complete server-maintenance transaction exclusively with starts and
  * stops. This must be entered before source inspection or a stop/install/start
  * sequence, rather than only around the `uv` subprocess.
