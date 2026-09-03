@@ -41,6 +41,7 @@ import { host } from '../platform/host';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
+import { canUseSharedResource } from './lib/sharedResourceAccess';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
@@ -611,6 +612,13 @@ function AppCore() {
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
+  /* Keys (id, else name) of the projects whose DELETE is on the wire. The
+     server cascades every conversation in the project, so the round trip runs
+     long enough that a card left untouched reads as "nothing happened" and
+     invites a second delete. The confirm modal still closes on confirm — the
+     user has to stay free to navigate while the server works — so the waiting
+     state is shown on the project itself instead. */
+  const [deletingProjectKeys, setDeletingProjectKeys] = useState([]);
 
   // Live stream control — refs to the active fetch's AbortController
   // and the latest scratchpad name so we can fire a Stop that aborts
@@ -1473,6 +1481,11 @@ function AppCore() {
   const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
   const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Long-running destructive requests must reconcile against wherever the
+  // user navigated while they were in flight, not the render that launched
+  // them. Keep the active task alongside routeRef for that success boundary.
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
   // Set when the `/c/:id` loader hit an operational failure (not a 404): the
   // view offers a retry instead of losing the URL.
   const [conversationError, setConversationError] = useState(null);
@@ -4039,10 +4052,41 @@ function AppCore() {
 
   const handleDeleteProject = (project) => {
     if (!project?.name) return;
+    if (!canUseSharedResource(project, 'canDelete')) return;
+    // Re-confirming a delete that is already on the wire would fire a duplicate
+    // DELETE; the project shows its waiting state until the server answers.
+    if (deletingProjectKeys.includes(project.id || project.name)) return;
     setPendingDeleteProject(project);
   };
   const performDeleteProject = async (project) => {
     if (!project?.name) return;
+    const deletingKey = project.id || project.name;
+    setDeletingProjectKeys((prev) => (
+      prev.includes(deletingKey) ? prev : [...prev, deletingKey]
+    ));
+    try {
+      await runDeleteProject(project);
+    } finally {
+      setDeletingProjectKeys((prev) => prev.filter((key) => key !== deletingKey));
+    }
+  };
+  const runDeleteProject = async (project) => {
+    // Authorization is server-owned. Do not remove the project, its tasks, or
+    // their drafts until DELETE succeeds: a member's 403 must leave the UI in
+    // the exact pre-confirmation state instead of briefly looking successful.
+    try {
+      await deleteProject(project);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteProject] failed', e);
+      toastManager.add({
+        type: 'danger',
+        timeout: 0,
+        title: "Couldn't delete this project. Nothing was removed; try again.",
+        description: e?.message || String(e),
+      });
+      return;
+    }
     // The server cascades a project delete to its conversations (ENG-701),
     // so tombstone their ids the same way performDeleteTask does for a single
     // delete. Without this, an in-flight fetchSessions that started before the
@@ -4059,24 +4103,28 @@ function AppCore() {
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
     doomedTaskIds.forEach((id) => clearDraft(id));
-    // Optimistic — drop locally before the round-trip.
+    // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
       t.projectName !== project.name && t.projectPath !== project.path
     ));
-    if (selectedProject?.name === project.name) setSelectedProject(null);
+    setSelectedProject((current) => {
+      const isDeletedProject = current && (
+        (project.id && current.id && current.id === project.id)
+        || current.name === project.name
+      );
+      return isDeletedProject ? null : current;
+    });
     // If the conversation currently open belonged to this project, clear it —
     // otherwise currentTask silently falls back to tasks[0] (an unrelated
     // conversation from another project). Only leave the chat view when we're
     // actually on it; from the projects view (where deletes usually happen)
     // the user should stay put — same policy as performDeleteTask.
-    if (activeTaskId && doomedTaskIds.includes(activeTaskId)) {
+    const liveActiveTaskId = activeTaskIdRef.current;
+    if (liveActiveTaskId && doomedTaskIds.includes(liveActiveTaskId)) {
+      activeTaskIdRef.current = null;
       setActiveTaskId(null);
-      if (route === 'task') setRoute('home');
-    }
-    try { await deleteProject(project); } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteProject] failed', e);
+      if (routeRef.current === 'task') setRoute('home');
     }
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
@@ -4718,6 +4766,7 @@ function AppCore() {
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
+            deletingProjectKeys={deletingProjectKeys}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
