@@ -29,7 +29,7 @@ import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
-import { scrubEnvCredentials } from './logout-env';
+import { redactProviderCredentials, scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
   validateAnthropic,
@@ -40,11 +40,13 @@ import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import {
+  accountDataHome,
   adoptDefaultRootAsIncumbent,
   declineDefaultRoot,
   needsOwnershipDecision,
+  observePreExistingData,
   readActiveAccount,
-  reconcileAccountRoot,
+  sweepStaleQuarantineRoots,
 } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
@@ -1280,7 +1282,13 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_READ, async () => {
-    return readEnvFile();
+    const vars = readEnvFile();
+    // The dotenv is the DEFAULT root's file, so hand it over only to the account
+    // that owns that root. See redactProviderCredentials for what the renderer
+    // does with these and why that matters.
+    const home = coworkHome();
+    if (accountDataHome(home, readActiveAccount(home)) === home) return vars;
+    return redactProviderCredentials(vars);
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
@@ -1519,6 +1527,14 @@ app.whenReady().then(async () => {
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
+  // Answer, once and before anything can create a database, whether this
+  // install already held data. It decides whether an account may take the
+  // default root or has to be asked, and it can only be observed BEFORE the
+  // first server start of a build that has per-account roots — after that,
+  // every install looks like it has data. Both calls are idempotent.
+  observePreExistingData(coworkHome());
+  sweepStaleQuarantineRoots(coworkHome());
+
   // A machine that slept past the refresh timer wakes with an expired
   // in-memory token and a timer that fired into the void. Refresh on
   // resume so the session is live again before the user looks at it
@@ -1751,18 +1767,6 @@ app.whenReady().then(async () => {
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
-    }
-
-    // Make this install's data root belong to whoever is signed in, BEFORE the
-    // first sidecar start. An install that upgraded into per-account roots while
-    // signed in has data and no claim on it, and without this the next different
-    // account to sign in would take that data — the reported bug, on every
-    // existing install. Runs after the refresh above, which is what makes the
-    // account nameable at boot.
-    try {
-      await reconcileAccountRoot(coworkHome(), signedInAccountId());
-    } catch (err) {
-      console.warn('[auth] could not reconcile the account data root', err);
     }
 
     let result = await startServer();

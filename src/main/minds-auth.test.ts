@@ -89,6 +89,7 @@ vi.mock('./server-process', () => ({
 // creds) and ride out a transient lock on the rename instead of throwing.
 import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
 import { saveTokens, clearTokens } from './token-store';
+import { observePreExistingData } from './account-data';
 
 let dir: string;
 let target: string;
@@ -218,6 +219,10 @@ describe('commitMindsSignIn — the account data root', () => {
   };
   const readJson = (name: string) =>
     JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) as { accountId: string | null };
+  // Boot records this before anything can create a database. Without it the
+  // unrecorded answer is "had data", which correctly refuses the claim — so a
+  // test that skips it is testing the upgrade path, not a fresh install.
+  const asFreshInstall = () => observePreExistingData(dir);
 
   afterEach(() => {
     clearTokens();
@@ -225,6 +230,7 @@ describe('commitMindsSignIn — the account data root', () => {
 
   it('records the signed-in account and claims the default root', async () => {
     homeHolder.antonInstalled = false;
+    asFreshInstall();
     asAccount(ACCOUNT_A);
 
     await expect(commitMindsSignIn()).resolves.toBeUndefined();
@@ -235,6 +241,7 @@ describe('commitMindsSignIn — the account data root', () => {
 
   it('records a second account without letting it take the first account root', async () => {
     homeHolder.antonInstalled = false;
+    asFreshInstall();
     asAccount(ACCOUNT_A);
     await commitMindsSignIn();
 
@@ -244,6 +251,21 @@ describe('commitMindsSignIn — the account data root', () => {
     expect(readJson('active-account.json').accountId).toBe(ACCOUNT_B);
     // The claim still names A, so B is resolved onto its own root instead.
     expect(readJson('.account').accountId).toBe(ACCOUNT_A);
+  });
+
+  it('does not let a sign-in claim a root that already held data', async () => {
+    // The upgrade path: no observation of a fresh install, so the recorded
+    // answer is "had data" and the claim is refused. Only the dialog can hand
+    // that root over.
+    homeHolder.antonInstalled = false;
+    fs.writeFileSync(path.join(dir, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(dir);
+    asAccount(ACCOUNT_A);
+
+    await commitMindsSignIn();
+
+    expect(readJson('active-account.json').accountId).toBe(ACCOUNT_A);
+    expect(fs.existsSync(path.join(dir, '.account'))).toBe(false);
   });
 
   it('leaves the records alone when the token carries no account', async () => {

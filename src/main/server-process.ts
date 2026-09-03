@@ -718,10 +718,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // the first account's tasks, files, vault or memory. Empty for a signed-out
     // app and for the account that owns the default root, which is what keeps
     // an existing single-account install on exactly the paths it has today.
+    const account = currentAccountRoot();
     const accountEnv = sidecarEnvForSession(dataHome, readActiveAccount(dataHome));
     console.log(
       `[server] build kind "${kind}" → data home ${dataHome}` +
-        (accountEnv.COWORK_ACCOUNT_ID ? ' (per-account root)' : ''),
+        (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : ''),
     );
     const env = {
       ...process.env,
@@ -756,15 +757,17 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // not validate the port for loopback (127.0.0.1) redirect URIs.
       COWORK_SERVER_ORIGIN: getServerOrigin(),
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
-      // After COWORK_HOME so the account's own store paths win over anything the
-      // server would otherwise derive from the home.
+      // Last, so an account's own root wins over the build-kind home. Empty for
+      // the account that owns the default root, which is what leaves prod's
+      // legacy ~/.anton/.env fallback in place — that is dropped only when
+      // COWORK_HOME is set at all.
       ...accountEnv,
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it. Bound to the account
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
-      COWORK_SERVER_OWNER: serverOwnerToken(accountEnv.COWORK_ACCOUNT_ID ?? null),
+      COWORK_SERVER_OWNER: serverOwnerToken(account),
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
       // build points at. Only set when the build is baked for a non-prod env
@@ -907,7 +910,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       };
     }
     serverStarted = true;
-    _runningAccountRoot = accountEnv.COWORK_ACCOUNT_ID ?? null;
+    _runningAccountRoot = account;
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a
