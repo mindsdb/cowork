@@ -3,14 +3,26 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// The claim decides which account keeps the pre-existing default data root, so
-// the cases that matter are the adversarial ones: a second account must never
-// take a claimed root, and a claim that is corrupt or unwritable must fail
-// closed (nobody adopts) rather than open (the next signer-in adopts).
-import { claimDefaultRoot, readAccountClaim, sidecarEnvForAccount } from './account-data';
+// These decide which account keeps the pre-existing data root, so the cases that
+// matter are the adversarial ones: a second account must never take a claimed
+// root, and a claim or active-account record that is corrupt or unwritable must
+// fail closed (nobody adopts) rather than open (the next signer-in adopts).
+import {
+  accountOwnerToken,
+  claimDefaultRoot,
+  readAccountClaim,
+  readActiveAccount,
+  resolveAccountRoot,
+  sidecarEnvForSession,
+  writeActiveAccount,
+} from './account-data';
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+const signedIn = (accountId: string) => ({ kind: 'signed-in' as const, accountId });
+const SIGNED_OUT = { kind: 'signed-out' as const };
+const UNKNOWN = { kind: 'unknown' as const };
 
 let home: string;
 
@@ -52,7 +64,6 @@ describe('claimDefaultRoot', () => {
   it('never lets a second account steal a claimed root', () => {
     claimDefaultRoot(home, ACCOUNT_A);
     expect(claimDefaultRoot(home, ACCOUNT_B)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
-    // The file still names A, so B cannot have overwritten it.
     expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
   });
 
@@ -68,31 +79,95 @@ describe('claimDefaultRoot', () => {
   });
 
   it('fails closed when the claim cannot be written', () => {
-    // A directory where the claim file belongs: the create fails with EISDIR,
-    // which must not read as "free to adopt".
+    // A directory where the claim file belongs, so the create cannot succeed.
+    // That must not read as "free to adopt".
     fs.mkdirSync(path.join(home, '.account'));
     expect(claimDefaultRoot(home, ACCOUNT_A)).toEqual({ kind: 'unreadable' });
   });
 });
 
-describe('sidecarEnvForAccount', () => {
-  it('adds nothing when signed out, so the sidecar keeps today environment', () => {
-    expect(sidecarEnvForAccount(home, null)).toEqual({});
-    expect(sidecarEnvForAccount(home, '  ')).toEqual({});
+describe('the active account on disk', () => {
+  it('round-trips a signed-in account', async () => {
+    expect(readActiveAccount(home)).toEqual(UNKNOWN);
+    await writeActiveAccount(home, ACCOUNT_A);
+    expect(readActiveAccount(home)).toEqual(signedIn(ACCOUNT_A));
+    await writeActiveAccount(home, ACCOUNT_B);
+    expect(readActiveAccount(home)).toEqual(signedIn(ACCOUNT_B));
   });
 
-  it('adds nothing for the account that owns the default root', () => {
-    // The upgrade path: an existing single-account install claims what it has
-    // and must keep reading exactly the same stores.
-    expect(sidecarEnvForAccount(home, ACCOUNT_A)).toEqual({});
-    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
-    // Still nothing on the next launch, now that the claim exists.
-    expect(sidecarEnvForAccount(home, ACCOUNT_A)).toEqual({});
+  it('records a sign-out rather than deleting the record', async () => {
+    // The distinction is load-bearing: a missing record has to stay
+    // distinguishable from a deliberate sign-out.
+    await writeActiveAccount(home, ACCOUNT_A);
+    await writeActiveAccount(home, null);
+    expect(readActiveAccount(home)).toEqual(SIGNED_OUT);
+  });
+
+  it('reads a corrupt record as unknown rather than as an id', () => {
+    fs.writeFileSync(path.join(home, 'active-account.json'), '{ broken', 'utf-8');
+    expect(readActiveAccount(home)).toEqual(UNKNOWN);
+  });
+
+  it('refuses to record an unsafe id', async () => {
+    await expect(writeActiveAccount(home, '../escape')).rejects.toThrow(/unexpected account id/);
+  });
+});
+
+describe('resolveAccountRoot', () => {
+  it('leaves a signed-out app on the default root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    // A single-account desktop that signed out still sees its own data, which is
+    // the behavior it has today and not a leak.
+    expect(resolveAccountRoot(home, SIGNED_OUT)).toBeNull();
+  });
+
+  it('leaves the owning account on the default root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
+  });
+
+  it('sends a second account to its own root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
+  });
+
+  it('leaves an unclaimed root alone so the first account can adopt it', () => {
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
+    expect(resolveAccountRoot(home, UNKNOWN)).toBeNull();
+  });
+
+  it('sends an account to its own root when the claim is unreadable', () => {
+    fs.writeFileSync(path.join(home, '.account'), 'corrupt', 'utf-8');
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBe(ACCOUNT_A);
+  });
+
+  it('quarantines an unknown session when someone owns the default root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(resolveAccountRoot(home, UNKNOWN)).toBe('_unresolved');
+  });
+
+  it('writes nothing, so the probe and spawn paths agree', () => {
+    const before = fs.readdirSync(home);
+    resolveAccountRoot(home, signedIn(ACCOUNT_A));
+    resolveAccountRoot(home, UNKNOWN);
+    expect(fs.readdirSync(home)).toEqual(before);
+  });
+
+  it('refuses an account id that is not a safe path segment', () => {
+    expect(() => resolveAccountRoot(home, signedIn('../escape'))).toThrow(/unexpected account id/);
+  });
+});
+
+describe('sidecarEnvForSession', () => {
+  it('adds nothing for a signed-out app or the owning account', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(sidecarEnvForSession(home, SIGNED_OUT)).toEqual({});
+    expect(sidecarEnvForSession(home, signedIn(ACCOUNT_A))).toEqual({});
   });
 
   it('gives a second account its own subtree for every store', () => {
-    sidecarEnvForAccount(home, ACCOUNT_A);
-    const env = sidecarEnvForAccount(home, ACCOUNT_B);
+    claimDefaultRoot(home, ACCOUNT_A);
+    const env = sidecarEnvForSession(home, signedIn(ACCOUNT_B));
     const root = path.join(home, 'accounts', ACCOUNT_B);
 
     expect(env).toEqual({
@@ -115,16 +190,31 @@ describe('sidecarEnvForAccount', () => {
     }
   });
 
-  it('sends an account to its own root when the claim is unreadable', () => {
-    fs.writeFileSync(path.join(home, '.account'), 'corrupt', 'utf-8');
-    const env = sidecarEnvForAccount(home, ACCOUNT_A);
-    expect(env.COWORK_ACCOUNT_ID).toBe(ACCOUNT_A);
-    expect(env.DATABASE_URI).toContain(path.join('accounts', ACCOUNT_A));
+  it('quarantines an unknown session on a claimed root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    const env = sidecarEnvForSession(home, UNKNOWN);
+    expect(env.COWORK_ACCOUNT_ID).toBe('_unresolved');
+    expect(env.DATABASE_URI).toContain(path.join('accounts', '_unresolved'));
+  });
+});
+
+describe('accountOwnerToken', () => {
+  const SECRET = 'a-server-owner-secret';
+
+  it('is the secret itself when there is no account', () => {
+    // Keeps the signed-out and default-root cases on exactly today's token.
+    expect(accountOwnerToken(SECRET, null)).toBe(SECRET);
   });
 
-  it('refuses an account id that is not a safe path segment', () => {
-    expect(() => sidecarEnvForAccount(home, '../escape')).toThrow(/unexpected account id/);
-    // It must not have claimed the shared root on the way out.
-    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+  it('differs per account so one account cannot adopt another server', () => {
+    const a = accountOwnerToken(SECRET, ACCOUNT_A);
+    const b = accountOwnerToken(SECRET, ACCOUNT_B);
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(SECRET);
+    expect(accountOwnerToken(SECRET, ACCOUNT_A)).toBe(a);
+  });
+
+  it('does not expose the secret it was derived from', () => {
+    expect(accountOwnerToken(SECRET, ACCOUNT_A)).not.toContain(SECRET);
   });
 });
