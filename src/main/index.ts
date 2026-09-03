@@ -22,7 +22,7 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
@@ -39,7 +39,7 @@ import {
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { writeActiveAccount } from './account-data';
+import { reconcileAccountRoot, writeActiveAccount } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
@@ -1716,6 +1716,18 @@ app.whenReady().then(async () => {
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
+    }
+
+    // Make this install's data root belong to whoever is signed in, BEFORE the
+    // first sidecar start. An install that upgraded into per-account roots while
+    // signed in has data and no claim on it, and without this the next different
+    // account to sign in would take that data — the reported bug, on every
+    // existing install. Runs after the refresh above, which is what makes the
+    // account nameable at boot.
+    try {
+      await reconcileAccountRoot(coworkHome(), signedInAccountId());
+    } catch (err) {
+      console.warn('[auth] could not reconcile the account data root', err);
     }
 
     let result = await startServer();

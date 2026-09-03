@@ -9,9 +9,11 @@ import * as path from 'path';
 // fail closed (nobody adopts) rather than open (the next signer-in adopts).
 import {
   accountOwnerToken,
+  adoptDefaultRootAsIncumbent,
   claimDefaultRoot,
   readAccountClaim,
   readActiveAccount,
+  reconcileAccountRoot,
   resolveAccountRoot,
   sidecarEnvForSession,
   writeActiveAccount,
@@ -21,7 +23,13 @@ const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
 
 const signedIn = (accountId: string) => ({ kind: 'signed-in' as const, accountId });
-const SIGNED_OUT = { kind: 'signed-out' as const };
+const signedOut = (lastAccountId: string | null = null) => ({
+  kind: 'signed-out' as const,
+  lastAccountId,
+});
+// An install with data already on the default root, as every install that
+// upgrades into per-account roots has.
+const withData = () => fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
 const UNKNOWN = { kind: 'unknown' as const };
 
 let home: string;
@@ -100,7 +108,8 @@ describe('the active account on disk', () => {
     // distinguishable from a deliberate sign-out.
     await writeActiveAccount(home, ACCOUNT_A);
     await writeActiveAccount(home, null);
-    expect(readActiveAccount(home)).toEqual(SIGNED_OUT);
+    // And it KEEPS the account, so the install stays on the root it was using.
+    expect(readActiveAccount(home)).toEqual(signedOut(ACCOUNT_A));
   });
 
   it('reads a corrupt record as unknown rather than as an id', () => {
@@ -114,13 +123,6 @@ describe('the active account on disk', () => {
 });
 
 describe('resolveAccountRoot', () => {
-  it('leaves a signed-out app on the default root', () => {
-    claimDefaultRoot(home, ACCOUNT_A);
-    // A single-account desktop that signed out still sees its own data, which is
-    // the behavior it has today and not a leak.
-    expect(resolveAccountRoot(home, SIGNED_OUT)).toBeNull();
-  });
-
   it('leaves the owning account on the default root', () => {
     claimDefaultRoot(home, ACCOUNT_A);
     expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
@@ -131,9 +133,18 @@ describe('resolveAccountRoot', () => {
     expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
   });
 
-  it('leaves an unclaimed root alone so the first account can adopt it', () => {
+  it('leaves an EMPTY unclaimed root alone, so a fresh install adopts it', () => {
     expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
     expect(resolveAccountRoot(home, UNKNOWN)).toBeNull();
+  });
+
+  it('keeps an account OFF an unclaimed root that already holds data', () => {
+    // This is the upgrade case and the reported bug: an install that upgraded
+    // while signed in has data and no claim, so whoever asks first must not get
+    // it. Only the boot reconcile may hand it to the incumbent.
+    withData();
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
+    expect(resolveAccountRoot(home, UNKNOWN)).toMatch(/^_unresolved-/);
   });
 
   it('sends an account to its own root when the claim is unreadable', () => {
@@ -143,7 +154,21 @@ describe('resolveAccountRoot', () => {
 
   it('quarantines an unknown session when someone owns the default root', () => {
     claimDefaultRoot(home, ACCOUNT_A);
-    expect(resolveAccountRoot(home, UNKNOWN)).toBe('_unresolved');
+    // Per process, not one shared bucket: two unresolvable sessions must not be
+    // able to read each other's work either.
+    expect(resolveAccountRoot(home, UNKNOWN)).toMatch(/^_unresolved-/);
+  });
+
+  it('keeps a signed-out non-owner on its own root, not the owner root', () => {
+    // Sign-out used to drop straight back to the default root, which for a
+    // non-owning account means the OWNER's database.
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(resolveAccountRoot(home, signedOut(ACCOUNT_B))).toBe(ACCOUNT_B);
+  });
+
+  it('keeps a signed-out owner on the default root', () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(resolveAccountRoot(home, signedOut(ACCOUNT_A))).toBeNull();
   });
 
   it('writes nothing, so the probe and spawn paths agree', () => {
@@ -161,7 +186,8 @@ describe('resolveAccountRoot', () => {
 describe('sidecarEnvForSession', () => {
   it('adds nothing for a signed-out app or the owning account', () => {
     claimDefaultRoot(home, ACCOUNT_A);
-    expect(sidecarEnvForSession(home, SIGNED_OUT)).toEqual({});
+    // The signed-out OWNER, which is the single-account desktop: still its data.
+    expect(sidecarEnvForSession(home, signedOut(ACCOUNT_A))).toEqual({});
     expect(sidecarEnvForSession(home, signedIn(ACCOUNT_A))).toEqual({});
   });
 
@@ -181,6 +207,9 @@ describe('sidecarEnvForSession', () => {
       COWORK_CODING_DIR: path.join(root, 'coding'),
       HERMES_ROOT_DIR: path.join(root, 'hermes'),
       ANTON_COWORK_STATE_DIR: path.join(root, 'publish'),
+      COWORK_SKILLS_DIR: path.join(root, 'skills'),
+      ANTON_SKILLS_ROOT_DIR: path.join(root, 'anton', 'skills'),
+      COWORK_OAUTH_STATE_PATH: path.join(root, 'oauth_state.json'),
     });
     // Nothing in B's environment may point back at the shared root. The DB value
     // is a DSN, so compare the path it carries rather than the whole string.
@@ -193,7 +222,7 @@ describe('sidecarEnvForSession', () => {
   it('quarantines an unknown session on a claimed root', () => {
     claimDefaultRoot(home, ACCOUNT_A);
     const env = sidecarEnvForSession(home, UNKNOWN);
-    expect(env.COWORK_ACCOUNT_ID).toBe('_unresolved');
+    expect(env.COWORK_ACCOUNT_ID).toMatch(/^_unresolved-/);
     expect(env.DATABASE_URI).toContain(path.join('accounts', '_unresolved'));
   });
 });
@@ -216,5 +245,61 @@ describe('accountOwnerToken', () => {
 
   it('does not expose the secret it was derived from', () => {
     expect(accountOwnerToken(SECRET, ACCOUNT_A)).not.toContain(SECRET);
+  });
+});
+
+
+describe('claiming a populated root', () => {
+  it('refuses a sign-in on an unclaimed root that already holds data', () => {
+    withData();
+    expect(claimDefaultRoot(home, ACCOUNT_B)).toEqual({ kind: 'unclaimed' });
+    expect(fs.existsSync(path.join(home, '.account'))).toBe(false);
+  });
+
+  it('lets the incumbent adopt it, which is the upgrade path', () => {
+    withData();
+    expect(adoptDefaultRootAsIncumbent(home, ACCOUNT_A))
+      .toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
+  });
+
+  it('still lets a fresh install claim an empty root at sign-in', () => {
+    expect(claimDefaultRoot(home, ACCOUNT_A))
+      .toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+  });
+});
+
+describe('reconcileAccountRoot', () => {
+  it('gives an upgraded install its data back and locks others out', async () => {
+    // The whole reported bug, end to end: A upgraded with data and no claim, so
+    // A must keep it and B must not be able to take it.
+    withData();
+    await reconcileAccountRoot(home, ACCOUNT_A);
+
+    expect(readActiveAccount(home)).toEqual(signedIn(ACCOUNT_A));
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
+    expect(claimDefaultRoot(home, ACCOUNT_B)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
+  });
+
+  it('does nothing without an account to reconcile', async () => {
+    withData();
+    await reconcileAccountRoot(home, null);
+    expect(readActiveAccount(home)).toEqual(UNKNOWN);
+    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+  });
+
+  it('is idempotent once settled', async () => {
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+  });
+
+  it('repairs a record that names an account with no claim yet', async () => {
+    // A sign-in whose finalize bailed before claiming leaves exactly this.
+    await writeActiveAccount(home, ACCOUNT_A);
+    withData();
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
   });
 });
