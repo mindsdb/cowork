@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
-import { Button } from './ui';
+import Button from './ui/Button';
 
 // Asks who owns the tasks already on this machine.
 //
@@ -14,10 +14,21 @@ import { Button } from './ui';
 // Until it is answered the signed-in account is already on its own empty data,
 // so nothing is exposed while the question is open. Closing without choosing is
 // allowed: the question comes back on the next launch.
-export default function AccountOwnershipModal({ open, accountLabel, onDecide }) {
-  const [busy, setBusy] = useState(null);
+interface AccountOwnershipModalProps {
+  open: boolean;
+  /** Something the person recognises, or null when the token carries none. */
+  accountLabel: string | null;
+  onDecide: (keepExisting: boolean) => Promise<void> | void;
+}
 
-  const decide = async (keepExisting) => {
+export default function AccountOwnershipModal({
+  open,
+  accountLabel,
+  onDecide,
+}: AccountOwnershipModalProps) {
+  const [busy, setBusy] = useState<'keep' | 'fresh' | null>(null);
+
+  const decide = async (keepExisting: boolean) => {
     if (busy) return;
     setBusy(keepExisting ? 'keep' : 'fresh');
     try {
@@ -43,7 +54,7 @@ export default function AccountOwnershipModal({ open, accountLabel, onDecide }) 
         </p>
       </ModalBody>
       <ModalFooter align="space-between">
-        <Button variant="ghost" disabled={busy !== null} onClick={() => decide(false)}>
+        <Button variant="subtle" disabled={busy !== null} onClick={() => decide(false)}>
           {busy === 'fresh' ? 'Starting fresh…' : 'Start fresh'}
         </Button>
         <Button variant="primary" disabled={busy !== null} onClick={() => decide(true)}>

@@ -1434,27 +1434,42 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+export interface AccountOwnershipQuestion {
+  accountId: string;
+  accountLabel: string | null;
+}
+
 /**
- * Whether the shell needs to ask who owns the data already on this machine.
- * Desktop-only: on web the server is org-scoped, so there is no shared local
- * store to be ambiguous about. Fail-closed to "no question" — a bridge that
- * cannot answer must not raise a modal the user cannot act on.
+ * Whether the shell needs to ask who owns the data already on this machine, and
+ * who it is asking. Desktop-only: on web the server is org-scoped, so there is
+ * no shared local store to be ambiguous about. Fail-closed to "no question" — a
+ * bridge that cannot answer must not raise a modal nobody can act on.
  */
-export async function accountOwnershipPending(): Promise<boolean> {
-  if (!isElectron || typeof bridge.accountOwnershipPending !== 'function') return false;
+export async function accountOwnershipPending(): Promise<AccountOwnershipQuestion | null> {
+  if (!isElectron || typeof bridge.accountOwnershipPending !== 'function') return null;
   try {
     const result = await bridge.accountOwnershipPending();
-    return Boolean(result?.pending);
+    if (!result?.pending || typeof result.accountId !== 'string') return null;
+    return {
+      accountId: result.accountId,
+      accountLabel: typeof result.accountLabel === 'string' ? result.accountLabel : null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Answer it. `keepExisting` takes the existing data for the signed-in account. */
-export async function decideAccountOwnership(keepExisting: boolean): Promise<boolean> {
+/**
+ * Answer it. The account id goes back so main can refuse an answer meant for a
+ * different account than the one now signed in.
+ */
+export async function decideAccountOwnership(
+  accountId: string,
+  keepExisting: boolean,
+): Promise<boolean> {
   if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') return false;
   try {
-    const result = await bridge.decideAccountOwnership(keepExisting);
+    const result = await bridge.decideAccountOwnership(accountId, keepExisting);
     return Boolean(result?.ok);
   } catch {
     return false;

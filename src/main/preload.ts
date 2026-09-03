@@ -143,8 +143,8 @@ contextBridge.exposeInMainWorld('antontron', {
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
   accountOwnershipPending: () => ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_PENDING),
-  decideAccountOwnership: (keepExisting: boolean) =>
-    ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { keepExisting }),
+  decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
+    ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),
 
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),

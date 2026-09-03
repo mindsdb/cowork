@@ -45,17 +45,19 @@ describe('AccountOwnershipModal', () => {
   });
 
   it('cannot be answered twice while the first answer is in flight', async () => {
-    let release;
-    const onDecide = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+    let release: (() => void) | undefined;
+    const onDecide = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
     render(<AccountOwnershipModal open accountLabel={null} onDecide={onDecide} />);
 
-    const keep = screen.getByRole('button', { name: /this history is mine/i });
+    const keep = screen.getByRole<HTMLButtonElement>('button', { name: /this history is mine/i });
     await userEvent.click(keep);
     // Both buttons disabled, so a double-click cannot adopt and decline at once.
     await waitFor(() => expect(keep.disabled).toBe(true));
-    expect(screen.getByRole('button', { name: /starting fresh|start fresh/i }).disabled).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: /starting fresh|start fresh/i }).disabled,
+    ).toBe(true);
 
-    release();
+    release?.();
     expect(onDecide).toHaveBeenCalledTimes(1);
   });
 });

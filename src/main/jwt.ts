@@ -25,3 +25,15 @@ export function accountIdFromToken(token: string | null): string | null {
   const sub = decodeJwtPayload(token)?.sub;
   return typeof sub === 'string' && sub.trim() ? sub.trim() : null;
 }
+
+/** Something to show a person so they know which account they are answering
+ *  for. Not identity: only a label, and null when the token carries none. */
+export function accountLabelFromToken(token: string | null): string | null {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  for (const claim of ['email', 'preferred_username', 'name'] as const) {
+    const value = payload?.[claim];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}

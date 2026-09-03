@@ -29,6 +29,7 @@ import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
+import { accountLabelFromToken } from './jwt';
 import { redactProviderCredentials, scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -1243,27 +1244,55 @@ function setupIPC() {
   // own empty root, so nothing is exposed while the question is open.
   ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_PENDING, () => {
     const home = coworkHome();
-    return { pending: needsOwnershipDecision(home, readActiveAccount(home)) };
+    const active = readActiveAccount(home);
+    if (!needsOwnershipDecision(home, active) || active.kind !== 'signed-in') {
+      return { pending: false };
+    }
+    // The id goes to the renderer so its answer can name the account it was
+    // asked about, and the label so a person can see who they are answering for.
+    return {
+      pending: true,
+      accountId: active.accountId,
+      accountLabel: accountLabelFromToken(getAccessToken()),
+    };
   });
 
   ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_DECIDE, async (_event, payload: unknown) => {
-    const keepExisting = Boolean((payload as { keepExisting?: unknown } | null)?.keepExisting);
+    const body = (payload ?? {}) as { keepExisting?: unknown; accountId?: unknown };
+    const keepExisting = Boolean(body.keepExisting);
+    const answeredFor = typeof body.accountId === 'string' ? body.accountId : null;
     const home = coworkHome();
     const active = readActiveAccount(home);
-    // Re-check rather than trusting the renderer: the answer is only meaningful
-    // for the state that actually prompted it.
+
+    // Re-check against disk rather than trusting the renderer, AND require the
+    // answer to name the account it was asked about: the account can change
+    // between the question and the answer, and applying one account's answer to
+    // another would hand over the very root this exists to protect.
     if (active.kind !== 'signed-in' || !needsOwnershipDecision(home, active)) {
       return { ok: false, reason: 'not-pending' };
     }
+    if (answeredFor !== active.accountId) {
+      return { ok: false, reason: 'account-changed' };
+    }
+
     if (!keepExisting) {
-      // Starting fresh needs nothing: the account is already on its own root,
-      // and the existing data stays where it is for whoever does own it.
+      // Starting fresh needs nothing moved: the account is already on its own
+      // root, and the existing data stays for whoever does own it.
       declineDefaultRoot(home, active.accountId);
       return { ok: true, keptExisting: false };
     }
-    adoptDefaultRootAsIncumbent(home, active.accountId);
-    // The stores are process environment, so the sidecar has to be restarted to
-    // read the root it now owns.
+
+    // A claim can fail or lose a race, and reporting success then would reload
+    // the renderer onto a root this account does not own — the person pressed
+    // "this history is mine" and would see nothing, with no error.
+    const claim = adoptDefaultRootAsIncumbent(home, active.accountId);
+    if (claim.kind !== 'claimed' || claim.accountId !== active.accountId) {
+      console.warn('[account] could not take the default root:', claim.kind);
+      return { ok: false, reason: 'claim-failed' };
+    }
+
+    // The stores are process environment, so the sidecar must restart to read
+    // the root it now owns.
     if (isServerRunning() || isServerStarting()) {
       try {
         await stopServer();
