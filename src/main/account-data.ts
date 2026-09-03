@@ -247,10 +247,47 @@ function stageActiveAccount(
  */
 export async function reconcileAccountRoot(home: string, accountId: string | null): Promise<void> {
   if (!accountId) return;
+  sweepQuarantineRoots(home);
   if (readAccountClaim(home).kind !== 'unclaimed') return; // ownership already settled
   if (!isSoleOccupant(home, accountId)) return; // may be someone else's data
   await writeActiveAccount(home, accountId);
   adoptDefaultRootAsIncumbent(home, accountId);
+}
+
+// Quarantine roots are named per process, so nothing ever resolves back to one.
+// Left alone they accumulate a store tree and a database each. Swept on a launch
+// that CAN name its account, which is a launch that no longer needs them.
+const QUARANTINE_PREFIX = '_unresolved-';
+
+function sweepQuarantineRoots(home: string): void {
+  for (const name of knownAccountRoots(home)) {
+    if (!name.startsWith(QUARANTINE_PREFIX) || name === QUARANTINE_ACCOUNT) continue;
+    const root = path.join(home, ACCOUNTS_DIR, name);
+    // Only an empty skeleton is removed. One holding a database holds somebody's
+    // work, and deleting that to tidy up would be worse than leaving it.
+    if (defaultRootHasData(root)) {
+      console.warn('[account-data] a quarantined session left data behind at %s', root);
+      continue;
+    }
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch (err) {
+      // Best-effort. A leftover tree is untidy, never incorrect.
+      console.warn('[account-data] could not remove a stale quarantine root', err);
+    }
+  }
+}
+
+/** Every per-account root this install has created, by account id. */
+export function knownAccountRoots(home: string): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(home, ACCOUNTS_DIR), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -271,15 +308,10 @@ export function isSoleOccupant(home: string, accountId: string): boolean {
         : null;
   if (named !== null && named !== accountId) return false;
 
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(path.join(home, ACCOUNTS_DIR));
-  } catch (err) {
-    // No accounts directory at all is the common case and means nobody has been
-    // partitioned here yet. Anything else is unreadable, so assume occupancy.
-    return (err as NodeJS.ErrnoException).code === 'ENOENT';
-  }
-  return entries.length === 0;
+  // Quarantine roots do not count: they are scratch space for a session that
+  // could not name itself, and counting them would block this decision forever
+  // after a single unresolvable launch.
+  return knownAccountRoots(home).every((name) => name.startsWith(QUARANTINE_PREFIX));
 }
 
 /**
@@ -343,9 +375,11 @@ export function needsOwnershipDecision(home: string, active: ActiveAccount): boo
  * one-time `.env` and memory seeds that would otherwise import the previous
  * account's keys and profile.
  *
- * Every store cowork-server roots at COWORK_HOME belongs here. A server-side
- * test enumerates them, so adding one there fails that test rather than quietly
- * sharing it between accounts.
+ * Every store cowork-server DECLARES as a setting rooted at COWORK_HOME belongs
+ * here, and a server-side test enumerates those so adding one fails that test.
+ * It cannot see a path built inline at a call site, and three of those are still
+ * shared: the dotenv the raw settings endpoints read, and the connector-probe
+ * and harness scratch dirs under `tmp`.
  */
 export function accountStoreEnv(root: string, accountId: string): Record<string, string> {
   const at = (name: string) => path.join(root, name);
@@ -382,7 +416,8 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
   if (account === QUARANTINE_ACCOUNT) {
     console.warn(
       '[account-data] cannot name the signed-in account — starting on an empty root. '
-      + 'Signing in again repairs this.',
+      + 'The account record is missing or unreadable; a launch that can reach '
+      + 'MindsHub rewrites it and resolves the right root.',
     );
   }
   return accountStoreEnv(path.join(home, ACCOUNTS_DIR, account), account);

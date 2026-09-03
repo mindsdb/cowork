@@ -56,6 +56,14 @@ export default defineConfig({
         // right one until the bill arrives somewhere nobody expected.
         'src/shared/minds-orgs.ts': { statements: 100, branches: 100 },
         'src/renderer/cowork/hooks/useMindsOrgs.js': { statements: 100, branches: 100 },
+        // Which account's data root the sidecar is pointed at, and the browser
+        // caches that outlive a switch. Same reasoning as the entries above and
+        // then some: every branch here is a fail-closed guard whose failure is
+        // invisible at runtime — one account quietly reading another's tasks
+        // looks exactly like reading its own. The branch table is the only thing
+        // that proves the refusals still fire.
+        'src/main/account-data.ts': { statements: 92, branches: 90 },
+        'src/renderer/cowork/lib/accountLocalState.js': { statements: 88, branches: 90 },
       },
     },
     projects: [

@@ -400,3 +400,40 @@ describe('reconcileAccountRoot refusals', () => {
     expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
   });
 });
+
+
+describe('stale quarantine roots', () => {
+  const quarantine = (name: string) => {
+    const root = path.join(home, 'accounts', name);
+    fs.mkdirSync(root, { recursive: true });
+    return root;
+  };
+
+  it('are not counted as occupants, so one bad launch does not block adoption', () => {
+    // Counting them would leave an upgraded install permanently unable to claim
+    // its own data after a single launch that could not name the account.
+    quarantine('_unresolved-deadbeef');
+    expect(isSoleOccupant(home, ACCOUNT_A)).toBe(true);
+  });
+
+  it('an empty one is removed on a launch that can name its account', async () => {
+    const stale = quarantine('_unresolved-deadbeef');
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(fs.existsSync(stale)).toBe(false);
+  });
+
+  it('one holding data is LEFT ALONE rather than tidied away', async () => {
+    // Nothing resolves back to it, but deleting somebody's work to save a
+    // directory would be worse than leaving it for a support path.
+    const stale = quarantine('_unresolved-deadbeef');
+    fs.writeFileSync(path.join(stale, 'cowork.db'), 'x', 'utf-8');
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(fs.existsSync(path.join(stale, 'cowork.db'))).toBe(true);
+  });
+
+  it('a real account root is never swept', async () => {
+    const real = quarantine(ACCOUNT_B);
+    await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(fs.existsSync(real)).toBe(true);
+  });
+});

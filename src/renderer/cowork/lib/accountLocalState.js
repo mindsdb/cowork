@@ -27,6 +27,7 @@ const ACCOUNT_SCOPED_PREFIXES = [
   'anton.settingsCache', // settingsCache.js — first-paint settings
   'anton:pinned-projects', // ProjectsView.jsx — which projects were pinned
   'mindshub-code:last-project', // useCodeProjects.ts — last code project opened
+  'mindshub-code-terminal:', // TaskTerminal.tsx — per coding session, one each
 ];
 
 function isAccountScoped(key) {

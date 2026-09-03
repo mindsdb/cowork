@@ -65,13 +65,23 @@ vi.mock('./installer', () => ({
 }));
 // Stub the server lifecycle so the installed-path test can run past the early
 // return without touching a real server. isServerRunning=false short-circuits
-// the DB-sync block, so the test needs no network mock.
+// the DB-sync block, so those tests need no network mock. Mutable, because the
+// account-switch restart is a decision worth asserting rather than a branch no
+// test can reach: with a fixed isServerRunning=false, inverting its condition
+// leaves the whole suite green.
+const serverState = vi.hoisted(() => ({
+  running: false,
+  onCurrentRoot: true,
+  stops: 0,
+  starts: 0,
+}));
 vi.mock('./server-process', () => ({
-  stopServer: async () => {},
-  startServer: async () => {},
-  isServerRunning: () => false,
+  stopServer: async () => { serverState.stops += 1; },
+  startServer: async () => { serverState.starts += 1; },
+  isServerRunning: () => serverState.running,
   isServerStarting: () => false,
   getServerPort: () => 26866,
+  sidecarIsOnCurrentAccountRoot: () => serverState.onCurrentRoot,
 }));
 
 // Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
@@ -93,6 +103,10 @@ beforeEach(() => {
   homeHolder.env = target;
   homeHolder.state = path.join(dir, 'state.json');
   homeHolder.antonInstalled = false;
+  serverState.running = false;
+  serverState.onCurrentRoot = true;
+  serverState.stops = 0;
+  serverState.starts = 0;
 });
 
 afterEach(() => {
@@ -239,5 +253,46 @@ describe('commitMindsSignIn — the account data root', () => {
     await expect(commitMindsSignIn()).resolves.toBeUndefined();
     expect(fs.existsSync(path.join(dir, 'active-account.json'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.account'))).toBe(false);
+  });
+});
+
+
+describe('commitMindsSignIn — the account-switch restart', () => {
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+
+  const asAccount = (sub: string) => {
+    const payload = Buffer.from(JSON.stringify({ sub })).toString('base64url');
+    saveTokens(`header.${payload}.signature`, 3600, '');
+  };
+
+  afterEach(() => {
+    clearTokens();
+  });
+
+  it('restarts the sidecar when it is serving a different account root', async () => {
+    // The store paths are process environment, so a running sidecar cannot be
+    // moved onto this account's database any other way.
+    homeHolder.antonInstalled = true;
+    serverState.running = true;
+    serverState.onCurrentRoot = false;
+    asAccount(ACCOUNT_A);
+
+    await commitMindsSignIn();
+
+    expect(serverState.stops).toBe(1);
+    expect(serverState.starts).toBe(1);
+  });
+
+  it('leaves a running sidecar alone when it is already on the right root', async () => {
+    // An ordinary sign-in must not kill a running turn.
+    homeHolder.antonInstalled = true;
+    serverState.running = true;
+    serverState.onCurrentRoot = true;
+    asAccount(ACCOUNT_A);
+
+    await commitMindsSignIn();
+
+    expect(serverState.stops).toBe(0);
+    expect(serverState.starts).toBe(0);
   });
 });

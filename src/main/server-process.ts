@@ -17,6 +17,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import {
   accountOwnerToken,
+  knownAccountRoots,
   readActiveAccount,
   resolveAccountRoot,
   sidecarEnvForSession,
@@ -83,6 +84,22 @@ function serverOwnerSecret(): string {
 // bound to the account whose data root it was started on. See accountOwnerToken.
 function serverOwnerToken(accountId?: string | null): string {
   return accountOwnerToken(serverOwnerSecret(), accountId ?? null);
+}
+
+/**
+ * Whether an owner token at /health is one THIS install could have stamped.
+ *
+ * Binding the token to the account means our own sidecar left over from a
+ * previous account no longer matches the current one — but it is still ours, and
+ * the branch for a genuinely foreign owner deliberately neither adopts nor reaps
+ * it. Left there, that orphan keeps the preferred port while we move to a random
+ * one, and the renderer, whose port is a boot-time snapshot, would keep reading
+ * the previous account's data from it. So: foreign owners move us off the port,
+ * our own stale ones get reaped by the normal start path.
+ */
+function isOwnerTokenOurs(owner: string): boolean {
+  if (owner === serverOwnerToken(null)) return true;
+  return knownAccountRoots(coworkHome()).some((id) => owner === serverOwnerToken(id));
 }
 
 // Which account's stores this session uses, or null for the default root. Read
@@ -492,7 +509,7 @@ export async function resolveServerPort(): Promise<number> {
     serverPort = preferred;
 
     const probe = await probeHealthOnce(preferred, 700);
-    if (probe.owner && probe.owner !== serverOwnerToken(currentAccountRoot())) {
+    if (probe.owner && !isOwnerTokenOurs(probe.owner)) {
       // Owned by a DIFFERENT install (another OS user) — never adopt or touch
       // it, compatible or not: reaping it would fail with EPERM and the spawn
       // with EADDRINUSE. Move to a free port we can own.

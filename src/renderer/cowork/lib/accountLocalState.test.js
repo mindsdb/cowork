@@ -20,6 +20,8 @@ const ACCOUNT_KEYS = {
   'anton.settingsCache:organization:abc': '{"v":1}',
   'anton:pinned-projects': '["p1"]',
   'mindshub-code:last-project': 'proj-9',
+  'mindshub-code-terminal:session-1': 'term-a',
+  'mindshub-code-terminal:session-2': 'term-b',
 };
 
 const UNRELATED_KEYS = {
