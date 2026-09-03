@@ -67,26 +67,21 @@ stage_shared_fallback() {
     && chmod 640 "$dest_file"
 }
 
-# ENG-2295: hand the freshly-installed .app to the console user so Squirrel.Mac
-# auto-updates can swap it in place without an admin (Touch ID) auth prompt on
-# every update. A pkg installs to /Applications root-owned; a user-owned bundle
-# — exactly what a DMG drag-install produces — is what the in-place update
-# needs. Ownership metadata does not affect the code signature or stapled
-# notarization, so Gatekeeper is unchanged.
+# Hand the installed .app to the console user so Squirrel.Mac can swap it in
+# place on auto-update without a Touch ID prompt. A pkg installs root-owned; the
+# in-place update needs a user-owned bundle (what a DMG drag-install produces).
+# Ownership doesn't touch the signature or notarization, so Gatekeeper is
+# unchanged.
 #
-# Scope: this clears the prompt for an admin console user — the common case, and
-# the same outcome a DMG install would give them. Squirrel escalates to its
-# privileged helper when either the bundle OR its parent is unwritable
-# (SQRLUpdater's !targetWritable || !parentWritable), and /Applications is 0775
-# root:admin. An admin is in the admin group, so the parent is writable and the
-# swap is silent; a standard (non-admin) user still can't write /Applications
-# and keeps getting the prompt. Standard and MDM-managed users therefore fall
-# back to the manual installer notice (ENG-849) — a true prompt-free path for
-# them needs a privileged helper or a per-user install, tracked separately.
+# Only clears the prompt for an admin console user: Squirrel also escalates when
+# the bundle's parent is unwritable, and /Applications is 0775 root:admin —
+# writable by admins, not by standard users, who keep the manual-installer
+# fallback. A true prompt-free path for non-admins needs a privileged helper or
+# a per-user install.
 #
 # Best-effort and non-fatal: a headless/MDM install with no console user stays
-# root-owned and also falls back to the manual notice. The installed bundle name
-# is written alongside this script by release-mac-pkg-notarized.sh.
+# root-owned. The bundle name is written alongside this script by
+# release-mac-pkg-notarized.sh.
 chown_app_bundle() {
   local user="$1"
   local name_file="$SCRIPT_DIR/installed-app-name"
@@ -128,8 +123,8 @@ else
   log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
 fi
 
-# Bundle ownership is independent of credential staging (ENG-2295): attempt it
-# whenever a real console user exists, regardless of how staging resolved above.
+# Bundle ownership is independent of credential staging: attempt it whenever a
+# real console user exists, regardless of how staging resolved above.
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
   if chown_app_bundle "$CONSOLE_USER"; then
     log "handed the app bundle to $CONSOLE_USER for prompt-free auto-update"
