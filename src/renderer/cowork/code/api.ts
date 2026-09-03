@@ -61,6 +61,8 @@ interface CreateCodeTaskBase {
   prompt: string;
   engineId: string;
   model: string;
+  /** Omit or null to inherit the project's default, then the model's own. */
+  reasoningEffort?: ReasoningEffort | null;
   permissionMode: PermissionMode;
   attachments: InputReference[];
   sourceContexts: SourceContext[];
@@ -73,7 +75,8 @@ export type CreateCodeTaskInput = CreateCodeTaskBase & (
   | { projectId: null; path: string }
 );
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+/** A reasoning effort level in the model gateway's own vocabulary, advertised per model (see code/reasoning.ts). */
+export type ReasoningEffort = string;
 export type ServiceTier = 'standard' | 'priority';
 export type Personality = 'none' | 'friendly' | 'pragmatic';
 
@@ -373,6 +376,7 @@ export interface CodeProject {
   environment: { variables: Record<string, string>; port_names: string[] };
   default_engine_id: string;
   default_model: string;
+  default_reasoning_effort?: ReasoningEffort | null;
   permission_mode: PermissionMode;
   created_at: string;
   updated_at: string;
