@@ -81,6 +81,32 @@ const JSX_CHILD = new RegExp(`>\\{\\s*${PROJECT_VAR}\\??\\.name\\b[^\\n]*?\\}\\s
 const BARE_INTERP = new RegExp(`\\$\\{\\s*${PROJECT_VAR}\\??\\.name\\s*\\}`);
 const LAUNDERED = /\bconst\s+project(?:Name|Label|Title)\s*=\s*[^;\n]*\.name\b/;
 
+/*
+ * RENDERED_SLUG_LOCAL — the shape LAUNDERED cannot see, found in review.
+ *
+ * `LAUNDERED` keys on the local being assigned from `.name`. TasksView builds
+ * its slug from a DIFFERENT attribute -- `task.projectName || task.project` --
+ * so no `.name` appears, and the rendered `{projectName}` is by then a bare
+ * identifier that `JSX_CHILD` cannot see either. The file still passed
+ * `toContain('projectLabel')` because the *tooltip* used it: the row read
+ * `untitled-project-2` while hovering it said "Open Мій тестовий проєкт".
+ *
+ * So this bans RENDERING a local by that name, rather than assigning one.
+ * Both rows genuinely need the slug for `p.name === projectName` and for the
+ * row's truthiness guard -- what they must not do is show it. A resolved
+ * `projectDisplay` renders fine.
+ */
+const RENDERED_SLUG_LOCAL = new RegExp(
+  '(?:>\\{\\s*projectName\\s*\\}'
+  // Not adjacent to a `/`: `projects/${projectName}/files` is a URL or a
+  // dedupe key, not something a person reads. Found by sweeping the whole
+  // renderer with this rule rather than only the listed surfaces.
+  + '|(?<![/])\\$\\{\\s*projectName\\s*\\}(?![/])'
+  + '|\\)\\s*:\\s*projectName\\b'
+  // the attribute form: `title={projectName}` in ScheduleCard's non-clickable row
+  + '|\\b(?:primary|secondary|label|title|content|placeholder|defaultValue)=\\{\\s*projectName\\s*\\})',
+);
+
 describe.each(SURFACES)('%s', (_name, rel) => {
   const src = readFileSync(resolve(RENDERER, rel), 'utf-8');
 
@@ -98,7 +124,8 @@ describe.each(SURFACES)('%s', (_name, rel) => {
       .split('\n')
       .map((line, i) => [i + 1, line])
       .filter(([, line]) => DISPLAY_ATTR.test(line) || JSX_CHILD.test(line)
-        || BARE_INTERP.test(line) || LAUNDERED.test(line))
+        || BARE_INTERP.test(line) || LAUNDERED.test(line)
+        || RENDERED_SLUG_LOCAL.test(line))
       .map(([n, line]) => `${n}: ${line.trim()}`);
     expect(offenders).toEqual([]);
   });

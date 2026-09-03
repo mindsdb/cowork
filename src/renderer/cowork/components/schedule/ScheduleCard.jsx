@@ -47,6 +47,9 @@ export default function ScheduleCard({
     : null;
   const projectName = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
+  // `projectName` stays the slug -- the `p.name === projectName` match needs it,
+  // and so does the truthiness guard. This is what a person reads (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   return (
     <Card
@@ -107,17 +110,17 @@ export default function ScheduleCard({
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
-              <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+              <Tooltip content={`Open ${projectDisplay}`}>
                 <button
                   type="button"
                   onMouseDown={stop}
                   onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
                   className="m-0 min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-left font-body text-[12px] text-ink-3 transition-colors hover:text-accent hover:underline hover:underline-offset-2"
-                >{projectName}</button>
+                >{projectDisplay}</button>
               </Tooltip>
             ) : (
-              <span title={projectName} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectName}</span>
+              <span title={projectDisplay} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectDisplay}</span>
             )}
           </span>
         )}

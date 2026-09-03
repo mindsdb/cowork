@@ -82,6 +82,11 @@ function TaskRow({
     ? projects.find((p) => p.name === projectName) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
+  // `projectName` stays the slug -- the `p.name === projectName` match above
+  // needs it, and so does the truthiness guard on the row. This is what a
+  // person reads. `projectLabel(null)` is null, so an unresolved project falls
+  // back to the slug exactly as before (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   const isActive = task.status === 'active';
   const dotColor = isActive ? 'var(--success)' : 'var(--ink-5)';
@@ -142,7 +147,7 @@ function TaskRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+            <Tooltip content={`Open ${projectDisplay}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
@@ -162,9 +167,9 @@ function TaskRow({
                   e.currentTarget.style.color = 'var(--ink-2)';
                   e.currentTarget.style.textDecoration = 'none';
                 }}
-              >{projectName}</button>
+              >{projectDisplay}</button>
             </Tooltip>
-          ) : projectName
+          ) : projectDisplay
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
 
@@ -211,6 +216,11 @@ function ScheduleGroupRow({
     ? projects.find((p) => p.name === projectName) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
+  // `projectName` stays the slug -- the `p.name === projectName` match above
+  // needs it, and so does the truthiness guard on the row. This is what a
+  // person reads. `projectLabel(null)` is null, so an unresolved project falls
+  // back to the slug exactly as before (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   // Latest run → drives the timestamp + the "open the actual chat"
   // affordance. Defaults to the first run when none have a parsable
@@ -273,7 +283,7 @@ function ScheduleGroupRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+            <Tooltip content={`Open ${projectDisplay}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
@@ -293,9 +303,9 @@ function ScheduleGroupRow({
                   e.currentTarget.style.color = 'var(--ink-2)';
                   e.currentTarget.style.textDecoration = 'none';
                 }}
-              >{projectName}</button>
+              >{projectDisplay}</button>
             </Tooltip>
-          ) : projectName
+          ) : projectDisplay
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
 

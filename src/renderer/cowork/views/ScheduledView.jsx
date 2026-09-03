@@ -368,6 +368,9 @@ function ScheduleListRow({
     : null;
   const projectName = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
+  // `projectName` stays the slug -- the `p.name === projectName` match needs it,
+  // and so does the truthiness guard. This is what a person reads (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   return (
     <CardRow
@@ -415,7 +418,7 @@ function ScheduleListRow({
       <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+            <Tooltip content={`Open ${projectDisplay}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
@@ -435,9 +438,9 @@ function ScheduleListRow({
                   e.currentTarget.style.color = 'var(--ink-2)';
                   e.currentTarget.style.textDecoration = 'none';
                 }}
-              >{projectName}</button>
+              >{projectDisplay}</button>
             </Tooltip>
-          ) : projectName
+          ) : projectDisplay
         ) : <span className="text-ink-5">—</span>}
       </div>
 
