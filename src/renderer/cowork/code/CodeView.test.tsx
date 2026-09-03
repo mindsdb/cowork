@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   runProjectAction: vi.fn(),
   updateProject: vi.fn(),
   projectsLoad: vi.fn(async () => {}),
+  projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
@@ -82,7 +83,7 @@ vi.mock('./useCodeProjects', () => ({
       permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
     }],
     selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
-    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), remove: vi.fn(),
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
   }),
 }));
 vi.mock('./CodeConnectorsView', () => ({
@@ -557,7 +558,7 @@ describe('CodeView connector return flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.sessions.mockResolvedValue({ items: [] });
-    mocks.updateProject.mockResolvedValue(undefined);
+    mocks.updateProject.mockImplementation(async (id: string, body: { connections: unknown[] }) => ({ id, name: 'Web app', connections: body.connections }));
     mocks.useCodingSession.mockReturnValue({
       session: null, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
@@ -583,6 +584,11 @@ describe('CodeView connector return flow', () => {
     await waitFor(() => expect(mocks.updateProject).toHaveBeenCalledWith('project-1', {
       connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
     }));
+    // The saved project lands in the list before the refresh, so a failed
+    // refresh cannot make the next account replace this one.
+    await waitFor(() => expect(mocks.projectsReplace).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'project-1', connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
+    })));
     await waitFor(() => expect(mocks.projectsLoad).toHaveBeenCalled());
     // Connecting does not throw the user out; they can connect the next account.
     expect(onOpenNewTask).not.toHaveBeenCalled();
@@ -595,6 +601,26 @@ describe('CodeView connector return flow', () => {
     // The parent switches back to the Projects view; the editor resumes there.
     rerender(<CodeView {...props} newTask={false} projectsOpen connectorsOpen={false} />);
     expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+  });
+
+  it('forgets the hand-back when Connectors is left by another route', async () => {
+    const onOpenConnectors = vi.fn();
+    const { rerender, props } = renderCode({ newTask: true, onOpenConnectors });
+    rerender(<CodeView {...props} newTask={false} projectsOpen />);
+    fireEvent.click(screen.getByText('Edit project stub'));
+    fireEvent.click(screen.getByText('Open Connectors from settings'));
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    // The sidebar takes the user elsewhere, then back to the standalone Connectors page.
+    rerender(<CodeView {...props} newTask projectsOpen={false} connectorsOpen={false} />);
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+
+    expect(screen.getByText('Connectors view for nobody')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back to/ })).toBeNull();
+    fireEvent.click(screen.getByText('Connect GitHub stub'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.updateProject).not.toHaveBeenCalled();
   });
 });
 
