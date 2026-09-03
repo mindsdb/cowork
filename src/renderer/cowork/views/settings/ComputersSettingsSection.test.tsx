@@ -4,13 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodeComputer } from '../../code/api';
 import { resetDocumentVisibility, setDocumentVisibility } from '../../../../../tests/helpers/visibility';
 
-const { computers, revokeComputer, modalProps } = vi.hoisted(() => ({
+const { computers, revokeComputer, modalProps, controlPlane } = vi.hoisted(() => ({
   computers: vi.fn(),
   revokeComputer: vi.fn(async () => undefined),
   modalProps: { current: null as null | { open: boolean; pending?: { id: string; name: string } | null } },
+  controlPlane: { reachable: true },
 }));
 
 vi.mock('../../code/api', () => ({ codingApi: { computers, revokeComputer } }));
+vi.mock('../../code/controlPlane', () => ({
+  codeControlPlaneReachable: () => controlPlane.reachable,
+  UNREACHABLE_TITLE: 'Not available from this desktop yet',
+  UNREACHABLE_EXPLANATION: 'Nothing can reach this computer.',
+}));
 vi.mock('./ConnectComputerModal', () => ({
   ConnectComputerModal: (props: { open: boolean; pending?: { id: string; name: string } | null }) => {
     modalProps.current = props;
@@ -38,6 +44,7 @@ describe('ComputersSettingsSection', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    controlPlane.reachable = true;
     computers.mockResolvedValue({ items: [local] });
   });
 
@@ -117,5 +124,25 @@ describe('ComputersSettingsSection', () => {
     await advance(0);
 
     expect(screen.getByLabelText('Old laptop, waiting to connect')).toHaveTextContent('macOS · Connection code expired');
+  });
+
+  it('says plainly that nothing can connect to a private desktop instead of offering a form', async () => {
+    controlPlane.reachable = false;
+    computers.mockResolvedValue({
+      items: [local],
+      pending: [{ id: 'pending-1', name: 'Build box', platform: 'linux', created_at: '2026-09-03T10:00:00Z', expires_at: new Date(Date.now() + 9 * 60_000).toISOString(), expired: false }],
+    });
+    render(<ComputersSettingsSection />);
+    await advance(0);
+
+    expect(screen.queryByRole('button', { name: /Connect computer/ })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Not available from this desktop yet');
+
+    // A computer named earlier is still listed, without a code it could never use.
+    const row = screen.getByLabelText('Build box, waiting to connect');
+    expect(row).toHaveTextContent('Linux · Cannot connect from this desktop');
+    expect(row).not.toHaveTextContent('Connection code');
+    expect(screen.queryByRole('button', { name: /New code/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 });

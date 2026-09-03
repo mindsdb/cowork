@@ -14,7 +14,7 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../code/api', () => ({ codingApi: { computerRegistrationToken } }));
 vi.mock('../../lib/clipboard', () => ({ copyText }));
 
-import { ConnectComputerModal, isLoopbackOrigin, shellSafeComputerName } from './ConnectComputerModal';
+import { ConnectComputerModal, shellSafeComputerName } from './ConnectComputerModal';
 
 const pendingFor = (name: string, platform: 'darwin' | 'windows' | 'linux' = 'darwin') => ({
   id: 'pending-1', name, platform, created_at: '2026-09-03T10:00:00Z', expires_at: '2026-09-03T10:10:00Z', expired: false,
@@ -52,16 +52,6 @@ describe('shellSafeComputerName', () => {
     expect(shellSafeComputerName('Mac "$(rm -rf ~)"')).toBe('Mac rm -rf');
     expect(shellSafeComputerName('pc`whoami`;echo %PATH%|cat')).toBe('pcwhoamiecho PATHcat');
     expect(shellSafeComputerName('--help')).toBe('help');
-  });
-});
-
-describe('isLoopbackOrigin', () => {
-  it.each(['http://127.0.0.1:26866', 'http://localhost:26866', 'http://[::1]:8000'])('recognises %s', (origin) => {
-    expect(isLoopbackOrigin(origin)).toBe(true);
-  });
-
-  it.each(['https://code.example.test', 'http://10.0.0.5:8000', 'not a url'])('rejects %s', (origin) => {
-    expect(isLoopbackOrigin(origin)).toBe(false);
   });
 });
 
@@ -126,14 +116,28 @@ describe('ConnectComputerModal', () => {
     expect(screen.queryByPlaceholderText('My Linux computer')).toBeNull();
   });
 
-  it('still saves the computer behind a private local control plane and explains what is missing', async () => {
+  it('explains that nothing can connect behind a private local control plane, and takes no name or code', async () => {
     controlPlane.origin = 'http://[::1]:8000';
     const user = userEvent.setup();
-    render(<ConnectComputerModal open onClose={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Add computer' }));
+    const onClose = vi.fn();
+    render(<ConnectComputerModal open onClose={onClose} />);
 
-    expect(await screen.findByRole('status')).toHaveTextContent('private local Code service');
-    expect(computerRegistrationToken).toHaveBeenCalledWith({ name: 'My Mac', platform: 'darwin', replaces: undefined });
+    expect(screen.getByRole('status')).toHaveTextContent('Not available from this desktop yet');
+    expect(screen.getByRole('status')).toHaveTextContent('private to it');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add computer' })).toBeNull();
+    expect(computerRegistrationToken).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('does not issue a code for a pending computer behind a private local control plane', () => {
+    controlPlane.origin = 'http://127.0.0.1:26866';
+    render(<ConnectComputerModal open onClose={vi.fn()} pending={pendingFor('Build box', 'linux')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Not available from this desktop yet');
+    expect(computerRegistrationToken).not.toHaveBeenCalled();
     expect(screen.queryByText(/cowork-code-runtime/)).toBeNull();
   });
 

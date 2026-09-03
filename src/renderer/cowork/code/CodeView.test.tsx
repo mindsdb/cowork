@@ -75,9 +75,11 @@ vi.mock('./TaskBar', () => ({
 }));
 vi.mock('./NewTaskPanel', () => ({
   NewTaskPanel: ({ onAddComputer }: { onAddComputer?: () => void }) => (
-    <div>New task panel<button type="button" onClick={onAddComputer}>Add computer stub</button></div>
+    <div>New task panel{onAddComputer && <button type="button" onClick={onAddComputer}>Add computer stub</button>}</div>
   ),
 }));
+const controlPlane = vi.hoisted(() => ({ reachable: true }));
+vi.mock('./controlPlane', () => ({ codeControlPlaneReachable: () => controlPlane.reachable }));
 vi.mock('../views/settings/ConnectComputerModal', () => ({
   ConnectComputerModal: ({ open }: { open: boolean }) => (open ? <div>Connect computer modal</div> : null),
 }));
@@ -704,12 +706,21 @@ describe('CodeView connect computer', () => {
   });
 
   it('opens Connect a computer from the task screen picker', async () => {
+    controlPlane.reachable = true;
     renderCode({ newTask: true });
     expect(screen.queryByText('Connect computer modal')).toBeNull();
 
     fireEvent.click(await screen.findByText('Add computer stub'));
 
     expect(screen.getByText('Connect computer modal')).toBeInTheDocument();
+  });
+
+  it('offers no "Add computer" on a desktop nothing can connect to', async () => {
+    controlPlane.reachable = false;
+    renderCode({ newTask: true });
+
+    expect(await screen.findByText('New task panel')).toBeInTheDocument();
+    expect(screen.queryByText('Add computer stub')).toBeNull();
   });
 });
 

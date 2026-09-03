@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, RotateCw } from 'lucide-react';
+import { Copy, Monitor, RotateCw } from 'lucide-react';
 
 import { getCodeControlPlaneOrigin } from '../../../platform/host';
 import { codingApi, type ComputerPlatform, type PendingComputer } from '../../code/api';
+import { UNREACHABLE_EXPLANATION, UNREACHABLE_TITLE, isLoopbackOrigin } from '../../code/controlPlane';
 import { copyText } from '../../lib/clipboard';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -15,16 +16,6 @@ function defaultComputerName(platform: string): string {
   if (platform === 'darwin') return 'My Mac';
   if (platform === 'windows') return 'My Windows PC';
   return 'My Linux computer';
-}
-
-
-export function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
-    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
-  } catch {
-    return false;
-  }
 }
 
 
@@ -62,7 +53,8 @@ export function connectCommand(controlPlaneOrigin: string, token: string, name: 
 /**
  * Two steps: name the computer (it is saved as pending at once), then show the
  * one-time command its runtime runs. Reopened for a pending computer, it skips
- * the first step and issues a fresh code for it.
+ * the first step and issues a fresh code for it. Behind a loopback control
+ * plane nothing can connect, so it explains that instead of taking a name.
  */
 export function ConnectComputerModal({
   open,
@@ -125,8 +117,8 @@ export function ConnectComputerModal({
     setAdded(pending);
     setToken('');
     setError('');
-    if (pending) void issueCode({ name: pending.name, platform: pending.platform, replaces: pending.id });
-  }, [issueCode, open, pending]);
+    if (pending && !controlPlaneIsLocal) void issueCode({ name: pending.name, platform: pending.platform, replaces: pending.id });
+  }, [controlPlaneIsLocal, issueCode, open, pending]);
 
   useEffect(() => {
     if (!open || !token) return undefined;
@@ -140,8 +132,8 @@ export function ConnectComputerModal({
   const computerName = shellSafeComputerName(added?.name || name) || defaultComputerName(platform);
   const expired = Boolean(token) && expiresIn === 0;
   const command = useMemo(
-    () => (!token || expired || controlPlaneIsLocal ? '' : connectCommand(controlPlaneOrigin, token, computerName)),
-    [computerName, controlPlaneIsLocal, controlPlaneOrigin, expired, token],
+    () => (!token || expired ? '' : connectCommand(controlPlaneOrigin, token, computerName)),
+    [computerName, controlPlaneOrigin, expired, token],
   );
   const minutes = Math.floor(expiresIn / 60);
   const seconds = String(expiresIn % 60).padStart(2, '0');
@@ -153,13 +145,20 @@ export function ConnectComputerModal({
         id="connect-computer-title"
         title={added ? `Connect ${added.name}` : 'Connect a computer'}
         subtitle={added
-          ? controlPlaneIsLocal
-            ? 'Saved under Computers as waiting to connect.'
-            : 'Saved under Computers as waiting to connect. Run the command below on it once.'
+          ? 'Saved under Computers as waiting to connect. Run the command below on it once.'
           : 'Run Code tasks on another Mac, Windows, or Linux computer.'}
         onClose={onClose}
       />
       <ModalBody padding="18px">
+        {controlPlaneIsLocal ? (
+          <div role="status" className="rounded-[10px] border border-solid border-line bg-surface-2 p-3.5">
+            <div className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-ink">
+              <Monitor size={15} strokeWidth={1.5} aria-hidden="true" />
+              {UNREACHABLE_TITLE}
+            </div>
+            <p className="m-0 text-sm leading-5 text-ink-3">{UNREACHABLE_EXPLANATION}</p>
+          </div>
+        ) : (
         <div className="grid gap-3.5">
           {!added && (
             <>
@@ -195,13 +194,7 @@ export function ConnectComputerModal({
                 </div>
                 {command && <span className="text-xs tabular-nums text-ink-4">Code expires in {minutes}:{seconds}</span>}
               </div>
-              {controlPlaneIsLocal ? (
-                <div role="status" className="rounded-lg border border-solid border-line bg-bg p-3 text-sm leading-5 text-ink-3">
-                  {added.name} is saved, but another computer cannot reach this desktop yet: it uses a private local Code service. Connect through a hosted control plane or configure a reachable development control-plane URL, then choose New code for this computer under Settings → Computers.
-                </div>
-              ) : (
-                <>
-                  <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
+              <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
                   <div className="flex items-start gap-2 rounded-lg border border-solid border-line bg-bg p-2.5">
                     <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : expired ? 'This connection code has expired.' : command}</code>
                     <Button
@@ -219,20 +212,21 @@ export function ConnectComputerModal({
                     </Button>
                   </div>
                   {copied && command && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
-                  {!loading && expired && (
-                    <Button size="sm" variant="subtle" className="mt-2" onClick={() => void addComputer()}>
-                      <RotateCw size={12} /> New code
-                    </Button>
-                  )}
-                </>
+              {!loading && expired && (
+                <Button size="sm" variant="subtle" className="mt-2" onClick={() => void addComputer()}>
+                  <RotateCw size={12} /> New code
+                </Button>
               )}
             </div>
           )}
           {error && <div role="alert" className="text-sm text-[var(--danger)]">{error}</div>}
         </div>
+        )}
       </ModalBody>
       <ModalFooter>
-        {added ? (
+        {controlPlaneIsLocal ? (
+          <Button onClick={onClose}>Got it</Button>
+        ) : added ? (
           <Button onClick={onClose}>Done</Button>
         ) : (
           <>
