@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
@@ -16,12 +16,17 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { SKINS, normalizeSkin } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
 import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
-import { SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
+import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
+import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import ComputersSettingsSection from './ComputersSettingsSection';
+import { navItemsForHost } from './settingsNavigation';
+import { useCodeModeAccess } from '../../code/codeModeAccess';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -160,55 +165,6 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           </label>
         </div>
       )}
-    </div>
-  );
-}
-
-// A titled group of settings sections. Since ENG-1320 these no longer
-// collapse by default: the settings subnav already isolates one section per
-// screen, so a second collapse level inside a section just hid content
-// behind an extra click for no benefit. The group is a static titled card
-// whose content is always visible, UNLESS `collapsible` opts a specific
-// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
-// that read as clutter left expanded by default). The heading is kept as an
-// <h2> either way so groups still surface in SR heading navigation; the
-// collapse toggle lives on a button nested inside it, not the heading itself.
-// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
-// the same there, just without the card chrome.
-function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const headingClass =
-    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
-  const heading = collapsible ? (
-    <button
-      type="button"
-      onClick={() => setCollapsed((c) => !c)}
-      aria-expanded={!collapsed}
-      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
-    >
-      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
-        {Ico.chevRight(12)}
-      </span>
-      {title}
-    </button>
-  ) : title;
-  // Mobile (ENG-990): the master-detail screen already isolates one section,
-  // so render the group title as a plain header with its content flowing
-  // below, separated from the next group by spacing.
-  if (mobile) {
-    return (
-      <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
-        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
-      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -617,45 +573,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 // ───────────────────────── Nav sidebar ─────────────────────────
 
-const NAV_ITEMS = [
-  { id: 'agent', label: 'Agent', icon: 'robot' },
-  { id: 'codingMode', label: 'Coding Mode', icon: 'code' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette' },
-  { id: 'channels', label: 'Channels', icon: 'chats' },
-  { id: 'updates', label: 'Updates', icon: 'refresh' },
-  { id: 'backend', label: 'Backend', icon: 'database' },
-  { id: 'account', label: 'Account', icon: 'people' },
-];
-
-// Sections that make sense in the hosted web shell (ENG-932). Absent, not
-// disabled — a nav row that opens a dead end is worse than no row:
-//   backend  — start/stop/diagnostics of a server the user doesn't control.
-//   updates  — App-shell version and OTA source are meaningless on hosted;
-//              the server updates itself.
-//   account  — renders an SSO sign-in card, but a hosted user already
-//              authenticated through the console; a second sign-in is
-//              confusing at best.
-//   codingMode — launching an external CLI in a terminal is an Electron
-//              main-process capability with no web equivalent; web keeps
-//              its simple Anton/Hermes toggle inside Agent instead.
-// Agent stays because it carries the model picker and reasoning effort — the
-// point of the ticket. Appearance is purely cosmetic. Channels moved back here
-// from its standalone sidebar entry, which only existed while Settings was
-// hidden on web.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
-
-export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
-  // Fresh array on both branches — filter() already copies for web, and the
-  // desktop spread keeps a caller's mutation from reaching the shared module
-  // constant.
-  const items = isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED while the
-  // feature is unfinished — hide its whole nav section (and, transitively,
-  // any way to reach the toggle or harness picker) until it's flipped on.
-  return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
-}
-
-function SettingsNav({ section, onSectionChange, serverOnline = true }) {
+function SettingsNav({ section, onSectionChange, serverOnline = true, items = [] }) {
   return (
     <nav
       role="navigation"
@@ -663,20 +581,22 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
+      {items.map((item, index) => {
         const active = section === item.id;
-        // `!host.isWeb &&`: the offline-disable exists because a dead local
-        // server can't accept a save, and Backend stays enabled as the escape
-        // hatch to restart it. On web there is no Backend row — and
-        // `serverOnline` DOES go false there: refreshData() polls /health on
-        // mount on both platforms (App.jsx), so a transient failure on hosted
-        // (proxy 502, auth blip) would otherwise disable EVERY row with no
-        // way out.
-        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+        // A dead local server cannot accept most settings saves. Keep Backend
+        // available as the recovery path and Coding agent available because
+        // the Code opt-in is device-local and works before the runtime starts.
+        // Hosted rows remain usable because those APIs are managed.
+        const disabled = !host.isWeb
+          && !serverOnline
+          && item.id !== 'backend'
+          && item.id !== 'codingAgent';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
+          <Fragment key={item.id}>
+          {showGroup && <div className="mt-3 first:mt-0 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>}
           <button
-            key={item.id}
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
@@ -694,6 +614,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
             )}
             <span>{item.label}</span>
           </button>
+          </Fragment>
         );
       })}
     </nav>
@@ -730,6 +651,13 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const codeModeAccess = useCodeModeAccess();
+  const visibleNav = navItemsForHost(
+    host.isWeb,
+    codeModeAccess.available,
+    codeModeAccess.enabled,
+  );
+  const orgMode = useOrgMode();
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1237,7 +1165,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
+          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
@@ -1497,7 +1426,7 @@ export default function SettingsView({
                 </div>
               </div>
             </SettingsGroup>
-          </div>
+          </div>}
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
@@ -1753,7 +1682,9 @@ export default function SettingsView({
                                       // fetch itself failed, and assigning those straight through
                                       // would empty the dropdown the user just clicked (for every
                                       // role — the keys are shared) until the app restarts.
-                                      const merged = mergeRecommendedModels(settings, data);
+                                      // keepOrder: the dropdown is open on the list we hold
+                                      // when this lands; a reordered list jumps under the cursor.
+                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
                                       for (const [key, value] of Object.entries(merged)) setSetting(key, value);
                                       openState.refreshedAt = performance.now();
@@ -2071,49 +2002,18 @@ export default function SettingsView({
     reader.readAsDataURL(file);
   };
 
-  // Desktop-only (see the WEB_NAV_IDS comment on NAV_ITEMS above) — web
-  // never navigates here since 'codingMode' is absent from WEB_NAV_IDS.
-  const renderCodingModeSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
-      <SettingsGroup title="Coding Mode">
-        <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
-          <Switch
-            checked={settings.codingModeEnabled ?? false}
-            onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
-            aria-label="Coding mode"
-          />
-        </Section>
-      </SettingsGroup>
-
-      <SettingsGroup title="Available Agents">
-        {/* No Switch here — Anton is the default agent and can't be
-            turned off; a picker with every harness disabled would
-            have nothing to run. Still listed so it's clear it's
-            part of the picker. */}
-        <Section title="Anton">
-          <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
-        </Section>
-        {(settings.harnessOptions || []).includes('hermes') && (
-          <Section title="Hermes">
-            <Switch
-              checked={settings.harnessHermesEnabled ?? true}
-              onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
-              disabled={!settings.codingModeEnabled}
-              aria-label="Enable Hermes in the harness picker"
-            />
-          </Section>
-        )}
-        <Section title="Claude-Code">
-          <Switch
-            checked={settings.harnessClaudeCodeEnabled ?? true}
-            onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
-            disabled={!settings.codingModeEnabled}
-            aria-label="Enable Claude-Code in the harness picker"
-          />
-        </Section>
-      </SettingsGroup>
-    </SettingsSectionPanel>
+  const renderCodingAgentSection = () => (
+    <CodingAgentSettingsSection
+      settings={settings}
+      setSetting={setSetting}
+      footer={renderSaveFooter()}
+      available={codeModeAccess.available}
+      enabled={codeModeAccess.enabled}
+      onEnabledChange={codeModeAccess.setEnabled}
+    />
   );
+
+  const renderComputersSection = () => <ComputersSettingsSection />;
 
   const renderAppearanceSection = () => (
     // No Save footer here — every control on this page auto-saves itself
@@ -2371,18 +2271,6 @@ export default function SettingsView({
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
-          {host.codingModeOptionsEnabled && (
-            <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
-              <div className="flex items-center">
-                <Switch
-                  checked={settings.showCodingModeToggle !== false}
-                  onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
-                  aria-label="Coding mode toggle button"
-                />
-                <AutoSaveTag settingKey="showCodingModeToggle" />
-              </div>
-            </Section>
-          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
@@ -2435,14 +2323,15 @@ export default function SettingsView({
   if (mobile) {
     const renderers = {
       agent: renderAgentSection,
-      codingMode: renderCodingModeSection,
+      codingAgent: renderCodingAgentSection,
+      computers: renderComputersSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).find((i) => i.id === section) || null;
+    const activeItem = visibleNav.find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2467,18 +2356,21 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
-                // `!host.isWeb &&`: the offline-disable exists because a dead local
-                // server can't accept a save, and Backend stays enabled as the
-                // escape hatch to restart it. On web there is no Backend row —
-                // and `serverOnline` DOES go false there: refreshData() polls
-                // /health on mount on both platforms (App.jsx), so a transient
-                // failure on hosted (proxy 502, auth blip) would otherwise
-                // disable EVERY row with no way out.
-                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+              {visibleNav.map((item, index, items) => {
+                // Match the desktop nav: Backend can recover a dead local
+                // server, while Coding agent owns a device-local opt-in and
+                // remains actionable without the runtime.
+                const disabled = !host.isWeb
+                  && !serverOnline
+                  && item.id !== 'backend'
+                  && item.id !== 'codingAgent';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
-                  <div className="mshell-accordion" key={item.id}>
+                  <Fragment key={item.id}>
+                  {(index === 0 || items[index - 1]?.group !== item.group) && (
+                    <div className="pt-4 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>
+                  )}
+                  <div className="mshell-accordion">
                     <button
                       type="button"
                       className="mshell-accordion__head"
@@ -2496,6 +2388,7 @@ export default function SettingsView({
                       <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
                     </button>
                   </div>
+                  </Fragment>
                 );
               })}
             </nav>
@@ -2509,17 +2402,17 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const visibleNav = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled);
   const effectiveSection = visibleNav.some((i) => i.id === section)
     ? section
     : visibleNav[0]?.id;
 
   return (
     <div className="flex-1 flex flex-row min-h-0">
-      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} items={visibleNav} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
-      {effectiveSection === 'codingMode' && renderCodingModeSection()}
+      {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
+      {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}

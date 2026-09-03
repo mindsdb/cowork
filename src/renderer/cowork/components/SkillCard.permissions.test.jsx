@@ -52,6 +52,32 @@ describe('SkillCard shared-resource permissions', () => {
     expect(screen.getByRole('button', { name: 'Read only' })).toBeDisabled();
   });
 
+  it('stays read only for a forbidden skill while a catalogue refresh is in flight', () => {
+    // The status is module-global: any surface reloading the catalogue moves
+    // every mounted card to 'loading' while the last settled list stays put.
+    state.catalogueStatus = 'loading';
+    state.skills = [{
+      label: 'shared-skill',
+      declarative: 'An older revision.',
+      capabilities: { canEdit: false },
+    }];
+    render(<SkillCard skill={draft} projectName="billing" />);
+    expect(screen.getByRole('button', { name: 'Read only' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save skill' })).not.toBeInTheDocument();
+  });
+
+  it('stays read only for a forbidden skill when a catalogue refresh fails', () => {
+    state.catalogueStatus = 'error';
+    state.skills = [{
+      label: 'shared-skill',
+      declarative: 'An older revision.',
+      capabilities: { canEdit: false },
+    }];
+    render(<SkillCard skill={draft} projectName="billing" />);
+    expect(screen.getByRole('button', { name: 'Read only' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save skill' })).not.toBeInTheDocument();
+  });
+
   it('keeps member-wide creation available after the catalogue loads', () => {
     state.skills = [];
     state.catalogueStatus = 'loaded';

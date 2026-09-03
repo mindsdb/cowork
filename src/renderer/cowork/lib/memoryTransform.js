@@ -40,12 +40,15 @@ export function groupMemoryItems(items, projects) {
 
     const content = item.content || '';
     const projectName = projectId ? (projectNameById.get(String(projectId)) || null) : null;
-    // Keep server-owned attribution and capability metadata intact while
-    // adapting the list item into the renderer's grouped shape. Dropping
-    // these fields here would make the Memory page appear editable even when
-    // the API correctly returned `canEdit: false`.
+    /* Pick server-owned attribution and capability metadata explicitly rather
+       than spreading the raw item. Dropping them would make the Memory
+       page appear editable even when the API correctly returned
+       `canEdit: false`, while spreading everything would carry the raw `scope`
+       and `project_id` alongside the normalised ones and let a future server
+       field named `path`, `content` or `preview` be masked by the keys below. */
     sectionMap.get(key).files.push({
-      ...item,
+      attribution: item.attribution ?? null,
+      capabilities: item.capabilities ?? null,
       category,
       projectId: projectId || null,
       content,

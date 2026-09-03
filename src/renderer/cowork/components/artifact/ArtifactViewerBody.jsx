@@ -62,6 +62,7 @@ export function ArtifactViewerBody({
     onDownload,
     onOpenOS,
     url: previewUrl,
+    doc: previewDoc = '',
     kind: previewKind,
     iframeRef,
     title,
@@ -191,13 +192,15 @@ export function ArtifactViewerBody({
     )
   ) : (
     <>
-      {previewUrl && (
+      {(previewUrl || previewDoc) && (
         <iframe
           ref={iframeRef}
           title={title || 'Artifact preview'}
           // The comment-layer activation flag (when applicable) is already
-          // baked into previewUrl at mount time, so the src stays stable.
-          src={previewUrl}
+          // baked into previewUrl/previewDoc at mount time, so neither prop
+          // below is reactive after the initial mount.
+          src={previewUrl || undefined}
+          srcDoc={previewDoc || undefined}
           onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
           sandbox={previewKind === 'proxy'
             ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
@@ -208,7 +211,7 @@ export function ArtifactViewerBody({
           }}
         />
       )}
-      {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
+      {(loading || !(previewUrl || previewDoc) || !iframeReady) && <PreviewPlaceholder />}
     </>
   );
 

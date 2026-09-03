@@ -198,7 +198,9 @@ export default function ContextFileModal({
   emptyMessage,    // optional message shown when content is empty + not editing
   dense,           // pass-through to MarkdownContent — smaller type for memory previews
   editable = true, // server-derived shared-resource edit capability
-  deletable = true,// server-derived shared-resource delete capability
+  deletable,       // server-derived shared-resource delete capability. Left
+                   //   undefined it means "no decision", which widens to true
+                   //   for ordinary files and stays closed for anton.md.
   attributionResource,
   onResourceLoaded,// receives fresh file attribution/capabilities from read/write responses
   onClose,
@@ -223,6 +225,18 @@ export default function ContextFileModal({
   const [previewUrl, setPreviewUrl] = useState('');
   const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
+  /*
+    The load effect must not re-fire when a capability changes. Reading the
+    file back can itself flip `editable` (the listing row carried no decision,
+    the GET did), which would otherwise mean a second read on every open, and
+    a revoked `canEdit` arriving mid-typing would reset the draft. The
+    callback rides a ref for the same reason: an inline arrow from a caller
+    would turn the effect into an unbounded fetch loop.
+  */
+  const editableRef = useRef(editable);
+  const onResourceLoadedRef = useRef(onResourceLoaded);
+  useEffect(() => { editableRef.current = editable; }, [editable]);
+  useEffect(() => { onResourceLoadedRef.current = onResourceLoaded; }, [onResourceLoaded]);
 
   const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
   // Generic mode = caller wired up its own loader/saver and didn't
@@ -339,7 +353,7 @@ export default function ContextFileModal({
       // fetch / a draft). Skip the round trip.
       setContent(initialContent);
       setDraft(initialContent);
-      setEditing(editable && (startInEditMode ?? (isAnton && !initialContent.trim())));
+      setEditing(editableRef.current && (startInEditMode ?? (isAnton && !initialContent.trim())));
       return undefined;
     }
     setLoading(true);
@@ -350,10 +364,10 @@ export default function ContextFileModal({
       .then((body) => {
         if (cancelled) return;
         const text = typeof body === 'string' ? body : (body?.content || '');
-        if (body && typeof body === 'object') onResourceLoaded?.(body);
+        if (body && typeof body === 'object') onResourceLoadedRef.current?.(body);
         setContent(text);
         setDraft(text);
-        setEditing(editable && (startInEditMode ?? (isAnton && !text.trim())));
+        setEditing(editableRef.current && (startInEditMode ?? (isAnton && !text.trim())));
       })
       .catch((e) => {
         if (cancelled) return;
@@ -371,7 +385,7 @@ export default function ContextFileModal({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl, editable, onResourceLoaded]);
+  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
 
   // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
@@ -409,9 +423,16 @@ export default function ContextFileModal({
   // `null` explicitly disables delete. Project-file mode otherwise falls back
   // to deleteProjectFile, including the capability-gated instructions file.
   const deleteApplicable = remover !== null;
+  /*
+    The agent reads the project instructions file every turn, so it stays
+    undeletable unless a caller hands down an explicit server capability. Any
+    surface that opens this modal on that path without one gets the protection
+    for free instead of having to remember two props.
+  */
+  const deleteAllowed = isAnton ? deletable === true : (deletable ?? true);
 
   const handleDelete = async () => {
-    if (!deleteApplicable || !deletable) return;
+    if (!deleteApplicable || !deleteAllowed) return;
     const confirmTarget = title || filePath || 'this file';
     if (!window.confirm(`Delete ${confirmTarget}? This can't be undone.`)) return;
     setBusy(true);
@@ -644,8 +665,8 @@ export default function ContextFileModal({
               <Button
                 variant="danger"
                 onClick={handleDelete}
-                disabled={busy || !deletable}
-                title={!deletable ? 'You do not have permission to delete this shared resource.' : undefined}
+                disabled={busy || !deleteAllowed}
+                title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
               >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>

@@ -40,8 +40,11 @@ vi.mock('../../api', () => ({
   unpublishArtifact: vi.fn(async () => undefined),
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
-vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn() }));
-vi.mock('../../lib/artifactWorkspaceApi', () => ({ loadArtifactDraftText: vi.fn() }));
+vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
+vi.mock('../../lib/artifactWorkspaceApi', () => ({
+  loadArtifactDraftText: vi.fn(),
+  loadArtifactDraftDocument: vi.fn(),
+}));
 vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: false,

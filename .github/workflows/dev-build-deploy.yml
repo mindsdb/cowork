@@ -143,6 +143,8 @@ jobs:
       # updater is source-aware). Fresh installs follow the PyPI rc stream that
       # build_kind implies.
       server_ref: staging
+      anton_ref: staging
+      server_channel: pypi
       macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
       windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
       # Stated rather than left to default:true — an omitted platform input

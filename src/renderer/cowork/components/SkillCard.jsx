@@ -67,15 +67,23 @@ export default function SkillCard({ skill, projectName }) {
   const name = skill.name || skill.slug || 'Skill';
   const slug = skill.slug || skill.label;
   const catalogueLoaded = catalogueStatus === 'loaded';
-  const existingSkill = catalogueLoaded && Array.isArray(skills)
+  /* The catalogue status is module-global, so every mounted card sees
+     'loading' whenever any surface refreshes the list. The store keeps the
+     last settled list across that refresh, so the remembered entry stays the
+     newest server verdict: honouring it keeps a forbidden skill read only
+     instead of flipping to an enabled create for the length of the reload.
+     A remembered entry can only withhold the button, never authorise a
+     replace. */
+  const knownSkill = Array.isArray(skills)
     ? skills.find((candidate) => candidate.label === slug)
     : null;
   // Only a verified catalogue can classify this draft as an update. Without
   // one, POST the member-wide create and let the server resolve identity
   // atomically; a collision may become a PUT only after a fresh capability
   // response explicitly allows it.
-  const canSave = existingSkill
-    ? canUseSharedResource(existingSkill, 'canEdit')
+  const existingSkill = catalogueLoaded ? knownSkill : null;
+  const canSave = knownSkill
+    ? canUseSharedResource(knownSkill, 'canEdit')
     : true;
   // "Saved" only when THIS revision is in the store — compare instructions, not
   // just slug existence: editing an existing skill seeds the draft from the

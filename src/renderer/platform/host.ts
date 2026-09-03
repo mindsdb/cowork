@@ -33,13 +33,12 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
-// unset/anything else defaults false) while the feature is parked. A plain
-// module-level const, not a function — it's a static per-process value read
-// once from the environment, same as isElectron/isWeb above. Web has no
-// bridge at all, so it's always false there too.
-export const codingModeOptionsEnabled: boolean =
-  isElectron && bridge.codingModeOptionsEnabled === true;
+// Static deployment capability. The user's opt-in is intentionally owned by
+// the renderer and stored per device; this flag only answers whether this
+// shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
+// remains unavailable until a future cloud capability is deliberately added.
+export const codeModeAvailable: boolean =
+  isElectron && bridge.codeModeAvailable === true;
 
 // ---- Platform identity --------------------------------------------------
 
@@ -72,6 +71,36 @@ export function getApiOrigin(): string {
     return `http://127.0.0.1:${port}`;
   }
   return window.location.origin;
+}
+
+// Endpoint an outbound Code runtime connects to. In packaged Electron this
+// matches getApiOrigin(); in Vite development the renderer itself lives on
+// :5173, so use the actual sidecar port instead of handing a runtime the UI
+// dev-server address. Hosted Code uses the current HTTPS origin.
+export function getCodeControlPlaneOrigin(): string {
+  if (isElectron) {
+    if (typeof bridge.codeControlPlaneOrigin === 'string') {
+      try {
+        const configured = new URL(bridge.codeControlPlaneOrigin);
+        if (
+          (configured.protocol === 'http:' || configured.protocol === 'https:')
+          && !configured.username
+          && !configured.password
+          && (configured.pathname === '/' || configured.pathname === '')
+          && !configured.search
+          && !configured.hash
+        ) {
+          return configured.origin;
+        }
+      } catch {
+        // Fall through to the private local sidecar. The connection UI will
+        // explain that loopback cannot be reached by another computer.
+      }
+    }
+    const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return getApiOrigin();
 }
 
 // True when the FastAPI backend the SPA talks to lives on THIS machine
@@ -118,6 +147,12 @@ export interface ServerInfo {
   origin: string;
 }
 
+export interface ServerControlResult {
+  running: boolean;
+  port?: number | null;
+  error?: string;
+}
+
 export async function serverInfo(): Promise<ServerInfo> {
   if (isElectron && typeof bridge.serverInfo === 'function') {
     const info = await bridge.serverInfo();
@@ -136,18 +171,18 @@ export async function serverInfo(): Promise<ServerInfo> {
   };
 }
 
-export async function serverStart(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStart(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStart === 'function') {
     return bridge.serverStart();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
-export async function serverStop(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStop(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStop === 'function') {
     return bridge.serverStop();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
 export interface ServerDiagnostics {
@@ -206,6 +241,18 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
     return bridge.showItemInFolder(path);
   }
   return { ok: false, reason: 'unsupported' };
+}
+
+export async function pickCodeFolder(): Promise<{
+  ok: boolean;
+  path?: string;
+  cancelled?: boolean;
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.pickCodeFolder === 'function') {
+    return bridge.pickCodeFolder();
+  }
+  return { ok: false, reason: 'Folder selection is available in the desktop app.' };
 }
 
 // ---- Coding mode (MVP) ---------------------------------------------------
@@ -770,7 +817,10 @@ export type OAuthConnectOpts =
 
 export interface OAuthConnectResult {
   ok: boolean;
+  code?: 'oauth_credentials_missing';
   reason?: string;
+  name?: string;
+  account_email?: string;
   refresh_token?: string;
   access_token?: string;
   expires_in?: number;
@@ -1388,7 +1438,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
-  codingModeOptionsEnabled,
+  codeModeAvailable,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1401,6 +1451,7 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  pickCodeFolder,
   detectClaudeCode,
   startCodingTerminal,
   sendCodingTerminalInput,

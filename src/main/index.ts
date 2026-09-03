@@ -1,7 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store).
 import './app-identity';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -21,9 +21,14 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
-import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
+import { refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
+import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
+import {
+  gateMindsResponseCreationRequest,
+  mindsRuntimeCredentialRequirementFromHealth,
+} from './minds-response-request-gate';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -43,6 +48,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { normalizeExternalBrowserUrl } from './external-url';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -59,8 +65,11 @@ import {
  * nothing: an auto-update, the sidebar's stop/start, and the installer's first
  * start all leave a signed-in user with `config_ready: false` until something
  * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first. */
-setServerStartedHook(syncMindsCredential);
+ * first start, whichever path gets there first.
+ *
+ * It settles the resume barrier too: a sidecar restarting mid-handoff is
+ * exactly when a turn is parked waiting for one. */
+setServerStartedHook(handOffMindsCredentialToStartedSidecar);
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -141,7 +150,11 @@ let bootUpdateSettled: Promise<void> = Promise.resolve();
 // routing and the chat gate read one identical value and cannot disagree.
 // Returns null when the server can't be reached/answered, so the caller falls
 // back to the .env heuristic.
-async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+async function serverConfigured(): Promise<{
+  configured: boolean;
+  provider: string;
+  mindsRuntimeCredentialRequired: boolean | null;
+} | null> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
   try {
@@ -152,12 +165,20 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
       console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
       return null;
     }
-    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    const data = await res.json() as {
+      config_ready?: boolean;
+      provider?: string;
+      minds_runtime_credential_required?: boolean;
+    };
     if (typeof data.config_ready !== 'boolean') {
       console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
       return null;
     }
-    return { configured: data.config_ready, provider: data.provider ?? '' };
+    return {
+      configured: data.config_ready,
+      provider: data.provider ?? '',
+      mindsRuntimeCredentialRequired: mindsRuntimeCredentialRequirementFromHealth(data),
+    };
   } catch (err) {
     console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
     return null;
@@ -181,6 +202,13 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
+  const configured = await serverConfigured();
+  // A missing field identifies an older or unreachable sidecar. The request
+  // gate treats that as unknown and preserves the conservative wait.
+  return configured?.mindsRuntimeCredentialRequired ?? null;
 }
 
 // Map a server-updater notification onto the UI update-status shape the renderer
@@ -377,17 +405,36 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
-      const token = getServerAuthToken();
-      if (token) {
-        try {
-          if (new URL(details.url).port === String(getServerPort())) {
-            details.requestHeaders['Authorization'] = `Bearer ${token}`;
+      const forward = () => {
+        const token = getServerAuthToken();
+        if (token) {
+          try {
+            if (new URL(details.url).port === String(getServerPort())) {
+              details.requestHeaders['Authorization'] = `Bearer ${token}`;
+            }
+          } catch {
+            // Malformed URL — leave the headers untouched.
           }
-        } catch {
-          // Malformed URL — leave the headers untouched.
         }
-      }
-      callback({ requestHeaders: details.requestHeaders });
+        callback({ requestHeaders: details.requestHeaders });
+      };
+
+      const gated = gateMindsResponseCreationRequest(
+        details,
+        getServerPort(),
+        isMindsResumeCredentialGateActive(),
+        runtimeMindsCredentialRequirement,
+        waitForMindsResumeCredential,
+        (ready) => {
+          if (!ready) {
+            console.warn('[minds-auth] response creation aborted while the resumed credential remained unavailable');
+            callback({ cancel: true });
+            return;
+          }
+          forward();
+        },
+      );
+      if (!gated) forward();
     },
   );
 
@@ -463,9 +510,8 @@ function createWindow() {
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
     return { action: 'deny' };
   });
 
@@ -474,9 +520,8 @@ function createWindow() {
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
     // Block navigation and open in OS browser
     event.preventDefault();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -514,6 +559,15 @@ const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
 // minted device key at boot. Extracted verbatim — the ordering inside it is
 // load-bearing and is explained step by step.
 async function performMindsSignOut() {
+  beginMindsCredentialSignOut();
+  try {
+    await performMindsSignOutCleanup();
+  } finally {
+    endMindsCredentialSignOut();
+  }
+}
+
+async function performMindsSignOutCleanup() {
   // Full sign-out: clear every credential + LLM-config key so the
   // next launch's checkConfigured() returns false and the user is
   // routed straight to onboarding. We deliberately keep
@@ -538,7 +592,13 @@ async function performMindsSignOut() {
   // superseded token.
   const logoutRefreshToken = getRefreshToken();
   void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
+  // Fence again after the bounded lookup. If its Keycloak request outlives the
+  // timeout, this new cancellation epoch prevents the late response from
+  // writing tokens after the local session is cleared below.
   cancelScheduledRefresh();
+  // Resolve any request already held across wake, and keep later turns blocked
+  // until a new selected credential is explicitly handed over.
+  settleMindsResumeCredentialGate(false);
   // Take every MindsHub credential away first and await it, unlike the
   // detached revoke above. This is the step that actually stops this
   // install's turns, and the renderer treats the IPC resolving as "signed
@@ -559,6 +619,13 @@ async function performMindsSignOut() {
   // an explicit logout.
   cancelCurrentOAuth();
   clearTokens();
+  // A refresh that was already inside its awaited handoff can settle true
+  // between the early barrier above and this token-store transition. Drop the
+  // barrier outright rather than reasserting a blocked state: a signed-out
+  // install has no resumed credential to wait for, and nothing in that state
+  // can ever settle it true again. Leaving it blocked would cancel every later
+  // turn, including the direct-provider turns that never touch MindsHub.
+  resetMindsResumeCredentialGate();
 
   // Clear credentials from the server's SQLite DB (the authoritative
   // source for config_ready). A single POST /settings/logout atomically
@@ -728,8 +795,10 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
-    if (isServerRunning()) return { running: true, port: getServerPort() };
-    // If a start is already in progress, await it rather than spawn again.
+    // startServer is also the health-aware ensure path. Do not short-circuit on
+    // isServerRunning(): an adopted sidecar can disappear without an exit
+    // event, leaving that synchronous flag stale until startServer re-probes
+    // it. If a start is already in progress, startServer awaits it.
     const result = await startServer();
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
@@ -764,7 +833,11 @@ function setupIPC() {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
       if (!OAUTH_CREDENTIALS[engine]) {
-        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+        return {
+          ok: false,
+          code: 'oauth_credentials_missing',
+          reason: `No OAuth credentials configured for "${engine}".`,
+        };
       }
       let clientId: string;
       let clientSecret: string;
@@ -775,7 +848,11 @@ function setupIPC() {
         );
         if (!credsRes.ok) {
           const err = await credsRes.json().catch(() => ({})) as { detail?: string };
-          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+          return {
+            ok: false,
+            code: credsRes.status === 422 ? 'oauth_credentials_missing' : undefined,
+            reason: err.detail || `OAuth credentials not configured for "${engine}".`,
+          };
         }
         const credsData = await credsRes.json() as { client_id: string; client_secret: string };
         clientId = credsData.client_id;
@@ -852,6 +929,7 @@ function setupIPC() {
             connector_id: engine,
             method: 'browser_oauth_builtin',
             name: labelName,
+            replace_existing: Boolean(labelName),
             values: {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
@@ -1050,7 +1128,12 @@ function setupIPC() {
   // can re-decode roles and confirm the user is now paid.
   ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
     const result = await refreshTokensOnly();
-    if (result.status === 'ok') return { ok: true, access_token: result.token };
+    // This bridge returns the refreshed JWT so the renderer can re-decode
+    // roles after checkout. A pending sidecar handoff does not make that JWT
+    // unusable for the caller; the handoff keeps its own bounded retry.
+    if (result.status === 'ok' || result.status === 'handoff_pending') {
+      return { ok: true, access_token: result.token };
+    }
     // Superseded means a newer login/logout won the race while this
     // refresh was in flight — the store, not this exchange, holds the
     // truth. Report the current session instead of a false failure.
@@ -1261,9 +1344,8 @@ function setupIPC() {
   );
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      await shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) await shell.openExternal(browserUrl);
   });
 
   // Open a local file/folder in the OS default app (Finder, browser,
@@ -1292,6 +1374,22 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  // Native directory selection for the first-class Code workspace. The
+  // renderer receives only the user-selected path; filesystem access and Git
+  // orchestration remain in the local sidecar.
+  ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder',
+      // `createDirectory` exposes New Folder in the macOS panel;
+      // `promptToCreate` provides the equivalent typed-path flow on Windows.
+      // The native default confirmation label (Open) matches both platforms.
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    return { ok: true, path: path.resolve(result.filePaths[0]) };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
@@ -1382,7 +1480,7 @@ app.whenReady().then(async () => {
   // (ENG-761 — the Windows-sleep flavour of "signed in but shows
   // signed out"). powerMonitor is only usable after app ready.
   powerMonitor.on('resume', () => {
-    if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
+    void refreshMindsCredentialAfterResume();
   });
 
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
@@ -1602,6 +1700,9 @@ app.whenReady().then(async () => {
         }
       } else if (outcome.status === 'transient') {
         console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
+      } else if (outcome.status === 'handoff_pending') {
+        // Expected at boot: the sidecar starts below, and its start hook pushes.
+        console.log('[auth] boot token refreshed — sidecar gets it when it starts');
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }

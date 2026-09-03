@@ -32,6 +32,21 @@ import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
 
+/*
+  Ticket guard for the async loads that paint shared state. Every start claims
+  the next ticket and a response only applies while its ticket is still the
+  latest, so a read that began before a mutation can never repaint over the
+  refresh that mutation triggered.
+*/
+function useLoadTicket() {
+  const latest = useRef(0);
+  return useMemo(() => ({
+    claim: () => ++latest.current,
+    isCurrent: (ticket) => ticket === latest.current,
+    invalidate: () => { latest.current += 1; },
+  }), []);
+}
+
 function relativeAge(ts) {
   if (!ts) return '';
   const d = typeof ts === 'string' ? new Date(ts) : new Date(ts);
@@ -52,9 +67,13 @@ function mergeFileResource(current, fresh) {
   // that the response predates the current file, so it must replace every bit
   // of the former resource metadata.
   const freshIsSynthetic = fresh?.synthetic === true;
-  const freshMetadataIsOlder = !freshIsSynthetic && Number.isFinite(currentModifiedAt) && (
-    !Number.isFinite(freshModifiedAt) || freshModifiedAt < currentModifiedAt
-  );
+  // Only an ordering both sides can actually prove keeps the current metadata.
+  // A response that simply carries no timestamp is unknown, not older, and
+  // must not pin a revoked capability or another member's edit out of view.
+  const freshMetadataIsOlder = !freshIsSynthetic
+    && Number.isFinite(currentModifiedAt)
+    && Number.isFinite(freshModifiedAt)
+    && freshModifiedAt < currentModifiedAt;
   if (freshMetadataIsOlder) {
     // A project-file list request can already be in flight when a write
     // succeeds. Do not let that older snapshot replace the PUT response's
@@ -368,29 +387,34 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   const [attachmentsTick, setAttachmentsTick] = useState(0);
   const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
+  const memoryTicket = useLoadTicket();
+  // Mirrors the sections that were actually applied, so a superseded read can
+  // still resolve the row the user clicked against the newest listing.
+  const appliedSections = useRef([]);
+
   const applyMemorySections = useCallback((data) => {
     if (!data?.sections) return;
+    appliedSections.current = data.sections;
     setSections(data.sections);
     setOpenEntry((prev) => (
       prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
     ));
   }, []);
 
-  const reloadMemory = useCallback(({ forceFresh = false } = {}) => (
-    fetchMemory(project, { forceFresh })
+  const reloadMemory = useCallback(({ forceFresh = false } = {}) => {
+    const ticket = memoryTicket.claim();
+    return fetchMemory(project, { forceFresh })
       .then((data) => {
+        if (!memoryTicket.isCurrent(ticket)) return null;
         applyMemorySections(data);
         return data;
       })
-      .catch(() => null)
-  ), [project?.id, project?.path, applyMemorySections]);
+      .catch(() => null);
+  }, [project?.id, project?.path, applyMemorySections, memoryTicket]);
 
   const openMemoryEntry = useCallback((entry) => {
-    reloadMemory().then((data) => {
-      const fresh = data?.sections
-        ? findMemoryEntry(data.sections, entry.path) || entry
-        : entry;
-      setOpenEntry(fresh);
+    reloadMemory().then(() => {
+      setOpenEntry(findMemoryEntry(appliedSections.current, entry.path) || entry);
     });
   }, [reloadMemory]);
 
@@ -398,24 +422,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     // Hermes has no memory system of its own — Project/Global memory is an
     // Anton concept, so skip the fetch entirely rather than show sections
     // the harness never reads or writes.
-    if (!showMemory) return;
-    let cancelled = false;
-    fetchMemory(project)
-      .then((data) => {
-        if (cancelled) return;
-        applyMemorySections(data);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [project?.id, project?.path, refreshKey, showMemory, applyMemorySections]);
+    if (!showMemory) return undefined;
+    reloadMemory();
+    return () => { memoryTicket.invalidate(); };
+  }, [refreshKey, showMemory, reloadMemory, memoryTicket]);
 
-  // Ticket pattern: every instructions fetch (mount + reload-on-
-  // edit) bumps `loadVersion`. The async response only applies its
-  // result if its ticket is still the latest. Without this, saving a
-  // context edit and immediately switching projects could let the
-  // late response paint into the new project — the same shape of
-  // bug WorkingFolderLive had.
-  const loadVersion = useRef(0);
+  // Every instructions fetch (mount + reload-on-edit) claims a ticket. Without
+  // it, saving a context edit and immediately switching projects could let the
+  // late response paint into the new project — the same shape of bug
+  // WorkingFolderLive had.
+  const filesTicket = useLoadTicket();
 
   // List every file in the working folder (the project root). Anton
   // creates files in here as the project evolves (the instructions
@@ -426,13 +442,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   // instructions row pinned to the top so it's always reachable.
   const reloadFiles = useCallback(({ forceFresh = false } = {}) => {
     if (!project?.name) { setProjectFiles([]); return; }
-    const ticket = ++loadVersion.current;
-    const request = forceFresh
-      ? listProjectFiles(project.name, { forceFresh: true })
-      : listProjectFiles(project.name);
-    request
+    const ticket = filesTicket.claim();
+    listProjectFiles(project.name, { forceFresh })
       .then((data) => {
-        if (ticket !== loadVersion.current) return;
+        if (!filesTicket.isCurrent(ticket)) return;
         const all = Array.isArray(data?.files) ? data.files : [];
         // Filter: keep the canonical instructions file from `.anton/`
         // but otherwise hide hidden trees (anything starting with `.`
@@ -454,10 +467,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           if (ai !== bi) return ai - bi;
           return (b.modified || 0) - (a.modified || 0);
         });
-        setProjectFiles((currentFiles) => visible.map((fresh) => {
-          const current = currentFiles.find((file) => file.path === fresh.path);
-          return current ? mergeFileResource(current, fresh) : fresh;
-        }));
+        setProjectFiles((currentFiles) => {
+          const currentByPath = new Map(currentFiles.map((file) => [file.path, file]));
+          return visible.map((fresh) => {
+            const current = currentByPath.get(fresh.path);
+            return current ? mergeFileResource(current, fresh) : fresh;
+          });
+        });
         // Keep an open modal on the same file while replacing its stale list
         // metadata with the server's latest attribution and capabilities.
         setOpenFile((current) => {
@@ -466,8 +482,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           return fresh ? mergeFileResource(current, fresh) : current;
         });
       })
-      .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
-  }, [project?.name]);
+      .catch(() => { if (filesTicket.isCurrent(ticket)) setProjectFiles([]); });
+  }, [project?.name, filesTicket]);
 
   const refreshOpenFileResource = useCallback((resource) => {
     if (!resource || typeof resource !== 'object') return;
@@ -488,11 +504,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
       setProjectFiles([]);
       // Bump the ticket so any in-flight load from a prior project
       // gets discarded when it finally lands.
-      loadVersion.current += 1;
+      filesTicket.invalidate();
       return;
     }
     reloadFiles();
-  }, [project?.name, reloadFiles]);
+  }, [project?.name, reloadFiles, filesTicket]);
 
   // Google Drive reference files live on the connection's _picked_files
   // grant, but each entry is tagged with the project(s) it was added

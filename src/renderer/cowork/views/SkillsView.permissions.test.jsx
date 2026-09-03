@@ -123,6 +123,72 @@ describe('SkillsView shared-resource permissions', () => {
     expect(mocks.reload.mock.calls[1]).toEqual([{ afterCurrent: true }]);
   });
 
+  it('opens an uploaded skill from the reloaded catalogue, not the upload response', async () => {
+    const user = userEvent.setup();
+    const uploaded = {
+      ...lockedSkill,
+      label: 'uploaded-skill',
+      capabilities: { canEdit: true, canDelete: true, canDisable: true },
+    };
+    skillState.skills = [uploaded];
+    let settleReload;
+    mocks.reload.mockImplementation(() => new Promise((resolve) => {
+      settleReload = resolve;
+    }));
+    // The upload endpoint serializes a skill of its own, so treat its response
+    // as one that carries no capabilities.
+    mocks.uploadSkillFile.mockResolvedValue({ label: uploaded.label });
+
+    render(<SkillsView />);
+    fireEvent.click(screen.getByRole('button', { name: /Create skill/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Upload a skill/i }));
+
+    const file = new File(['---\nname: uploaded-skill\n---'], 'SKILL.md', {
+      type: 'text/markdown',
+    });
+    const input = document.querySelector('input[type="file"][accept=".md,.skill,.zip"]');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
+
+    // The upload modal closes before its refresh lands, so the skill can be
+    // opened while onSkillUploaded still waits on the catalogue.
+    await user.click(await screen.findByText(uploaded.label));
+    await act(async () => {
+      settleReload({ ok: true, skills: [uploaded] });
+    });
+
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(await screen.findByRole('menuitem', { name: /Edit/ }))
+      .not.toHaveAttribute('data-disabled');
+  });
+
+  it('keeps the creator controls enabled when a save response omits capabilities', async () => {
+    const user = userEvent.setup();
+    const owned = {
+      ...lockedSkill,
+      label: 'owned-skill',
+      capabilities: { canEdit: true, canDelete: true, canDisable: true },
+    };
+    skillState.skills = [owned];
+    mocks.saveSkillAndSync.mockResolvedValue({ label: owned.label });
+
+    render(<SkillsView />);
+    await user.click(screen.getByText(owned.label));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Edit/ }));
+    await user.click(await screen.findByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocks.saveSkillAndSync).toHaveBeenCalledTimes(1));
+
+    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      .not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(await screen.findByRole('menuitem', { name: /Edit/ }))
+      .not.toHaveAttribute('data-disabled');
+  });
+
   it('does not clear a newer skill selection when an older delete settles', async () => {
     const user = userEvent.setup();
     let resolveDelete;

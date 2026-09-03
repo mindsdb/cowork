@@ -48,6 +48,13 @@ describe('exitCodeLabel', () => {
     expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: false })).toBe('unknown');
   });
 
+  it('does not call an incompatible backend "never started" when it answered /health', () => {
+    // The same file defines `incompatible` as a healthy backend that answered
+    // but lacks the Code capability. Any exit code on it is from our reap.
+    expect(exitCodeLabel({ kind: 'incompatible', exitCode: null })).toBe('not applicable');
+    expect(exitCodeLabel({ kind: 'incompatible', exitCode: 1 })).toBe('not applicable');
+  });
+
   it('says "never started" only when nothing ever ran', () => {
     expect(exitCodeLabel({ kind: 'spawn-error', exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: 'not-installed', exitCode: null })).toBe('never started');
@@ -106,6 +113,13 @@ describe('backendFailureCopy', () => {
   it('sends an uninstalled backend to the installer', () => {
     const copy = backendFailureCopy({ ...base, kind: 'not-installed' });
     expect(copy.hints.some((h) => /Re-run the installer/.test(h))).toBe(true);
+  });
+
+  it('explains how to replace an older incompatible backend', () => {
+    const copy = backendFailureCopy({ ...base, kind: 'incompatible' });
+    expect(copy.headline).toContain('needs to be updated');
+    expect(copy.hints.some((h) => /Quit MindsHub Cowork completely/.test(h))).toBe(true);
+    expect(copy.hints.some((h) => /older incompatible version/.test(h))).toBe(true);
   });
 
   it('describes a boot-time death without guessing at a cause', () => {

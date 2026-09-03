@@ -31,7 +31,7 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
@@ -607,6 +607,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     canPreviewInline,
     canPreviewDraft,
     hasBridge: host.isElectron || !host.isWeb,
+    hasDraft: canDownloadOrgDraft(artifact),
   });
   /*
    * Org-mode destinations are addressed by the server card, through the draft
@@ -621,7 +622,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
   const activateLabel = openTarget === 'published'
     ? 'Open shared artifact'
-    : openTarget === 'os' ? 'Open' : 'Open preview';
+    : openTarget === 'download'
+      ? 'Download'
+      : openTarget === 'os' ? 'Open' : 'Open preview';
   /*
    * What the card says when it has nowhere to go. Org mode has no local file to
    * blame, and blaming one is actively wrong there: the card prints its own
@@ -696,6 +699,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       await handleOpenPublished();
       return;
     }
+    if (openTarget === 'download') {
+      /*
+       * Org mode, an artifact the draft cannot render and nobody shared: the
+       * authenticated draft URL still streams the file, so the click saves it
+       * instead of dead-ending on "no shared link yet" (ENG-2044).
+       */
+      handleDownload();
+      return;
+    }
     if (openTarget === null) {
       showStatus('error', orgMode
         ? noDestinationReason
@@ -745,13 +757,20 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
-  const handleDownload = () => {
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
+  const handleDownload = async () => {
+    /*
+     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
+     * the file by its draft URL and never has such a path, so gating on it
+     * there would refuse the one action that works. `deleted` still applies.
+     */
+    if (orgMode ? deleted : !canAct) {
+      showStatus('error', orgMode
+        ? 'This artifact was deleted.'
+        : (disabledReason || 'No artifact file path is available.'));
       return;
     }
-    if (!downloadArtifactFile(artifact, { actionPath: path })) {
-      showStatus('error', 'This artifact has no serve URL yet.');
+    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
+      showStatus('error', 'This artifact has no downloadable file yet.');
       return;
     }
     showStatus('ok', 'Downloading…');
@@ -770,7 +789,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       ? { label: 'Preview', onClick: handleOpen, tooltip: 'Preview this artifact in Cowork' }
       : openTarget === 'published'
         ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
-        : null)
+        : openTarget === 'download'
+          ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+          : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
       : host.isWeb
@@ -911,6 +932,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         {!deleted && showSharedLink && (
           <Tooltip content="Open the shared artifact in a new tab">
             <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
+          </Tooltip>
+        )}
+        {/* Org mode: every artifact with a primary file can be saved through
+            its draft URL, previewable ones included — offered beside Preview /
+            Open, and omitted only when Download already IS the primary
+            action (ENG-2044). */}
+        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
+          <Tooltip content="Save this artifact's file">
+            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
           </Tooltip>
         )}
         {!deleted && primaryAction && (
@@ -2210,6 +2240,29 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The turn never reached the agent (`worker_unresponsive`):
+                 * the worker stopped answering before anything ran. Kept apart
+                 * from anton_error, which means the agent DID run and raised
+                 * something we don't recognise. The difference is what the user
+                 * should do: retry works here, and reporting an agent bug does
+                 * not. Copy lives in the renderer rather than echoing m.content
+                 * so it can be improved OTA, same as the other retryable cards
+                 * (ENG-2126). */
+                if (m.code === 'worker_unresponsive') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="The agent didn't start"
+                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}

@@ -377,13 +377,26 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     if (fresh) setSelected((current) => (current === fresh ? current : fresh));
   }, [skills]);
 
+  /* The open skill always mirrors the shared catalogue. Mutation endpoints
+     serialize a skill separately from the list, and a response that omits
+     `capabilities` reads as a denial on hosted Cowork, so adopting one would
+     lock the creator out of the skill they just saved. The effect above
+     re-points `selected` at the reloaded entry; a save response only names
+     the skill for the toast. */
   const onSkillSaved = (saved) => {
-    setSelected((prev) => prev?.label === saved?.label ? saved : prev);
     showToast(`Saved ${saved?.label}.`, 'success');
   };
 
   const onSkillUploaded = async (saved) => {
-    await reload({ afterCurrent: true });
+    const refreshed = await reload({ afterCurrent: true });
+    // An upload bypasses the store, so re-point the open skill from the list
+    // this reload verified rather than from the upload response.
+    const fresh = refreshed?.ok && Array.isArray(refreshed.skills)
+      ? refreshed.skills.find((skill) => skill.label === saved?.label)
+      : null;
+    if (fresh) {
+      setSelected((current) => (current?.label === fresh.label ? fresh : current));
+    }
     onSkillSaved(saved);
   };
 
@@ -449,10 +462,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                         : current
                     ));
                     try {
-                      const saved = await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
-                      setSelected((current) => (
-                        current?.label === targetLabel ? saved : current
-                      ));
+                      /* The reload inside the save re-points the open skill
+                         through the effect above; adopting the response here
+                         would trade the catalogue entry for a serializer that
+                         need not carry capabilities. */
+                      await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
                     } catch (err) {
                       setSelected((current) => (
                         current?.label === targetLabel

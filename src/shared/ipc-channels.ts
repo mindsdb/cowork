@@ -106,6 +106,9 @@ export const IPC = {
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
 
+  // First-class Code workspace (independent from the parked Coding Mode MVP).
+  CODE_PICK_FOLDER: 'code:pick-folder',
+
   // Coding mode (MVP) — detect a local `claude` CLI install, then run it in
   // a real PTY embedded in the app (a task view's ChatView, for a
   // claude-code-harness task) instead of the in-app anton chat.

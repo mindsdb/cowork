@@ -126,8 +126,23 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
 
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({
-    scope: 'Global', category: '', content: '', projectName: null, projectId: null,
+    path: null, scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
+
+  // The editor writes the slot the draft was seeded from, which is not
+  // necessarily whatever the sidebar has selected by the time Save runs.
+  // Authorize the entry that actually receives the write.
+  const draftTarget = useMemo(
+    () => (draft.path ? findMemoryEntry(sections, draft.path) : null),
+    [sections, draft.path],
+  );
+
+  const selectEntry = (file) => {
+    // Moving the sidebar off the entry being edited would leave the header
+    // naming one memory while the textarea holds another one's draft.
+    if (file?.path !== draft.path) setEditing(null);
+    onSelect(file);
+  };
 
   const refresh = async ({ forceFresh = false } = {}) => {
     const latest = await fetchMemory(undefined, { forceFresh });
@@ -143,6 +158,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
     if (!canUseSharedResource(file, 'canEdit')) return;
     setEditing('edit');
     setDraft({
+      path: file.path || null,
       scope: file.scope || 'Global',
       category: file.category,
       content: file.content || file.preview || '',
@@ -153,7 +169,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   };
 
   const save = async () => {
-    if (!canUseSharedResource(displayed || selected, 'canEdit')) {
+    if (!canUseSharedResource(draftTarget, 'canEdit')) {
       setStatus('You do not have permission to edit this shared memory.');
       return;
     }
@@ -216,7 +232,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               heading="Global"
               files={globalSection.files || []}
               selected={selected}
-              onSelect={onSelect}
+              onSelect={selectEntry}
             />
           )}
           {projectSections.map((section, idx) => (
@@ -225,7 +241,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               heading={`Project · ${section.projectName}`}
               files={section.files || []}
               selected={selected}
-              onSelect={onSelect}
+              onSelect={selectEntry}
               isActive={section.projectName === project?.name}
             />
           ))}

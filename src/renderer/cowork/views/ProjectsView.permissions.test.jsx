@@ -51,15 +51,24 @@ const lockedProject = {
   },
 };
 
+// happy-dom ships no window.alert, so the failure messages ProjectsView raises
+// are collected here instead of blowing up the render.
+let alerts = [];
+const originalAlert = window.alert;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  apiMocks.renameProject.mockReset();
   localStorage.removeItem('anton:projects-view');
   localStorage.removeItem('anton:pinned-projects');
   setViewportWidth(1200);
+  alerts = [];
+  window.alert = (message) => alerts.push(message);
 });
 
 afterEach(() => {
   setViewportWidth(1200);
+  window.alert = originalAlert;
 });
 
 describe('ProjectsView shared-resource permissions', () => {
@@ -217,5 +226,191 @@ describe('ProjectsView shared-resource permissions', () => {
     }));
     expect(screen.getByText(`Context and instructions for ${second.name}`))
       .toBeInTheDocument();
+  });
+
+  it('keeps a completed rename when a stale list response lands after it', async () => {
+    const user = userEvent.setup();
+    const renameable = {
+      ...lockedProject,
+      capabilities: { ...lockedProject.capabilities, canRename: true },
+    };
+    apiMocks.renameProject.mockResolvedValue({
+      ...renameable,
+      name: 'renamed-project',
+      path: '/projects/renamed-project',
+    });
+
+    const { rerender } = render(
+      <ProjectsView projects={[renameable]} selectedProject={renameable} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Project menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'renamed-project{Enter}');
+    expect(await screen.findByText('Context and instructions for renamed-project'))
+      .toBeInTheDocument();
+
+    // The refetch that was already in flight when the rename landed still
+    // carries the pre-rename name.
+    await act(async () => {
+      rerender(
+        <ProjectsView projects={[{ ...renameable }]} selectedProject={renameable} />,
+      );
+    });
+
+    expect(screen.getByText('Context and instructions for renamed-project'))
+      .toBeInTheDocument();
+    expect(screen.queryByText(`Context and instructions for ${renameable.name}`))
+      .not.toBeInTheDocument();
+  });
+
+  it('drops a stale allow when the refreshed project omits capabilities', async () => {
+    const user = userEvent.setup();
+    const allowed = {
+      ...lockedProject,
+      capabilities: { canRename: true, canDelete: true, canEditInstructions: true },
+    };
+    // A later response that carries no capabilities block at all.
+    const withoutCapabilities = { ...allowed };
+    delete withoutCapabilities.capabilities;
+
+    const { rerender } = render(
+      <ProjectsView projects={[allowed]} selectedProject={allowed} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Project menu' }));
+    expect(await screen.findByRole('menuitem', { name: /Rename/ }))
+      .not.toHaveAttribute('data-disabled');
+
+    await act(async () => {
+      rerender(
+        <ProjectsView projects={[withoutCapabilities]} selectedProject={allowed} />,
+      );
+    });
+
+    expect(screen.getByRole('menuitem', { name: /Rename/ })).toHaveAttribute('data-disabled');
+    expect(screen.getByRole('menuitem', { name: /Delete/ })).toHaveAttribute('data-disabled');
+  });
+
+  it('clears the editor and renames again before the list refetch lands', async () => {
+    const user = userEvent.setup();
+    const renameable = {
+      ...lockedProject,
+      capabilities: { ...lockedProject.capabilities, canRename: true },
+    };
+    apiMocks.renameProject
+      .mockResolvedValueOnce({ ...renameable, name: 'first-rename', path: '/projects/first-rename' })
+      .mockResolvedValueOnce({ ...renameable, name: 'second-rename', path: '/projects/second-rename' });
+
+    render(<ProjectsView projects={[renameable]} selectedProject={renameable} />);
+
+    await user.click(screen.getByRole('button', { name: 'Project menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'first-rename{Enter}');
+    expect(await screen.findByText('Context and instructions for first-rename'))
+      .toBeInTheDocument();
+
+    // `projects` still carries the pre-rename name — the refetch has not landed.
+    await user.click(screen.getByRole('button', { name: 'Project menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'second-rename{Enter}');
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(apiMocks.renameProject).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ name: 'first-rename' }),
+      'second-rename',
+    );
+    expect(await screen.findByText('Context and instructions for second-rename'))
+      .toBeInTheDocument();
+  });
+
+  it('closes the editor and says why when rename permission is revoked mid-edit', async () => {
+    const user = userEvent.setup();
+    const allowed = {
+      ...lockedProject,
+      capabilities: { ...lockedProject.capabilities, canRename: true },
+    };
+
+    const { rerender } = render(
+      <ProjectsView projects={[allowed]} selectedProject={allowed} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Project menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+
+    await act(async () => {
+      rerender(
+        <ProjectsView projects={[lockedProject]} selectedProject={allowed} />,
+      );
+    });
+
+    await user.clear(screen.getByRole('textbox'));
+    await user.type(screen.getByRole('textbox'), 'renamed-project{Enter}');
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(apiMocks.renameProject).not.toHaveBeenCalled();
+    expect(alerts).toEqual(['You do not have permission to rename this project.']);
+  });
+
+  it('never renders a detail kebab for the reserved General project', () => {
+    const general = {
+      ...lockedProject,
+      id: 'project-general',
+      name: 'general',
+      path: '/projects/general',
+    };
+
+    const { rerender } = render(
+      <ProjectsView projects={[general]} selectedProject={general} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Project menu' })).not.toBeInTheDocument();
+
+    // Coarse-pointer widths force the trigger visible via CSS, so the control
+    // has to be absent from the DOM rather than merely transparent.
+    setViewportWidth(500);
+    rerender(<ProjectsView projects={[general]} selectedProject={general} />);
+    expect(screen.queryByRole('button', { name: 'Project menu' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a normal project detail kebab in the DOM for keyboard reach', () => {
+    render(<ProjectsView projects={[lockedProject]} selectedProject={lockedProject} />);
+
+    const kebab = screen.getByRole('button', { name: 'Project menu' });
+    expect(kebab).toHaveClass('opacity-0', 'pointer-events-none');
+
+    fireEvent.focus(kebab);
+    expect(kebab).toHaveClass('opacity-100', 'pointer-events-auto');
+  });
+
+  it('shows a card as deleting and withholds its actions while the server works', () => {
+    render(
+      <ProjectsView
+        projects={[lockedProject]}
+        deletingProjectKeys={[lockedProject.id]}
+      />,
+    );
+
+    expect(screen.getByText('Deleting…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Project menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pin project' })).not.toBeInTheDocument();
+  });
+
+  it('shows a list row as deleting and withholds its menu while the server works', () => {
+    localStorage.setItem('anton:projects-view', 'list');
+    render(
+      <ProjectsView
+        projects={[lockedProject]}
+        deletingProjectKeys={[lockedProject.id]}
+      />,
+    );
+
+    expect(screen.getByText('Deleting…')).toBeInTheDocument();
+    // Taken out of flow, the same way the row hides a reserved project's menu.
+    expect(screen.getByRole('button', { name: 'Project menu' })).toHaveClass('hidden');
   });
 });

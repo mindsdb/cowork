@@ -36,6 +36,41 @@ describe('skillsStore catalogue provenance', () => {
     expect(result.current.skills).toEqual([]);
   });
 
+  it('re-fetches for a new subscriber after a failed load', async () => {
+    // A failed first load leaves an unverified empty list behind. Nothing
+    // re-fetches on its own, so without this every card would keep treating a
+    // shared skill as absent (and creatable) for the rest of the session.
+    const shared = { label: 'shared-skill', capabilities: { canEdit: false } };
+    api.fetchSkills
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({ skills: [shared] });
+
+    const { useSkills } = await import('./skillsStore');
+    const first = renderHook(() => useSkills());
+    await waitFor(() => expect(first.result.current.catalogueStatus).toBe('error'));
+    expect(api.fetchSkills).toHaveBeenCalledTimes(1);
+
+    const second = renderHook(() => useSkills());
+
+    await waitFor(() => expect(second.result.current.catalogueStatus).toBe('loaded'));
+    expect(api.fetchSkills).toHaveBeenCalledTimes(2);
+    expect(second.result.current.skills).toEqual([shared]);
+    expect(first.result.current.skills).toEqual([shared]);
+  });
+
+  it('does not re-fetch for a new subscriber once the catalogue is loaded', async () => {
+    api.fetchSkills.mockResolvedValue({ skills: [] });
+
+    const { useSkills } = await import('./skillsStore');
+    const first = renderHook(() => useSkills());
+    await waitFor(() => expect(first.result.current.catalogueStatus).toBe('loaded'));
+
+    const second = renderHook(() => useSkills());
+    await waitFor(() => expect(second.result.current.catalogueStatus).toBe('loaded'));
+
+    expect(api.fetchSkills).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for a pre-save catalogue request and then starts a fresh request', async () => {
     let resolveStaleRequest;
     const staleRequest = new Promise((resolve) => {

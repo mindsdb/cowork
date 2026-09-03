@@ -145,13 +145,17 @@ function renderItems(items, z, onActivate) {
         disabled={it.disabled}
         title={it.title}
         {...it.aria}
-        onClick={() => { it.onClick?.(); onActivate?.(); }}
+        closeOnClick={!it.keepOpen}
+        onClick={() => {
+          it.onClick?.();
+          if (!it.keepOpen) onActivate?.();
+        }}
       >
         {it.icon && (
           <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
         )}
         <span className="flex-1 min-w-0 truncate">{it.label}</span>
-        {it.hint && <span className="font-mono text-[10.5px] text-ink-4">{it.hint}</span>}
+        {it.hint && <span className="font-mono text-[12px] text-ink-3">{it.hint}</span>}
       </BaseMenu.Item>
     );
   });

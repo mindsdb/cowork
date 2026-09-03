@@ -116,6 +116,10 @@ export function ProjectCard({
   scheduled = [],
   pinned = false,
   editing = false,
+  // The server is still working through this project's delete. The card stays
+  // put until DELETE succeeds, so it says it is waiting and drops the actions
+  // that would fire a second one.
+  deleting = false,
   onOpen,
   onTogglePin,
   onMenuOpen,
@@ -151,7 +155,7 @@ export function ProjectCard({
   }, [editing]);
 
   const handleCardClick = () => {
-    if (editing) return; // ignore card clicks while editing
+    if (editing || deleting) return; // ignore card clicks while editing or deleting
     onOpen?.(project);
   };
 
@@ -163,16 +167,19 @@ export function ProjectCard({
   return (
     <Card
       as="div"
-      interactive={!editing}
+      interactive={!editing && !deleting}
       selected={isSelected || editing}
       padding="cozy"
-      onActivate={editing ? undefined : handleCardClick}
+      onActivate={editing || deleting ? undefined : handleCardClick}
+      aria-busy={deleting || undefined}
       {...hoverProps}
       style={{
-        cursor: editing ? 'default' : undefined,
+        cursor: editing || deleting ? 'default' : undefined,
         minHeight: 120,
         display: 'flex', flexDirection: 'column', gap: 10,
         position: 'relative',
+        opacity: deleting ? 0.6 : undefined,
+        transition: 'opacity .12s ease',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -242,7 +249,11 @@ export function ProjectCard({
               background: 'transparent', border: 0,
               color: pinned ? 'var(--accent)' : 'var(--ink-4)',
               opacity: pinned || showHoverActions ? 1 : 0,
-              display: 'inline-grid', placeItems: 'center',
+              // Taken out of flow rather than faded while the delete is on the
+              // wire: an opacity-0 control stays clickable, and the coarse-
+              // pointer rule would paint it back in on touch.
+              display: deleting ? 'none' : 'inline-grid',
+              placeItems: 'center',
               cursor: 'pointer', flexShrink: 0,
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
               font: 'inherit',
@@ -274,7 +285,7 @@ export function ProjectCard({
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
               opacity: showHoverActions ? 1 : 0,
-              display: isReserved ? 'none' : 'inline-grid',
+              display: isReserved || deleting ? 'none' : 'inline-grid',
               placeItems: 'center',
               cursor: 'pointer', flexShrink: 0,
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
@@ -294,7 +305,14 @@ export function ProjectCard({
         flex: 1, display: 'flex', flexDirection: 'column', gap: 4,
         minWidth: 0,
       }}>
-        {summary ? (
+        {deleting ? (
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
+            color: 'var(--ink-3)',
+          }}>
+            Deleting…
+          </span>
+        ) : summary ? (
           <span style={{
             fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
             color: 'var(--ink-2)',

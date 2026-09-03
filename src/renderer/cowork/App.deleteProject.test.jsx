@@ -32,12 +32,18 @@ vi.mock('./api', async (importOriginal) => ({
 }));
 
 vi.mock('./views/ProjectsView', () => ({
-  default: ({ projects, selectedProject, tasks, onDeleteProject, onSelectProject, onSelectTask }) => (
+  default: ({
+    projects, selectedProject, tasks, deletingProjectKeys = [],
+    onDeleteProject, onSelectProject, onSelectTask,
+  }) => (
     <div>
       <span>Selected project: {selectedProject?.name || 'none'}</span>
       {(projects || []).map((project) => (
         <div key={project.id}>
           <span>Project: {project.name}</span>
+          {deletingProjectKeys.includes(project.id) && (
+            <span>Deleting project: {project.name}</span>
+          )}
           <button type="button" onClick={() => onSelectProject(project)}>
             Open project {project.name}
           </button>
@@ -175,6 +181,53 @@ describe('project delete authorization failure', () => {
     expect(getDraft(task.id)).toBe('unsent task reply');
     expect(await screen.findByText(/Couldn't delete this project.*Nothing was removed/i)).toBeInTheDocument();
     expect(screen.getByText(/Only an organization admin or the project creator/i)).toBeInTheDocument();
+  });
+
+  it('marks the project as deleting and refuses a second confirm while in flight', async () => {
+    const user = userEvent.setup();
+    let resolveDelete;
+    spies.deleteProject.mockImplementation(() => new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: `Request deletion for ${project.name}` }));
+    await user.click(await screen.findByRole('button', { name: 'Delete project' }));
+
+    expect(await screen.findByText(`Deleting project: ${project.name}`)).toBeInTheDocument();
+
+    // Re-asking while the DELETE is on the wire must neither reopen the confirm
+    // nor fire a duplicate request at the server.
+    await user.click(screen.getByRole('button', { name: `Request deletion for ${project.name}` }));
+    expect(screen.queryByRole('button', { name: 'Delete project' })).not.toBeInTheDocument();
+    expect(spies.deleteProject).toHaveBeenCalledTimes(1);
+
+    spies.fetchProjects.mockResolvedValue([{ ...otherProject }, { ...unrelatedProject }]);
+    spies.fetchSessions.mockResolvedValue([{ ...unrelatedTask }, { ...otherTask }]);
+    await act(async () => resolveDelete({ status: 'deleted' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(`Deleting project: ${project.name}`)).not.toBeInTheDocument();
+    });
+  });
+
+  it('stops showing the project as deleting when the server denies the delete', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: `Request deletion for ${project.name}` }));
+    await user.click(await screen.findByRole('button', { name: 'Delete project' }));
+
+    await waitFor(() => expect(spies.deleteProject).toHaveBeenCalledWith(project));
+    await waitFor(() => {
+      expect(screen.queryByText(`Deleting project: ${project.name}`)).not.toBeInTheDocument();
+    });
+    // The denial leaves the project in place, so it stays deletable.
+    expect(screen.getByText(`Project: ${project.name}`)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `Request deletion for ${project.name}` }));
+    expect(await screen.findByRole('button', { name: 'Delete project' })).toBeInTheDocument();
   });
 
   it('does not clear a different project selected while delete is in flight', async () => {

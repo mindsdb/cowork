@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 
 const api = vi.hoisted(() => ({
   readProjectFile: vi.fn(),
@@ -139,5 +140,117 @@ describe('ContextFileModal shared-resource permissions', () => {
     ));
     expect(onResourceLoaded).toHaveBeenCalledWith(readResource);
     expect(onResourceLoaded).toHaveBeenLastCalledWith(writtenResource);
+  });
+});
+
+describe('ContextFileModal load effect stability', () => {
+  // Regression: `editable` and `onResourceLoaded` sat in the load effect's
+  // deps, so the read response widening the edit capability re-ran the effect
+  // and read the same file a second time on every open.
+  it('reads the file once when the read response widens the edit capability', async () => {
+    api.readProjectFile.mockResolvedValue({
+      path: '.anton/anton.md',
+      content: 'Project guidance.',
+      capabilities: { canEdit: true, canDelete: true },
+    });
+
+    function Harness() {
+      const [editable, setEditable] = useState(false);
+      return (
+        <ContextFileModal
+          open
+          projectName="billing"
+          filePath=".anton/anton.md"
+          editable={editable}
+          deletable={false}
+          onResourceLoaded={(resource) => setEditable(!!resource.capabilities?.canEdit)}
+          onClose={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled());
+    expect(api.readProjectFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an unsaved draft when a revoked edit capability arrives mid-edit', () => {
+    const { rerender } = render(
+      <ContextFileModal
+        open
+        projectName="billing"
+        filePath=".anton/anton.md"
+        initialContent="Original guidance."
+        editable
+        deletable={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Draft in progress.' } });
+
+    rerender(
+      <ContextFileModal
+        open
+        projectName="billing"
+        filePath=".anton/anton.md"
+        initialContent="Original guidance."
+        editable={false}
+        deletable={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('textbox')).toHaveValue('Draft in progress.');
+  });
+});
+
+describe('ContextFileModal instructions delete default', () => {
+  // Regression: `deletable` defaulted to true, so a surface that opened this
+  // modal on the instructions path without wiring the capability rendered a
+  // live Delete on the file the agent reads every turn.
+  it('withholds delete on the instructions file when no capability is passed', () => {
+    render(
+      <ContextFileModal
+        open
+        projectName="billing"
+        filePath=".anton/anton.md"
+        initialContent="Keep responses concise."
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  });
+
+  it('keeps ordinary project files deletable when no capability is passed', () => {
+    render(
+      <ContextFileModal
+        open
+        projectName="billing"
+        filePath="notes.md"
+        initialContent="Scratch notes."
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+
+  it('lets an explicit capability widen the instructions delete', () => {
+    render(
+      <ContextFileModal
+        open
+        projectName="billing"
+        filePath=".anton/anton.md"
+        initialContent="Keep responses concise."
+        deletable
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
   });
 });

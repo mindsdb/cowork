@@ -79,19 +79,29 @@ export async function reloadSkills({ afterCurrent = false } = {}) {
 
 function _subscribe(notify) {
   _subscribers.add(notify);
-  // Lazily load on first subscriber. Deferred so the fetch starts after the
-  // current render cycle — firing reloadSkills() synchronously here (inside
-  // useSyncExternalStore's subscribe call) can trigger a React "update during
-  // render" warning if _emit() resolves before the tree finishes mounting.
-  if (_skills === null && !_inFlight) queueMicrotask(reloadSkills);
+  /* Lazily load on first subscriber. Deferred so the fetch starts after the
+     current render cycle — firing reloadSkills() synchronously here (inside
+     useSyncExternalStore's subscribe call) can trigger a React "update during
+     render" warning if _emit() resolves before the tree finishes mounting.
+     A failed load leaves an empty list behind, so retry on 'error' as well:
+     without it one offline blip pins every consumer to an unverified
+     catalogue until someone opens the Skills page, which reloads on mount.
+     At most one retry is in flight, so a persistent outage costs one request
+     per failed request, not one per subscriber. */
+  if ((_skills === null || _catalogueStatus === 'error') && !_inFlight) {
+    queueMicrotask(reloadSkills);
+  }
   return () => _subscribers.delete(notify);
 }
 
 /**
  * React hook: the shared skills list + a reload trigger.
- * @returns {{ skills: Array|null, catalogueStatus: string, reload: () => Promise<object> }}
+ * @returns {{ skills: Array|null, catalogueStatus: 'idle'|'loading'|'loaded'|'error',
+ *             reload: (options?: { afterCurrent?: boolean }) =>
+ *               Promise<{ ok: boolean, skills: Array, error?: unknown }> }}
  *          `catalogueStatus === 'loaded'` means the current absence/presence
- *          decision came from a valid server response.
+ *          decision came from a valid server response. A refresh reports
+ *          'loading' while the last settled list stays in place.
  */
 export function useSkills() {
   const skills = useSyncExternalStore(_subscribe, _getSnapshot, _getSnapshot);

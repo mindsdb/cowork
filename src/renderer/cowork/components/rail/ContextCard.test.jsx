@@ -463,4 +463,172 @@ describe('ContextCard — shared resource permissions', () => {
     await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(/Last modified by old@example.com/)).not.toBeInTheDocument();
   });
+
+  // Regression: a listing entry with no attribution counted as older, so the
+  // row kept the capabilities it had picked up and a revoked canDelete never
+  // reached it again.
+  it('accepts capabilities from a listing that carries no attribution timestamp', async () => {
+    const original = {
+      path: '.anton/anton.md',
+      name: 'anton.md',
+      size: 12,
+      modified: 1788026400,
+      capabilities: { canEdit: true, canDelete: true },
+      attribution: {
+        createdBy: { userId: 'creator', email: 'creator@example.com' },
+        lastModifiedBy: { userId: 'old-editor', email: 'old@example.com' },
+        lastModifiedAt: '2026-08-29T10:00:00Z',
+      },
+    };
+    const revoked = {
+      path: '.anton/anton.md',
+      name: 'anton.md',
+      size: 17,
+      modified: 1788030000,
+      capabilities: { canEdit: true, canDelete: false },
+    };
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({ files: [original] })
+      .mockResolvedValueOnce({ files: [revoked] });
+    apiMock.readProjectFile.mockResolvedValue({
+      ...original,
+      content: 'Project guidance.',
+    });
+    apiMock.writeProjectFile.mockResolvedValue({
+      path: '.anton/anton.md',
+      size: 17,
+      modified: 1788030000,
+    });
+
+    await act(async () => {
+      render(
+        <ContextCard
+          project={{
+            name: 'billing',
+            path: '/projects/billing',
+            capabilities: { canEditInstructions: true },
+          }}
+          conversationId={null}
+        />,
+      );
+    });
+
+    fireEvent.click(screen.getByText('Instructions'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Updated guidance.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled());
+    expect(screen.queryByRole('button', { name: 'Delete .anton/anton.md' }))
+      .not.toBeInTheDocument();
+  });
+});
+
+describe('ContextCard — memory rail capability gates', () => {
+  const memoryProject = { id: 'project-1', name: 'billing', path: '/projects/billing' };
+
+  const openRules = async (capabilities) => {
+    const entry = {
+      path: 'Project:project-1:rules',
+      scope: 'Project',
+      projectId: memoryProject.id,
+      projectName: memoryProject.name,
+      category: 'rules',
+      content: 'Original rules.',
+      ...(capabilities ? { capabilities } : {}),
+    };
+    apiMock.fetchMemory.mockResolvedValue({
+      sections: [{ scope: 'Project', files: [entry] }],
+    });
+
+    await act(async () => {
+      render(<ContextCard project={memoryProject} conversationId={null} />);
+    });
+    fireEvent.click(screen.getByText('Rules'));
+    return screen.findByRole('button', { name: 'Edit' });
+  };
+
+  it('opens a granted memory entry with edit and delete live', async () => {
+    const edit = await openRules({ canEdit: true, canDelete: true });
+
+    expect(edit).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('opens a denied memory entry read only', async () => {
+    const edit = await openRules({ canEdit: false, canDelete: false });
+
+    expect(edit).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('note')).toHaveTextContent('Read only');
+  });
+
+  it('fails closed on hosted Cowork when the entry carries no capabilities', async () => {
+    const edit = await openRules(null);
+
+    expect(edit).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('note')).toHaveTextContent('Read only');
+  });
+});
+
+describe('ContextCard — memory read ordering', () => {
+  // Regression: a memory read started before a save still applied its result
+  // when it landed after the save's forced refresh, reverting the saved text
+  // and the refreshed capabilities on screen.
+  it('drops a pre-mutation memory read that lands after the post-mutation refresh', async () => {
+    const project = { id: 'project-1', name: 'billing', path: '/projects/billing' };
+    const before = {
+      path: 'Project:project-1:rules',
+      scope: 'Project',
+      projectId: project.id,
+      projectName: project.name,
+      category: 'rules',
+      content: 'Original rules.',
+      capabilities: { canEdit: true, canDelete: true },
+    };
+    const after = {
+      ...before,
+      content: 'Updated rules.',
+      capabilities: { canEdit: true, canDelete: false },
+    };
+    const sectionsOf = (entry) => ({ sections: [{ scope: 'Project', files: [entry] }] });
+
+    const pending = [];
+    apiMock.fetchMemory.mockImplementation(() => new Promise((resolve) => {
+      pending.push(resolve);
+    }));
+    apiMock.saveMemory.mockResolvedValue(after);
+
+    const { rerender } = render(
+      <ContextCard project={project} conversationId={null} refreshKey={0} />,
+    );
+    await act(async () => {});
+    await act(async () => { pending[0](sectionsOf(before)); });
+
+    fireEvent.click(screen.getByText('Rules'));
+    await act(async () => { pending[1](sectionsOf(before)); });
+    expect(await screen.findByRole('button', { name: 'Delete' })).toBeEnabled();
+
+    // A finished turn bumps the refresh key, starting a read that has not
+    // settled by the time the user saves.
+    rerender(<ContextCard project={project} conversationId={null} refreshKey={1} />);
+    await act(async () => {});
+    expect(pending).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Updated rules.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(pending).toHaveLength(4));
+
+    await act(async () => { pending[3](sectionsOf(after)); });
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+
+    await act(async () => { pending[2](sectionsOf(before)); });
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByText('Updated rules.')).toBeInTheDocument();
+  });
 });

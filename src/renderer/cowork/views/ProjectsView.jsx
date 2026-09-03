@@ -117,6 +117,15 @@ function isActive(project, tasks) {
   return ts > 0 && Date.now() - ts < HOUR;
 }
 
+/* Equality probe for the server-owned fields the detail refresh tracks. Both are
+   small plain payloads, so a serialized compare is enough to tell "the server
+   said the same thing again" from "hand the detail subtree a new object".
+   `?? null` folds a missing field and an explicit null into one value so an
+   omitted block reads the same either way. */
+function sameServerField(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 function activitySummaryFor(project, tasks) {
   const list = (tasks || []).filter((t) =>
     t.projectName === project?.name || t.projectPath === project?.path,
@@ -419,6 +428,8 @@ function ListRow({
   // views. Earlier the list row showed no input when editing, which
   // forced users to flip to grid view to actually rename.
   editing = false,
+  // The server is still working through this project's delete.
+  deleting = false,
   onRenameSubmit,
   onRenameCancel,
 }) {
@@ -455,12 +466,13 @@ function ListRow({
 
   return (
     <div
-      role={editing ? undefined : 'button'}
-      tabIndex={editing ? undefined : 0}
-      onClick={editing ? undefined : () => onOpen?.(project)}
+      role={editing || deleting ? undefined : 'button'}
+      tabIndex={editing || deleting ? undefined : 0}
+      onClick={editing || deleting ? undefined : () => onOpen?.(project)}
+      aria-busy={deleting || undefined}
       {...hoverProps}
-      onKeyDown={(e) => { if (!editing && e.key === 'Enter') onOpen?.(project); }}
-      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease] ${hovered ? 'bg-surface' : 'bg-transparent'} ${editing ? 'cursor-default' : 'cursor-pointer'}`}
+      onKeyDown={(e) => { if (!editing && !deleting && e.key === 'Enter') onOpen?.(project); }}
+      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease,opacity_.12s_ease] ${hovered && !deleting ? 'bg-surface' : 'bg-transparent'} ${editing || deleting ? 'cursor-default' : 'cursor-pointer'} ${deleting ? 'opacity-60' : ''}`}
     >
       {/* Name */}
       <div className="flex flex-col gap-0.5 min-w-0">
@@ -499,7 +511,9 @@ function ListRow({
 
       {/* Last activity */}
       <div className="font-body text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">
-        {summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
+        {deleting
+          ? <span className="text-ink-4">Deleting…</span>
+          : summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
       </div>
 
       {/* Number cells */}
@@ -523,7 +537,7 @@ function ListRow({
           onFocus={() => setActionFocused(true)}
           onBlur={() => setActionFocused(false)}
           aria-label="Project menu"
-          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
+          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved || deleting ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
         >
           {Ico.moreVert(15)}
         </button>
@@ -583,6 +597,8 @@ function ProjectDetail({
   // the grid cards, and exposing the toggle here would imply the
   // detail view participates in that state.
   editing = false,
+  // The server is still working through this project's delete.
+  deleting = false,
   onRenameStart,
   onRenameSubmit,
   onRenameCancel,
@@ -611,7 +627,10 @@ function ProjectDetail({
   const renameInputRef = useRef(null);
   const isReserved = isReservedProjectName(project.name);
   const { revealed, hoverProps } = useRevealOnHover(!!menuRect);
-  const showKebab = !isReserved && (showMobileContext || revealed || actionFocused);
+  /* Reveal state only, never the reserved check. A reserved project's kebab is
+     withheld by not rendering it at all, so no stylesheet can hand a coarse
+     pointer a tappable trigger into a menu with nothing but a disabled Delete. */
+  const showKebab = showMobileContext || revealed || actionFocused;
 
   // Focus + select-all the inline input on mount of the editing state.
   useEffect(() => {
@@ -695,7 +714,15 @@ function ProjectDetail({
                   className="flex-[0_1_auto]"
                 />
               )}
-              {!editing && (
+              {deleting && (
+                <span
+                  aria-live="polite"
+                  className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0"
+                >
+                  Deleting…
+                </span>
+              )}
+              {!editing && !isReserved && !deleting && (
                 <button
                   ref={kebabRef}
                   type="button"
@@ -843,6 +870,10 @@ export default function ProjectsView({
   onSelectProject,
   onCreateProject,
   onDeleteProject,
+  // Keys (id, else name) of the projects whose DELETE the server is still
+  // working through. Their card, row, and detail header say so and stop
+  // offering the actions that would fire a second one.
+  deletingProjectKeys = [],
   onSendInProject,
   codingModeEnabled = false,
   onSelectTask,
@@ -892,9 +923,14 @@ export default function ProjectsView({
   // selectedProject + routes here) lands directly in detail.
   const [detailProject, setDetailProject] = useState(selectedProject || null);
   useEffect(() => { setDetailProject(selectedProject || null); }, [selectedProject]);
-  // A refetch can carry changed role capabilities or newer attribution while
-  // the detail page stays mounted. Refresh the local detail copy so its menu
-  // never keeps a stale permission decision.
+  /* A refetch can carry changed role capabilities or newer attribution while the
+     detail page stays mounted, so those two server-owned fields are the only
+     ones copied across. Name and path stay local: a list response that started
+     before a rename lands after it, and spreading it would flip the breadcrumb
+     back to the old name. Capabilities are assigned rather than merged so a
+     response that omits them drops the previous decision instead of holding an
+     allow open. An unchanged pair returns the same object so the composer,
+     context box, and task list do not re-render on every poll. */
   useEffect(() => {
     setDetailProject((current) => {
       if (!current) return current;
@@ -902,7 +938,16 @@ export default function ProjectsView({
         (current.id && project.id === current.id)
         || (!current.id && project.name === current.name)
       ));
-      return fresh ? { ...current, ...fresh } : current;
+      if (!fresh) return current;
+      if (
+        sameServerField(current.capabilities, fresh.capabilities)
+        && sameServerField(current.attribution, fresh.attribution)
+      ) return current;
+      return {
+        ...current,
+        capabilities: fresh.capabilities,
+        attribution: fresh.attribution,
+      };
     });
   }, [projects]);
 
@@ -937,6 +982,10 @@ export default function ProjectsView({
     window.dispatchEvent(new CustomEvent('anton:projects-changed'));
   };
 
+  const isDeleting = (project) => (
+    !!project && deletingProjectKeys.includes(project.id || project.name)
+  );
+
   const handleOpen = (project) => {
     onSelectProject?.(project);
     setDetailProject(project);
@@ -953,10 +1002,21 @@ export default function ProjectsView({
     setEditingProjectName(null);
   };
   const handleRenameSubmit = async (oldName, rawNext) => {
-    const sourceProject = projects.find((project) => project.name === oldName);
-    if (!sourceProject || !canUseSharedResource(sourceProject, 'canRename')) return;
-    const next = (rawNext || '').trim();
+    /* Leave edit mode before any guard can bail out. Every early return below
+       used to strand the header as an input that blur and Enter both ignored,
+       with Escape the only way back to the project name. */
     setEditingProjectName(null);
+    /* The list is not the only place the project is known: detail can be seeded
+       from selectedProject before the list loads, and a second rename is
+       submitted before the refetch carrying the first one lands. */
+    const sourceProject = projects.find((project) => project.name === oldName)
+      || (detailProject?.name === oldName ? detailProject : null);
+    if (!sourceProject) return;
+    if (!canUseSharedResource(sourceProject, 'canRename')) {
+      alert('You do not have permission to rename this project.');
+      return;
+    }
+    const next = (rawNext || '').trim();
     if (!next || next === oldName) return;
     try {
       const result = await renameProject(sourceProject, next);
@@ -1051,6 +1111,7 @@ export default function ProjectsView({
         showMobileContext={isMobile}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
+        deleting={isDeleting(detailProject)}
         onRenameStart={handleRenameStart}
         onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
         onRenameCancel={handleRenameCancel}
@@ -1127,6 +1188,7 @@ export default function ProjectsView({
               scheduled={scheduled}
               pinned={pinned.has(p.name)}
               editing={editingProjectName === p.name}
+              deleting={isDeleting(p)}
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
@@ -1166,6 +1228,7 @@ export default function ProjectsView({
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
               isMenuOpen={menuFor?.project?.name === p.name}
               editing={editingProjectName === p.name}
+              deleting={isDeleting(p)}
               onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
               onRenameCancel={handleRenameCancel}
             />

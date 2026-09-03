@@ -416,6 +416,15 @@ button { font-family: inherit; cursor: pointer; }
 input, textarea { font-family: inherit; }
 
 #root { width: 100%; height: 100%; }
+.workspace-mode-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.workspace-mode-panel[hidden] { display: none; }
 .drag-region { -webkit-app-region: drag; }
 /* Default everything to draggable — the window-shell sets drag on the
    outermost container so the user can pick the window up from any
@@ -517,15 +526,34 @@ a[href],
 
 /* Project action menus normally reveal with hover. Keep the same compact
    controls, but make them discoverable for keyboard users and devices that
-   cannot hover (touch phones, tablets, and coarse-pointer convertibles). */
+   cannot hover (touch phones, tablets, and coarse-pointer convertibles).
+   A trigger a view withholds on purpose (the General project has no kebab)
+   is never rendered; these guards keep the override off any trigger that is
+   in the DOM but taken out of the accessibility tree or out of flow, so a
+   deliberately hidden control can never be revived by a media query. */
 .project-action-trigger:focus-visible {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
 @media (hover: none), (pointer: coarse) {
-  .project-action-trigger {
+  .project-action-trigger:not([hidden]):not(.hidden):not([aria-hidden='true']) {
     opacity: 1 !important;
     pointer-events: auto !important;
+  }
+  /* The drawn control keeps its 22-26px desktop size; a centred transparent
+     overlay lifts the tappable area to the 44px minimum the rest of the mobile
+     shell uses. The card's pin and kebab sit 34px apart, so the two overlays
+     meet 12px out from each centre — past the 13px glyph box by a hair, and
+     never over the neighbour's icon. */
+  .project-action-trigger { position: relative; }
+  .project-action-trigger::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -2546,6 +2574,21 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
+.workspace-mode-switcher {
+  padding: 0 10px 8px;
+}
+.workspace-mode-switch {
+  width: 100%;
+}
+.workspace-mode-switch > button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 30px;
+  justify-content: center;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
 /* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
    Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the

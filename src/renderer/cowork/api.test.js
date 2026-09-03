@@ -23,8 +23,9 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, listProjectFiles, fetchMemory } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -911,5 +912,34 @@ describe('fetchHubWorkspaces', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
     expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
+  });
+});
+
+// /artifacts/status is desktop-only (require_local_tenancy on the server), and
+// usePublish asks for it on every viewer open and every window focus. In org
+// mode each of those logged a 403 — harmless, because the helper already
+// swallows failures, but noise the user reported next to the real comments 401.
+describe('fetchArtifactStatus', () => {
+  afterEach(() => { setOrgMode(false); });
+
+  it('does not call the desktop-only route in org mode', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(true);
+
+    expect(await fetchArtifactStatus('/p/a.html')).toBe(null);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still calls the route on desktop', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ publishedUrl: 'https://x/a', modified: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(false);
+
+    const out = await fetchArtifactStatus('/p/a.html');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/artifacts/status?path=');
+    expect(out.publishedUrl).toBe('https://x/a');
   });
 });

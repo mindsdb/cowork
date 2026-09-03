@@ -10,6 +10,21 @@ export function isAbsoluteArtifactPreviewUrl(url) {
   return ABSOLUTE_PREVIEW_URL_RE.test(String(url || ''));
 }
 
+// The old `src=` iframe navigation never attached credentials, no matter what
+// origin it pointed at. `authFetch` attaches the web Keycloak bearer to
+// whatever URL it is given, so routing a draft through it (instead of the
+// direct navigation) is only safe when that URL is our own API: a data:/blob:
+// URL makes no network request at all (nothing for the origin check to
+// protect), and a genuinely different origin must never receive our token.
+export function canFetchDraftWithCredentials(url, apiOrigin) {
+  if (EMBEDDED_URL_RE.test(url)) return false;
+  try {
+    return new URL(url, apiOrigin).origin === new URL(apiOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+
 function appendPreviewParam(url, key, value) {
   if (!url || value == null || value === '') return url;
   // blob: and data: URLs are already content-addressed. Adding a query suffix
@@ -33,6 +48,87 @@ export function withArtifactVersion(url, version) {
 // ACTIVATION_PARAM there.
 export function withArtifactCommentFlag(url) {
   return appendPreviewParam(url, '__antonComments', '1');
+}
+
+const HAS_BASE_TAG_RE = /<base[\s/>]/i;
+const HEAD_OPEN_RE = /<head([^>]*)>/i;
+
+function escapeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+// The draft's directory URL — `fetchUrl` minus its filename, query string and
+// fragment — so relative asset/link references inside HTML fetched via
+// `authFetch` resolve the same way they would if the iframe had navigated to
+// `fetchUrl` directly through `src`.
+function draftDirectoryUrl(fetchUrl) {
+  try {
+    const parsed = new URL(fetchUrl);
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.pathname = parsed.pathname.replace(/[^/]*$/, '');
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+/*
+ * A srcdoc document's `document.URL` stays `about:srcdoc` no matter what
+ * `<base>` says — the base only changes how relative references *resolve*,
+ * not the document's own recorded address. A fragment-only link
+ * (href="#slide-2") resolves against the base into an absolute URL that no
+ * longer matches `document.URL`, so the browser treats it as a real
+ * navigation instead of an in-page scroll (confirmed against a live browser
+ * during review of PR #765 — the resulting request has no Authorization
+ * header, reproducing the exact 401 this file exists to fix, just triggered
+ * by clicking an anchor instead of loading the preview). This intercepts
+ * fragment-only clicks — event delegation on `document`, so anchors added
+ * after initial render are covered too — and scrolls manually instead of
+ * letting the click navigate. Exported so a future fix to the Edit-mode
+ * visual editor (`htmlVisualEditorDocument.js`, which injects its own
+ * `<base>` and has the same pre-existing bug) can reuse it.
+ *
+ * Known limitation: `location.hash` and CSS `:target` do not update. Scroll
+ * position is what matters for a preview; accepted.
+ */
+export const DRAFT_FRAGMENT_GUARD_SCRIPT = `(function () {
+  document.addEventListener('click', function (event) {
+    var anchor = event.target && event.target.closest ? event.target.closest('a') : null;
+    if (!anchor) return;
+    var href = anchor.getAttribute('href');
+    if (!href || href.charAt(0) !== '#') return;
+    event.preventDefault();
+    if (href.length === 1) { window.scrollTo(0, 0); return; }
+    var name = href.slice(1);
+    try { name = decodeURIComponent(name); } catch (e) { /* malformed percent-encoding, use raw */ }
+    var target = document.getElementById(name) || document.getElementsByName(name)[0];
+    if (target && target.scrollIntoView) target.scrollIntoView();
+  });
+})();`;
+
+// `srcdoc` gives the iframe no base URL of its own, so relative
+// `<script src>` / `<link href>` / anchors in fetched draft HTML would
+// otherwise resolve against the parent app's origin instead of the draft's
+// own directory. No-op if the document already declares a `<base>` — a
+// second one would be inert (the first `<base>` in document order wins) and
+// misleading to read.
+export function injectDraftBaseHref(html, fetchUrl) {
+  const baseHref = draftDirectoryUrl(fetchUrl);
+  if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
+  // Precedent: cowork-server's comments_layer.py escapes `</script>` in its
+  // own injected script for the same reason — a literal occurrence would
+  // close the tag early. DRAFT_FRAGMENT_GUARD_SCRIPT is a fixed, hand-authored
+  // string with no such sequence today; this guards against a future edit
+  // introducing one silently breaking the injected markup.
+  const guardScript = DRAFT_FRAGMENT_GUARD_SCRIPT.replace(/<\/script>/gi, '<\\/script>');
+  const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
+  return HEAD_OPEN_RE.test(html)
+    ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
+    : `${markup}${html}`;
 }
 
 export function artifactExtension(p) {
