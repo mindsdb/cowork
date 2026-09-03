@@ -1,11 +1,11 @@
 import { getCodeControlPlaneOrigin } from '../../platform/host';
 
 
-/** True for an origin only this machine can reach (127.0.0.1, localhost, ::1). */
+/** True for an origin only this machine can reach: any 127.x.x.x address, localhost, or ::1. */
 export function isLoopbackOrigin(origin: string): boolean {
   try {
     const hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
-    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
+    return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) || hostname === 'localhost' || hostname === '::1';
   } catch {
     return false;
   }
