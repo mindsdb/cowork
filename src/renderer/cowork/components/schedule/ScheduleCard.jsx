@@ -45,11 +45,12 @@ export default function ScheduleCard({
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  const projectName = projectLabel(projectMatch) || '';
+  // One variable, and it holds the label. TasksView keeps a second, slug-valued
+  // local because its rows match a project by name; this card resolves by
+  // `task.projectId` above, so it needs the slug for nothing -- not the lookup,
+  // not the truthiness guard below (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match needs it,
-  // and so does the truthiness guard. This is what a person reads (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   return (
     <Card
@@ -106,7 +107,7 @@ export default function ScheduleCard({
       {/* border-x-0/border-b-0 zero the other sides: preflight is disabled, so
           border-solid would otherwise reveal their default (medium) width. */}
       <div className="mt-auto flex min-w-0 items-center gap-2 border-x-0 border-b-0 border-t border-solid border-line pt-[11px]">
-        {projectName && (
+        {projectDisplay && (
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
@@ -125,7 +126,7 @@ export default function ScheduleCard({
           </span>
         )}
 
-        <span className={`flex shrink-0 items-center gap-2 ${projectName ? 'ml-auto' : ''}`}>
+        <span className={`flex shrink-0 items-center gap-2 ${projectDisplay ? 'ml-auto' : ''}`}>
           <ScheduleStatusBadge task={task} size="sm" />
           <span
             title={task.enabled ? absoluteTime(task.nextRunAt) : undefined}

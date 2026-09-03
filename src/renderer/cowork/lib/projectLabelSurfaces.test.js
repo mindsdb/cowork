@@ -123,7 +123,9 @@ const RENDERED_SLUG_LOCAL = new RegExp(
   // renderer with this rule rather than only the listed surfaces.
   + '|(?<![/])\\$\\{\\s*projectName\\s*\\}(?![/])'
   + '|\\)\\s*:\\s*projectName\\b'
-  // the attribute form: `title={projectName}` in ScheduleCard's non-clickable row
+  // The attribute form. Found in ScheduleCard, which has since dropped its
+  // slug-valued local entirely (it resolves by id, so it never needed one) --
+  // the rule stays because the shape is what matters, not that one site.
   + '|\\b(?:primary|secondary|label|title|content|placeholder|defaultValue)=\\{\\s*projectName\\s*\\})',
 );
 

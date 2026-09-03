@@ -366,11 +366,11 @@ function ScheduleListRow({
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  const projectName = projectLabel(projectMatch) || '';
+  // Holds the label, not the slug. The id lookup above means this row -- unlike
+  // TasksView's, which matches a project by name -- needs the slug for nothing
+  // (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match needs it,
-  // and so does the truthiness guard. This is what a person reads (ENG-1676).
-  const projectDisplay = projectLabel(projectMatch) || projectName;
 
   return (
     <CardRow
@@ -416,7 +416,7 @@ function ScheduleListRow({
       <div className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.06em] uppercase">{cadenceLabel}</div>
 
       <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-        {projectName ? (
+        {projectDisplay ? (
           canOpenProject ? (
             <Tooltip content={`Open ${projectDisplay}`}>
               <button
