@@ -12,6 +12,7 @@ import {
   codingApi,
   type CodeProject,
   type CreateCodeTaskInput,
+  type ReasoningEffort,
   type InputReference,
   type PermissionMode,
   type ProjectFolderInspection,
@@ -91,6 +92,7 @@ export function useNewTaskDraft({
   const [standaloneFolderLoading, setStandaloneFolderLoading] = useState(false);
   const [standaloneFolderIssue, setStandaloneFolderIssue] = useState('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>(null);
   const [attachments, setAttachments] = useState<InputReference[]>([]);
   const [sourceContexts, setSourceContextsState] = useState<SourceContext[]>([]);
   const generatedSourcePrompt = useRef('');
@@ -168,7 +170,8 @@ export function useNewTaskDraft({
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
     setModel(selectedProject?.default_model || defaultModel);
     setPermissionMode(selectedProject?.permission_mode || 'supervised');
-  }, [defaultEngineId, defaultModel, selectedProject?.default_engine_id, selectedProject?.default_model, selectedProject?.id, selectedProject?.permission_mode]);
+    setReasoningEffort(selectedProject?.default_reasoning_effort || null);
+  }, [defaultEngineId, defaultModel, selectedProject?.default_engine_id, selectedProject?.default_model, selectedProject?.default_reasoning_effort, selectedProject?.id, selectedProject?.permission_mode]);
 
   const engineModels = useMemo(() => {
     if (!engineModelIds) return [];
@@ -310,6 +313,7 @@ export function useNewTaskDraft({
       prompt: prompt.trim(),
       engineId,
       model,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       permissionMode,
       attachments,
       sourceContexts: selectedProject ? sourceContexts : [],
@@ -332,6 +336,8 @@ export function useNewTaskDraft({
     engineLoading,
     permissionMode,
     setPermissionMode,
+    reasoningEffort,
+    setReasoningEffort,
     attachments,
     setAttachments,
     sourceContexts,

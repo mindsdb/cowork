@@ -9,6 +9,7 @@ import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
+import { DEFAULT_EFFORT_VALUE, isReasoningEffort, reasoningEffortOptions } from './reasoning';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
 import { ExecutionTargetSelect } from './ExecutionTargetSelect';
@@ -62,7 +63,7 @@ export function NewTaskPanel({
   });
   const {
     prompt, setPrompt, catalogError,
-    engineId, setEngineId, model, setModel, engineLoading, permissionMode, setPermissionMode,
+    engineId, setEngineId, model, setModel, engineLoading, permissionMode, setPermissionMode, reasoningEffort, setReasoningEffort,
     attachments, setAttachments, draggingFiles, setDraggingFiles,
     fileInputRef, promptRef, modelOptions, refreshModels,
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
@@ -320,6 +321,17 @@ export function NewTaskPanel({
               placeholder="Select model"
               emptyText="No coding models available"
               disabled={busy || modelOptions.length === 0}
+            />
+            <Select
+              value={reasoningEffort || DEFAULT_EFFORT_VALUE}
+              onValueChange={(next: string) => setReasoningEffort(isReasoningEffort(next) ? next : null)}
+              options={reasoningEffortOptions(selectedProject ? "This project's default, or the model's" : 'Let the model decide')}
+              variant="unstyled"
+              size="sm"
+              ariaLabel="Reasoning effort"
+              menuLabel="Reasoning effort"
+              disabled={busy}
+              className="meta-pill code-composer-picker code-effort-picker"
             />
             <Button
               variant="primary"

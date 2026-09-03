@@ -24,10 +24,12 @@ import {
   type ProjectResource,
   type ResourceAvailability,
   type ProjectSkillSource,
+  ReasoningEffort,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { DEFAULT_EFFORT_VALUE, isReasoningEffort, reasoningEffortOptions } from './reasoning';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -98,6 +100,7 @@ export function ProjectSettingsModal({
   const [projectEngineId, setProjectEngineId] = useState(defaultEngineId);
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
+  const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
@@ -170,6 +173,7 @@ export function ProjectSettingsModal({
     setProjectEngineId(project?.default_engine_id || defaultEngineId);
     setProjectModel(project?.default_model || defaultModel);
     setProjectPermission(project?.permission_mode || 'supervised');
+    setProjectReasoningEffort(project?.default_reasoning_effort || null);
     setError('');
     setDeleteOpen(false);
     setDeleteBusy(false);
@@ -264,6 +268,7 @@ export function ProjectSettingsModal({
         skill_sources: selectedSkillSources,
         default_engine_id: projectEngineId,
         default_model: projectModel,
+        default_reasoning_effort: projectReasoningEffort,
         permission_mode: projectPermission,
       });
       onClose();
@@ -413,6 +418,7 @@ export function ProjectSettingsModal({
                 <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
                   if (isPermissionMode(value)) setProjectPermission(value);
                 }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
+                <label><span>Reasoning</span><Select value={projectReasoningEffort || DEFAULT_EFFORT_VALUE} onValueChange={(value) => setProjectReasoningEffort(isReasoningEffort(value) ? value : null)} options={reasoningEffortOptions("The model's own default")} size="sm" ariaLabel="Default reasoning effort" /></label>
               </div>
               <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
               <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
