@@ -261,7 +261,7 @@ describe('EventTimeline', () => {
     const status = {
       ...event(2, 'session', 'Status: ready\nModel: gpt\nPermissions: supervised'),
       title: 'Task status',
-      data: { goal: {} },
+      data: { command: 'status' },
     };
 
     render(<EventTimeline {...timelineProps([event(1, 'user_message', '/status'), status])} session={session('ready')} />);

@@ -24,11 +24,12 @@ function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
 }
 
 
-// Slash-command answers (/status, /goal) arrive as `session` events carrying
-// the goal snapshot; every other session notification is already represented
-// by the task bar or the outcome card.
+// Slash-command answers arrive as `session` events marked with the command
+// name (older servers only attached the /status and /goal snapshot); every
+// other session notification is already represented by the task bar or the
+// outcome card.
 function isCommandAnswer(event: CodingEvent): boolean {
-  return 'goal' in event.data && !!event.text;
+  return (typeof event.data.command === 'string' || 'goal' in event.data) && !!event.text;
 }
 
 
