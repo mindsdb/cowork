@@ -27,6 +27,7 @@ import { supportsTaskCapability } from './taskCapabilities';
 import { useCodeTaskActions, withControlTimeout } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
+import { ConnectComputerModal } from '../views/settings/ConnectComputerModal';
 import { connectorReturnLabel, withProjectConnection, type ConnectorReturn } from './projectConnections';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
@@ -99,6 +100,7 @@ export default function CodeView({
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
+  const [connectComputerOpen, setConnectComputerOpen] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
   // Set while the Connectors view was opened on behalf of a project: accounts
   // connected there are added to that project, and Back returns to its origin.
@@ -394,6 +396,7 @@ export default function CodeView({
               onOpenConnectors();
             }}
             onCreateProject={() => setProjectEditor({ id: null })}
+            onAddComputer={() => setConnectComputerOpen(true)}
           />
         ) : restoring && !session ? (
           <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
@@ -604,6 +607,7 @@ export default function CodeView({
             }}
           />
         )}
+        <ConnectComputerModal open={connectComputerOpen} onClose={() => setConnectComputerOpen(false)} />
         <ProjectSettingsModal
           open={projectEditor !== null && !connectorsOpen && !skillsOpen}
           suspended={projectEditor !== null && (connectorsOpen || skillsOpen)}

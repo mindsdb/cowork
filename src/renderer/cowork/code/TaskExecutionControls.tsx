@@ -27,6 +27,7 @@ export function TaskExecutionControls({
   onResourceIdsChange,
   onComputerChange,
   onComputerMenuOpen,
+  onAddComputer,
 }: {
   resources: ProjectResource[];
   selectedResourceIds: string[];
@@ -38,6 +39,7 @@ export function TaskExecutionControls({
   onResourceIdsChange: (ids: string[]) => void;
   onComputerChange: (id: string) => void;
   onComputerMenuOpen?: () => void;
+  onAddComputer?: () => void;
 }) {
   const allSelected = selectedResourceIds.length === resources.length;
   const availability = new Map(resourceStates.map((item) => [item.resource.id, item.availability]));
@@ -119,6 +121,7 @@ export function TaskExecutionControls({
         availableComputerIds={computers.map((computer) => computer.id)}
         unavailableReason="Local resources"
         onOpen={onComputerMenuOpen}
+        onAddComputer={onAddComputer}
       />
     </div>
   );

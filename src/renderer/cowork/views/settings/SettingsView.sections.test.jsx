@@ -159,8 +159,10 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Connect computer' }));
     expect(await screen.findByRole('dialog', { name: 'Connect a computer' })).toBeInTheDocument();
-    expect(await screen.findByText(/cowork-code-runtime --server "https:\/\/code\.example\.test"/)).toHaveTextContent('--code "test-token"');
     expect(screen.getByRole('combobox', { name: 'Computer type' })).toHaveTextContent('Mac');
+    // The computer is named first; the command appears once it has been saved.
+    await user.click(screen.getByRole('button', { name: 'Add computer' }));
+    expect(await screen.findByText(/cowork-code-runtime --server "https:\/\/code\.example\.test"/)).toHaveTextContent('--code "test-token"');
     expect(screen.queryByText(/private local address/)).not.toBeInTheDocument();
   });
 

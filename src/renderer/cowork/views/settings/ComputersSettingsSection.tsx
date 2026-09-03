@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
-import { Cloud, Monitor, Pencil, Plus } from 'lucide-react';
+import { Cloud, Monitor, Pencil, Plus, RotateCw } from 'lucide-react';
 
-import type { CodeComputer } from '../../code/api';
+import type { CodeComputer, PendingComputer } from '../../code/api';
 import { codingApi } from '../../code/api';
 import { isAppVisible, subscribeAppVisibility } from '../../code/useAppVisible';
 import Badge from '../../components/ui/Badge';
@@ -43,8 +43,17 @@ function computerDetail(computer: CodeComputer): string {
 }
 
 
+function expiryLabel(expiresAt: string): string {
+  const seconds = Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000));
+  if (seconds < 60) return 'in under a minute';
+  return `in ${Math.round(seconds / 60)} min`;
+}
+
+
 export default function ComputersSettingsSection() {
   const [computers, setComputers] = useState<CodeComputer[]>([]);
+  const [pending, setPending] = useState<PendingComputer[]>([]);
+  const [recoding, setRecoding] = useState<PendingComputer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [connectOpen, setConnectOpen] = useState(false);
@@ -57,6 +66,7 @@ export default function ComputersSettingsSection() {
     try {
       const page = await codingApi.computers();
       setComputers(page.items);
+      setPending(page.pending || []);
       setError('');
       return true;
     } catch (reason) {
@@ -108,6 +118,16 @@ export default function ComputersSettingsSection() {
     }
   };
 
+  const removePending = async (item: PendingComputer) => {
+    try {
+      await codingApi.revokeComputer(item.id);
+      setPending((items) => items.filter((entry) => entry.id !== item.id));
+      setError('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not remove this computer.');
+    }
+  };
+
   const revoke = async (computer: CodeComputer) => {
     try {
       await codingApi.revokeComputer(computer.id);
@@ -133,8 +153,8 @@ export default function ComputersSettingsSection() {
         </div>
 
         <div className="divide-y divide-line">
-          {loading && !computers.length && <div className="py-5 text-sm text-ink-3">Finding computers…</div>}
-          {!loading && !computers.length && <div className="py-5 text-sm text-ink-3">No computers connected.</div>}
+          {loading && !computers.length && !pending.length && <div className="py-5 text-sm text-ink-3">Finding computers…</div>}
+          {!loading && !computers.length && !pending.length && <div className="py-5 text-sm text-ink-3">No computers connected.</div>}
           {computers.map((computer) => {
             const isLocal = Boolean(computer.is_local || computer.id === 'local');
             const editing = editingId === computer.id;
@@ -195,6 +215,27 @@ export default function ComputersSettingsSection() {
               </div>
             );
           })}
+          {pending.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 py-3.5" aria-label={`${item.name}, waiting to connect`}>
+              <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-dashed border-line bg-surface-2 text-ink-4">
+                <Monitor size={17} strokeWidth={1.5} />
+                <i className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-solid border-[var(--surface)] bg-[var(--warning)]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <strong className="truncate text-sm font-semibold text-ink">{item.name}</strong>
+                  <Badge size="xs" variant="muted">Waiting to connect</Badge>
+                </div>
+                <div className="mt-0.5 truncate text-xs text-ink-4">
+                  {platformLabel(item.platform)} · {item.expired ? 'Connection code expired' : `Connection code expires ${expiryLabel(item.expires_at)}`}
+                </div>
+              </div>
+              <Button size="xs" variant="subtle" onClick={() => { setRecoding(item); setConnectOpen(true); }}>
+                <RotateCw size={12} strokeWidth={1.5} /> New code
+              </Button>
+              <Button size="xs" variant="danger" onClick={() => void removePending(item)}>Remove</Button>
+            </div>
+          ))}
         </div>
         {error && <div role="alert" className="py-3 text-sm text-[var(--danger)]">{error}</div>}
       </SettingsGroup>
@@ -214,7 +255,12 @@ export default function ComputersSettingsSection() {
         </div>
       </SettingsGroup>
 
-      <ConnectComputerModal open={connectOpen} onClose={() => setConnectOpen(false)} />
+      <ConnectComputerModal
+        open={connectOpen}
+        pending={recoding}
+        onClose={() => { setConnectOpen(false); setRecoding(null); }}
+        onChanged={() => { void refresh(true); }}
+      />
     </SettingsSectionPanel>
   );
 }

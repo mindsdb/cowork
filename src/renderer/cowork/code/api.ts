@@ -90,9 +90,35 @@ export interface RuntimeControls {
   additional_dirs: string[];
 }
 
+export type ComputerPlatform = CodeComputer['capabilities']['platform'];
+
+/** A computer named in "Connect a computer" whose runtime has not connected yet. */
+export interface PendingComputer {
+  id: string;
+  name: string;
+  platform: ComputerPlatform;
+  created_at: string;
+  expires_at: string;
+  expired: boolean;
+}
+
+export interface ComputerPage {
+  items: CodeComputer[];
+  /** Absent on servers that predate pending computers. */
+  pending?: PendingComputer[];
+}
+
 export interface RuntimeRegistrationToken {
   registration_token: string;
   expires_in_seconds: number;
+  pending?: PendingComputer | null;
+}
+
+export interface ConnectComputerRequest {
+  name: string;
+  platform: ComputerPlatform;
+  /** Re-issue the code for this pending computer; its previous code stops working. */
+  replaces?: string;
 }
 
 export interface RecoveryOption {
@@ -740,9 +766,9 @@ const liveCodingApi = {
     const suffix = query.size ? `?${query.toString()}` : '';
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
-  computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
-  computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
-    method: 'POST',
+  computers: () => requestJson<ComputerPage>('/computers'),
+  computerRegistrationToken: (body?: ConnectComputerRequest) => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
+    method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}),
   }),
   renameComputer: (id: string, name: string) => requestJson<CodeComputer>(`/computers/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify({ name }),

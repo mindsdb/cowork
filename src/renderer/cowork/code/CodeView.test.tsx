@@ -73,7 +73,14 @@ vi.mock('./TaskBar', () => ({
     </>
   ),
 }));
-vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./NewTaskPanel', () => ({
+  NewTaskPanel: ({ onAddComputer }: { onAddComputer?: () => void }) => (
+    <div>New task panel<button type="button" onClick={onAddComputer}>Add computer stub</button></div>
+  ),
+}));
+vi.mock('../views/settings/ConnectComputerModal', () => ({
+  ConnectComputerModal: ({ open }: { open: boolean }) => (open ? <div>Connect computer modal</div> : null),
+}));
 vi.mock('./useCodeProjects', () => ({
   useCodeProjects: () => ({
     projects: [{
@@ -683,6 +690,26 @@ describe('CodeView connector return flow', () => {
     // The parent switches back to the Projects view; the editor resumes there.
     rerender(<CodeView {...props} newTask={false} projectsOpen connectorsOpen={false} />);
     expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+  });
+});
+
+describe('CodeView connect computer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.sessions.mockResolvedValue({ items: [] });
+    mocks.useCodingSession.mockReturnValue({
+      session: null, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+  });
+
+  it('opens Connect a computer from the task screen picker', async () => {
+    renderCode({ newTask: true });
+    expect(screen.queryByText('Connect computer modal')).toBeNull();
+
+    fireEvent.click(await screen.findByText('Add computer stub'));
+
+    expect(screen.getByText('Connect computer modal')).toBeInTheDocument();
   });
 });
 
