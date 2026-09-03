@@ -55,8 +55,12 @@ const SAFE_ACCOUNT_ID = /^[A-Za-z0-9._-]{1,128}$/;
  */
 const QUARANTINE_ACCOUNT = `_unresolved-${crypto.randomBytes(4).toString('hex')}`;
 
+function isUsableAsPathSegment(accountId: string): boolean {
+  return SAFE_ACCOUNT_ID.test(accountId) && accountId !== '.' && accountId !== '..';
+}
+
 function assertUsableAsPathSegment(accountId: string): void {
-  if (!SAFE_ACCOUNT_ID.test(accountId) || accountId === '.' || accountId === '..') {
+  if (!isUsableAsPathSegment(accountId)) {
     // Refusing beats falling back to the shared root, which would be the leak.
     throw new Error('[account-data] refusing to derive a data root from an unexpected account id');
   }
@@ -183,6 +187,34 @@ export function readActiveAccount(home: string): ActiveAccount {
  * the time it gets here.
  */
 export async function writeActiveAccount(home: string, accountId: string | null): Promise<void> {
+  const { tmp, target } = stageActiveAccount(home, accountId);
+  try {
+    await retryOnTransientLock(() => fs.renameSync(tmp, target));
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
+/**
+ * `writeActiveAccount` without the retry, for the synchronous auth choke point
+ * that cannot await. Best-effort by design: every boot re-records, so a write
+ * lost to a transient Windows lock is repaired on the next launch.
+ */
+export function writeActiveAccountSync(home: string, accountId: string | null): void {
+  const { tmp, target } = stageActiveAccount(home, accountId);
+  try {
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
+function stageActiveAccount(
+  home: string,
+  accountId: string | null,
+): { tmp: string; target: string } {
   let record: { accountId: string | null; lastAccountId: string | null };
   if (accountId === null) {
     const current = readActiveAccount(home);
@@ -201,12 +233,7 @@ export async function writeActiveAccount(home: string, accountId: string | null)
   const target = path.join(home, ACTIVE_FILE);
   const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
   fs.writeFileSync(tmp, JSON.stringify(record) + '\n', { encoding: 'utf-8', mode: 0o600 });
-  try {
-    await retryOnTransientLock(() => fs.renameSync(tmp, target));
-  } catch (err) {
-    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
-    throw err;
-  }
+  return { tmp, target };
 }
 
 /**
@@ -220,14 +247,39 @@ export async function writeActiveAccount(home: string, accountId: string | null)
  */
 export async function reconcileAccountRoot(home: string, accountId: string | null): Promise<void> {
   if (!accountId) return;
-  const active = readActiveAccount(home);
-  const settled =
-    active.kind === 'signed-in'
-    && active.accountId === accountId
-    && readAccountClaim(home).kind !== 'unclaimed';
-  if (settled) return;
+  if (readAccountClaim(home).kind !== 'unclaimed') return; // ownership already settled
+  if (!isSoleOccupant(home, accountId)) return; // may be someone else's data
   await writeActiveAccount(home, accountId);
   adoptDefaultRootAsIncumbent(home, accountId);
+}
+
+/**
+ * Whether `accountId` is the only account this install has ever served, which is
+ * the evidence that unclaimed data on the default root is its own.
+ *
+ * A per-account subtree for anyone — including this account — means the install
+ * has already partitioned somebody, so the unclaimed data predates them and is
+ * not demonstrably this account's. `accounts/<this account>` existing is the
+ * case that previously let a refused sign-in come back on the next launch and
+ * take the default root anyway.
+ */
+export function isSoleOccupant(home: string, accountId: string): boolean {
+  const last = readActiveAccount(home);
+  const named =
+    last.kind === 'signed-in' ? last.accountId
+      : last.kind === 'signed-out' ? last.lastAccountId
+        : null;
+  if (named !== null && named !== accountId) return false;
+
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(path.join(home, ACCOUNTS_DIR));
+  } catch (err) {
+    // No accounts directory at all is the common case and means nobody has been
+    // partitioned here yet. Anything else is unreadable, so assume occupancy.
+    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+  return entries.length === 0;
 }
 
 /**
@@ -252,14 +304,36 @@ export function resolveAccountRoot(home: string, active: ActiveAccount): string 
     return QUARANTINE_ACCOUNT;
   }
 
-  assertUsableAsPathSegment(effective);
+  // Never throws: three of this function's callers in server-process.ts are not
+  // inside a try, so a record with an unusable id would stop the sidecar
+  // starting on every launch with no way back. Quarantine is the fail-closed
+  // answer here; the throw belongs on the write path.
+  if (!isUsableAsPathSegment(effective)) return QUARANTINE_ACCOUNT;
+
   if (claim.kind === 'claimed') return claim.accountId === effective ? null : effective;
   if (claim.kind === 'unclaimed') {
-    // Data with no claim belongs to whoever the boot reconcile names, not to
-    // whoever asks first.
-    return defaultRootHasData(home) ? effective : null;
+    // Data with no claim goes to this account only when it is demonstrably the
+    // only one this install has served; otherwise it takes its own root and the
+    // shell asks the person which they meant.
+    if (!defaultRootHasData(home)) return null;
+    return isSoleOccupant(home, effective) ? null : effective;
   }
   return effective;
+}
+
+/**
+ * Whether the default root holds data that nobody has claimed and that this
+ * account cannot be shown to own — the one case where only the person at the
+ * keyboard knows, so the shell asks them once.
+ */
+export function needsOwnershipDecision(home: string, active: ActiveAccount): boolean {
+  if (active.kind !== 'signed-in') return false;
+  if (!isUsableAsPathSegment(active.accountId)) return false;
+  return (
+    readAccountClaim(home).kind === 'unclaimed'
+    && defaultRootHasData(home)
+    && !isSoleOccupant(home, active.accountId)
+  );
 }
 
 /**

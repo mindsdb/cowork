@@ -1,12 +1,7 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
 import { checkInstallStatus } from './installer';
-import {
-  claimDefaultRoot,
-  readActiveAccount,
-  resolveAccountRoot,
-  writeActiveAccount,
-} from './account-data';
+import { claimDefaultRoot } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
@@ -1303,24 +1298,16 @@ export async function commitMindsSignIn(): Promise<void> {
     console.warn('[minds-auth] failed to set provider state', error);
   }
 
-  // Record this account and give it a data root BEFORE anything starts the
-  // sidecar. The stores are process environment, so a sidecar already running
-  // for another account keeps serving that account's database until it restarts,
-  // and the settings writes further down would land in it.
+  // Give this account a data root before anything starts the sidecar. The
+  // account itself was already recorded by the token store, which is the choke
+  // point every sign-in passes through; this only settles ownership of the
+  // default root, which is safe to attempt more than once.
   const accountId = signedInAccountId();
-  const rootBefore = resolveAccountRoot(homeDir, readActiveAccount(homeDir));
-  let rootAfter = rootBefore;
   if (accountId) {
     try {
-      await writeActiveAccount(homeDir, accountId);
-      // The one place the claim is written. Resolution stays a pure read so the
-      // adoption probes and the spawn path can never disagree about the root.
       claimDefaultRoot(homeDir, accountId);
-      rootAfter = resolveAccountRoot(homeDir, readActiveAccount(homeDir));
     } catch (err) {
-      // Leaves the previous record in place, so the sidecar keeps whatever root
-      // it already had rather than being pointed somewhere unverified.
-      console.warn('[minds-auth] could not record the signed-in account', err);
+      console.warn('[minds-auth] could not settle the account data root', err);
     }
   }
 
@@ -1346,7 +1333,7 @@ export async function commitMindsSignIn(): Promise<void> {
   // database any other way, and leaving it would show the new account the
   // previous one's tasks. Safe here specifically because the credential push
   // below runs after it, and `setServerStartedHook` re-pushes on every start.
-  if (rootAfter !== rootBefore && (isServerRunning() || isServerStarting())) {
+  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
     console.log('[minds-auth] account data root changed — restarting the sidecar');
     await stopServer();
     await startServer();

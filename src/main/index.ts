@@ -39,7 +39,7 @@ import {
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { reconcileAccountRoot, writeActiveAccount } from './account-data';
+import { reconcileAccountRoot } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
@@ -620,15 +620,6 @@ async function performMindsSignOutCleanup() {
   // an explicit logout.
   cancelCurrentOAuth();
   clearTokens();
-  // Record the sign-out rather than letting the account record go stale or
-  // missing. A missing record is deliberately read as "unknown", which sends
-  // the next start to an empty quarantine root; an explicit sign-out keeps this
-  // install on the data root it already had, which is what it shows today.
-  try {
-    await writeActiveAccount(coworkHome(), null);
-  } catch (err) {
-    console.warn('[logout] could not record the sign-out', err);
-  }
   // A refresh that was already inside its awaited handoff can settle true
   // between the early barrier above and this token-store transition. Drop the
   // barrier outright rather than reasserting a blocked state: a signed-out

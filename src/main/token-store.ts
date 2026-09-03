@@ -2,6 +2,7 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { writeActiveAccountSync } from './account-data';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
@@ -140,7 +141,28 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
+  recordSignedInAccount(accessToken);
   broadcastAuthChanged(true);
+}
+
+// Which account the app is signed in as, recorded HERE because this is the one
+// choke point every MindsHub auth transition flows through. Recording it further
+// out missed sign-ins that never reach the finalize step, and left the account
+// unnameable at boot until a network refresh had succeeded — which put an
+// offline launch on the wrong data root.
+function recordSignedInAccount(accessToken: string): void {
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length < 2) return;
+    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    const sub = (JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')) as { sub?: unknown }).sub;
+    if (typeof sub !== 'string' || !sub.trim()) return;
+    writeActiveAccountSync(coworkHome(), sub.trim());
+  } catch (e) {
+    // Best-effort: every boot re-records, so a lost write repairs itself.
+    console.warn('[token-store] could not record the signed-in account', e);
+  }
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
@@ -166,6 +188,14 @@ export function clearTokens(): void {
   _accessToken = null;
   _expiresAt = 0;
   deleteTokenFiles();
+  // Same choke point, same reason: a sign-out recorded here keeps the account
+  // this install was using, so it stays on its own data root rather than
+  // falling back onto whichever account owns the default one.
+  try {
+    writeActiveAccountSync(coworkHome(), null);
+  } catch (e) {
+    console.warn('[token-store] could not record the sign-out', e);
+  }
   broadcastAuthChanged(false);
 }
 

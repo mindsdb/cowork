@@ -10,6 +10,8 @@ import * as path from 'path';
 import {
   accountOwnerToken,
   adoptDefaultRootAsIncumbent,
+  isSoleOccupant,
+  needsOwnershipDecision,
   claimDefaultRoot,
   readAccountClaim,
   readActiveAccount,
@@ -138,13 +140,31 @@ describe('resolveAccountRoot', () => {
     expect(resolveAccountRoot(home, UNKNOWN)).toBeNull();
   });
 
-  it('keeps an account OFF an unclaimed root that already holds data', () => {
-    // This is the upgrade case and the reported bug: an install that upgraded
-    // while signed in has data and no claim, so whoever asks first must not get
-    // it. Only the boot reconcile may hand it to the incumbent.
+  it('gives unclaimed data to the only account this install has served', () => {
+    // The upgrade case, and the desktop that used BYOK keys for months before
+    // ever signing in: nobody else has been partitioned here, so the data is
+    // demonstrably this account's and it must not be moved off it.
     withData();
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_A))).toBeNull();
+  });
+
+  it('keeps an account OFF unclaimed data once another account has a root here', () => {
+    // Another account's subtree proves the unclaimed data predates it, so it is
+    // not demonstrably this account's and must not be handed over.
+    withData();
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_A), { recursive: true });
     expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
     expect(resolveAccountRoot(home, UNKNOWN)).toMatch(/^_unresolved-/);
+  });
+
+  it('keeps an account OFF unclaimed data when the record names someone else', () => {
+    withData();
+    fs.writeFileSync(
+      path.join(home, 'active-account.json'),
+      JSON.stringify({ accountId: null, lastAccountId: ACCOUNT_A }),
+      'utf-8',
+    );
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
   });
 
   it('sends an account to its own root when the claim is unreadable', () => {
@@ -178,8 +198,10 @@ describe('resolveAccountRoot', () => {
     expect(fs.readdirSync(home)).toEqual(before);
   });
 
-  it('refuses an account id that is not a safe path segment', () => {
-    expect(() => resolveAccountRoot(home, signedIn('../escape'))).toThrow(/unexpected account id/);
+  it('quarantines an unusable account id instead of throwing', () => {
+    // Three callers in server-process.ts are not inside a try, so throwing here
+    // would stop the sidecar starting on every launch with no way back.
+    expect(resolveAccountRoot(home, signedIn('../escape'))).toMatch(/^_unresolved-/);
   });
 });
 
@@ -300,6 +322,81 @@ describe('reconcileAccountRoot', () => {
     await writeActiveAccount(home, ACCOUNT_A);
     withData();
     await reconcileAccountRoot(home, ACCOUNT_A);
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+  });
+});
+
+
+describe('isSoleOccupant', () => {
+  it('is true on an install nobody has been partitioned on', () => {
+    expect(isSoleOccupant(home, ACCOUNT_A)).toBe(true);
+  });
+
+  it('is false once ANY per-account root exists, including this account own', () => {
+    // This account having its own root means a previous sign-in was already
+    // refused the default root; coming back later must not undo that.
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_A), { recursive: true });
+    expect(isSoleOccupant(home, ACCOUNT_A)).toBe(false);
+  });
+
+  it('is false when the record names a different account', async () => {
+    await writeActiveAccount(home, ACCOUNT_A);
+    expect(isSoleOccupant(home, ACCOUNT_B)).toBe(false);
+    expect(isSoleOccupant(home, ACCOUNT_A)).toBe(true);
+  });
+});
+
+describe('needsOwnershipDecision', () => {
+  it('is false when there is no data to be ambiguous about', () => {
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_A))).toBe(false);
+  });
+
+  it('is false for the only account this install has served', () => {
+    withData();
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_A))).toBe(false);
+  });
+
+  it('is false once the root is claimed either way', () => {
+    withData();
+    claimDefaultRoot(home, ACCOUNT_A);
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(false);
+  });
+
+  it('is true when unclaimed data cannot be shown to belong to this account', () => {
+    withData();
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_A), { recursive: true });
+    expect(needsOwnershipDecision(home, signedIn(ACCOUNT_B))).toBe(true);
+  });
+
+  it('is false when nobody is signed in', () => {
+    withData();
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_A), { recursive: true });
+    expect(needsOwnershipDecision(home, signedOut(ACCOUNT_B))).toBe(false);
+    expect(needsOwnershipDecision(home, UNKNOWN)).toBe(false);
+  });
+});
+
+describe('reconcileAccountRoot refusals', () => {
+  it('does not adopt for an account that already has its own root', async () => {
+    // The regression this closes: a sign-in refused the default root, then the
+    // next launch reconciled and handed it over anyway.
+    withData();
+    fs.mkdirSync(path.join(home, 'accounts', ACCOUNT_B), { recursive: true });
+    await reconcileAccountRoot(home, ACCOUNT_B);
+    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+    expect(resolveAccountRoot(home, signedIn(ACCOUNT_B))).toBe(ACCOUNT_B);
+  });
+
+  it('does not adopt when the record names a different account', async () => {
+    withData();
+    await writeActiveAccount(home, ACCOUNT_A);
+    await reconcileAccountRoot(home, ACCOUNT_B);
+    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+  });
+
+  it('does not re-decide an already claimed root', async () => {
+    claimDefaultRoot(home, ACCOUNT_A);
+    await reconcileAccountRoot(home, ACCOUNT_B);
     expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
   });
 });

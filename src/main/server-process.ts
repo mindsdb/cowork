@@ -135,6 +135,13 @@ function findFreePort(): Promise<number> {
   });
 }
 
+// Which account root the RUNNING sidecar was started on: an account id, or null
+// for the default root. `undefined` means we have not started or adopted one in
+// this process. Compared against the current resolution rather than diffing the
+// record, because the record is written at the auth choke point and so already
+// names the new account by the time a sign-in asks whether to restart.
+let _runningAccountRoot: string | null | undefined;
+
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
 let serverStarted = false;
@@ -142,6 +149,14 @@ let serverStarted = false;
 // share the same promise instead of spawning duplicate python processes
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
+
+/**
+ * Whether the running sidecar is serving the account root this session resolves
+ * to. False when nothing is running, so callers pair it with isServerRunning.
+ */
+export function sidecarIsOnCurrentAccountRoot(): boolean {
+  return _runningAccountRoot === currentAccountRoot();
+}
 
 /**
  * Run a complete server-maintenance transaction exclusively with starts and
@@ -590,6 +605,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot())) {
       serverStarted = true;
       _adoptedExternal = true;
+      // Adoption only happens on an owner-token match, and the token is bound to
+      // the account, so an adopted server is on this session's root by definition.
+      _runningAccountRoot = currentAccountRoot();
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -872,6 +890,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       };
     }
     serverStarted = true;
+    _runningAccountRoot = accountEnv.COWORK_ACCOUNT_ID ?? null;
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a
@@ -965,6 +984,7 @@ async function stopServerUnlocked(): Promise<void> {
   // actually verify exit so a racing startServer can't double-spawn.
   await prepareCodingTasksForShutdown();
   serverStarted = false;
+  _runningAccountRoot = undefined;
 
   const exited = new Promise<void>((resolve) => {
     proc.once('exit', () => resolve());
