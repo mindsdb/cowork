@@ -94,6 +94,7 @@ jobs:
         with:
           image: ${{ needs.build.outputs.image }}
           snyk-token: ${{ secrets.SNYK_TOKEN }}
+          policy-path: .snyk
           # This workflow builds Dockerfile.frontend, not the action's default
           # ./Dockerfile — otherwise Snyk attributes findings to the wrong image.
           dockerfile: Dockerfile.frontend
