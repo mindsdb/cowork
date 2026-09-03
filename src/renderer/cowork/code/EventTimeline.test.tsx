@@ -257,6 +257,19 @@ describe('EventTimeline', () => {
     expect(screen.getAllByText('Completed')).toHaveLength(1);
   });
 
+  it('shows the answer to /status where the command was sent', () => {
+    const status = {
+      ...event(2, 'session', 'Status: ready\nModel: gpt\nPermissions: supervised'),
+      title: 'Task status',
+      data: { goal: {} },
+    };
+
+    render(<EventTimeline {...timelineProps([event(1, 'user_message', '/status'), status])} session={session('ready')} />);
+
+    expect(screen.getByText('Task status')).toBeInTheDocument();
+    expect(screen.getByText(/Model: gpt/)).toBeInTheDocument();
+  });
+
   it('shows a rejected command where it happened and hides acknowledged ones', () => {
     const acknowledged = { ...event(1, 'command_result', ''), title: 'Cancel acknowledged', data: { command: 'cancel', commandId: 'cmd-1' } };
     const rejected = {

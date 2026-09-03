@@ -322,6 +322,8 @@
 .code-decision-record { margin: 8px 0; display: flex; align-items: flex-start; gap: 9px; color: var(--ink-3); font-size: 11.5px; }
 .code-decision-record > span { display: inline-flex; margin-top: 2px; color: var(--ok); }
 .code-decision-record.is-failed > span { color: var(--danger); }
+.code-decision-record.is-info > span { color: var(--ink-3); }
+.code-decision-record.is-info p { white-space: pre-line; }
 .code-decision-record strong { color: var(--ink-2); }
 .code-decision-record p { margin: 2px 0 0; }
 .code-running-indicator { margin: 16px 0; display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 11.5px; }

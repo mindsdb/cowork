@@ -24,6 +24,14 @@ function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
 }
 
 
+// Slash-command answers (/status, /goal) arrive as `session` events carrying
+// the goal snapshot; every other session notification is already represented
+// by the task bar or the outcome card.
+function isCommandAnswer(event: CodingEvent): boolean {
+  return 'goal' in event.data && !!event.text;
+}
+
+
 function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // Pending queue entries stay actionable beside the composer. When they
   // start, the server emits the ordinary completed user message, so showing
@@ -31,7 +39,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) return;
   // Workspace setup and terminal state live in the task bar/outcome. Keeping
   // raw session notifications here creates contradictory duplicate statuses.
-  if (event.type === 'session') return;
+  if (event.type === 'session' && !isCommandAnswer(event)) return;
   if (event.type === 'command_result' && event.phase !== 'failed') return;
 
   const previousItem = items.at(-1);
@@ -265,6 +273,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || 'Task status'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;
 }
 
