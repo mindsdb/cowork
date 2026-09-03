@@ -41,7 +41,9 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // Workspace setup and terminal state live in the task bar/outcome. Keeping
   // raw session notifications here creates contradictory duplicate statuses.
   if (event.type === 'session' && !isCommandAnswer(event)) return;
-  if (event.type === 'command_result' && event.phase !== 'failed') return;
+  // A late-confirmed follow-up is the one success worth a line: it tells the
+  // user their unconfirmed instruction did reach the agent.
+  if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
 
   const previousItem = items.at(-1);
   const previousEvent = lastEvent(previousItem);
@@ -273,6 +275,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Follow-up delivered'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || 'Task status'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;

@@ -259,6 +259,18 @@ describe('EventTimeline', () => {
     expect(screen.getByText('worker exited with code 137')).toBeVisible();
   });
 
+  it('shows an unconfirmed follow-up and the note that it was delivered late', () => {
+    const unconfirmed: CodingEvent = { ...event(1, 'user_message', 'Focus on tests'), title: 'Follow-up (unconfirmed)', phase: 'pending', data: { delivery: 'unconfirmed' } };
+    const delivered: CodingEvent = { ...event(2, 'command_result', 'Codex accepted the instruction after the deadline; it is now guiding the turn.'), title: 'Follow-up delivered', phase: 'completed', data: { delivery: 'confirmed' } };
+    const plainResult: CodingEvent = { ...event(3, 'command_result', 'internal'), title: 'Internal', phase: 'completed', data: {} };
+    render(<EventTimeline {...timelineProps([unconfirmed, delivered, plainResult])} session={session('running')} />);
+
+    expect(screen.getByText('Focus on tests')).toBeInTheDocument();
+    expect(screen.getByText('Follow-up delivered')).toBeInTheDocument();
+    expect(screen.getByText(/after the deadline/)).toBeInTheDocument();
+    expect(screen.queryByText('Internal')).toBeNull();
+  });
+
   it('hides raw session events because status is represented once in the outcome', () => {
     render(
       <EventTimeline
