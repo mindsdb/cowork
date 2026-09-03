@@ -105,7 +105,7 @@ function groupByProject(tasks) {
   return groups;
 }
 
-export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDelete, projects = [],}) {
+export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDelete, projects = [] }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
 

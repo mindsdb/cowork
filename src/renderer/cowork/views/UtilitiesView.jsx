@@ -58,7 +58,7 @@ function shouldUseTextarea(field) {
   return isLongField(field) && !field.secret;
 }
 
-export default function UtilitiesView({ kind, project, onRefreshArtifacts, projects = [],}) {
+export default function UtilitiesView({ kind, project, onRefreshArtifacts, projects = [] }) {
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');

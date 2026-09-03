@@ -15,7 +15,6 @@
 // continuation that says "user cancelled".
 
 import { useEffect, useRef, useState } from 'react';
-import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
@@ -253,7 +252,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         });
         const options = (result.projects || []).map((project) => ({
           value: String(project.id),
-          label: projectLabel(project) || `Project ${project.id}`,
+          label: project.name || `Project ${project.id}`,
         }));
         if (!options.length) {
           throw new Error('No PostHog projects are available to this personal API key. Enter a project ID manually or check the key access.');

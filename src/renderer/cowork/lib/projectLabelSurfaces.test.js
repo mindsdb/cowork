@@ -48,10 +48,17 @@ const SURFACES = [
   ['recents modal', 'cowork/components/RecentsModal.jsx'],
   ['rail context card heading', 'cowork/components/rail/ContextCard.jsx'],
   ['utilities / memory headings', 'cowork/views/UtilitiesView.jsx'],
-  // Neither of these was ever in this list; both were found only by running
-  // the rules across the whole renderer rather than across the list itself.
-  ['data-vault project picker', 'cowork/components/datavault/DataVaultFormPanel.jsx'],
+  // Found only by running the rules across the whole renderer rather than
+  // across the list itself.
   ['schedule task modal picker', 'cowork/components/schedule/ScheduleTaskModal.jsx'],
+  //
+  // DELIBERATELY NOT LISTED: `components/datavault/DataVaultFormPanel.jsx`.
+  // Its `label: project.name` reads a **PostHog** project from
+  // `discoverPostHogProjects()`, not a Cowork one -- a third-party API's
+  // objects that have no `display_name` and never will. Round five briefly
+  // "fixed" it because the rule matches `label: project.name` regardless of
+  // what `project` means; reverted. The same trap as `code/`'s CodeProject.
+  // If this file is ever added here, check what the object actually is first.
 ];
 
 /*
