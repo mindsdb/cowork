@@ -9,6 +9,7 @@ import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, Deliver
 import { compactPath, diffStats, isActiveStatus } from './presentation';
 import { openCodePath } from './shellLinks';
 import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
+import { GitIdentityCard, type GitIdentitySetup } from './GitIdentityCard';
 import { SourceUpdateSection } from './SourceUpdateSection';
 import type { ReviewFileAction } from './FileReviewControls';
 import { ReviewFileCard } from './ReviewFileCard';
@@ -42,6 +43,7 @@ export function ReviewPanel({
   onArchive = async () => {},
   onFileAction = async () => {},
   suggestedUpdate = '',
+  gitIdentitySetup = null,
 }: {
   open: boolean;
   session: CodingSession;
@@ -59,6 +61,8 @@ export function ReviewPanel({
   onDraftPullRequests?: (title: string, body: string, connectionName: string | null, drafts: DraftPullRequestInput[]) => Promise<DeliveryRecord[]>;
   onResolveConflicts?: () => Promise<void>;
   connections?: ProjectConnection[];
+  /** Set when the last commit stopped because Git has no author identity on this computer. */
+  gitIdentitySetup?: GitIdentitySetup | null;
   onOpenProjectSettings?: () => void;
   onAgentAction?: (prompt: string) => Promise<void>;
   onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge' | 'resolve_thread', threadId?: string) => Promise<void>;
@@ -203,6 +207,7 @@ export function ReviewPanel({
               <strong>Deliver this task</strong>
               <span>Run checks, then open a pull request or apply the reviewed changes locally.</span>
             </div>
+            {gitIdentitySetup && <GitIdentityCard setup={gitIdentitySetup} busy={busy} />}
             <section className="code-handoff-summary">
               {session.project_name && <div className="code-handoff-summary__row"><span>Project</span><strong>{session.project_name}</strong></div>}
               {workspaceEntries.map((workspace) => (
