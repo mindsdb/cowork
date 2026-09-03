@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { countEnvironmentLines, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 
 
 describe('projectDefaults', () => {
@@ -13,8 +13,13 @@ describe('projectDefaults', () => {
   });
 
   it('counts variable lines without validating them, so a half-typed line cannot break the summary', () => {
-    expect(countEnvironmentLines('API_URL=x\nNODE_EN\n\n')).toBe(2);
-    expect(countEnvironmentLines('')).toBe(0);
+    expect(countEnvironmentVariables('API_URL=x\nNODE_EN\n\n')).toBe(2);
+    expect(countEnvironmentVariables('')).toBe(0);
+  });
+
+  it('counts a name typed twice once, matching what saving keeps', () => {
+    expect(countEnvironmentVariables('API_URL=old\nAPI_URL=new\nNODE_ENV=development')).toBe(2);
+    expect(countEnvironmentVariables(' API_URL =a\nAPI_URL=b')).toBe(1);
   });
 
   it('splits port names on commas and whitespace', () => {
