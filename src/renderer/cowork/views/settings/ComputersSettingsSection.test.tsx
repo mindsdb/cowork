@@ -4,10 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodeComputer } from '../../code/api';
 import { resetDocumentVisibility, setDocumentVisibility } from '../../../../../tests/helpers/visibility';
 
-const computers = vi.hoisted(() => vi.fn());
+const { computers, revokeComputer, modalProps } = vi.hoisted(() => ({
+  computers: vi.fn(),
+  revokeComputer: vi.fn(async () => undefined),
+  modalProps: { current: null as null | { open: boolean; pending?: { id: string; name: string } | null } },
+}));
 
-vi.mock('../../code/api', () => ({ codingApi: { computers } }));
-vi.mock('./ConnectComputerModal', () => ({ ConnectComputerModal: () => null }));
+vi.mock('../../code/api', () => ({ codingApi: { computers, revokeComputer } }));
+vi.mock('./ConnectComputerModal', () => ({
+  ConnectComputerModal: (props: { open: boolean; pending?: { id: string; name: string } | null }) => {
+    modalProps.current = props;
+    return props.open ? <div>Connect computer modal for {props.pending?.name || 'a new computer'}</div> : null;
+  },
+}));
 
 import ComputersSettingsSection from './ComputersSettingsSection';
 
@@ -75,5 +84,38 @@ describe('ComputersSettingsSection', () => {
     expect(computers).toHaveBeenCalledTimes(2);
     await advance(5_000);
     expect(computers).toHaveBeenCalledTimes(3);
+  });
+
+  it('lists a computer that was named but has not connected yet, with New code and Remove', async () => {
+    computers.mockResolvedValue({
+      items: [local],
+      pending: [{ id: 'pending-1', name: 'Build box', platform: 'linux', created_at: '2026-09-03T10:00:00Z', expires_at: new Date(Date.now() + 9 * 60_000).toISOString(), expired: false }],
+    });
+    render(<ComputersSettingsSection />);
+    await advance(0);
+
+    const row = screen.getByLabelText('Build box, waiting to connect');
+    expect(row).toHaveTextContent('Waiting to connect');
+    expect(row).toHaveTextContent('Linux · Connection code expires in 9 min');
+
+    // New code reopens the dialog for that computer instead of asking for a name again.
+    await act(async () => { screen.getByRole('button', { name: /New code/ }).click(); });
+    expect(screen.getByText('Connect computer modal for Build box')).toBeInTheDocument();
+    expect(modalProps.current?.pending?.id).toBe('pending-1');
+
+    await act(async () => { screen.getByRole('button', { name: 'Remove' }).click(); });
+    expect(revokeComputer).toHaveBeenCalledWith('pending-1');
+    expect(screen.queryByLabelText('Build box, waiting to connect')).toBeNull();
+  });
+
+  it('marks an expired connection code without hiding the computer', async () => {
+    computers.mockResolvedValue({
+      items: [local],
+      pending: [{ id: 'pending-2', name: 'Old laptop', platform: 'darwin', created_at: '2026-09-03T09:00:00Z', expires_at: '2026-09-03T09:10:00Z', expired: true }],
+    });
+    render(<ComputersSettingsSection />);
+    await advance(0);
+
+    expect(screen.getByLabelText('Old laptop, waiting to connect')).toHaveTextContent('macOS · Connection code expired');
   });
 });

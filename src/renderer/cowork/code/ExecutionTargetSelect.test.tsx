@@ -57,4 +57,27 @@ describe('ExecutionTargetSelect', () => {
     expect(remote).toHaveTextContent('Offline');
     expect(remote).not.toHaveTextContent('Local resources');
   });
+
+  it('offers "Add computer…" at the end of the menu and reports it instead of selecting a target', async () => {
+    const user = userEvent.setup();
+    const onComputerChange = vi.fn();
+    const onAddComputer = vi.fn();
+    render(<ExecutionTargetSelect computers={computers} computerId="local" onComputerChange={onComputerChange} onAddComputer={onAddComputer} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Run task on' }));
+    const options = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(options.at(-1)).toContain('Add computer…');
+    await user.click(screen.getByRole('option', { name: /Add computer/ }));
+
+    expect(onAddComputer).toHaveBeenCalledOnce();
+    expect(onComputerChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves the menu unchanged when nothing handles adding a computer', async () => {
+    const user = userEvent.setup();
+    render(<ExecutionTargetSelect computers={computers} computerId="local" onComputerChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Run task on' }));
+    expect(screen.queryByRole('option', { name: /Add computer/ })).toBeNull();
+  });
 });

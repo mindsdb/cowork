@@ -1,4 +1,4 @@
-import { Cloud, Monitor } from 'lucide-react';
+import { Cloud, Monitor, Plus } from 'lucide-react';
 
 import Select from '../components/ui/Select';
 import type { CodeComputer } from './api';
@@ -9,6 +9,10 @@ function platformLabel(platform: CodeComputer['capabilities']['platform']): stri
   if (platform === 'windows') return 'Windows';
   return 'Linux';
 }
+
+
+/** Picker value that opens "Connect a computer" instead of selecting a target. */
+export const ADD_COMPUTER_VALUE = '__add_computer__';
 
 
 function isThisComputer(computer: CodeComputer): boolean {
@@ -26,6 +30,7 @@ export function ExecutionTargetSelect({
   availableComputerIds,
   unavailableReason = 'Unavailable',
   onOpen,
+  onAddComputer,
 }: {
   computers: CodeComputer[];
   computerId: string;
@@ -36,6 +41,8 @@ export function ExecutionTargetSelect({
   availableComputerIds?: string[];
   unavailableReason?: string;
   onOpen?: () => void;
+  /** Offers "Add computer…" at the end of the menu, like "New project" in the project picker. */
+  onAddComputer?: () => void;
 }) {
   const available = availableComputerIds ? new Set(availableComputerIds) : null;
   const local = computers.find(isThisComputer);
@@ -70,7 +77,10 @@ export function ExecutionTargetSelect({
   return (
     <Select
       value={computerId || local?.id || ''}
-      onValueChange={onComputerChange}
+      onValueChange={(value: string) => {
+        if (value === ADD_COMPUTER_VALUE) onAddComputer?.();
+        else onComputerChange(value);
+      }}
       options={[
         { group: 'Computers', options: computerOptions },
         { separator: true },
@@ -83,6 +93,16 @@ export function ExecutionTargetSelect({
           meta: 'Coming soon',
           disabled: true,
         },
+        ...(onAddComputer ? [
+          { separator: true as const },
+          {
+            value: ADD_COMPUTER_VALUE,
+            label: 'Add computer…',
+            triggerLabel: 'Add computer…',
+            description: 'Connect another Mac, Windows or Linux machine',
+            icon: <Plus size={13} strokeWidth={1.5} aria-hidden="true" />,
+          },
+        ] : []),
       ]}
       variant="unstyled"
       ariaLabel="Run task on"

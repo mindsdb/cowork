@@ -33,6 +33,7 @@ export function NewTaskPanel({
   connections,
   onProjectChange = () => {},
   onOpenProjectSettings = () => {},
+  onAddComputer,
   onOpenConnectors = () => {},
   onProjectConnectionsChange,
   onCreateProject = onOpenProjectSettings,
@@ -53,6 +54,7 @@ export function NewTaskPanel({
   onOpenConnectors?: () => void;
   onProjectConnectionsChange?: () => Promise<void> | void;
   onCreateProject?: () => void;
+  onAddComputer?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
   catalog?: CodingCatalog;
 }) {
@@ -169,6 +171,7 @@ export function NewTaskPanel({
                 onResourceIdsChange={setResourceIds}
                 onComputerChange={setComputerId}
                 onComputerMenuOpen={refreshComputers}
+                onAddComputer={onAddComputer}
               />
             )}
             {!selectedProject && (
@@ -181,6 +184,7 @@ export function NewTaskPanel({
                   loading={executionLoading}
                   localOnly
                   onOpen={refreshComputers}
+                  onAddComputer={onAddComputer}
                 />
               </div>
             )}
