@@ -13,10 +13,17 @@ export function parseEnvironmentVariables(text: string): [string, string][] {
 }
 
 
-// The summary must never throw while the user is mid-edit, so it counts
-// lines rather than parsing them; parseEnvironmentVariables validates on save.
-export function countEnvironmentLines(text: string): number {
-  return text.split('\n').filter((line) => line.trim()).length;
+// The summary must never throw while the user is mid-edit, so it reads names
+// loosely instead of parsing; parseEnvironmentVariables validates on save.
+// Saving keeps one value per name, so a name typed twice counts once here too.
+export function countEnvironmentVariables(text: string): number {
+  const names = new Set<string>();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const separator = line.indexOf('=');
+    names.add((separator > 0 ? line.slice(0, separator) : line).trim());
+  }
+  return names.size;
 }
 
 

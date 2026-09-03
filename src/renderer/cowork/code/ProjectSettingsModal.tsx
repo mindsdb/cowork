@@ -29,7 +29,7 @@ import {
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
-import { countEnvironmentLines, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
@@ -243,7 +243,7 @@ export function ProjectSettingsModal({
     agent: availableEngines.find((engine) => engine.id === projectEngineId)?.label || projectEngineId,
     model: projectModelOptions.find((option) => option.value === projectModel)?.label || projectModel,
     permission: PERMISSION_OPTIONS.find((option) => option.value === projectPermission)?.label || projectPermission,
-    variableCount: countEnvironmentLines(environmentText),
+    variableCount: countEnvironmentVariables(environmentText),
     portNames: parsePortNames(portNames),
   });
 
