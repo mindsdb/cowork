@@ -1506,7 +1506,19 @@ function AppCore() {
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
       return { ...t, messages: msgs };
     }));
-    fetchSessions(warmedRef.current ? {} : { onItems: warmTranscript }).then((data) => {
+    // Claimed synchronously, not on resolve: refreshData re-enters on the
+    // serverOnline false->true flip that its own fetchHealth above causes, and
+    // /health beats a 200-conversation list every time — so latching in the
+    // .then() below left the second entry still unwarmed and fired the fan-out
+    // twice, the exact 100 requests this gate exists to prevent.
+    const warming = !warmedRef.current;
+    if (warming) warmedRef.current = true;
+    fetchSessions(warming ? { onItems: warmTranscript } : {}).then((data) => {
+      // Released again whenever nothing was actually warmed: fetchSessions
+      // returns before firing a single /items both on an empty account and on
+      // a failed list. Holding the claim through a failure would mean the
+      // Retry that fixes it never warms anything for the rest of the session.
+      if (warming && !(Array.isArray(data) && data.length > 0)) warmedRef.current = false;
       if (!Array.isArray(data)) {
         // A failed list request must not read as "no tasks". Keyed on having rows
         // on screen, not on having succeeded once: an empty
@@ -1517,13 +1529,11 @@ function AppCore() {
         return;
       }
       setTasksStatus('ready');
-      // Only latch once a warm-up actually ran. fetchSessions returns early on
-      // an empty account, before it fires a single /items — latching there
-      // would mean tasks that show up later (synced from another client) are
-      // never warmed for the rest of the session.
-      if (data.length > 0) warmedRef.current = true;
       // One-time freshness decision for the onboarding checklist, taken on
-      // the session's first successful fetch (refreshData also polls, hence
+      // the session's first successful fetch (refreshData re-fires — on the
+      // serverOnline flip, Retry, SSO, manual start and run-schedule-now; no
+      // timer drives it, the only setInterval here is refreshInFlightSet —
+      // hence
       // the ref guard): an account that already has tasks is not a first
       // run, and would otherwise sit on a permanent, undismissable 0/4 card.
       if (!onboardingFreshnessResolvedRef.current) {

@@ -220,6 +220,42 @@ describe('the recents list tells loading, empty and failed apart end-to-end (ENG
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('warms the transcripts once per session, not once per refreshData', async () => {
+    // The warm-up is the fix's actual win: without the gate a desktop cold
+    // start fires 100 /items instead of 50. refreshData re-enters on the
+    // serverOnline false->true flip that its OWN fetchHealth causes, so the
+    // gate only holds if warmedRef is set before that second entry.
+    spies.fetchSessions.mockReset().mockImplementation(
+      async () => spies.sessions.map((s) => ({ ...s })),
+    );
+
+    render(<App />);
+    await screen.findByRole('button', { name: 'Daily report run' });
+
+    const warming = spies.fetchSessions.mock.calls.filter(([opts]) => opts && opts.onItems);
+    expect(warming).toHaveLength(1);
+  });
+
+  it('still warms after a failed first list — the claim is released', async () => {
+    // The gate is claimed synchronously to survive the re-entry above, which
+    // means a first list that FAILS would otherwise hold the claim forever and
+    // leave the Retry that fixes it warming nothing for the rest of the session.
+    const user = userEvent.setup();
+    spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 500 });
+
+    render(<App />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(spies.fetchSessions.mock.calls.filter(([o]) => o && o.onItems)).not.toHaveLength(0);
+
+    const before = spies.fetchSessions.mock.calls.length;
+    spies.fetchSessions.mockResolvedValue(spies.sessions.map((s) => ({ ...s })));
+    await user.click(screen.getByText('Retry'));
+    await screen.findByRole('button', { name: 'Daily report run' });
+
+    const afterRetry = spies.fetchSessions.mock.calls.slice(before);
+    expect(afterRetry.filter(([o]) => o && o.onItems)).not.toHaveLength(0);
+  });
+
   it('recovering into a genuinely empty account says so, and drops the alert', async () => {
     // The two terminal states must stay distinguishable through a real
     // transition, not just as isolated props: retrying a failed fetch into an

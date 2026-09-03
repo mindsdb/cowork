@@ -398,7 +398,11 @@ export async function fetchSessions({ onItems } = {}) {
     .map((c) => {
       try {
         return _conversationToTask(c, []);
-      } catch {
+      } catch (err) {
+        // Dropping it beats stranding the whole list, but a conversation that
+        // silently vanishes from the sidebar is un-diagnosable without this.
+        // eslint-disable-next-line no-console
+        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
         return null;
       }
     })
