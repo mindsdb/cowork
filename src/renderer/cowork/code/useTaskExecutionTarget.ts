@@ -9,6 +9,7 @@ import {
 } from './api';
 
 const EXECUTION_CAPACITY_REFRESH_MS = 5_000;
+const CAPACITY_ISSUE = 'No online computer can run this task right now.';
 
 
 export function useTaskExecutionTarget(selectedProject: CodeProject | null, engineId: string) {
@@ -79,7 +80,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
         const offline = selectedStates.find((item) => item.availability.status === 'offline');
         setIssue(offline
           ? `${offline.resource.name} is on a computer that is offline.`
-          : 'No online computer can run this task right now.');
+          : CAPACITY_ISSUE);
       }
     }).catch((reason) => {
       if (active) setIssue(reason instanceof Error ? reason.message : 'Could not check where this task can run.');
@@ -94,7 +95,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       && resourceIds.length > 0
       && !loading
       && computers.length === 0
-      && !!issue;
+      && issue === CAPACITY_ISSUE;
     if (!waitingForCapacity) return undefined;
 
     let timer: number | undefined;

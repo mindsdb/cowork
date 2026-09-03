@@ -107,4 +107,38 @@ describe('useTaskExecutionTarget', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not re-poll when the issue is not a capacity shortage', async () => {
+    vi.useFakeTimers();
+    try {
+      projectResources.mockResolvedValue({ items: [{
+        resource: project.resources[0],
+        availability: {
+          resource_id: 'repo-1',
+          status: 'offline',
+          eligible_computer_ids: [],
+          detail: '',
+        },
+      }] });
+      projectComputers.mockResolvedValue({ items: [] });
+      const { result } = renderHook(() => useTaskExecutionTarget(project, 'codex'));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.executionIssue).toBe('cowork is on a computer that is offline.');
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(projectComputers).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
