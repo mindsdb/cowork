@@ -15,6 +15,14 @@ vi.mock('./api', async (importOriginal) => ({
   codingApi: { computers, projectComputers, projectResources },
 }));
 
+const windowSignal = vi.hoisted(() => ({ send: null as ((visible: boolean) => void) | null }));
+
+vi.mock('../../platform/host', () => ({
+  host: {
+    onWindowVisibility: (cb: (visible: boolean) => void) => { windowSignal.send = cb; return () => {}; },
+  },
+}));
+
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 
 
@@ -104,6 +112,28 @@ describe('useTaskExecutionTarget', () => {
       expect(result.current.executionIssue).toBe('');
       expect(projectComputers).toHaveBeenCalledTimes(2);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops rechecking capacity while the main window is hidden and resumes when it shows', async () => {
+    vi.useFakeTimers();
+    try {
+      projectComputers.mockResolvedValue({ items: [] });
+      const { result } = renderHook(() => useTaskExecutionTarget(project, 'codex'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.executionIssue).toBe('No online computer can run this task right now.');
+      expect(projectComputers).toHaveBeenCalledTimes(1);
+
+      act(() => windowSignal.send!(false));
+      await act(async () => { vi.advanceTimersByTime(15_000); await Promise.resolve(); });
+      expect(projectComputers).toHaveBeenCalledTimes(1);
+
+      act(() => windowSignal.send!(true));
+      await act(async () => { vi.advanceTimersByTime(5_000); await Promise.resolve(); await Promise.resolve(); });
+      expect(projectComputers).toHaveBeenCalledTimes(2);
+    } finally {
+      act(() => windowSignal.send?.(true));
       vi.useRealTimers();
     }
   });

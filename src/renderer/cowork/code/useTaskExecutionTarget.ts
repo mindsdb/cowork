@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
+
 import {
   codingApi,
   projectResources,
@@ -103,7 +105,10 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     let timer: number | undefined;
     const scheduleRefresh = () => {
       window.clearTimeout(timer);
-      if (document.visibilityState === 'visible') {
+      // Same rule as the task polls: a hidden or minimised window (which
+      // Electron on macOS never reports through document.visibilityState)
+      // must not keep asking where the task could run.
+      if (isAppVisible()) {
         timer = window.setTimeout(
           () => setRefreshRevision((current) => current + 1),
           EXECUTION_CAPACITY_REFRESH_MS,
@@ -111,10 +116,10 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       }
     };
     scheduleRefresh();
-    document.addEventListener('visibilitychange', scheduleRefresh);
+    const unsubscribeVisibility = subscribeAppVisibility(scheduleRefresh);
     return () => {
       window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', scheduleRefresh);
+      unsubscribeVisibility();
     };
   }, [computers.length, issue, loading, resourceIds.length, selectedProject]);
 
