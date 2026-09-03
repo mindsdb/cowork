@@ -231,7 +231,7 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? 'Message the agent…' : recoverable ? 'Add context before resuming…' : 'Ask for another change…'}
+          placeholder={active ? 'Message the agent…' : recoverable ? 'Reopen the task, then say how to continue…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
           disabled={busy}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {

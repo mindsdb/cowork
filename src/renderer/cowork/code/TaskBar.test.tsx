@@ -295,7 +295,7 @@ describe('TaskBar', () => {
       />,
     );
 
-    expect(screen.getByText('Resuming')).toBeInTheDocument();
+    expect(screen.getByText('Reopening')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   });
 });

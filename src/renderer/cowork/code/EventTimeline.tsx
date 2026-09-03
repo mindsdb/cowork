@@ -338,14 +338,14 @@ function TaskOutcome({
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
     : recoverable
       ? session.computer_status === 'offline'
-        ? 'The task computer disconnected. Your conversation is safe; resume there or choose another compatible computer.'
-        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved.'
+        ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
+        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
     <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
       <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
+        <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
         <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
@@ -361,7 +361,7 @@ function TaskOutcome({
         </div>
       ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
-          {recoveryInProgress ? 'Resuming…' : 'Resume task'}
+          {recoveryInProgress ? 'Reopening…' : 'Reopen task'}
         </Button>
       )}
     </section>

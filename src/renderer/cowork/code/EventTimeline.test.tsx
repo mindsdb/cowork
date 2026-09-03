@@ -100,10 +100,24 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/conversation is safe; resume there or choose another compatible computer/)).toBeInTheDocument();
+    expect(screen.getByText(/conversation is safe; reopen it there or choose another compatible computer/)).toBeInTheDocument();
     expect(screen.getAllByText('Computer disconnected')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Resume task' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen task' }));
     expect(onRecover).toHaveBeenCalledOnce();
+  });
+
+  it('says that reopening restores the copy but does not continue the interrupted turn', () => {
+    render(
+      <EventTimeline
+        {...timelineProps([])}
+        session={{ ...session('interrupted'), run_status: 'interrupted' }}
+      />,
+    );
+
+    expect(screen.getByText('Task paused')).toBeInTheDocument();
+    expect(screen.getByText(/send a message to continue the interrupted work/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
   });
 
   it('keeps local failures recoverable through the composer instead of a remote-run action', () => {
@@ -116,7 +130,7 @@ describe('EventTimeline', () => {
 
     expect(screen.getByText('Failed')).toBeInTheDocument();
     expect(screen.getByText('Tests failed')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reopen task' })).not.toBeInTheDocument();
   });
 
   it('turns a credit failure into concise recovery actions with technical detail on demand', () => {
