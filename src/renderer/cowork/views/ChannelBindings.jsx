@@ -84,7 +84,6 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
     }
   }
 
-  const projectName = (id) => projectLabel(projects.find((p) => p.id === id)) || '';
   const rows = channelType ? bindings.filter((b) => b.channel_type === channelType) : bindings;
 
   return (
