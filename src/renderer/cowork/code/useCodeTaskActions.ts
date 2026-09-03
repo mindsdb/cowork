@@ -6,8 +6,19 @@ import {
 } from './api';
 
 
+const CONTROL_TIMEOUT_MS = 20_000;
+
+
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
+}
+
+
+export function withControlTimeout<Result>(request: Promise<Result>, message: string): Promise<Result> {
+  return new Promise<Result>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), CONTROL_TIMEOUT_MS);
+    request.then(resolve, reject).finally(() => window.clearTimeout(timer));
+  });
 }
 
 
