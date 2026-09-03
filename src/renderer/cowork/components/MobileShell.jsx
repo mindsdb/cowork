@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Badge } from './ui';
 
@@ -345,7 +346,7 @@ export default function MobileShell({
                 return (
                   <ListRow
                     key={p.name || p.path}
-                    primary={p.name || p.path}
+                    primary={projectLabel(p) || p.path}
                     secondary={projTasks.length === 0
                       ? 'Tap to start chatting'
                       : `${projTasks.length} ${projTasks.length === 1 ? 'task' : 'tasks'}`}

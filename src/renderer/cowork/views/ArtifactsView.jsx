@@ -11,6 +11,7 @@
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
@@ -335,7 +336,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
         <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
         {canOpenProject ? (
-          <Tooltip content={`Open ${projectMatch.name}`}>
+          <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
@@ -577,7 +578,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
           {canOpenProject ? (
-            <Tooltip content={`Open ${projectMatch.name}`}>
+            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
