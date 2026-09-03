@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { writeActiveAccountSync } from './account-data';
+import { accountIdFromToken } from './jwt';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
@@ -149,18 +150,16 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 // choke point every MindsHub auth transition flows through. Recording it further
 // out missed sign-ins that never reach the finalize step, and left the account
 // unnameable at boot until a network refresh had succeeded — which put an
-// offline launch on the wrong data root.
+// offline launch on the wrong data root. Writing it here and clearing it in
+// clearTokens is what keeps the record's lifetime equal to the session's, so
+// "no record" and "no session" are the same state rather than two.
 function recordSignedInAccount(accessToken: string): void {
+  const accountId = accountIdFromToken(accessToken);
+  if (!accountId) return;
   try {
-    const parts = accessToken.split('.');
-    if (parts.length < 2) return;
-    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    const sub = (JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')) as { sub?: unknown }).sub;
-    if (typeof sub !== 'string' || !sub.trim()) return;
-    writeActiveAccountSync(coworkHome(), sub.trim());
+    writeActiveAccountSync(coworkHome(), accountId);
   } catch (e) {
-    // Best-effort: every boot re-records, so a lost write repairs itself.
+    // Best-effort: every sign-in re-records, so a lost write repairs itself.
     console.warn('[token-store] could not record the signed-in account', e);
   }
 }

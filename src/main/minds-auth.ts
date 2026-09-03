@@ -2,6 +2,7 @@ import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAcce
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot } from './account-data';
+import { accountIdFromToken, decodeJwtPayload } from './jwt';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
@@ -405,27 +406,9 @@ interface OrgRef {
   source?: string;
 }
 
-/** The signed-in account, from the token already in hand. One accessor rather
- *  than another inline `sub` read, since this one decides a data root. */
+/** The signed-in account, from the token already in hand. */
 export function signedInAccountId(): string | null {
-  const token = getAccessToken();
-  if (!token) return null;
-  const sub = decodeJwtPayload(token)?.sub;
-  return typeof sub === 'string' && sub.trim() ? sub.trim() : null;
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    // Buffer is fine in the main process (Node); base64 → utf8.
-    const decoded = Buffer.from(payload, 'base64').toString('utf-8');
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
+  return accountIdFromToken(getAccessToken());
 }
 
 function normalizeOrgRef(value: any, source: string): OrgRef | null {
