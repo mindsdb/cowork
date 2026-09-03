@@ -416,6 +416,13 @@ describe('ProjectSettingsModal', () => {
     expect(screen.queryByText('Update available')).toBeNull();
   });
 
+  // The section opens from its heading here and from an Edit button once the
+  // project-defaults section lands (#817); accept either so the two merge cleanly.
+  async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
+    const edit = screen.queryByRole('button', { name: 'Edit' });
+    await user.click(edit ?? screen.getByText('Task defaults and environment'));
+  }
+
   it('saves a default reasoning effort for the project', async () => {
     const onSave = vi.fn(async () => project);
     const user = userEvent.setup();
@@ -435,7 +442,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await openTaskDefaults(user);
     const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
     expect(effort).toHaveTextContent('Model default');
     await user.click(effort);
@@ -463,7 +470,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await openTaskDefaults(user);
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
   });
