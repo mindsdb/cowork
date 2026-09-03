@@ -95,4 +95,34 @@ describe('useProjectActions', () => {
 
     expect(result.current.previewUrl).toBeNull();
   });
+
+  it('keeps polling after a run until the command listens, then follows the port down', async () => {
+    const action = { id: 'serve', resource_id: 'web', resource_name: 'Web', label: 'Dev server' };
+    vi.useFakeTimers();
+    vi.mocked(codingApi.projectActions).mockResolvedValueOnce({ items: [action], preview_url: null, preview_pending: false });
+    vi.mocked(codingApi.runProjectAction).mockResolvedValue({ terminal_id: 'terminal-2', label: 'Dev server', preview_url: null, preview_pending: true });
+    const { result } = renderHook(() => useProjectActions('task-1'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    await act(async () => { await result.current.run(action); });
+    expect(result.current.previewUrl).toBeNull();
+    expect(result.current.previewPending).toBe(true);
+
+    // The dev server is still booting: no URL yet, keep waiting.
+    vi.mocked(codingApi.projectActions).mockResolvedValueOnce({ items: [action], preview_url: null, preview_pending: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(result.current.previewUrl).toBeNull();
+
+    // It listens: the preview becomes available without any user action.
+    vi.mocked(codingApi.projectActions).mockResolvedValueOnce({ items: [action], preview_url: 'http://127.0.0.1:5173', preview_pending: false });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(result.current.previewUrl).toBe('http://127.0.0.1:5173');
+    expect(result.current.previewPending).toBe(false);
+
+    // It dies behind its shell: the preview goes away again.
+    vi.mocked(codingApi.projectActions).mockResolvedValue({ items: [action], preview_url: null, preview_pending: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(result.current.previewUrl).toBeNull();
+    expect(result.current.previewPending).toBe(true);
+  });
 });

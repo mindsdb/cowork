@@ -105,6 +105,11 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+  // Pushed main → renderer when the main window hides/minimizes (false) or
+  // shows/restores/focuses (true). Electron 39 starts the renderer with
+  // MacWebContentsOcclusion disabled, so on macOS `document.visibilityState`
+  // never reports a hidden or minimized window; polling gates combine both.
+  APP_WINDOW_VISIBILITY: 'app:window-visibility',
 
   // First-class Code workspace (independent from the parked Coding Mode MVP).
   CODE_PICK_FOLDER: 'code:pick-folder',

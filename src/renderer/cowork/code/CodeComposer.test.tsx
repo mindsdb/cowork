@@ -2,8 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { codingApi, type CodingSession, type EngineCommand } from './api';
+import { codingApi, type CodingSession, type EngineCommand, type InputReference } from './api';
 import { CodeComposer } from './CodeComposer';
+import { resetComposerDrafts } from './composerDrafts';
 import { resetSkillLibraryCache } from './useSkillLibrary';
 import { host } from '../../platform/host';
 
@@ -35,16 +36,17 @@ const commands: EngineCommand[] = [
 afterEach(() => {
   vi.restoreAllMocks();
   resetSkillLibraryCache();
+  resetComposerDrafts();
 });
 
-function renderComposer(session: CodingSession = baseSession, history: string[] = []) {
+function renderComposer(session: CodingSession = baseSession, history: string[] = [], referenceRequest: { id: number; item: InputReference } | null = null) {
   const onSend = vi.fn(async () => {});
   const onStop = vi.fn(async () => {});
   const onClientCommand = vi.fn();
   const onPermissionChange = vi.fn(async () => {});
   const onSteerQueued = vi.fn(async () => {});
   const onRemoveQueued = vi.fn(async () => {});
-  render(
+  const { unmount } = render(
     <CodeComposer
       session={session}
       busy={false}
@@ -56,9 +58,10 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
       onSteerQueued={onSteerQueued}
       onRemoveQueued={onRemoveQueued}
       history={history}
+      referenceRequest={referenceRequest}
     />,
   );
-  return { onSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued };
+  return { onSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued, unmount };
 }
 
 
@@ -284,5 +287,38 @@ describe('CodeComposer', () => {
       'turn',
       [{ name: 'screenshot.png', path: '/tmp/screenshot.png', kind: 'local_image' }],
     ));
+  });
+});
+
+
+describe('CodeComposer drafts', () => {
+  const completed: CodingSession = { ...baseSession, status: 'completed' };
+  const attachment: InputReference = { kind: 'mention', name: 'notes.md', path: '/work/repo/notes.md' };
+
+  it('restores the unsent draft and attachments when the user returns to the task', () => {
+    const first = renderComposer(completed, [], { id: 1, item: attachment });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'half-written instruction' } });
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
+    first.unmount();
+
+    const other = renderComposer({ ...completed, id: 'task-2' });
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('');
+    expect(screen.queryByText('notes.md')).not.toBeInTheDocument();
+    other.unmount();
+
+    renderComposer(completed);
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('half-written instruction');
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
+  });
+
+  it('forgets the draft once it has been sent', async () => {
+    const first = renderComposer(completed);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'ship it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send follow-up' }));
+    await waitFor(() => expect(first.onSend).toHaveBeenCalledOnce());
+    first.unmount();
+
+    renderComposer(completed);
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('');
   });
 });

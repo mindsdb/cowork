@@ -96,10 +96,25 @@ export function TerminalScreen({
           }
           return true;
         });
+        let pendingInput = '';
+        let inputInFlight = false;
+        const flushInput = () => {
+          if (inputInFlight || !pendingInput) return;
+          const data = pendingInput;
+          pendingInput = '';
+          inputInFlight = true;
+          codingApi.terminalInput(sessionId, terminalId, encodeBase64(data))
+            .catch((reason) => {
+              if (!disposed) onError(reason instanceof Error ? reason.message : 'Could not write to terminal.');
+            })
+            .finally(() => {
+              inputInFlight = false;
+              flushInput();
+            });
+        };
         terminal.onData((data) => {
-          codingApi.terminalInput(sessionId, terminalId, encodeBase64(data)).catch((reason) => {
-            if (!disposed) onError(reason instanceof Error ? reason.message : 'Could not write to terminal.');
-          });
+          pendingInput += data;
+          flushInput();
         });
 
         let page = await codingApi.terminal(sessionId, terminalId);

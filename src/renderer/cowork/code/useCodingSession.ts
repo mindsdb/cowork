@@ -7,6 +7,7 @@ import {
   type DiffFile,
   type GitState,
 } from './api';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
 
 export interface LatestEvent {
@@ -199,7 +200,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
     const openStream = () => {
       closeStream();
       closeStream = () => {};
-      if (!historyLoaded || document.visibilityState !== 'visible') return;
+      if (!historyLoaded || !isAppVisible()) return;
       closeStream = openCodingEventStream(
         sessionId,
         cursor.current,
@@ -243,7 +244,7 @@ export function useCodingSession(sessionId: string | null, active = true) {
     void refreshReview(sessionId);
 
     const reconcile = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (!isAppVisible()) return;
       Promise.allSettled([
         codingApi.session(sessionId),
         codingApi.events(sessionId, cursor.current),
@@ -257,7 +258,15 @@ export function useCodingSession(sessionId: string | null, active = true) {
             scheduleReview(sessionId);
           }
         }
-        if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') setError('');
+        if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') {
+          setError('');
+        } else {
+          // Both reads failed: the backend is unreachable or answering errors.
+          // Say so instead of leaving the last known state on screen as if it
+          // were live.
+          const reason = sessionResult.reason;
+          setError(reason instanceof Error && reason.message ? reason.message : 'Could not refresh this coding task.');
+        }
       });
     };
     const onVisibilityChange = () => {
@@ -265,11 +274,11 @@ export function useCodingSession(sessionId: string | null, active = true) {
       reconcile();
     };
     const reconcileTimer = window.setInterval(reconcile, 2_500);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    const unsubscribeVisibility = subscribeAppVisibility(onVisibilityChange);
     return () => {
       alive = false;
       window.clearInterval(reconcileTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      unsubscribeVisibility();
       if (liveFlushTimer.current != null) {
         window.clearTimeout(liveFlushTimer.current);
         liveFlushTimer.current = null;

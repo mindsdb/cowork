@@ -324,6 +324,15 @@ export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => v
   return () => {};
 }
 
+// Main-window hide/minimize (false) and show/restore/focus (true). The web
+// build has no window to hide, so it never fires and stays visible.
+export function onWindowVisibility(cb: (visible: boolean) => void): () => void {
+  if (isElectron && typeof bridge.onWindowVisibility === 'function') {
+    return bridge.onWindowVisibility(cb);
+  }
+  return () => {};
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -1461,6 +1470,7 @@ export const host = {
   removeCodingTask,
   onCodingTerminalData,
   onCodingTerminalExit,
+  onWindowVisibility,
   getPathForFile,
   getUIVersion,
   getVersionInfo,

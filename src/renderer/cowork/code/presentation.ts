@@ -19,9 +19,9 @@ const RUN_STATUS: Record<TaskRunStatus, { label: string; tone: 'neutral' | 'acce
   awaiting_approval: { label: 'Needs attention', tone: 'warning' },
   completed: { label: 'Completed', tone: 'success' },
   cancelled: { label: 'Stopped', tone: 'neutral' },
-  interrupted: { label: 'Resume needed', tone: 'warning' },
+  interrupted: { label: 'Paused', tone: 'warning' },
   failed: { label: 'Failed', tone: 'danger' },
-  recovering: { label: 'Resuming', tone: 'accent' },
+  recovering: { label: 'Reopening', tone: 'accent' },
 };
 
 export function codingSessionStatus(session: Pick<CodingSession, 'status' | 'run_status' | 'computer_status'>) {

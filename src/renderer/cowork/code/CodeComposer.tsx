@@ -5,6 +5,7 @@ import { Textarea } from '../components/ui/Input';
 import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu, PromptQueue } from './ComposerMenus';
+import { readComposerDraft, writeComposerDraft } from './composerDrafts';
 import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
@@ -85,9 +86,9 @@ export const CodeComposer = memo(function CodeComposer({
   history = [],
   referenceRequest = null,
 }: CodeComposerProps) {
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(() => readComposerDraft(session.id)?.prompt ?? '');
   const [commandIndex, setCommandIndex] = useState(0);
-  const [attachments, setAttachments] = useState<InputReference[]>([]);
+  const [attachments, setAttachments] = useState<InputReference[]>(() => readComposerDraft(session.id)?.attachments ?? []);
   const [mentionResults, setMentionResults] = useState<InputReference[]>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [referenceError, setReferenceError] = useState('');
@@ -103,6 +104,7 @@ export const CodeComposer = memo(function CodeComposer({
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
   const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectId: session.project_id });
+  useEffect(() => writeComposerDraft(session.id, { prompt, attachments }), [session.id, prompt, attachments]);
   useEffect(() => {
     if (!referenceRequest) return;
     setAttachments((current) => mergeReferences(current, [referenceRequest.item]));
@@ -229,7 +231,7 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? 'Message the agent…' : recoverable ? 'Add context before resuming…' : 'Ask for another change…'}
+          placeholder={active ? 'Message the agent…' : recoverable ? 'Reopen the task, then say how to continue…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
           disabled={busy}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {

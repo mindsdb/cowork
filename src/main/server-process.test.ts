@@ -229,6 +229,63 @@ describe('startServer failure diagnostics', () => {
     await stopServer(); // leave the module's state clean for the next test
   });
 
+  it('keeps the previous run\'s log as cowork-server.log.1 across a relaunch', async () => {
+    const files = new Map<string, string>();
+    vi.mocked(fs.createWriteStream).mockImplementation(((p: string) => {
+      files.set(String(p), '');
+      const s = makeLogStream();
+      s.write = ((chunk: string) => { files.set(String(p), files.get(String(p)) + chunk); return true; }) as never;
+      return s as never;
+    }) as never);
+    vi.mocked(fs.renameSync).mockImplementation(((from: string, to: string) => {
+      if (!files.has(String(from))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      files.set(String(to), files.get(String(from))!);
+      files.delete(String(from));
+    }) as never);
+    const spawnRun = (line: string) => {
+      const child = makeChild();
+      vi.mocked(cp.spawn).mockImplementation((() => {
+        setTimeout(() => {
+          child.stderr.emit('data', Buffer.from(line));
+          healthOwner = 'owner-token';
+          child.exitCode = 0;
+          child.emit('exit', 0);
+        }, 0);
+        return child as never;
+      }) as never);
+    };
+    const logPath = path.join('/tmp/cowork-test-logs', 'cowork-server.log');
+
+    spawnRun('first run: inference 404\n');
+    expect((await startServer({ port: PORT, readyTimeoutMs: 60_000 })).ok).toBe(true);
+    await stopServer();
+    healthOwner = null;
+    spawnRun('second run: booted\n');
+    expect((await startServer({ port: PORT, readyTimeoutMs: 60_000 })).ok).toBe(true);
+
+    expect(files.get(`${logPath}.1`)).toContain('first run: inference 404');
+    expect(files.get(logPath)).toContain('second run: booted');
+    expect(files.get(logPath)).not.toContain('first run');
+    await stopServer();
+  });
+
+  it('still spawns when the previous log cannot be rotated', async () => {
+    vi.mocked(fs.renameSync).mockImplementation((() => {
+      throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    }) as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(fs.createWriteStream)).toHaveBeenCalledWith(expect.stringContaining('cowork-server.log'), { flags: 'w' });
+    await stopServer();
+  });
+
   it('fails as soon as the child dies rather than waiting out the budget', async () => {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
