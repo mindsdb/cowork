@@ -5,7 +5,7 @@ const xterm = vi.hoisted(() => ({ onData: null as ((data: string) => void) | nul
 const api = vi.hoisted(() => ({
   terminal: vi.fn(async () => ({ status: 'running', items: [], first_seq: 0, next_seq: 0 })),
   startTerminal: vi.fn(),
-  terminalInput: vi.fn(async () => ({ process_id: 'p1', status: 'running', items: [], first_seq: 0, next_seq: 0 })),
+  terminalInput: vi.fn(async (_id: string, _terminalId: string, _data: string) => ({ process_id: 'p1', status: 'running', items: [], first_seq: 0, next_seq: 0 })),
   resizeTerminal: vi.fn(),
   openStream: vi.fn(() => vi.fn()),
 }));
@@ -41,7 +41,7 @@ function decodeBase64(value: string): string {
 }
 
 function receivedInput(): string {
-  return api.terminalInput.mock.calls.map(([, , data]) => decodeBase64(data as string)).join('');
+  return api.terminalInput.mock.calls.map(([, , data]) => decodeBase64(data)).join('');
 }
 
 async function renderScreen(onError = vi.fn()) {
