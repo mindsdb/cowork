@@ -11,16 +11,10 @@ import {
   type ModelPickerSource,
 } from '../lib/modelPickerOptions';
 import { codingApi, type PermissionMode, type Personality, type ReasoningEffort, type RuntimeControls } from './api';
+import { REASONING_EFFORTS } from './reasoning';
 import { host } from '../../platform/host';
 import { PERMISSION_OPTIONS } from './permissions';
 
-const REASONING = [
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'Extra high' },
-];
 const PERSONALITIES = [
   { value: 'pragmatic', label: 'Pragmatic' },
   { value: 'friendly', label: 'Friendly' },
@@ -123,7 +117,7 @@ export function RuntimeControlsModal({
             <Select
               value={draft.reasoning_effort || 'high'}
               onValueChange={(next: string) => update('reasoning_effort', next as ReasoningEffort)}
-              options={REASONING}
+              options={REASONING_EFFORTS}
               ariaLabel="Reasoning effort"
               disabled={busy}
             />

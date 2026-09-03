@@ -444,4 +444,30 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-expanded', 'true');
   });
+
+  it('saves a default reasoning effort for the project', async () => {
+    const onSave = vi.fn(async () => project);
+    const user = userEvent.setup();
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
+        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
+    expect(effort).toHaveTextContent('Default');
+    await user.click(effort);
+    await user.click(screen.getByRole('option', { name: /^Low/ }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_reasoning_effort: 'low' })));
+  });
 });

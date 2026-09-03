@@ -297,6 +297,61 @@ describe('NewTaskPanel', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt' })));
   });
 
+  it('offers reasoning effort beside the model and sends the choice with the task', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="sonnet"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    expect(effort).toHaveTextContent('Default');
+    await user.click(effort);
+    await user.click(screen.getByRole('option', { name: /Extra high/ }));
+    expect(effort).toHaveTextContent('Extra high');
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Think carefully');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'xhigh' })));
+  });
+
+  it('starts from the Code Project default reasoning effort', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="sonnet"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[{ ...project, default_reasoning_effort: 'low' }]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(await screen.findByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Low');
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'low' })));
+  });
+
   it('falls back to the best model the coding runtime actually exposes', async () => {
     codingModels.mockResolvedValue({ items: ['haiku', 'gpt', 'gpt-codex', 'fable'] });
     render(
