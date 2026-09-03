@@ -191,7 +191,7 @@ export function useNewTaskDraft({
     setModel((current) => (
       configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
         ? configuredProjectModel
-        : preferredCodingModel(current, ids, defaultModel)
+        : preferredCodingModel(current, ids, configuredProjectModel || defaultModel)
     ));
   }, [defaultModel, enabledModelOptions, modelOptions, selectedProject?.default_model]);
 

@@ -274,6 +274,29 @@ describe('NewTaskPanel', () => {
     })));
   });
 
+  it('starts a task on the live catalog id when the project default is the legacy GPT 5.6 Sol id', async () => {
+    codingModels.mockResolvedValue({ items: ['gpt', 'gpt-codex', 'fable'] });
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
+        {...projectProps}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('GPT 5.6 Sol');
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt' })));
+  });
+
   it('falls back to the best model the coding runtime actually exposes', async () => {
     codingModels.mockResolvedValue({ items: ['haiku', 'gpt', 'gpt-codex', 'fable'] });
     render(
