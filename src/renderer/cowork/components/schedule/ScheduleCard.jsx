@@ -6,6 +6,7 @@
 // stops propagation so its controls don't also navigate.
 
 import Ico from '../Icons';
+import { projectLabel } from '../../lib/projectLabel';
 import { Alert, Card, Button, Spinner, Tooltip } from '../ui';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
@@ -44,7 +45,7 @@ export default function ScheduleCard({
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  const projectName = projectMatch?.name || '';
+  const projectName = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
@@ -106,7 +107,7 @@ export default function ScheduleCard({
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
-              <Tooltip content={`Open ${projectMatch.name}`}>
+              <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
                 <button
                   type="button"
                   onMouseDown={stop}

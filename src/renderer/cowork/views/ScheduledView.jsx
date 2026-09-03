@@ -12,6 +12,7 @@
 // existing onRunNow handler.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
   PageHeader, FilterRow, SearchInput, SortPill,
@@ -103,8 +104,8 @@ export default function ScheduledView({
       if (!q) return true;
       // Resolve the project name from the stored id (ENG-1255) so search by
       // project works — `item.project`/`projectName` are never sent by the server.
-      const projectName = projects.find((p) => p.id === item.projectId)?.name;
-      const haystack = [item.title, item.prompt, projectName]
+      const proj = projects.find((p) => p.id === item.projectId);
+      const haystack = [item.title, item.prompt, projectLabel(proj), proj?.name]
         .filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     };
@@ -365,7 +366,7 @@ function ScheduleListRow({
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  const projectName = projectMatch?.name || '';
+  const projectName = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
@@ -414,7 +415,7 @@ function ScheduleListRow({
       <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectMatch.name}`}>
+            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}

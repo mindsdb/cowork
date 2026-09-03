@@ -6,6 +6,7 @@
 // channel: rows are filtered and new routes are created on it.
 
 import { useEffect, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Badge, Button, Tooltip } from '../components/ui';
 import {
@@ -83,7 +84,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
     }
   }
 
-  const projectName = (id) => projects.find((p) => p.id === id)?.name || '';
+  const projectName = (id) => projectLabel(projects.find((p) => p.id === id)) || '';
   const rows = channelType ? bindings.filter((b) => b.channel_type === channelType) : bindings;
 
   return (

@@ -16,6 +16,7 @@
 //                 confirm modal via the parent's onDeleteTask.
 
 import { useMemo, useRef, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Badge, CardRow, EmptyState, Button, Tooltip } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
@@ -141,7 +142,7 @@ function TaskRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectMatch.name}`}>
+            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
@@ -272,7 +273,7 @@ function ScheduleGroupRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <Tooltip content={`Open ${projectMatch.name}`}>
+            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}

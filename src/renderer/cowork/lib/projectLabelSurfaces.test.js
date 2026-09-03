@@ -31,6 +31,14 @@ const SURFACES = [
   ['move-to-project dialog', 'cowork/components/MoveToProjectModal.jsx'],
   ['mobile drawer (the sidebar below 640px)', 'cowork/components/MobileShell.jsx'],
   ['artifacts view open-project tooltip', 'cowork/views/ArtifactsView.jsx'],
+  // Round three. Found by running the rules below across the whole renderer
+  // rather than by hand -- which is the only reason ChannelBindings and
+  // ScheduleDetailView are here at all; no report named them.
+  ['task list open-project tooltip', 'cowork/views/TasksView.jsx'],
+  ['scheduled list', 'cowork/views/ScheduledView.jsx'],
+  ['schedule card', 'cowork/components/schedule/ScheduleCard.jsx'],
+  ['schedule detail hint', 'cowork/views/ScheduleDetailView.jsx'],
+  ['channel bindings', 'cowork/views/ChannelBindings.jsx'],
 ];
 
 /*
@@ -55,6 +63,24 @@ const DISPLAY_ATTR = new RegExp(
 );
 const JSX_CHILD = new RegExp(`>\\{\\s*${PROJECT_VAR}\\??\\.name\\b[^\\n]*?\\}\\s*<`);
 
+/*
+ * Two shapes the attribute/child rules cannot see, both proven by real misses.
+ *
+ * BARE_INTERP: `return `New task · ${selectedProject.name}`` is neither an
+ * attribute nor a JSX child, so MobileShell's title bar passed even while the
+ * file was already in this list. The interpolation must CLOSE right after the
+ * read, so a comparison -- `${project?.name === p.name ? …}` -- is not a
+ * display use and is not flagged.
+ *
+ * LAUNDERED is the important one. `const projectName = projectMatch?.name`
+ * followed by `{projectName}` defeats every regex aimed at the render site: by
+ * then it is an ordinary string. Keyed on the LOCAL's name rather than the
+ * source expression, so `projects.find(…)?.name` is caught too -- which is how
+ * ScheduledView's search, ScheduleDetailView and ChannelBindings surfaced.
+ */
+const BARE_INTERP = new RegExp(`\\$\\{\\s*${PROJECT_VAR}\\??\\.name\\s*\\}`);
+const LAUNDERED = /\bconst\s+project(?:Name|Label|Title)\s*=\s*[^;\n]*\.name\b/;
+
 describe.each(SURFACES)('%s', (_name, rel) => {
   const src = readFileSync(resolve(RENDERER, rel), 'utf-8');
 
@@ -71,7 +97,8 @@ describe.each(SURFACES)('%s', (_name, rel) => {
     const offenders = src
       .split('\n')
       .map((line, i) => [i + 1, line])
-      .filter(([, line]) => DISPLAY_ATTR.test(line) || JSX_CHILD.test(line))
+      .filter(([, line]) => DISPLAY_ATTR.test(line) || JSX_CHILD.test(line)
+        || BARE_INTERP.test(line) || LAUNDERED.test(line))
       .map(([n, line]) => `${n}: ${line.trim()}`);
     expect(offenders).toEqual([]);
   });

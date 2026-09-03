@@ -17,9 +17,9 @@ const SECTIONS = [
 ];
 
 function titleForRoute(route, { selectedProject, currentTask } = {}) {
-  if (route === 'home') return selectedProject?.name ? `New task · ${selectedProject.name}` : 'New task';
+  if (route === 'home') return selectedProject?.name ? `New task · ${projectLabel(selectedProject)}` : 'New task';
   if (route === 'task') return currentTask?.title || 'Conversation';
-  if (route === 'projects') return selectedProject?.name || 'Projects';
+  if (route === 'projects') return projectLabel(selectedProject) || 'Projects';
   if (route === 'scheduled' || route === 'schedule-detail') return 'Scheduled';
   if (route === 'artifacts') return 'Artifacts';
   if (route === 'tasks') return 'Tasks';
