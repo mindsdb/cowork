@@ -206,6 +206,26 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
+  it('shows the server sign-in mismatch detail when the model catalogue is rejected', async () => {
+    const detail = 'Your sign-in does not match this server. Sign in again, or switch back to the environment you signed into.';
+    codingModels.mockRejectedValueOnce(Object.assign(new Error(detail), { status: 401 }));
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        {...projectProps}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    expect(await screen.findByText(detail)).toBeInTheDocument();
+    expect(screen.queryByText(/Coding request failed/)).not.toBeInTheDocument();
+  });
+
   it('opens searchable skill and command discovery from slash on a new task', async () => {
     render(
       <NewTaskPanel
