@@ -72,10 +72,21 @@ stage_shared_fallback() {
 # every update. A pkg installs to /Applications root-owned; a user-owned bundle
 # — exactly what a DMG drag-install produces — is what the in-place update
 # needs. Ownership metadata does not affect the code signature or stapled
-# notarization, so Gatekeeper is unchanged. Best-effort and non-fatal: a
-# headless/MDM install with no console user stays root-owned and falls back to
-# the manual installer notice (ENG-849). The installed bundle name is written
-# alongside this script by release-mac-pkg-notarized.sh.
+# notarization, so Gatekeeper is unchanged.
+#
+# Scope: this clears the prompt for an admin console user — the common case, and
+# the same outcome a DMG install would give them. Squirrel escalates to its
+# privileged helper when either the bundle OR its parent is unwritable
+# (SQRLUpdater's !targetWritable || !parentWritable), and /Applications is 0775
+# root:admin. An admin is in the admin group, so the parent is writable and the
+# swap is silent; a standard (non-admin) user still can't write /Applications
+# and keeps getting the prompt. Standard and MDM-managed users therefore fall
+# back to the manual installer notice (ENG-849) — a true prompt-free path for
+# them needs a privileged helper or a per-user install, tracked separately.
+#
+# Best-effort and non-fatal: a headless/MDM install with no console user stays
+# root-owned and also falls back to the manual notice. The installed bundle name
+# is written alongside this script by release-mac-pkg-notarized.sh.
 chown_app_bundle() {
   local user="$1"
   local name_file="$SCRIPT_DIR/installed-app-name"
