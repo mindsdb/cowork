@@ -610,7 +610,7 @@ export function DataVaultForm({
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}
                     disabled={busy}
-                    className="bg-transparent border-0 p-0 font-mono text-[10.5px] text-ink-4 tracking-[0.04em]"
+                    className="bg-transparent border-0 p-0 font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]"
                     style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
                   >{isSkipped ? 'unskip' : 'skip'}</button>
                 )}
