@@ -24,7 +24,7 @@ import { TaskBar } from './TaskBar';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { supportsTaskCapability } from './taskCapabilities';
-import { useCodeTaskActions } from './useCodeTaskActions';
+import { useCodeTaskActions, withControlTimeout } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 import { useCodeProjects } from './useCodeProjects';
@@ -34,7 +34,14 @@ import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
+import { trackBillingOpened } from '../lib/analytics';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { openCodeExternalUrl } from './shellLinks';
 import './code.css';
+
+
+const STEER_TIMEOUT_MESSAGE = 'The task did not accept the steer in time. If an approval is pending, resolve it first and try again.';
+const STOP_TIMEOUT_MESSAGE = 'The task did not acknowledge the stop request in time. Try again.';
 
 
 export default function CodeView({
@@ -405,13 +412,19 @@ export default function CodeView({
                 events={detail.events}
                 latestEvents={detail.latestEvents}
                 session={session}
+                modelName={models.find((model) => model.id === session.model)?.name || session.model}
                 recovering={recoveringTaskId === session.id}
                 onRecover={() => recoverTask(session.id)}
+                onChooseModel={() => setControlsOpen(true)}
+                onAddCredits={() => {
+                  trackBillingOpened('token_limit');
+                  void openCodeExternalUrl(MINDS_BILLING_URL);
+                }}
               />
               {approval && (
                 <ApprovalCard
                   approval={approval}
-                  busy={busy}
+                  busy={!!resolvingApprovalId}
                   onDecision={(decision) => {
                     // The user's decision is final from the UI's perspective.
                     // Remove the card synchronously, then reconcile with the
@@ -431,21 +444,21 @@ export default function CodeView({
                 busy={busy}
                 onSend={(prompt, delivery, attachments) => runAction(
                   () => delivery === 'steer'
-                    ? codingApi.steer(session.id, prompt, attachments)
+                    ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
                     : delivery === 'queue'
                       ? codingApi.queue(session.id, prompt, attachments)
                       : codingApi.turn(session.id, prompt, attachments),
                   true,
                   true,
                 )}
-                onStop={() => runAction(() => codingApi.cancel(session.id), true)}
+                onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
                 commands={commands}
                 onPermissionChange={(permissionMode) => runAction(
                   () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
                   true,
                 )}
                 onSteerQueued={(instructionId) => runAction(
-                  () => codingApi.steerQueued(session.id, instructionId),
+                  () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
                   true,
                 )}
                 history={history}

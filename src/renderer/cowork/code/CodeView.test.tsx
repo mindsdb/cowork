@@ -77,8 +77,8 @@ vi.mock('./FilesPanel', () => ({
   ),
 }));
 vi.mock('./ApprovalCard', () => ({
-  ApprovalCard: ({ onDecision }: { onDecision: (decision: 'approve_once') => void }) => (
-    <button type="button" onClick={() => onDecision('approve_once')}>Approval</button>
+  ApprovalCard: ({ busy, onDecision }: { busy: boolean; onDecision: (decision: 'approve_once') => void }) => (
+    <button type="button" disabled={busy} onClick={() => onDecision('approve_once')}>Approval</button>
   ),
 }));
 vi.mock('./ReviewPanel', () => ({ ReviewPanel: () => null }));
@@ -312,6 +312,94 @@ describe('CodeView session-list reconciliation', () => {
     expect(mocks.steerQueued).toHaveBeenCalledWith(active.id, 'queued-1');
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+  });
+
+  it('keeps the approval actionable while a steer is still in flight', () => {
+    const pending = deferred<CodingSession>();
+    const awaiting = {
+      ...session('awaiting'),
+      status: 'awaiting_approval' as const,
+      pending_approval: {
+        id: 'approval-1', kind: 'command', title: 'Run command', detail: 'npm install',
+        risk: 'May run a command', scope: 'This task only', allow_session: false,
+      },
+      queued_instructions: [{ id: 'queued-1', prompt: 'Also add a README', created_at: '2026-08-21T09:01:00Z' }],
+    };
+    mocks.steerQueued.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: awaiting, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+    expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(mocks.approve).toHaveBeenCalledWith(awaiting.id, 'approval-1', 'approve_once');
+  });
+
+  it('keeps the controls busy until every overlapping action has settled', async () => {
+    const steer = deferred<CodingSession>();
+    const approval = deferred<CodingSession>();
+    const awaiting = {
+      ...session('awaiting'),
+      status: 'awaiting_approval' as const,
+      pending_approval: {
+        id: 'approval-1', kind: 'command', title: 'Run command', detail: 'npm install',
+        risk: 'May run a command', scope: 'This task only', allow_session: false,
+      },
+      queued_instructions: [{ id: 'queued-1', prompt: 'Also add a README', created_at: '2026-08-21T09:01:00Z' }],
+    };
+    mocks.steerQueued.mockReturnValueOnce(steer.promise);
+    mocks.approve.mockReturnValueOnce(approval.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: awaiting, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+    // The approval answers first; the steer is still outstanding.
+    await act(async () => { approval.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+    await act(async () => { steer.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+  });
+
+  it('re-enables the composer and reports the failure when a steer never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const active = {
+        ...session('active'),
+        status: 'running' as const,
+        queued_instructions: [{ id: 'queued-1', prompt: 'Run Windows tests', created_at: '2026-08-21T09:01:00Z' }],
+      };
+      mocks.steerQueued.mockReturnValueOnce(new Promise<CodingSession>(() => {}));
+      mocks.useCodingSession.mockReturnValue({
+        session: active, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+        refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+      });
+
+      renderCode({ sessions: [active], selectedId: active.id });
+      fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(20_000);
+        for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      });
+
+      expect(screen.getByText(/did not accept the steer in time/)).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('re-enables the stop control and shows the failure when a cancel is rejected', async () => {

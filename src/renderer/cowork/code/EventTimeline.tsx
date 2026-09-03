@@ -24,6 +24,15 @@ function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
 }
 
 
+// Slash-command answers arrive as `session` events marked with the command
+// name (older servers only attached the /status and /goal snapshot); every
+// other session notification is already represented by the task bar or the
+// outcome card.
+function isCommandAnswer(event: CodingEvent): boolean {
+  return (typeof event.data.command === 'string' || 'goal' in event.data) && !!event.text;
+}
+
+
 function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // Pending queue entries stay actionable beside the composer. When they
   // start, the server emits the ordinary completed user message, so showing
@@ -31,8 +40,10 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) return;
   // Workspace setup and terminal state live in the task bar/outcome. Keeping
   // raw session notifications here creates contradictory duplicate statuses.
-  if (event.type === 'session') return;
-  if (event.type === 'command_result' && event.phase !== 'failed') return;
+  if (event.type === 'session' && !isCommandAnswer(event)) return;
+  // A late-confirmed follow-up is the one success worth a line: it tells the
+  // user their unconfirmed instruction did reach the agent.
+  if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
 
   const previousItem = items.at(-1);
   const previousEvent = lastEvent(previousItem);
@@ -264,42 +275,81 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Follow-up delivered'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || 'Task status'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;
 }
 
 
+interface FailureRecovery {
+  title: (modelName: string) => string;
+  body: string;
+  addCredits?: boolean;
+}
+
+const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
+  insufficient_credits: {
+    title: (modelName) => `${modelName} needs credits`,
+    body: 'Add credits or choose another model, then continue in this task.',
+    addCredits: true,
+  },
+  model_authentication_failed: {
+    title: () => 'Your sign-in does not match this server',
+    body: 'Sign in again, or switch back to the environment you signed into, then continue in this task.',
+  },
+  model_unavailable: {
+    title: (modelName) => `${modelName} is not available`,
+    body: 'Choose another model, then continue in this task.',
+  },
+};
+
+
 function TaskOutcome({
   session,
+  latestSession,
   latestError,
+  modelName,
   recovering,
   onRecover,
+  onChooseModel,
+  onAddCredits,
 }: {
   session: CodingSession;
+  latestSession: CodingEvent | undefined;
   latestError: CodingEvent | undefined;
+  modelName: string;
   recovering: boolean;
   onRecover: () => Promise<void>;
+  onChooseModel: () => void;
+  onAddCredits: () => void;
 }) {
   const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
-  const errorDetail = session.last_error || latestError?.text || '';
+  const failure = latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string'
+    ? latestSession
+    : latestError;
+  const code = failure?.data.code;
+  const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
+  const technicalDetail = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
+  const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = session.status === 'completed'
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
     : recoverable
       ? session.computer_status === 'offline'
-        ? 'The task computer disconnected. Your conversation is safe; resume there or choose another compatible computer.'
-        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved.'
+        ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
+        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
     <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
       <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : detail}</p>
+        <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
+        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>
@@ -307,9 +357,14 @@ function TaskOutcome({
           </details>
         )}
       </div>
-      {recoverable && (
+      {recovery ? (
+        <div className="code-task-outcome__actions">
+          <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>
+          {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
+        </div>
+      ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
-          {recoveryInProgress ? 'Resuming…' : 'Resume task'}
+          {recoveryInProgress ? 'Reopening…' : 'Reopen task'}
         </Button>
       )}
     </section>
@@ -321,14 +376,20 @@ export const EventTimeline = memo(function EventTimeline({
   events,
   latestEvents,
   session,
+  modelName = '',
   recovering = false,
   onRecover = async () => {},
+  onChooseModel = () => {},
+  onAddCredits = () => {},
 }: {
   events: CodingEvent[];
   latestEvents: LatestEvents;
   session: CodingSession;
+  modelName?: string;
   recovering?: boolean;
   onRecover?: () => Promise<void>;
+  onChooseModel?: () => void;
+  onAddCredits?: () => void;
 }) {
   const items = useTimelineItems(events, session.id);
   const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
@@ -384,7 +445,16 @@ export const EventTimeline = memo(function EventTimeline({
         {session.status === 'running' && (
           <div className="code-running-indicator"><Spinner className="text-sm" /><span>The coding agent is working…</span></div>
         )}
-        <TaskOutcome session={session} latestError={latestError} recovering={recovering} onRecover={onRecover} />
+        <TaskOutcome
+          session={session}
+          latestSession={latestEvents.session?.latest}
+          latestError={latestError}
+          modelName={modelName}
+          recovering={recovering}
+          onRecover={onRecover}
+          onChooseModel={onChooseModel}
+          onAddCredits={onAddCredits}
+        />
       </div>
     </div>
   );
@@ -395,5 +465,6 @@ export const EventTimeline = memo(function EventTimeline({
   && left.session.run_status === right.session.run_status
   && left.session.computer_status === right.session.computer_status
   && left.session.last_error === right.session.last_error
+  && left.modelName === right.modelName
   && left.recovering === right.recovering
 ));

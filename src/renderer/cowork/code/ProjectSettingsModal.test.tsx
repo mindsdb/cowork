@@ -358,6 +358,43 @@ describe('ProjectSettingsModal', () => {
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
 
+  it('stores the live catalog id for a project saved with the legacy GPT 5.6 Sol id', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    const modelIds = ['gpt', 'gpt-codex'];
+    const props = {
+      project,
+      connections: [],
+      busy: false,
+      defaultModel: 'gpt-5.6-sol',
+      models: [
+        { id: 'gpt', name: 'GPT 5.6 Sol' },
+        { id: 'gpt-codex', name: 'GPT 5.3 Codex' },
+      ],
+      modelMeta: { modelProviders: { gpt: 'openai', 'gpt-codex': 'openai' } },
+      catalog: {
+        engines: [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }],
+        enginesLoading: false,
+        error: '',
+        modelError: () => '',
+        modelIds: () => modelIds,
+        modelsLoading: () => false,
+        loadModels: async () => {},
+      },
+      onClose: vi.fn(),
+      onSave,
+    };
+    const { rerender } = render(<ProjectSettingsModal {...props} open={false} />);
+
+    rerender(<ProjectSettingsModal {...props} open />);
+
+    await user.click(screen.getByText('Task defaults and environment'));
+    expect(screen.getByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ default_model: 'gpt' })));
+  });
+
   it('ignores a playbook status that arrives after the editor moved to another project', async () => {
     const late = new Promise<PlaybookStatus>((resolve) => {
       setTimeout(() => resolve({ configured: true, update_available: true, current_revision: 'aaaaaaaa1111', items: [], diff: 'stale' }), 0);

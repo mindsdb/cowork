@@ -556,6 +556,15 @@ function createWindow() {
     }, 140);
   });
 
+  const sendWindowVisibility = (visible: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.APP_WINDOW_VISIBILITY, visible);
+  };
+  mainWindow.on('hide', () => sendWindowVisibility(false));
+  mainWindow.on('minimize', () => sendWindowVisibility(false));
+  mainWindow.on('show', () => sendWindowVisibility(true));
+  mainWindow.on('restore', () => sendWindowVisibility(true));
+  mainWindow.on('focus', () => sendWindowVisibility(true));
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     killAllCodingTerminals();

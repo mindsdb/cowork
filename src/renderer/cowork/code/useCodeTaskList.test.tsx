@@ -6,9 +6,15 @@ import { resetDocumentVisibility, setDocumentVisibility } from '../../../../test
 
 
 const sessions = vi.hoisted(() => vi.fn());
+const windowSignal = vi.hoisted(() => ({ send: null as ((visible: boolean) => void) | null }));
 
 vi.mock('./api', () => ({
   codingApi: { sessions },
+}));
+vi.mock('../../platform/host', () => ({
+  host: {
+    onWindowVisibility: (cb: (visible: boolean) => void) => { windowSignal.send = cb; return () => {}; },
+  },
 }));
 
 import { useCodeTaskList } from './useCodeTaskList';
@@ -75,8 +81,50 @@ describe('useCodeTaskList', () => {
     view.rerender({ intentionalSurface: true });
     await act(async () => { pending.resolve({ items: [] }); await pending.promise; });
 
-    expect(view.onSessionsChange).toHaveBeenCalledWith([]);
+    expect(view.onSessionsChange).not.toHaveBeenCalled();
     expect(view.onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('does not rebuild a large task history when a poll returns the same payload', async () => {
+    const history = Array.from({ length: 500 }, (_, index) => codingSession({
+      id: `task-${index}`,
+      title: `Task ${index}`,
+    }));
+    sessions.mockResolvedValueOnce({ items: history.map((item) => ({ ...item })) });
+    const onSessionsChange = vi.fn();
+
+    renderHook(() => useCodeTaskList({
+      sessions: history,
+      selectedId: history[0].id,
+      newTask: false,
+      currentSession: null,
+      onSessionsChange,
+      onSelectionChange: vi.fn(),
+    }));
+
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(onSessionsChange).not.toHaveBeenCalled();
+  });
+
+  it('publishes a task-list poll when any persisted session field changes', async () => {
+    const previous = codingSession();
+    const updated = codingSession({ event_count: 2, updated_at: '2026-08-31T09:00:01Z' });
+    sessions.mockResolvedValueOnce({ items: [updated] });
+    const onSessionsChange = vi.fn();
+
+    renderHook(() => useCodeTaskList({
+      sessions: [previous],
+      selectedId: previous.id,
+      newTask: false,
+      currentSession: null,
+      onSessionsChange,
+      onSelectionChange: vi.fn(),
+    }));
+
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(onSessionsChange).toHaveBeenCalledWith([updated]);
   });
 
   it('opens New Task when the task area itself becomes empty', async () => {
@@ -129,6 +177,25 @@ describe('useCodeTaskList', () => {
       expect(sessions).toHaveBeenCalledTimes(2);
     } finally {
       resetDocumentVisibility();
+      vi.useRealTimers();
+    }
+  });
+
+  it('pauses the list refresh when the main window hides while the document still reads visible', async () => {
+    vi.useFakeTimers();
+    try {
+      renderTaskList(true);
+      await act(async () => { await Promise.resolve(); });
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => windowSignal.send!(false));
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(document.visibilityState).toBe('visible');
+      expect(sessions).toHaveBeenCalledOnce();
+
+      act(() => windowSignal.send!(true));
+      expect(sessions).toHaveBeenCalledTimes(2);
+    } finally {
       vi.useRealTimers();
     }
   });

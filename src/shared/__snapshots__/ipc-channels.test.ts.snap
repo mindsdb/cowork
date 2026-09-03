@@ -8,6 +8,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "APP_GET_PLATFORM": "app:get-platform",
   "APP_READY": "app:ready",
   "APP_UI_VERSION": "app:ui-version",
+  "APP_WINDOW_VISIBILITY": "app:window-visibility",
   "AUTH_GET_ACCESS_TOKEN": "auth:get-access-token",
   "AUTH_LOGOUT": "auth:logout",
   "BOOT_AWAIT_READY": "boot:await-ready",

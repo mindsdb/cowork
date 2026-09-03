@@ -43,8 +43,8 @@ export function RecoveryModal({
     >
       <ModalHeader
         id="code-recovery-title"
-        title="Resume task"
-        subtitle="Choose where this task should continue."
+        title="Reopen task"
+        subtitle="Choose where this task should reopen. Send a message afterwards to continue the interrupted work."
         onClose={busy ? undefined : onClose}
       />
       <ModalBody>
@@ -95,7 +95,7 @@ export function RecoveryModal({
       <ModalFooter>
         <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => selected && onConfirm(selected)} disabled={!selected || busy}>
-          {busy ? 'Resuming…' : selected?.mode === 'recreate' ? 'Start fresh copy' : 'Resume task'}
+          {busy ? 'Reopening…' : selected?.mode === 'recreate' ? 'Start fresh copy' : 'Reopen task'}
         </Button>
       </ModalFooter>
     </Modal>

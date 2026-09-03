@@ -13,6 +13,7 @@ const PREVIEW_STATUS_REFRESH_MS = 1_500;
 export function useProjectActions(sessionId: string | null | undefined) {
   const [actions, setActions] = useState<ProjectActionSummary[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const activeSession = useRef(sessionId);
   const actionRequest = useRef(0);
@@ -25,28 +26,35 @@ export function useProjectActions(sessionId: string | null | undefined) {
     if (!sessionId) {
       setActions([]);
       setPreviewUrl(null);
+      setPreviewPending(false);
       return undefined;
     }
     codingApi.projectActions(sessionId).then((page) => {
       if (!active) return;
       setActions(page.items);
       setPreviewUrl(page.preview_url || null);
+      setPreviewPending(!!page.preview_pending);
     }).catch(() => {
       if (!active) return;
       setActions([]);
       setPreviewUrl(null);
+      setPreviewPending(false);
     });
     return () => { active = false; };
   }, [sessionId]);
 
+  // Keep following the server while a preview is open or a run action is still
+  // coming up: the URL appears once the command listens and disappears again
+  // when it dies, even though its shell tab stays open.
   useEffect(() => {
-    if (!sessionId || !previewUrl) return undefined;
+    if (!sessionId || (!previewUrl && !previewPending)) return undefined;
     let active = true;
     const refresh = () => {
       void codingApi.projectActions(sessionId).then((page) => {
         if (!active) return;
         setActions(page.items);
         setPreviewUrl(page.preview_url || null);
+        setPreviewPending(!!page.preview_pending);
       }).catch(() => {
         // A transient catalogue read must not close a preview that may still
         // be running. The next interval reconciles it with server state.
@@ -57,7 +65,7 @@ export function useProjectActions(sessionId: string | null | undefined) {
       active = false;
       window.clearInterval(timer);
     };
-  }, [previewUrl, sessionId]);
+  }, [previewPending, previewUrl, sessionId]);
 
   const run = useCallback(async (action: ProjectActionSummary): Promise<ProjectActionRunResponse> => {
     if (!sessionId) throw new Error('Open a coding task before running a project action.');
@@ -73,6 +81,7 @@ export function useProjectActions(sessionId: string | null | undefined) {
       });
       if (actionRequest.current === request && activeSession.current === requestedSession) {
         setPreviewUrl(result.preview_url || null);
+        setPreviewPending(!!result.preview_pending);
       }
       return result;
     } finally {
@@ -82,5 +91,5 @@ export function useProjectActions(sessionId: string | null | undefined) {
     }
   }, [sessionId]);
 
-  return { actions, busy, previewUrl, run };
+  return { actions, busy, previewUrl, previewPending, run };
 }

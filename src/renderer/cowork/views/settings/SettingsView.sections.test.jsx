@@ -44,6 +44,7 @@ vi.mock('../../../platform/host', () => ({
     serverDiagnostics: spies.serverDiagnostics,
     checkForUpdates: spies.checkForUpdates,
     applyUpdate: spies.applyUpdate,
+    onWindowVisibility: () => () => {},
   },
   getVersionInfo: spies.getVersionInfo,
   getCodeControlPlaneOrigin: () => 'https://code.example.test',

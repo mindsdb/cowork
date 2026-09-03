@@ -113,6 +113,11 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.CODING_TERMINAL_EXIT, listener);
     return () => ipcRenderer.removeListener(IPC.CODING_TERMINAL_EXIT, listener);
   },
+  onWindowVisibility: (cb: (visible: boolean) => void) => {
+    const listener = (_: any, visible: boolean) => cb(visible);
+    ipcRenderer.on(IPC.APP_WINDOW_VISIBILITY, listener);
+    return () => ipcRenderer.removeListener(IPC.APP_WINDOW_VISIBILITY, listener);
+  },
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);

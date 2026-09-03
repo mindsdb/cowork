@@ -96,7 +96,7 @@ export function ProjectSettingsModal({
   const [environmentText, setEnvironmentText] = useState('');
   const [portNames, setPortNames] = useState('PORT');
   const [projectEngineId, setProjectEngineId] = useState(defaultEngineId);
-  const [projectModel, setProjectModel] = useState(defaultModel);
+  const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
@@ -213,11 +213,9 @@ export function ProjectSettingsModal({
 
   const engines = codingCatalog.engines;
   const engineModelIds = codingCatalog.modelIds(projectEngineId) || [];
-
-  useEffect(() => {
-    if (!engineModelIds.length) return;
-    setProjectModel((current) => preferredCodingModel(current, engineModelIds, defaultModel));
-  }, [defaultModel, engineModelIds]);
+  const projectModel = engineModelIds.length
+    ? preferredCodingModel(projectModelChoice, engineModelIds, defaultModel)
+    : projectModelChoice;
 
   const projectModelOptions = useMemo(() => {
     const shared = new Map(models.map((item) => [item.id, item]));

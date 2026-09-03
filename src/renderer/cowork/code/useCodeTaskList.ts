@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { codingApi, type CodingSession } from './api';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
 
 function sidebarProjectionChanged(previous: CodingSession, next: CodingSession): boolean {
@@ -12,6 +13,15 @@ function sidebarProjectionChanged(previous: CodingSession, next: CodingSession):
     || previous.source_path !== next.source_path
     || previous.pinned !== next.pinned
     || previous.archived !== next.archived;
+}
+
+
+function sessionListChanged(previous: CodingSession[], next: CodingSession[]): boolean {
+  if (previous.length !== next.length) return true;
+  return next.some((session, index) => {
+    const previousSession = previous[index];
+    return !previousSession || JSON.stringify(previousSession) !== JSON.stringify(session);
+  });
 }
 
 
@@ -48,7 +58,12 @@ export function useCodeTaskList({
   const load = useCallback(async (preferId?: string) => {
     const page = await codingApi.sessions(true);
     setError('');
-    onSessionsChangeRef.current(page.items);
+    // Polling returns fresh object identities even when no task changed. Keep
+    // the existing list in that common case so large histories do not force a
+    // full Code surface render every five seconds.
+    if (sessionListChanged(sessionsRef.current, page.items)) {
+      onSessionsChangeRef.current(page.items);
+    }
     const currentId = selectedIdRef.current;
     const currentExists = !!currentId && page.items.some((item) => item.id === currentId);
     const firstVisible = page.items.find((item) => !item.archived)?.id || page.items[0]?.id;
@@ -67,17 +82,17 @@ export function useCodeTaskList({
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
       .finally(() => setLoading(false));
     const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (!isAppVisible()) return;
       load().catch(() => {
         // The selected-task stream owns connectivity feedback during a
         // transient background-list refresh.
       });
     };
     const interval = window.setInterval(refresh, 5_000);
-    document.addEventListener('visibilitychange', refresh);
+    const unsubscribeVisibility = subscribeAppVisibility(refresh);
     return () => {
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refresh);
+      unsubscribeVisibility();
     };
   }, [active, load]);
 

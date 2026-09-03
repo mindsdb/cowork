@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
+
 import {
   codingApi,
   projectResources,
@@ -7,6 +9,13 @@ import {
   type CodeProject,
   type ProjectResourceState,
 } from './api';
+
+const EXECUTION_CAPACITY_REFRESH_MS = 5_000;
+const CAPACITY_ISSUE = 'No online computer can run this task right now.';
+const OFFLINE_ISSUE_SUFFIX = ' is on a computer that is offline.';
+
+const offlineIssue = (resourceName: string) => `${resourceName}${OFFLINE_ISSUE_SUFFIX}`;
+const isTransientIssue = (issue: string) => issue === CAPACITY_ISSUE || issue.endsWith(OFFLINE_ISSUE_SUFFIX);
 
 
 export function useTaskExecutionTarget(selectedProject: CodeProject | null, engineId: string) {
@@ -75,9 +84,7 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
       if (!computerPage.items.length) {
         const selectedStates = resourcePage.items.filter((item) => resourceIds.includes(item.resource.id));
         const offline = selectedStates.find((item) => item.availability.status === 'offline');
-        setIssue(offline
-          ? `${offline.resource.name} is on a computer that is offline.`
-          : 'No online computer can run this task right now.');
+        setIssue(offline ? offlineIssue(offline.resource.name) : CAPACITY_ISSUE);
       }
     }).catch((reason) => {
       if (active) setIssue(reason instanceof Error ? reason.message : 'Could not check where this task can run.');
@@ -86,6 +93,35 @@ export function useTaskExecutionTarget(selectedProject: CodeProject | null, engi
     });
     return () => { active = false; };
   }, [engineId, refreshRevision, resourceIds, resources, selectedProject]);
+
+  useEffect(() => {
+    const waitingForCapacity = !!selectedProject
+      && resourceIds.length > 0
+      && !loading
+      && computers.length === 0
+      && isTransientIssue(issue);
+    if (!waitingForCapacity) return undefined;
+
+    let timer: number | undefined;
+    const scheduleRefresh = () => {
+      window.clearTimeout(timer);
+      // Same rule as the task polls: a hidden or minimised window (which
+      // Electron on macOS never reports through document.visibilityState)
+      // must not keep asking where the task could run.
+      if (isAppVisible()) {
+        timer = window.setTimeout(
+          () => setRefreshRevision((current) => current + 1),
+          EXECUTION_CAPACITY_REFRESH_MS,
+        );
+      }
+    };
+    scheduleRefresh();
+    const unsubscribeVisibility = subscribeAppVisibility(scheduleRefresh);
+    return () => {
+      window.clearTimeout(timer);
+      unsubscribeVisibility();
+    };
+  }, [computers.length, issue, loading, resourceIds.length, selectedProject]);
 
   return {
     projectResources: resources,

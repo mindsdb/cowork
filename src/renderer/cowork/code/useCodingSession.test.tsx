@@ -262,6 +262,30 @@ describe('useCodingSession', () => {
     }
   });
 
+  it('reports a backend that stops answering instead of showing stale state as live', async () => {
+    vi.useFakeTimers();
+    try {
+      api.session.mockImplementation(async () => session('a'));
+      const { result } = renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.session?.id).toBe('a');
+      expect(result.current.error).toBe('');
+
+      api.session.mockRejectedValue(new Error('Coding request failed (502)'));
+      api.events.mockRejectedValue(new Error('Coding request failed (502)'));
+      await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.error).toBe('Coding request failed (502)');
+      expect(result.current.session?.id).toBe('a');
+
+      api.session.mockImplementation(async () => session('a'));
+      api.events.mockResolvedValue({ items: [], next_seq: 0 });
+      await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });
+      expect(result.current.error).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the session and events identity across a reconcile poll that returns identical data', async () => {
     vi.useFakeTimers();
     try {
