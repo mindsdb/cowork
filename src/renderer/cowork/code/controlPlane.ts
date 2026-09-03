@@ -25,4 +25,4 @@ export function codeControlPlaneReachable(): boolean {
 
 /** What the connect-computer surfaces say instead of a form when nothing can connect. */
 export const UNREACHABLE_TITLE = 'Not available from this desktop yet';
-export const UNREACHABLE_EXPLANATION = 'Cowork\u2019s Code service on this computer is private to it, so another computer has nowhere to connect and tasks run here. Connecting other computers works when Cowork is served from a shared address, where this dialog gives you a one-time command to run on the other computer.';
+export const UNREACHABLE_EXPLANATION = 'Cowork\u2019s Code service on this computer is private to it, so another computer has nowhere to connect and tasks run here. Connecting other computers works when Cowork is served from a shared address, where Connect computer gives you a one-time command to run on the other computer.';
