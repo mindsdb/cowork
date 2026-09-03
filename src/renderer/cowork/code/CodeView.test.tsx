@@ -662,6 +662,25 @@ describe('CodeView commit without a Git identity', () => {
     await waitFor(() => expect(screen.queryByText(/Identity stub/)).toBeNull());
   });
 
+  it('drops the pending setup when the user switches to another task', async () => {
+    const missing = Object.assign(new Error('Git needs your name and email.'), { status: 409, code: 'git_identity_missing' });
+    mocks.commit.mockRejectedValueOnce(missing);
+    mocks.sessions.mockResolvedValue({ items: [session('task-1'), session('task-2')] });
+    const { rerender, props } = renderCode({ sessions: [session('task-1'), session('task-2')], selectedId: 'task-1', account: { name: 'Ian', email: 'ian@example.com' } });
+    fireEvent.click(await screen.findByText('Review menu action'));
+    fireEvent.click(await screen.findByText('Commit stub'));
+    await screen.findByText('Identity stub Ian ian@example.com');
+
+    mocks.useCodingSession.mockReturnValue({
+      session: session('task-2'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+    rerender(<CodeView {...props} selectedId="task-2" />);
+
+    await waitFor(() => expect(screen.queryByText(/Identity stub/)).toBeNull());
+    expect(mocks.setGitIdentity).not.toHaveBeenCalled();
+  });
+
   it('still reports any other commit failure', async () => {
     mocks.commit.mockRejectedValueOnce(Object.assign(new Error('No repositories were committed: hook failed. All task changes remain available to retry.'), { status: 409 }));
     renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });

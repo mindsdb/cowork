@@ -93,7 +93,11 @@ export default function CodeView({
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
-  const [gitIdentitySetup, setGitIdentitySetup] = useState<{ message: string } | null>(null);
+  const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
+  // The setup belongs to the task whose commit stopped; switching tasks drops it.
+  useEffect(() => {
+    setGitIdentitySetup((current) => (current && current.sessionId === selectedId ? current : null));
+  }, [selectedId]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -157,7 +161,7 @@ export default function CodeView({
       if (codingErrorCode(reason) !== 'git_identity_missing') throw reason;
       // Not a failure to report: the Deliver tab asks for the identity and
       // retries this very message once it is saved.
-      setGitIdentitySetup({ message });
+      setGitIdentitySetup({ sessionId, message });
     }
   }, false, true);
   const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
@@ -519,12 +523,12 @@ export default function CodeView({
               onClose={() => setReviewOpen(false)}
               onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
               onCommit={(message) => commitTask(session.id, message)}
-              gitIdentitySetup={gitIdentitySetup ? {
+              gitIdentitySetup={gitIdentitySetup && gitIdentitySetup.sessionId === session.id ? {
                 name: account?.name || '',
                 email: account?.email || '',
                 onSubmit: async (name, email) => {
                   await codingApi.setGitIdentity({ name, email });
-                  await commitTask(session.id, gitIdentitySetup.message);
+                  await commitTask(gitIdentitySetup.sessionId, gitIdentitySetup.message);
                 },
               } : null}
               onApply={() => runAction(() => codingApi.apply(session.id), false, true)}

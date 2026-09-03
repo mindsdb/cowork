@@ -4877,7 +4877,7 @@ function AppCore() {
           >
             <CodeView
               active={effectiveWorkspaceMode === 'code'}
-              account={accountUser}
+              account={codeAccountUser}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
