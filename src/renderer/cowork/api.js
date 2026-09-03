@@ -307,15 +307,22 @@ function _conversationToTask(conv, messages = []) {
   };
 }
 
+/** The raw list request. Throws on failure so callers that need to tell an
+ * empty account from a broken fetch can (ENG-2246) — `fetchConversationList`
+ * below keeps the swallowing contract its other caller relies on. */
+async function requestConversationList() {
+  // Critical: pass `project=all` so we list conversations across
+  // every project, not just the active one. Without this, a task
+  // created in project A vanishes from `tasks` the moment we
+  // refresh while the user is "in" project B (because the server
+  // defaults to the active project's episodes/ dir).
+  const list = await req('/conversations/?project=all&limit=200');
+  return Array.isArray(list?.conversations) ? list.conversations : [];
+}
+
 export async function fetchConversationList() {
   try {
-    // Critical: pass `project=all` so we list conversations across
-    // every project, not just the active one. Without this, a task
-    // created in project A vanishes from `tasks` the moment we
-    // refresh while the user is "in" project B (because the server
-    // defaults to the active project's episodes/ dir).
-    const list = await req('/conversations/?project=all&limit=200');
-    return Array.isArray(list?.conversations) ? list.conversations : [];
+    return await requestConversationList();
   } catch {
     return [];
   }
@@ -331,28 +338,75 @@ export async function createConversation({ project, projectId, topic, harness, m
   });
 }
 
-export async function fetchSessions() {
+/** How many recent conversations get their transcript warmed in the
+ * background. Unchanged from the original eager fan-out — see ENG-2246's
+ * "deliberately not in scope" for why the depth is left alone. */
+const EAGER = 50;
+
+/** Resolves as soon as the conversation LIST lands — one request. Everything
+ * the sidebar renders comes from that response (`_conversationToTask` reads
+ * `messages` for nothing but `messages`), so waiting on the per-conversation
+ * transcripts only delayed first paint (ENG-2246).
+ *
+ * The transcript warm-up still runs, at the same depth, but off the critical
+ * path: it is deliberately NOT awaited, and reports each bundle through
+ * `onItems` so the caller can merge it in as it arrives.
+ *
+ * Returns `Task[]` on success and `{ error: true, status }` on a failed list
+ * request. Seven of the eight call sites guard with `Array.isArray`, so the
+ * failure is inert for them and actionable for the one that cares; the eighth
+ * (`App.jsx` delete-rollback) checks the shape explicitly for the same reason.
+ * Any new caller must do one or the other — a bare truthiness check would
+ * treat the error object as a task list. */
+export async function fetchSessions({ onItems } = {}) {
+  let conversations;
   try {
-    const conversations = await fetchConversationList();
-    if (conversations.length === 0) return [];
-    // Fan out for the most recent N — full message history isn't
-    // needed for the sidebar/projects-list rendering, but loading
-    // it eagerly for recent ones keeps clicks instant. Older tasks
-    // get an empty messages array; ChatView fetches them on open.
-    const EAGER = 50;
-    const eager = conversations.slice(0, EAGER);
-    const messageBundles = await Promise.all(
-      eager.map((c) =>
-        req(`/conversations/${encodeURIComponent(c.id)}/items`)
-          .then((r) => Array.isArray(r) ? r : [])
-          .catch(() => [])
-      )
-    );
-    const messagesById = new Map(eager.map((c, i) => [c.id, messageBundles[i]]));
-    return conversations.map((c) => _conversationToTask(c, messagesById.get(c.id) || []));
-  } catch {
-    return [];
+    conversations = await requestConversationList();
+  } catch (err) {
+    return { error: true, status: (err && err.status) || 0 };
   }
+  if (conversations.length === 0) return [];
+
+  // Background: fire-and-forget, one callback per conversation as it lands.
+  // Failures are per-conversation and silent — a warm-up that misses costs a
+  // slower open, never a blocked list.
+  //
+  // Only warmed when a caller is actually listening. Seven of the eight
+  // `fetchSessions` call sites want the list and nothing else (every task
+  // open is one of them); warming for those fetched 50 transcripts and threw
+  // every one away, which is 50 wasted requests on the app's most common
+  // interaction.
+  if (onItems) {
+    for (const c of conversations.slice(0, EAGER)) {
+      req(`/conversations/${encodeURIComponent(c.id)}/items`)
+        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+        // through _conversationToTask, so they got _hydrateAssistantEvents —
+        // which replays `events` into steps/startedAt and appends the synthetic
+        // `error` / `provider_required` message a failed turn renders its card
+        // from. Handing over the raw array silently dropped both.
+        .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
+        .catch(() => {});
+    }
+  }
+
+  // Guarded: the outer try/catch that used to wrap this whole function is gone,
+  // and _conversationToTask dereferences conv.title / conv.disabled_connections.
+  // One malformed row would reject a promise whose caller has no .catch, leaving
+  // tasksStatus stuck on 'loading' — skeleton rows forever, no retry reachable.
+  return conversations
+    .filter((c) => c && typeof c === 'object')
+    .map((c) => {
+      try {
+        return _conversationToTask(c, []);
+      } catch (err) {
+        // Dropping it beats stranding the whole list, but a conversation that
+        // silently vanishes from the sidebar is un-diagnosable without this.
+        // eslint-disable-next-line no-console
+        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 export async function fetchSession(id) {

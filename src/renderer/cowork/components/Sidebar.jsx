@@ -211,6 +211,11 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
 
 export default function Sidebar({
   tasks,
+  // 'loading' | 'ready' | 'failed' — lets the recents list tell an in-flight
+  // load and a failed one apart from a genuinely empty account (ENG-2246).
+  // Defaults to 'ready' so callers that don't pass it behave as before.
+  tasksStatus = 'ready',
+  onRetryTasks,
   pins = [],
   scheduledCount = 0,
   projectsCount = 0,
@@ -749,6 +754,46 @@ export default function Sidebar({
           </Tooltip>
         </div>
         <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+          {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
+              excludes pinned items, so keying on it told a user whose tasks
+              are all pinned that they have none — while their pinned tasks
+              were on screen above. */}
+          {tasksStatus === 'loading' && tasksWithPin.length === 0 && (
+            // Skeleton rows rather than a spinner: the list is about to be
+            // rows, so reserving their shape avoids the jump when they land.
+            <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="px-2 py-2">
+                  <div
+                    className="animate-pulse rounded"
+                    style={{ height: 10, width: `${72 - i * 9}%`, background: 'var(--border, rgba(128,128,128,0.25))' }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          {tasksStatus === 'failed' && tasksWithPin.length === 0 && (
+            // Distinct from "No tasks yet" on purpose: an empty list after a
+            // failed fetch reads as lost work, which is the bug this fixes.
+            <div role="alert" className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+              <div>Couldn&rsquo;t load your tasks.</div>
+              {onRetryTasks && (
+                <button
+                  type="button"
+                  onClick={onRetryTasks}
+                  className="mt-1 bg-transparent border-0 p-0 underline cursor-pointer text-xs"
+                  style={{ color: 'inherit' }}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
+          {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
+            <div className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+              No tasks yet
+            </div>
+          )}
           {recents.map((t) => {
             // Synthetic schedule-group entries route to the schedule
             // detail view (where the per-run history lives). Lone
