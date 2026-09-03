@@ -692,19 +692,14 @@
 .code-team-setup__editor > p { grid-column: 1 / -1; margin: 0; color: var(--ink-4); font-size: 9.5px; line-height: 1.45; }
 .code-project-error { margin-top: 10px; color: var(--danger); font-size: 10.5px; line-height: 1.45; }
 .code-project-footer-actions { display: flex; gap: 8px; margin-left: auto; }
-.code-project-advanced { border-top: 1px solid var(--line); }
-.code-project-advanced > summary { min-height: 40px; padding: 9px 2px; display: flex; align-items: center; justify-content: space-between; color: var(--ink-3); cursor: pointer; list-style: none; font-size: 11px; font-weight: 600; }
-.code-project-advanced > summary::-webkit-details-marker { display: none; }
-.code-project-advanced > summary span { display: inline-flex; color: var(--ink-4); transition: transform .15s ease; }
-.code-project-advanced[open] > summary span { transform: rotate(180deg); }
-.code-project-advanced__body { padding: 2px 2px 12px; display: grid; gap: 10px; }
+.code-project-defaults__body { padding: 10px 0 2px; display: grid; gap: 10px; }
 .code-project-defaults { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .code-project-defaults button { width: 100%; }
-.code-project-advanced__body label { display: grid; gap: 5px; }
-.code-project-advanced__body label > span { color: var(--ink-4); font-size: 9.5px; }
-.code-project-advanced__body textarea { width: 100%; padding: 8px 9px; resize: vertical; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink); outline: none; font: 10px/1.5 var(--font-mono); }
-.code-project-advanced__body textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
-.code-project-advanced__body p { margin: -2px 0 0; color: var(--ink-4); font-size: 9.5px; }
+.code-project-defaults__body label { display: grid; gap: 5px; }
+.code-project-defaults__body label > span { color: var(--ink-4); font-size: 9.5px; }
+.code-project-defaults__body textarea { width: 100%; padding: 8px 9px; resize: vertical; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink); outline: none; font: 10px/1.5 var(--font-mono); }
+.code-project-defaults__body textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
+.code-project-defaults__body p { margin: -2px 0 0; color: var(--ink-4); font-size: 9.5px; }
 
 /* The app-level display toggle occupies the bottom-right corner. At the
    narrow end of the docked-sidebar band, reserve that corner for it; while

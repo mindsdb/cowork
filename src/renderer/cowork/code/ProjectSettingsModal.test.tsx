@@ -299,7 +299,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(await screen.findByRole('combobox', { name: 'Default coding model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Fable 5' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
@@ -353,7 +353,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByText('Task defaults and environment'));
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
@@ -414,5 +414,34 @@ describe('ProjectSettingsModal', () => {
 
     expect(screen.getByText('bbbbbbbb')).toBeInTheDocument();
     expect(screen.queryByText('Update available')).toBeNull();
+  });
+
+  it('summarises the task defaults while the section is collapsed and reveals the fields on Edit', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectSettingsModal
+        open
+        project={{
+          ...project,
+          environment: { variables: { API_URL: 'http://127.0.0.1', NODE_ENV: 'development' }, port_names: ['PORT', 'API_PORT'] },
+        }}
+        connections={[]}
+        busy={false}
+        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
+        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+
+    // The heading tells the reader the current defaults without opening anything.
+    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first · 2 variables · PORT, API_PORT')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Default coding model' })).toBeNull();
+
+    const toggle = screen.getByRole('button', { name: 'Edit' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
