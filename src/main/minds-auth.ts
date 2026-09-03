@@ -1,6 +1,12 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
+import {
+  claimDefaultRoot,
+  readActiveAccount,
+  resolveAccountRoot,
+  writeActiveAccount,
+} from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
@@ -402,6 +408,15 @@ interface OrgRef {
    *  from the human display name — used to spot the user's personal org. */
   slug?: string;
   source?: string;
+}
+
+/** The signed-in account, from the token already in hand. One accessor rather
+ *  than another inline `sub` read, since this one decides a data root. */
+export function signedInAccountId(): string | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  const sub = decodeJwtPayload(token)?.sub;
+  return typeof sub === 'string' && sub.trim() ? sub.trim() : null;
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -1234,10 +1249,13 @@ export async function writeEnvFileAtomic(
  * `mindsSignInSettingWrites` no longer carries `minds_api_key`, so what this
  * writes is the MindsHub URL and the provider selection.
  *
- * **No restart.** The sidecar used to be stopped and started here so it would
- * re-read `.env`. Nothing needs re-reading now: settings go over loopback and
- * the credential is handed over the same way, so a sign-in no longer kills a
- * running turn.
+ * **No restart, with one exception.** The sidecar used to be stopped and
+ * started here so it would re-read `.env`. Nothing needs re-reading now:
+ * settings go over loopback and the credential is handed over the same way, so
+ * an ordinary sign-in still does not kill a running turn. A sign-in that
+ * CHANGES the account's data root does restart it, because the store paths are
+ * process environment and there is no other way to move a running sidecar off
+ * the previous account's database.
  */
 export async function commitMindsSignIn(): Promise<void> {
   const homeDir = coworkHome();
@@ -1285,6 +1303,27 @@ export async function commitMindsSignIn(): Promise<void> {
     console.warn('[minds-auth] failed to set provider state', error);
   }
 
+  // Record this account and give it a data root BEFORE anything starts the
+  // sidecar. The stores are process environment, so a sidecar already running
+  // for another account keeps serving that account's database until it restarts,
+  // and the settings writes further down would land in it.
+  const accountId = signedInAccountId();
+  const rootBefore = resolveAccountRoot(homeDir, readActiveAccount(homeDir));
+  let rootAfter = rootBefore;
+  if (accountId) {
+    try {
+      await writeActiveAccount(homeDir, accountId);
+      // The one place the claim is written. Resolution stays a pure read so the
+      // adoption probes and the spawn path can never disagree about the root.
+      claimDefaultRoot(homeDir, accountId);
+      rootAfter = resolveAccountRoot(homeDir, readActiveAccount(homeDir));
+    } catch (err) {
+      // Leaves the previous record in place, so the sidecar keeps whatever root
+      // it already had rather than being pointed somewhere unverified.
+      console.warn('[minds-auth] could not record the signed-in account', err);
+    }
+  }
+
   // On a fresh install the server isn't available yet: the setup wizard runs
   // after this and starts it, and that start hands the credential over on its
   // own (`setServerStartedHook` in index.ts). The renderer's post-install
@@ -1301,7 +1340,17 @@ export async function commitMindsSignIn(): Promise<void> {
 
   // A sidecar that died is started rather than restarted: a stop/start would
   // drop a credential a previous push had already established.
-  if (!isServerRunning() && !isServerStarting()) {
+  //
+  // The exception is a changed data root. The store paths are process
+  // environment, so a running sidecar cannot be moved onto this account's
+  // database any other way, and leaving it would show the new account the
+  // previous one's tasks. Safe here specifically because the credential push
+  // below runs after it, and `setServerStartedHook` re-pushes on every start.
+  if (rootAfter !== rootBefore && (isServerRunning() || isServerStarting())) {
+    console.log('[minds-auth] account data root changed — restarting the sidecar');
+    await stopServer();
+    await startServer();
+  } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
   }
   if (!isServerRunning() && !isServerStarting()) {

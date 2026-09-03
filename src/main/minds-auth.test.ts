@@ -78,6 +78,7 @@ vi.mock('./server-process', () => ({
 // writeEnvFileAtomic must write atomically (never truncate the user's other
 // creds) and ride out a transient lock on the rename instead of throwing.
 import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
+import { saveTokens, clearTokens } from './token-store';
 
 let dir: string;
 let target: string;
@@ -187,4 +188,56 @@ describe('commitMindsSignIn — .env failure handling', () => {
     control.renameFailTimes = Infinity;
     await expect(commitMindsSignIn()).rejects.toThrow(/EPERM/);
   }, 15000);
+});
+
+// The account has to be recorded and the root claimed BEFORE anything starts
+// the sidecar, including the pre-install path where setup starts it later.
+// The restart decision itself is `resolveAccountRoot`, covered directly in
+// account-data.test.ts.
+describe('commitMindsSignIn — the account data root', () => {
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+  const asAccount = (sub: string) => {
+    const payload = Buffer.from(JSON.stringify({ sub })).toString('base64url');
+    saveTokens(`header.${payload}.signature`, 3600, '');
+  };
+  const readJson = (name: string) =>
+    JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) as { accountId: string | null };
+
+  afterEach(() => {
+    clearTokens();
+  });
+
+  it('records the signed-in account and claims the default root', async () => {
+    homeHolder.antonInstalled = false;
+    asAccount(ACCOUNT_A);
+
+    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+
+    expect(readJson('active-account.json').accountId).toBe(ACCOUNT_A);
+    expect(readJson('.account').accountId).toBe(ACCOUNT_A);
+  });
+
+  it('records a second account without letting it take the first account root', async () => {
+    homeHolder.antonInstalled = false;
+    asAccount(ACCOUNT_A);
+    await commitMindsSignIn();
+
+    asAccount(ACCOUNT_B);
+    await commitMindsSignIn();
+
+    expect(readJson('active-account.json').accountId).toBe(ACCOUNT_B);
+    // The claim still names A, so B is resolved onto its own root instead.
+    expect(readJson('.account').accountId).toBe(ACCOUNT_A);
+  });
+
+  it('leaves the records alone when the token carries no account', async () => {
+    homeHolder.antonInstalled = false;
+    // No saveTokens call: nothing to derive a root from, so nothing is written
+    // and the sidecar keeps whatever root it already had.
+    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+    expect(fs.existsSync(path.join(dir, 'active-account.json'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, '.account'))).toBe(false);
+  });
 });
