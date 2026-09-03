@@ -790,6 +790,7 @@ export default function ArtifactsView({
           accessPassword: m === 'password' ? (access?.password || '') : '',
           accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
           orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+          ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
         });
         setPhase(artifact.path, null);
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;

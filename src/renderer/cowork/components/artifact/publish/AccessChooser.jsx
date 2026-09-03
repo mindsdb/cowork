@@ -64,29 +64,55 @@ export function parseEmailList(raw) {
 }
 
 // Whether the draft can be submitted: public always, password needs a
-// non-empty secret, restricted needs at least one recipient or the org.
+// non-empty secret, restricted needs input that isn't malformed. An empty
+// restricted selection is an explicit owner-only publish (ENG-1769); a
+// malformed address blocks submission rather than being dropped, which would
+// silently publish to the owner alone.
 export function isAccessDraftValid(draft) {
   if (!draft) return false;
   if (draft.mode === 'public') return true;
   if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
   if (draft.mode === 'restricted') {
-    const { valid } = parseEmailList(draft.emailsText);
-    return valid.length > 0 || !!draft.orgAllowed;
+    const { invalid } = parseEmailList(draft.emailsText);
+    return invalid.length === 0;
   }
   return false;
 }
 
-// Turn a draft into the `access` payload `publishArtifact` expects.
+// Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
+// is derived, never stored on the draft: the textarea is the source of truth.
 export function buildAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
   if (draft?.mode === 'restricted') {
     const { valid } = parseEmailList(draft.emailsText);
-    return { mode: 'restricted', emails: valid, org_allowed: !!draft.orgAllowed };
+    const orgAllowed = !!draft.orgAllowed;
+    return {
+      mode: 'restricted',
+      emails: valid,
+      org_allowed: orgAllowed,
+      owner_only: valid.length === 0 && !orgAllowed,
+    };
   }
   return { mode: 'public' };
 }
 
 // ── Presentation ───────────────────────────────────────────────────────
+
+// Single source of truth for the access option copy. PublishMenu imports this
+// for its summary card, so the wording can't drift between the picker and the
+// "currently published as" view.
+export const ACCESS_LABELS = {
+  public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
+  password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
+  restricted: {
+    icon: Ico.people,
+    title: 'For you and selected users',
+    desc: 'Only you and people you list — or your whole org',
+  },
+  // Not a mode: the summary variant shown when a restricted publish has no
+  // recipients and no org (ENG-1769).
+  ownerOnly: { icon: Ico.people, title: 'Only you', desc: 'Nobody else can open this' },
+};
 
 function OptionCard({ value, active, icon, title, desc }) {
   return (
@@ -147,15 +173,15 @@ export function AccessChooser({
       >
         {modes.includes('public') && (
           <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
-            title="Public" desc="Anyone on the internet with the URL" />
+            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
         )}
         {modes.includes('password') && (
           <OptionCard value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
-            title="Password protected" desc="Anyone on the internet with the password" />
+            title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
         )}
         {modes.includes('restricted') && (
           <OptionCard value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
-            title="For selected users" desc="Only people you list — or your whole org" />
+            title={ACCESS_LABELS.restricted.title} desc={ACCESS_LABELS.restricted.desc} />
         )}
       </RadioGroup>
 
@@ -197,8 +223,11 @@ export function AccessChooser({
             }}
           />
           <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
-            {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
-            {invalidEmails.length ? ` · ${invalidEmails.length} invalid ignored` : ''}
+            {invalidEmails.length
+              ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
+              : (parsedEmails.length === 0 && !draft.orgAllowed
+                ? 'Only you will have access'
+                : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>
           <label style={{

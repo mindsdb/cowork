@@ -53,6 +53,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessPassword, setAccessPassword] = useState(artifact?.accessPassword || '');
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [ownerOnly, setOwnerOnly] = useState(!!artifact?.ownerOnly);
   // Have we synced the *real* access list from the server (or a publish
   // response) for this artifact yet? Seeded from the prop's own knowledge:
   // grid/rail objects carry `accessMode` from the listing (so the list they
@@ -80,6 +81,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessPassword(artifact?.accessPassword || '');
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
+    setOwnerOnly(!!artifact?.ownerOnly);
     setArtifactKey(artifact?.artifactKey || '');
     setModified(!!artifact?.modified);
     setError('');
@@ -107,6 +109,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessPassword: m === 'password' ? (access?.password || '') : '',
         accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
         orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+        ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
@@ -115,6 +118,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessPassword(next.accessPassword);
       setAccessEmails(next.accessEmails);
       setOrgAllowed(next.orgAllowed);
+      setOwnerOnly(next.ownerOnly);
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
@@ -183,6 +187,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const nextMode = s.accessMode || 'public';
     const nextEmails = Array.isArray(s.accessEmails) ? s.accessEmails : [];
     const nextOrg = !!s.orgAllowed;
+    // NOT part of the accessSame comparison below: the server derives ownerOnly
+    // from emails + org_allowed, so if those two match, this one matches too.
+    const nextOwnerOnly = !!s.ownerOnly;
     if (s.artifactKey) setArtifactKey(s.artifactKey);
     const accessSame = nextMode === accessMode && nextOrg === orgAllowed
       && nextEmails.join(',') === accessEmails.join(',');
@@ -193,6 +200,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessMode(nextMode);
       setAccessEmails(nextEmails);
       setOrgAllowed(nextOrg);
+      setOwnerOnly(nextOwnerOnly);
     }
     setAccessLoaded(true);
     // Nothing the parent cares about changed → skip the parent onChange (and
@@ -212,6 +220,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       accessMode: nextMode,
       accessEmails: nextEmails,
       orgAllowed: nextOrg,
+      ownerOnly: nextOwnerOnly,
     });
   }, [phase, targetPath, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
 
@@ -292,7 +301,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   }, [enabled, targetPath]);
 
   return {
-    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, artifactKey, modified,
+    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
     accessLoaded,
     phase, busy, error, setError,
     versions, versionsLoading,
