@@ -39,6 +39,18 @@ export function useCodeTaskActions({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Actions can overlap: an approval is allowed while a steer is still in
+  // flight. Count them so the first one to settle does not release the
+  // controls while another request is still pending.
+  const pendingActions = useRef(0);
+  const beginAction = () => {
+    pendingActions.current += 1;
+    setBusy(true);
+  };
+  const endAction = () => {
+    pendingActions.current = Math.max(0, pendingActions.current - 1);
+    if (pendingActions.current === 0) setBusy(false);
+  };
   const selectedIdRef = useRef(selectedId);
   const onSessionsChangeRef = useRef(onSessionsChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
@@ -68,7 +80,7 @@ export function useCodeTaskActions({
     rethrow = false,
   ): Promise<Result | undefined> => {
     const actionSessionId = selectedId;
-    setBusy(true);
+    beginAction();
     setError('');
     try {
       let result: Result;
@@ -96,7 +108,7 @@ export function useCodeTaskActions({
       }
       return result;
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -109,7 +121,7 @@ export function useCodeTaskActions({
   };
 
   const create = async (input: CreateCodeTaskInput) => {
-    setBusy(true);
+    beginAction();
     setError('');
     try {
       const workspace = input.projectId
@@ -131,13 +143,13 @@ export function useCodeTaskActions({
     } catch (reason) {
       setError(errorMessage(reason, 'Could not start this task.'));
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const fork = async () => {
     if (!session) return;
-    setBusy(true);
+    beginAction();
     setError('');
     try {
       const forked = await codingApi.forkSession(session.id);
@@ -146,14 +158,14 @@ export function useCodeTaskActions({
     } catch (reason) {
       setError(errorMessage(reason, 'Could not fork this coding task.'));
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const toggleArchive = async () => {
     if (!session) return;
     const archive = !session.archived;
-    setBusy(true);
+    beginAction();
     setError('');
     try {
       await codingApi.setArchived(session.id, archive);
@@ -171,13 +183,13 @@ export function useCodeTaskActions({
     } catch (reason) {
       setError(errorMessage(reason, 'Could not update this coding task.'));
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const remove = async () => {
     if (!session) return false;
-    setBusy(true);
+    beginAction();
     setError('');
     try {
       await codingApi.deleteSession(session.id);
@@ -188,7 +200,7 @@ export function useCodeTaskActions({
       setError(errorMessage(reason, 'Could not delete this coding task.'));
       return false;
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
