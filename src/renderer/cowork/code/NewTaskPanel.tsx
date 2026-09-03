@@ -4,6 +4,8 @@ import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import { host } from '../../platform/host';
+import { CodeSetupModal } from './CodeSetupModal';
 import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
@@ -66,7 +68,7 @@ export function NewTaskPanel({
     attachments, setAttachments, draggingFiles, setDraggingFiles,
     fileInputRef, promptRef, modelOptions, refreshModels,
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
-    startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
+    startUnavailable, readinessMessage, readinessKind, engineUnavailable, reloadEngines, handleStart, engineCommands, engineLabel,
     standaloneFolderPath, standaloneFolderName, chooseStandaloneFolder,
     projectResources, resourceIds, setResourceIds, resourceStates,
     computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
@@ -82,6 +84,10 @@ export function NewTaskPanel({
   const [autoLinkUrl, setAutoLinkUrl] = useState('');
   useEffect(() => setPaletteIndex(0), [commandQuery]);
   const readinessText = readinessMessage;
+  // Code Mode's components install on demand; offer that right where the
+  // missing agent is reported instead of sending the user to Settings.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const offerSetup = engineUnavailable && host.isElectron;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -344,8 +350,12 @@ export function NewTaskPanel({
             >
               <span className="code-start-readiness__icon" aria-hidden="true">{readinessIcon}</span>
               <span>{readinessText}</span>
+              {offerSetup && (
+                <Button size="sm" variant="tinted" className="code-start-readiness__action" onClick={() => setSetupOpen(true)}>Set up Code Mode</Button>
+              )}
             </div>
           )}
+          {offerSetup && <CodeSetupModal open={setupOpen} onClose={() => setSetupOpen(false)} onComplete={() => { setSetupOpen(false); reloadEngines(); }} />}
         </div>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
         <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />

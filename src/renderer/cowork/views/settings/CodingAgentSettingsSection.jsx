@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import ModelSelect from '../../components/ModelSelect';
 import { Select } from '../../components/ui';
 import { Switch } from '../../components/ui/Switch';
+import Button from '../../components/ui/Button';
+import { CodeSetupModal } from '../../code/CodeSetupModal';
 import { host } from '../../../platform/host';
 import { codingApi } from '../../code/api';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from '../../code/defaults';
@@ -91,6 +93,37 @@ export default function CodingAgentSettingsSection({
     disabled: !engine.available,
     title: engine.available ? undefined : engine.reason || 'Unavailable',
   }));
+  // The coding agent's components are installed the first time Code Mode is
+  // switched on (they are large, so the first install leaves them out). Until
+  // the status is known the toggle behaves as before.
+  const [runtimeInstalled, setRuntimeInstalled] = useState(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  useEffect(() => {
+    if (!available) return undefined;
+    let cancelled = false;
+    // Older bridges (and the web host) have no setup step: treat as installed.
+    const status = typeof host.codeSetupStatus === 'function'
+      ? host.codeSetupStatus()
+      : Promise.resolve({ installed: true });
+    Promise.resolve(status)
+      .then((result) => { if (!cancelled) setRuntimeInstalled(result?.installed !== false); })
+      .catch(() => { if (!cancelled) setRuntimeInstalled(true); });
+    return () => { cancelled = true; };
+  }, [available, setupOpen]);
+  const needsSetup = runtimeInstalled === false;
+  const handleEnabledChange = (next) => {
+    if (next && needsSetup) {
+      setSetupOpen(true);
+      return;
+    }
+    onEnabledChange(next);
+  };
+  const completeSetup = () => {
+    setRuntimeInstalled(true);
+    setSetupOpen(false);
+    onEnabledChange(true);
+  };
+
   if (!available) return null;
 
   const accessControl = (
@@ -98,15 +131,23 @@ export default function CodingAgentSettingsSection({
       <Section
         title="Enable Code Mode"
         subtitle={enabled
-          ? 'Code is available on this computer.'
-          : 'Build, test, and review code with an agent on this computer.'}
+          ? (needsSetup ? 'Code Mode is on, but its components are not installed on this computer yet.' : 'Code is available on this computer.')
+          : (needsSetup
+            ? 'Build, test, and review code with an agent on this computer. Switching this on downloads the coding agent, about 110 MB.'
+            : 'Build, test, and review code with an agent on this computer.')}
       >
-        <Switch
-          checked={enabled}
-          onCheckedChange={onEnabledChange}
-          aria-label="Enable Code Mode"
-        />
+        <div className="flex items-center gap-3">
+          {enabled && needsSetup && (
+            <Button size="sm" variant="tinted" onClick={() => setSetupOpen(true)}>Set up now</Button>
+          )}
+          <Switch
+            checked={enabled}
+            onCheckedChange={handleEnabledChange}
+            aria-label="Enable Code Mode"
+          />
+        </div>
       </Section>
+      <CodeSetupModal open={setupOpen} onClose={() => setSetupOpen(false)} onComplete={completeSetup} />
     </SettingsGroup>
   );
 

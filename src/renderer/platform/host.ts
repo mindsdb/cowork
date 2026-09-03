@@ -618,6 +618,66 @@ export function onInstallCancelled(cb: () => void): () => void {
   return () => {};
 }
 
+
+// ---- Code Mode setup (Electron-only) -----------------------------------
+// Installs the coding agent (cowork-server's `code` extra) and, where it is
+// missing, Git — on demand, the first time Code Mode is switched on. On web
+// there is nothing to install: the hosted server ships the runtime.
+
+export interface CodeSetupStatus {
+  /** The Codex runtime is present in the installed server (or this is a source checkout). */
+  installed: boolean;
+  /** `git --version` works on this computer. */
+  gitWorks: boolean;
+  /** Running against a source checkout, where the extra is managed by hand. */
+  devSource: boolean;
+}
+
+export async function codeSetupStatus(): Promise<CodeSetupStatus> {
+  if (isElectron && typeof bridge.codeSetupStatus === 'function') {
+    return bridge.codeSetupStatus();
+  }
+  return { installed: true, gitWorks: true, devSource: false };
+}
+
+export async function startCodeSetup(): Promise<boolean> {
+  if (isElectron && typeof bridge.startCodeSetup === 'function') {
+    return bridge.startCodeSetup();
+  }
+  return false;
+}
+
+export async function cancelCodeSetup(): Promise<void> {
+  if (isElectron && typeof bridge.cancelCodeSetup === 'function') {
+    await bridge.cancelCodeSetup();
+  }
+}
+
+export function onCodeSetupProgress(cb: (steps: InstallStep[]) => void): () => void {
+  if (isElectron && typeof bridge.onCodeSetupProgress === 'function') return bridge.onCodeSetupProgress(cb);
+  return () => {};
+}
+
+export function onCodeSetupLog(cb: (msg: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodeSetupLog === 'function') return bridge.onCodeSetupLog(cb);
+  return () => {};
+}
+
+export function onCodeSetupDone(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onCodeSetupDone === 'function') return bridge.onCodeSetupDone(cb);
+  return () => {};
+}
+
+export function onCodeSetupError(cb: (err: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodeSetupError === 'function') return bridge.onCodeSetupError(cb);
+  return () => {};
+}
+
+export function onCodeSetupCancelled(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onCodeSetupCancelled === 'function') return bridge.onCodeSetupCancelled(cb);
+  return () => {};
+}
+
 // ---- OTA updates (Electron-only) ---------------------------------------
 
 export interface UpdateStatus {
@@ -1488,6 +1548,14 @@ export const host = {
   onInstallDone,
   onInstallError,
   onInstallCancelled,
+  codeSetupStatus,
+  startCodeSetup,
+  cancelCodeSetup,
+  onCodeSetupProgress,
+  onCodeSetupLog,
+  onCodeSetupDone,
+  onCodeSetupError,
+  onCodeSetupCancelled,
   onUpdateStatus,
   applyUpdate,
   checkForUpdates,

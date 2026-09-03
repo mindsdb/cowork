@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('antontron', {
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
   cancelInstall: () => ipcRenderer.invoke(IPC.INSTALL_CANCEL),
+  // Code Mode setup (coding agent components + Git, on demand)
+  codeSetupStatus: () => ipcRenderer.invoke(IPC.CODE_SETUP_STATUS),
+  startCodeSetup: () => ipcRenderer.invoke(IPC.CODE_SETUP_START),
+  cancelCodeSetup: () => ipcRenderer.invoke(IPC.CODE_SETUP_CANCEL),
 
   // Anton python server lifecycle
   serverInfo:   () => ipcRenderer.invoke('server:get-info'),
@@ -142,6 +146,31 @@ contextBridge.exposeInMainWorld('antontron', {
     const listener = () => cb();
     ipcRenderer.on(IPC.INSTALL_CANCELLED, listener);
     return () => ipcRenderer.removeListener(IPC.INSTALL_CANCELLED, listener);
+  },
+  onCodeSetupLog: (cb: (msg: string) => void) => {
+    const listener = (_: any, msg: string) => cb(msg);
+    ipcRenderer.on(IPC.CODE_SETUP_LOG, listener);
+    return () => ipcRenderer.removeListener(IPC.CODE_SETUP_LOG, listener);
+  },
+  onCodeSetupProgress: (cb: (steps: any[]) => void) => {
+    const listener = (_: any, steps: any[]) => cb(steps);
+    ipcRenderer.on(IPC.CODE_SETUP_PROGRESS, listener);
+    return () => ipcRenderer.removeListener(IPC.CODE_SETUP_PROGRESS, listener);
+  },
+  onCodeSetupDone: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.CODE_SETUP_DONE, listener);
+    return () => ipcRenderer.removeListener(IPC.CODE_SETUP_DONE, listener);
+  },
+  onCodeSetupError: (cb: (err: string) => void) => {
+    const listener = (_: any, err: string) => cb(err);
+    ipcRenderer.on(IPC.CODE_SETUP_ERROR, listener);
+    return () => ipcRenderer.removeListener(IPC.CODE_SETUP_ERROR, listener);
+  },
+  onCodeSetupCancelled: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.CODE_SETUP_CANCELLED, listener);
+    return () => ipcRenderer.removeListener(IPC.CODE_SETUP_CANCELLED, listener);
   },
 
   // Auth (Electron-only)

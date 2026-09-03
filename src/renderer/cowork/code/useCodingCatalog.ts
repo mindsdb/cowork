@@ -10,6 +10,8 @@ export interface CodingCatalog {
   modelIds: (engineId: string) => string[] | null;
   modelsLoading: (engineId: string) => boolean;
   loadModels: (engineId: string) => Promise<void>;
+  /** Fetch the engine list again, after Code Mode setup installs the coding agent. */
+  reloadEngines: () => void;
 }
 
 const EMPTY_MODELS: Record<string, string[]> = {};
@@ -21,6 +23,7 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
   const [loadingModels, setLoadingModels] = useState<Set<string>>(() => new Set());
   const [engineError, setEngineError] = useState('');
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
+  const [engineReload, setEngineReload] = useState(0);
   const modelCache = useRef(new Map<string, string[]>());
   const inFlight = useRef(new Map<string, Promise<void>>());
 
@@ -28,18 +31,35 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
     if (!enabled) return undefined;
     let active = true;
     setEnginesLoading(true);
-    codingApi.engines().then((items) => {
-      if (active) {
-        setEngines(items);
-        setEngineError('');
+    // A reload after Code Mode setup can race the Code service coming back
+    // up, so a reload retries for a few seconds before reporting a failure.
+    const attempts = engineReload > 0 ? 6 : 1;
+    const load = async () => {
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          const items = await codingApi.engines();
+          if (active) {
+            setEngines(items);
+            setEngineError('');
+          }
+          return;
+        } catch (reason) {
+          if (!active) return;
+          if (attempt === attempts) {
+            setEngineError(reason instanceof Error ? reason.message : 'Could not load coding agents.');
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
-    }).catch((reason) => {
-      if (active) setEngineError(reason instanceof Error ? reason.message : 'Could not load coding agents.');
-    }).finally(() => {
+    };
+    void load().finally(() => {
       if (active) setEnginesLoading(false);
     });
     return () => { active = false; };
-  }, [enabled]);
+  }, [enabled, engineReload]);
+
+  const reloadEngines = useCallback(() => setEngineReload((current) => current + 1), []);
 
   const loadModels = useCallback(async (engineId: string) => {
     if (!enabled || !engineId || modelCache.current.has(engineId)) return;
@@ -81,5 +101,6 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
     modelIds: (engineId) => modelsByEngine[engineId] ?? null,
     modelsLoading: (engineId) => loadingModels.has(engineId),
     loadModels,
+    reloadEngines,
   };
 }
