@@ -138,6 +138,13 @@ describe('Select', () => {
     expect(popup.className).toContain('border-line');
   });
 
+  it('lets a compact trigger keep a wider menu through menuMinWidth', async () => {
+    const user = userEvent.setup();
+    render(<Harness menuMinWidth={280} />);
+    await user.click(screen.getByRole('combobox'));
+    expect(document.querySelector('.shadow-sh-popup').style.minWidth).toBe('280px');
+  });
+
   it('renders a separator between option groups', async () => {
     const user = userEvent.setup();
     render(<Harness />);
