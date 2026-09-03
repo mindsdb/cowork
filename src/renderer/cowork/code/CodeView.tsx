@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
@@ -27,6 +27,7 @@ import { supportsTaskCapability } from './taskCapabilities';
 import { useCodeTaskActions } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
+import { connectorReturnLabel, withProjectConnection, type ConnectorReturn } from './projectConnections';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
 import { useProjectActions } from './useProjectActions';
@@ -52,6 +53,7 @@ export default function CodeView({
   connections = [],
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
+  onOpenProjects = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
   active = true,
@@ -72,6 +74,7 @@ export default function CodeView({
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
+  onOpenProjects?: () => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
   active?: boolean;
@@ -90,8 +93,9 @@ export default function CodeView({
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
-  const [connectorReturnProjectId, setConnectorReturnProjectId] = useState<string | null>(null);
-  const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
+  // Set while the Connectors view was opened on behalf of a project: accounts
+  // connected there are added to that project, and Back returns to its origin.
+  const [connectorReturn, setConnectorReturn] = useState<ConnectorReturn | null>(null);
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
   const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
@@ -176,8 +180,13 @@ export default function CodeView({
     setReferenceRequest(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
+  // Changing view closes the project editor, except when the Connectors view
+  // is handing the user back to the project they were editing.
+  const resumeProjectEditorId = useRef<string | null>(null);
   useEffect(() => {
-    setProjectEditor(null);
+    const resumeId = resumeProjectEditorId.current;
+    resumeProjectEditorId.current = null;
+    setProjectEditor(resumeId ? { id: resumeId } : null);
   }, [newTask, projectsOpen, skillsOpen, selectedId]);
 
   const restoring = !!selectedId && !session;
@@ -320,35 +329,26 @@ export default function CodeView({
             connections={connections}
             projects={projects.projects}
             onConnectionsChange={onConnectionsChange}
-            returnProjectName={projects.projects.find((project) => project.id === connectorReturnProjectId)?.name || ''}
-            backLabel={connectorReturnToSettings ? 'Back to project' : 'Back to task'}
-            onBack={connectorReturnProjectId ? () => {
-              projects.setSelectedId(connectorReturnProjectId);
-              setConnectorReturnProjectId(null);
-              setConnectorReturnToSettings(false);
-              onOpenNewTask();
-            } : undefined}
-            onConnected={connectorReturnProjectId ? async (provider, connection) => {
-              const project = projects.projects.find((item) => item.id === connectorReturnProjectId);
-              if (!project) return;
-              if (!connectorReturnToSettings) {
-                const key = `${provider}:${connection.name}`;
-                const current = new Set(project.connections.map((item) => `${item.provider}:${item.name}`));
-                if (!current.has(key)) {
-                  await codingApi.updateProject(project.id, {
-                    connections: [...project.connections, {
-                      provider,
-                      name: connection.name,
-                      label: connection.display_name || connection.user_label || connection.label || connection.name,
-                    }],
-                  });
-                  await projects.load();
-                }
+            returnProjectName={projects.projects.find((project) => project.id === connectorReturn?.projectId)?.name || ''}
+            backLabel={connectorReturn ? connectorReturnLabel(connectorReturn.destination) : undefined}
+            onBack={connectorReturn ? () => {
+              const { projectId, destination } = connectorReturn;
+              setConnectorReturn(null);
+              projects.setSelectedId(projectId);
+              if (destination === 'settings') {
+                resumeProjectEditorId.current = projectId;
+                onOpenProjects();
+              } else {
+                onOpenNewTask();
               }
-              projects.setSelectedId(project.id);
-              setConnectorReturnProjectId(null);
-              setConnectorReturnToSettings(false);
-              onOpenNewTask();
+            } : undefined}
+            onConnected={connectorReturn ? async (provider, connection) => {
+              const project = projects.projects.find((item) => item.id === connectorReturn.projectId);
+              if (!project) return;
+              const connections = withProjectConnection(project, provider, connection);
+              if (!connections) return;
+              await codingApi.updateProject(project.id, { connections });
+              await projects.load();
             } : undefined}
           />
         ) : projectsOpen ? (
@@ -383,8 +383,7 @@ export default function CodeView({
             onProjectConnectionsChange={projects.load}
             onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
             onOpenConnectors={() => {
-              setConnectorReturnToSettings(false);
-              setConnectorReturnProjectId(projects.selectedId);
+              if (projects.selectedId) setConnectorReturn({ projectId: projects.selectedId, destination: 'task' });
               onOpenConnectors();
             }}
             onCreateProject={() => setProjectEditor({ id: null })}
@@ -621,8 +620,7 @@ export default function CodeView({
             }
           }}
           onOpenConnectors={() => {
-            setConnectorReturnToSettings(true);
-            setConnectorReturnProjectId(projectEditor?.id || null);
+            if (projectEditor?.id) setConnectorReturn({ projectId: projectEditor.id, destination: 'settings' });
             onOpenConnectors();
           }}
           onOpenSkills={() => {
