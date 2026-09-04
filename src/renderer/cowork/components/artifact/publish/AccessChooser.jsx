@@ -18,33 +18,41 @@ import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
 import { Checkbox, Textarea, Tooltip } from '../../ui';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_MONO = "var(--font-mono)";
 
-// Static style objects — hoisted to module scope so they aren't re-created on
-// every render (the values never depend on props).
-const INPUT_SHELL = {
-  display: 'flex', alignItems: 'center', gap: 6,
-  background: 'var(--surface-2)', border: '1px solid var(--line)',
-  borderRadius: 8, padding: '0 8px 0 10px',
-};
-const BARE_INPUT = {
-  flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none',
-  color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0',
-};
+// Shared class strings for the bare-input shell (a bordered row wrapping an
+// unstyled <input>), so the password field and any future inputs stay in sync.
+const INPUT_SHELL = 'flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]';
+const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0';
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
+// `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
+// and "only me" is `restricted` with nothing selected. Deriving it here — and
+// collapsing it back in `buildAccessPayload` — is what lets the picker offer
+// "Only you" and "Specific people" as two visibly different choices instead of
+// one option whose meaning depends on whether a textarea happens to be empty.
 export function accessDraftFromArtifact(artifact) {
-  const mode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
+  const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
+  const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
+    ? 'ownerOnly'
+    : serverMode;
   return {
     mode,
     password: artifact?.accessPassword || '',
     emailsText: (artifact?.accessEmails || []).join(', '),
     orgAllowed: !!artifact?.orgAllowed,
   };
+}
+
+// "Only me" on the wire is `restricted` with no recipients and no org. The
+// server also sends an explicit `ownerOnly`; prefer it, and fall back to the
+// derivation for a record written before that flag existed.
+export function isOwnerOnlySelection(artifact) {
+  if (artifact?.ownerOnly != null) return !!artifact.ownerOnly;
+  return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed;
 }
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
@@ -71,10 +79,17 @@ export function parseEmailList(raw) {
 export function isAccessDraftValid(draft) {
   if (!draft) return false;
   if (draft.mode === 'public') return true;
+  // Nothing to fill in — it is a complete selection on its own.
+  if (draft.mode === 'ownerOnly') return true;
   if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
   if (draft.mode === 'restricted') {
-    const { invalid } = parseEmailList(draft.emailsText);
-    return invalid.length === 0;
+    const { valid, invalid } = parseEmailList(draft.emailsText);
+    if (invalid.length) return false;
+    // An empty "Specific people" used to be how you said "only me". It is a
+    // separate option now, so an empty list here is an unfinished selection
+    // rather than a silent private publish — block it instead of quietly
+    // doing something other than what the label says.
+    return valid.length > 0 || !!draft.orgAllowed;
   }
   return false;
 }
@@ -83,6 +98,12 @@ export function isAccessDraftValid(draft) {
 // is derived, never stored on the draft: the textarea is the source of truth.
 export function buildAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
+  // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
+  // `restricted` with neither emails nor an org would otherwise be read as an
+  // empty selection and degrade to public — the exact opposite of the choice.
+  if (draft?.mode === 'ownerOnly') {
+    return { mode: 'restricted', emails: [], org_allowed: false, owner_only: true };
+  }
   if (draft?.mode === 'restricted') {
     const { valid } = parseEmailList(draft.emailsText);
     const orgAllowed = !!draft.orgAllowed;
@@ -106,12 +127,10 @@ export const ACCESS_LABELS = {
   password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
   restricted: {
     icon: Ico.people,
-    title: 'For you and selected users',
-    desc: 'Only you and people you list — or your whole org',
+    title: 'Specific people',
+    desc: 'Only the people you list — or your whole org',
   },
-  // Not a mode: the summary variant shown when a restricted publish has no
-  // recipients and no org (ENG-1769).
-  ownerOnly: { icon: Ico.people, title: 'Only you', desc: 'Nobody else can open this' },
+  ownerOnly: { icon: Ico.lock, title: 'Only you', desc: 'Nobody else can open this' },
 };
 
 function OptionCard({ value, active, icon, title, desc }) {
@@ -127,25 +146,24 @@ function OptionCard({ value, active, icon, title, desc }) {
         transition: 'background 120ms ease, border-color 120ms ease',
       }}
     >
-      <span style={{
-        display: 'inline-grid', placeItems: 'center', flexShrink: 0,
-        width: 30, height: 30, borderRadius: 8,
-        background: 'var(--surface)', border: '1px solid var(--line)',
-        color: active ? 'var(--accent)' : 'var(--ink-3)',
-      }}>{icon}</span>
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{title}</span>
-        <span style={{ display: 'block', fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>{desc}</span>
+      <span
+        className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line"
+        style={{ color: active ? 'var(--accent)' : 'var(--ink-3)' }}
+      >{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-body font-semibold text-[13px] text-ink">{title}</span>
+        <span className="block font-body text-[11.5px] text-ink-3 mt-px">{desc}</span>
       </span>
-      {/* Radio dot — driven by the controlled `active` so it stays a
-          plain inline style (no data-attribute stylesheet). */}
-      <span style={{
-        flexShrink: 0, width: 16, height: 16, borderRadius: 999,
-        border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-4)'}`,
-        display: 'inline-grid', placeItems: 'center',
-        transition: 'border-color 120ms ease',
-      }}>
-        {active && <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--accent)' }} />}
+      {/* Radio dot — driven by the controlled `active` so its border color
+          stays a plain inline style (no data-attribute stylesheet). */}
+      <span
+        className="shrink-0 w-[16px] h-[16px] rounded-full inline-grid place-items-center"
+        style={{
+          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-4)'}`,
+          transition: 'border-color 120ms ease',
+        }}
+      >
+        {active && <span className="w-[8px] h-[8px] rounded-full bg-accent" />}
       </span>
     </Radio.Root>
   );
@@ -156,7 +174,9 @@ function OptionCard({ value, active, icon, title, desc }) {
 export function AccessChooser({
   value,
   onChange,
-  modes = ['public', 'password', 'restricted'],
+  // Order runs private → public, so the least exposing choice is the one the
+  // eye lands on first.
+  modes = ['ownerOnly', 'restricted', 'password', 'public'],
   onSubmit,
 }) {
   const draft = value;
@@ -168,26 +188,34 @@ export function AccessChooser({
       <RadioGroup
         value={draft.mode}
         onValueChange={(m) => set({ mode: m })}
-        style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+        className="flex flex-col gap-2"
         aria-label="Who can access your app"
       >
-        {modes.includes('public') && (
-          <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
-            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
-        )}
-        {modes.includes('password') && (
-          <OptionCard value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
-            title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
+        {/* "Only you" is its own option rather than an empty "Specific people".
+            The two used to be the same radio, distinguished only by whether the
+            textarea below it happened to be blank — so the choice a person had
+            made was not visible in the choice they had selected. */}
+        {modes.includes('ownerOnly') && (
+          <OptionCard value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
+            title={ACCESS_LABELS.ownerOnly.title} desc={ACCESS_LABELS.ownerOnly.desc} />
         )}
         {modes.includes('restricted') && (
           <OptionCard value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
             title={ACCESS_LABELS.restricted.title} desc={ACCESS_LABELS.restricted.desc} />
         )}
+        {modes.includes('password') && (
+          <OptionCard value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
+            title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
+        )}
+        {modes.includes('public') && (
+          <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
+            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
+        )}
       </RadioGroup>
 
       {draft.mode === 'password' && (
-        <div style={{ marginTop: 8 }}>
-          <div style={INPUT_SHELL}>
+        <div className="mt-2">
+          <div className={INPUT_SHELL}>
             <input
               type={draft._reveal ? 'text' : 'password'}
               value={draft.password}
@@ -195,12 +223,12 @@ export function AccessChooser({
               onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
               autoFocus
               placeholder="Add a password"
-              style={BARE_INPUT}
+              className={BARE_INPUT}
             />
             <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
               <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
                 aria-label={draft._reveal ? 'Hide password' : 'Show password'}
-                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
+                className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
                 {draft._reveal ? Ico.eyeOff(15) : Ico.eye(15)}
               </button>
             </Tooltip>
@@ -209,7 +237,7 @@ export function AccessChooser({
       )}
 
       {draft.mode === 'restricted' && (
-        <div style={{ marginTop: 8 }}>
+        <div className="mt-2">
           <Textarea
             value={draft.emailsText}
             onChange={(v) => set({ emailsText: v })}
@@ -222,18 +250,17 @@ export function AccessChooser({
               color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
             }}
           />
-          <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
+          <div className="font-body text-xs text-ink-4 mt-[6px]">
             {invalidEmails.length
               ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
               : (parsedEmails.length === 0 && !draft.orgAllowed
-                ? 'Only you will have access'
+                // Not "only you will have access": that is now a choice of its
+                // own, so arriving here means the selection is simply unfinished.
+                ? 'Add someone, or choose “Only you”'
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, cursor: 'pointer',
-            fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink)',
-          }}>
+          <label className="flex items-center gap-2 mt-2 cursor-pointer font-body text-sm text-ink">
             <Checkbox checked={draft.orgAllowed}
               onCheckedChange={(v) => set({ orgAllowed: v })}
               aria-label="Everyone in my organization" />

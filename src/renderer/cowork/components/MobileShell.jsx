@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Badge } from './ui';
 
@@ -16,9 +17,9 @@ const SECTIONS = [
 ];
 
 function titleForRoute(route, { selectedProject, currentTask } = {}) {
-  if (route === 'home') return selectedProject?.name ? `New task · ${selectedProject.name}` : 'New task';
+  if (route === 'home') return selectedProject?.name ? `New task · ${projectLabel(selectedProject)}` : 'New task';
   if (route === 'task') return currentTask?.title || 'Conversation';
-  if (route === 'projects') return selectedProject?.name || 'Projects';
+  if (route === 'projects') return projectLabel(selectedProject) || 'Projects';
   if (route === 'scheduled' || route === 'schedule-detail') return 'Scheduled';
   if (route === 'artifacts') return 'Artifacts';
   if (route === 'tasks') return 'Tasks';
@@ -345,7 +346,7 @@ export default function MobileShell({
                 return (
                   <ListRow
                     key={p.name || p.path}
-                    primary={p.name || p.path}
+                    primary={projectLabel(p) || p.path}
                     secondary={projTasks.length === 0
                       ? 'Tap to start chatting'
                       : `${projTasks.length} ${projTasks.length === 1 ? 'task' : 'tasks'}`}
@@ -389,7 +390,7 @@ export default function MobileShell({
                     <ListRow
                       key={t.id}
                       primary={t.title || 'Untitled task'}
-                      secondary={t.projectName || ''}
+                      secondary={projectLabelByName(projects, t.projectName) || ''}
                       onClick={() => handleTaskTap(t.id)}
                     />
                   ))}

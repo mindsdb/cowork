@@ -30,6 +30,7 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
+import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -101,6 +102,7 @@ export function ProjectSettingsModal({
   const [projectModelChoice, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
   const [projectReasoningEffort, setProjectReasoningEffort] = useState<ReasoningEffort | null>(null);
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
@@ -237,6 +239,13 @@ export function ProjectSettingsModal({
   }, [projectEffortLevels]);
 
   const availableEngines = engines.filter((engine) => engine.available);
+  const defaultsSummary = describeTaskDefaults({
+    agent: availableEngines.find((engine) => engine.id === projectEngineId)?.label || projectEngineId,
+    model: projectModelOptions.find((option) => option.value === projectModel)?.label || projectModel,
+    permission: PERMISSION_OPTIONS.find((option) => option.value === projectPermission)?.label || projectPermission,
+    variableCount: countEnvironmentVariables(environmentText),
+    portNames: parsePortNames(portNames),
+  });
 
   const updateCommand = (folderId: string, phase: CommandPhase, value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
@@ -262,12 +271,8 @@ export function ProjectSettingsModal({
         name: item.name,
         label: item.display_name || item.label || item.name,
       }));
-      const variables = Object.fromEntries(environmentText.split('\n').filter((line) => line.trim()).map((line) => {
-        const separator = line.indexOf('=');
-        if (separator < 1) throw new Error(`Environment line needs NAME=value: ${line}`);
-        return [line.slice(0, separator).trim(), line.slice(separator + 1)];
-      }));
-      const parsedPortNames = portNames.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+      const variables = Object.fromEntries(parseEnvironmentVariables(environmentText));
+      const parsedPortNames = parsePortNames(portNames);
       await onSave({
         name: name.trim(), resources: normalizedResources, connections: projectConnections,
         environment: { variables, port_names: parsedPortNames },
@@ -415,24 +420,40 @@ export function ProjectSettingsModal({
             )}
           </section>
 
-          <details className="code-project-advanced">
-            <summary>Task defaults and environment <span>{Ico.chevDown(11)}</span></summary>
-            <div className="code-project-advanced__body">
-              <div className="code-project-defaults">
-                <label><span>Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
-                <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
-                <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
-                  if (isPermissionMode(value)) setProjectPermission(value);
-                }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
-                {projectEffortLevels && (
-                  <label><span>Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} size="sm" ariaLabel="Default reasoning effort" /></label>
-                )}
+          <section className="code-project-section code-project-defaults-section">
+            <div className="code-project-section__heading">
+              <div>
+                <strong>Task defaults and environment</strong>
+                <span>{defaultsSummary}</span>
               </div>
-              <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
-              <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
-              <p>Each task receives its own available port numbers under these names.</p>
+              <Button
+                size="sm"
+                variant="subtle"
+                aria-expanded={defaultsOpen}
+                aria-controls="code-project-defaults"
+                onClick={() => setDefaultsOpen((open) => !open)}
+              >
+                {defaultsOpen ? 'Hide' : 'Edit'}
+              </Button>
             </div>
-          </details>
+            {defaultsOpen && (
+              <div id="code-project-defaults" className="code-project-defaults__body">
+                <div className="code-project-defaults">
+                  <label><span>Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
+                  <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
+                  <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
+                    if (isPermissionMode(value)) setProjectPermission(value);
+                  }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
+                  {projectEffortLevels && (
+                    <label><span>Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} size="sm" ariaLabel="Default reasoning effort" /></label>
+                  )}
+                </div>
+                <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
+                <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
+                <p>Each task receives its own available port numbers under these names.</p>
+              </div>
+            )}
+          </section>
           {error && <div className="code-project-error" role="alert">{error}</div>}
         </div>
       </ModalBody>

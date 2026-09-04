@@ -65,4 +65,15 @@ describe('useCodeProjects', () => {
     expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ name: 'Effort', default_reasoning_effort: 'low' }));
   });
 
+  it('replaces a project in the list at once, without another fetch', async () => {
+    const { result } = renderHook(() => useCodeProjects());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    listProjects.mockClear();
+
+    act(() => result.current.replace({ ...project, connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }] } as never));
+
+    expect(result.current.projects[0].connections).toEqual([{ provider: 'github', name: 'octo', label: 'Octo Cat' }]);
+    expect(listProjects).not.toHaveBeenCalled();
+  });
+
 });

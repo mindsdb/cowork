@@ -66,11 +66,24 @@ const props = {
 afterEach(() => setOrgMode(false));
 
 describe('preview window chrome in org mode', () => {
-  it('offers neither sharing nor the actions menu', () => {
+  // Sharing used to be hidden here, on the grounds that publishing "lives on the
+  // gallery card instead" — but the card filters publish out in org mode too, so
+  // Cloud had no way to share an artifact at all. It is owner-side chrome on both
+  // deployments now (ENG-2316).
+  it('offers sharing', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} />);
 
-    expect(screen.queryByRole('button', { name: /Share/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
+  });
+
+  // The ⋯ menu stays hidden: its entries are OS/file actions plus `/publish`
+  // routes, none of which an org deployment can answer. Sharing is the one
+  // affordance that was wrongly grouped with them.
+  it('still hides the OS/file actions menu', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} />);
+
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
@@ -85,7 +98,7 @@ describe('preview window chrome in org mode', () => {
 });
 
 describe('preview window chrome on desktop', () => {
-  // The removal must be mode-scoped, or the assertions above are vacuous.
+  // The menu's removal must stay mode-scoped, or the assertion above is vacuous.
   it('keeps sharing and the actions menu', () => {
     setOrgMode(false);
     render(<ArtifactViewerHeader {...props} />);

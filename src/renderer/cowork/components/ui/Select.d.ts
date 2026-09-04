@@ -33,6 +33,8 @@ export interface SelectProps {
   name?: string;
   width?: number | string;
   minWidth?: number | string;
+  /** Floor for the popup's width; the popup otherwise matches the trigger's width. */
+  menuMinWidth?: number | string;
   className?: string;
   style?: CSSProperties;
   zIndex?: number;

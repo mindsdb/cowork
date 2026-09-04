@@ -58,18 +58,39 @@ const DRAFT_TEXT_MAX = 200_000;
  * invariant has to be enforced here too, not just at the one call site that
  * currently respects it.
  */
+const EMBEDDED_DRAFT_URL_RE = /^(?:blob|data):/i;
+
 function resolveSameOriginDraftUrl(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
+  /*
+   * Embedded content is refused by name rather than by accident. A data: or
+   * blob: URL used to fail here only because it was concatenated onto the
+   * origin and the result would not parse, so the reader was told the URL was
+   * invalid when the real answer is that it carries its own payload and needs
+   * no credential. `data:1234/x,hi` even parsed, and was reported as
+   * cross-origin instead.
+   */
+  if (EMBEDDED_DRAFT_URL_RE.test(draftUrl)) {
+    throw new Error('Refusing to send credentials to an embedded draft URL');
+  }
   /*
    * The same origin `BASE` is built from — asking the host beats stripping the
    * path back off with a regex, and it is what ArtifactViewer already uses to
    * absolutize this very URL for the preview iframe.
    */
   const apiOrigin = host.getApiOrigin();
-  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${apiOrigin}${draftUrl}`;
   let origin;
+  let url;
   try {
-    origin = new URL(url).origin;
+    /*
+     * Resolve against the origin rather than concatenating onto it, so this
+     * agrees with `canFetchDraftWithCredentials`, the gate the viewer applies
+     * before calling either loader. Concatenation read a protocol-relative
+     * `//other.example/x` as same-origin; the two now answer alike.
+     */
+    const resolved = new URL(draftUrl, apiOrigin);
+    url = resolved.toString();
+    origin = resolved.origin;
   } catch {
     throw new Error('Artifact draft URL is invalid');
   }
@@ -79,11 +100,27 @@ function resolveSameOriginDraftUrl(draftUrl) {
   return url;
 }
 
-export async function loadArtifactDraftText(draftUrl) {
-  const url = resolveSameOriginDraftUrl(draftUrl);
-  const response = await authFetch(url);
+/*
+ * `withCredentials: false` is the text path's equivalent of the draft-HTML
+ * branch's plain `src=` navigation: embedded (data:/blob:) and cross-origin
+ * draft URLs carry their own payload or origin and must not receive the web
+ * Keycloak bearer, but they can still be read without one. Fetching them
+ * bare is what makes a data: CSV render instead of erroring where the same
+ * URL renders fine as HTML. The viewer decides which mode applies
+ * with `canFetchDraftWithCredentials`; the credentialed path keeps its
+ * same-origin backstop below.
+ */
+export async function loadArtifactDraftText(draftUrl, { withCredentials = true } = {}) {
+  if (!draftUrl) throw new Error('Artifact has no private draft URL');
+  const url = withCredentials ? resolveSameOriginDraftUrl(draftUrl) : draftUrl;
+  const response = withCredentials ? await authFetch(url) : await fetch(url);
   if (!response.ok) {
-    throw new Error(`Could not load private draft (${response.status})`);
+    // The status has to travel on the error, not only inside its message: the
+    // viewer maps 401 and 403 to their own copy and cannot read a number back
+    // out of a sentence.
+    const error = new Error(`Could not load private draft (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   const body = await response.text();
   return {
@@ -172,6 +209,32 @@ export function enableDraftComments(artifact) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/comments-access`, { method: 'POST', body: '{}' });
+}
+
+// Owner-only, like enableDraftComments above.
+//
+// On Cloud an artifact autopublishes to its owner alone; these two are how the
+// owner then chooses an audience. The read exists because the artifact CARD
+// withholds `accessEmails`/`accessPassword` in org mode — one artifacts root is
+// shared by the whole organization, so a card cannot tell owner from co-member
+// and must assume the worst. This route can, so the Share dialog pre-fills from
+// here rather than from the card (ENG-2316).
+export function loadArtifactAccess(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/access`);
+}
+
+// Setting an audience is a re-publish server-side: the target stores access
+// alongside the bundle and reuses the existing report_id, so the shared URL
+// survives the change and nothing has to be unpublished first.
+export function setArtifactAccess(artifact, access) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/access`, {
+    method: 'PUT',
+    body: JSON.stringify({ access }),
+  });
 }
 
 export function requestAgentRepair(artifact, payload) {

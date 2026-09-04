@@ -5,12 +5,15 @@
 // Design source: docs/design-handoff/Anton Projects (D1 · Quiet).
 
 import { useEffect, useRef, useState } from 'react';
+import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
 import { Card, Tooltip } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
+import SharedResourceAttribution from '../SharedResourceAttribution';
+import { isReservedProjectName } from '../../lib/sharedResourceAccess';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -114,23 +117,29 @@ export function ProjectCard({
   scheduled = [],
   pinned = false,
   editing = false,
+  // The server is still working through this project's delete. The card stays
+  // put until DELETE succeeds, so it says it is waiting and drops the actions
+  // that would fire a second one.
+  deleting = false,
   onOpen,
   onTogglePin,
   onMenuOpen,
   isMenuOpen = false,
   onRenameSubmit,
   onRenameCancel,
+  alwaysShowActions = false,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
   const cardStats = visibleStats(stats);
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
   const { revealed, hoverProps } = useRevealOnHover(isMenuOpen);
+  const [actionsFocused, setActionsFocused] = useState(false);
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
 
-  const showHoverActions = revealed || pinned;
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const showHoverActions = alwaysShowActions || revealed || pinned || actionsFocused;
+  const isReserved = isReservedProjectName(project.name);
 
   // When entering edit mode, focus + select the entire name on the
   // next paint so the user can type immediately to replace it (or
@@ -147,28 +156,31 @@ export function ProjectCard({
   }, [editing]);
 
   const handleCardClick = () => {
-    if (editing) return; // ignore card clicks while editing
+    if (editing || deleting) return; // ignore card clicks while editing or deleting
     onOpen?.(project);
   };
 
   const submitRename = () => {
-    const next = renameInputRef.current?.value ?? project.name;
+    const next = renameInputRef.current?.value ?? projectLabel(project);
     onRenameSubmit?.(next);
   };
 
   return (
     <Card
       as="div"
-      interactive={!editing}
+      interactive={!editing && !deleting}
       selected={isSelected || editing}
       padding="cozy"
-      onActivate={editing ? undefined : handleCardClick}
+      onActivate={editing || deleting ? undefined : handleCardClick}
+      aria-busy={deleting || undefined}
       {...hoverProps}
       style={{
-        cursor: editing ? 'default' : undefined,
+        cursor: editing || deleting ? 'default' : undefined,
         minHeight: 120,
         display: 'flex', flexDirection: 'column', gap: 10,
         position: 'relative',
+        opacity: deleting ? 0.6 : undefined,
+        transition: 'opacity .12s ease',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -186,7 +198,7 @@ export function ProjectCard({
           <input
             ref={renameInputRef}
             type="text"
-            defaultValue={project.name}
+            defaultValue={projectLabel(project)}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
@@ -219,7 +231,7 @@ export function ProjectCard({
             flex: 1, minWidth: 0,
             color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{project.name}</span>
+          }}>{projectLabel(project)}</span>
         )}
 
         {/* Pin button — visible on hover for unpinned, always for pinned */}
@@ -227,14 +239,22 @@ export function ProjectCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onFocus={() => setActionsFocused(true)}
+            onBlur={() => setActionsFocused(false)}
             aria-label={pinned ? 'Unpin project' : 'Pin project'}
             aria-pressed={pinned}
+            className="project-action-trigger"
             style={{
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
               color: pinned ? 'var(--accent)' : 'var(--ink-4)',
               opacity: pinned || showHoverActions ? 1 : 0,
-              display: 'inline-grid', placeItems: 'center',
+              // Taken out of flow rather than faded while the delete is on the
+              // wire: an opacity-0 control stays clickable, and the coarse-
+              // pointer rule would paint it back in on touch.
+              display: deleting ? 'none' : 'inline-grid',
+              placeItems: 'center',
               cursor: 'pointer', flexShrink: 0,
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
               font: 'inherit',
@@ -256,13 +276,17 @@ export function ProjectCard({
               const rect = triggerRef.current?.getBoundingClientRect();
               onMenuOpen?.(project, rect);
             }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onFocus={() => setActionsFocused(true)}
+            onBlur={() => setActionsFocused(false)}
             aria-label="Project menu"
+            className="project-action-trigger"
             style={{
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
               opacity: showHoverActions ? 1 : 0,
-              display: isReserved ? 'none' : 'inline-grid',
+              display: isReserved || deleting ? 'none' : 'inline-grid',
               placeItems: 'center',
               cursor: 'pointer', flexShrink: 0,
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
@@ -282,7 +306,14 @@ export function ProjectCard({
         flex: 1, display: 'flex', flexDirection: 'column', gap: 4,
         minWidth: 0,
       }}>
-        {summary ? (
+        {deleting ? (
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
+            color: 'var(--ink-3)',
+          }}>
+            Deleting…
+          </span>
+        ) : summary ? (
           <span style={{
             fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
             color: 'var(--ink-2)',
@@ -318,6 +349,8 @@ export function ProjectCard({
           <span>{summary?.time || '—'}</span>
         </span>
       </div>
+
+      <SharedResourceAttribution resource={project} />
 
       {/* Stats row — full-word pluralized labels, hairline divider
           above. Zero/undefined stats are omitted; when nothing is

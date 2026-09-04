@@ -66,7 +66,17 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
-  mindshubFinalize: (organizationId?: string) => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId),
+  mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
+    ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
+  // Deliberately a separate method rather than the second argument above.
+  // Renderer bundles update over the air while `src/main/**` only arrives in a
+  // new installer, so a new renderer routinely runs against an older shell —
+  // and an older shell's `mindshubFinalize` silently drops a second argument.
+  // A method the old preload does not have is something the renderer can
+  // actually test for, which the established `typeof bridge.x === 'function'`
+  // checks in host.ts already rely on (ENG-2199).
+  mindshubFinalizeChosen: (organizationId: string) =>
+    ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, true),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),

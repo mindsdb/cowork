@@ -7,7 +7,11 @@ const projects = [
 ];
 
 describe('projectNameOf', () => {
-  it('prefers the name the server sent', () => {
+  // Title corrected with ENG-1676: the list is now consulted first, and this
+  // passes because the fixture's list entry has no display_name, so both
+  // sources yield 'Beta'. It asserts the name resolves, not the precedence —
+  // the precedence is pinned in the display-name block below.
+  it('resolves the name when the server sent one', () => {
     const artifact = { projectId: 'p-2', projectName: 'Beta', path: '' };
     expect(projectNameOf(artifact, projects)).toBe('Beta');
   });
@@ -54,5 +58,49 @@ describe('belongsToProject', () => {
 
   it('is false when there is no project', () => {
     expect(belongsToProject({ projectId: 'p-1' }, null)).toBe(false);
+  });
+});
+
+/*
+ * ENG-1676. The server derives `projectName` from the directory
+ * (`os.path.basename`), so it is always the slug — `untitled-project-2` for a
+ * project the sidebar calls `Мій тестовий проєкт`. The projects list is the
+ * only source carrying `display_name`, so it has to be consulted first.
+ *
+ * Both fields are present in the real payload, which is exactly why the
+ * precedence needs pinning: reading either one alone looks correct.
+ */
+describe('projectNameOf — display name (ENG-1676)', () => {
+  const PROJECT = {
+    id: 'p-1',
+    name: 'untitled-project-2',
+    display_name: 'Мій тестовий проєкт',
+    path: '/home/u/.cowork/projects/untitled-project-2',
+  };
+
+  it('prefers the list display name over the slug the server sent', () => {
+    const artifact = { projectId: 'p-1', projectName: 'untitled-project-2' };
+    expect(projectNameOf(artifact, [PROJECT])).toBe('Мій тестовий проєкт');
+  });
+
+  it('prefers it over the slug derivable from the path too', () => {
+    const artifact = { projectId: 'p-1', path: `${PROJECT.path}/.anton/artifacts/a/x.md` };
+    expect(projectNameOf(artifact, [PROJECT])).toBe('Мій тестовий проєкт');
+  });
+
+  it('uses the display name when only the path can identify the project', () => {
+    const artifact = { path: `${PROJECT.path}/.anton/artifacts/a/x.md` };
+    expect(projectNameOf(artifact, [PROJECT])).toBe('Мій тестовий проєкт');
+  });
+
+  it('still falls back to the server name when the list does not span the project', () => {
+    // Org mode: the artifacts list can cross projects the caller has not loaded.
+    const artifact = { projectId: 'p-unknown', projectName: 'some-other-project' };
+    expect(projectNameOf(artifact, [PROJECT])).toBe('some-other-project');
+  });
+
+  it('falls back to the slug for a project that predates the column', () => {
+    const legacy = { id: 'p-2', name: 'reports', display_name: null, path: '/home/u/.cowork/projects/reports' };
+    expect(projectNameOf({ projectId: 'p-2', projectName: 'reports' }, [legacy])).toBe('reports');
   });
 });

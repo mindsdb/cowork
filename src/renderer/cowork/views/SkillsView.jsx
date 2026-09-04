@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
@@ -11,6 +12,12 @@ import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
+import SharedResourceAttribution from '../components/SharedResourceAttribution';
+import { useBreakpoint } from '../hooks/useBreakpoint';
+import {
+  canUseSharedResource,
+  sharedResourceAttribution,
+} from '../lib/sharedResourceAccess';
 
 // Sentinel for the "All projects" scope choice in the Scope <Select>. It must
 // be a non-empty string: Base UI's <Select.Value> treats an empty-string value
@@ -26,9 +33,11 @@ function EmptyState({ children }) {
 }
 
 
-function SkillGridCard({ skill, onClick }) {
+function SkillGridCard({ skill, onClick, projects = [] }) {
   const age = relativeAge(skill.updatedAt);
-  const project = skill.projects?.[0] || skill.project;
+  // `skill.projects` holds project *names*, not objects, so the slug has to be
+  // resolved against the list before a person sees it (ENG-1676).
+  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
   return (
     <Card
       as="button"
@@ -52,6 +61,11 @@ function SkillGridCard({ skill, onClick }) {
               background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
             }}>Disabled</span>
           )}
+          {skill.isBuiltin && (
+            <span className="shrink-0 inline-flex items-center h-5 px-[6px] rounded-[4px] border border-solid border-line text-ink-3 font-[family-name:var(--font-body)] text-xs font-medium">
+              Built-in
+            </span>
+          )}
         </div>
         <span
           // Matches the page-header subtitle (13.5 / 1.5) so the card copy
@@ -60,6 +74,7 @@ function SkillGridCard({ skill, onClick }) {
         >
           {skill.description || skill.declarative?.slice(0, 120) || '—'}
         </span>
+        <SharedResourceAttribution resource={skill} className="mt-1" />
       </div>
 
       {/* Footer */}
@@ -112,6 +127,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
   };
 
   const submit = async () => {
+    if (isEdit && !canUseSharedResource(initial, 'canEdit')) {
+      onError?.('You do not have permission to edit this shared skill.');
+      return;
+    }
     const label = isEdit ? initial.label : draft.label.trim();
     if (!label || !draft.declarative.trim()) return;
     setBusy(true);
@@ -162,7 +181,9 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
                 // leading icon and a divider.
                 { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
                 { separator: true },
-                ...projects.map((p) => ({ value: p.name, label: p.name })),
+                // value stays the slug -- it is what `submit` persists into
+                // `skill.projects`. Only the label is for reading.
+                ...projects.map((p) => ({ value: p.name, label: projectLabel(p) })),
               ]}
             />
           </Field>
@@ -341,6 +362,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
   const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
+  const { isMobile }                  = useBreakpoint();
+  const effectiveView                 = isMobile ? 'grid' : view;
   const searchRef = useRef(null);
 
   const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
@@ -353,16 +376,43 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     reload();
   }, []);
 
+  useEffect(() => {
+    if (!selected || !Array.isArray(skills)) return;
+    const fresh = skills.find((skill) => skill.label === selected.label);
+    if (fresh) setSelected((current) => (current === fresh ? current : fresh));
+  }, [skills]);
+
+  /* The open skill always mirrors the shared catalogue. Mutation endpoints
+     serialize a skill separately from the list, and a response that omits
+     `capabilities` reads as a denial on hosted Cowork, so adopting one would
+     lock the creator out of the skill they just saved. The effect above
+     re-points `selected` at the reloaded entry; a save response only names
+     the skill for the toast. */
   const onSkillSaved = (saved) => {
-    setSelected((prev) => prev?.label === saved?.label ? saved : prev);
     showToast(`Saved ${saved?.label}.`, 'success');
   };
 
+  const onSkillUploaded = async (saved) => {
+    const refreshed = await reload({ afterCurrent: true });
+    // An upload bypasses the store, so re-point the open skill from the list
+    // this reload verified rather than from the upload response.
+    const fresh = refreshed?.ok && Array.isArray(refreshed.skills)
+      ? refreshed.skills.find((skill) => skill.label === saved?.label)
+      : null;
+    if (fresh) {
+      setSelected((current) => (current?.label === fresh.label ? fresh : current));
+    }
+    onSkillSaved(saved);
+  };
+
   const remove = async (skill) => {
+    if (!canUseSharedResource(skill, 'canDelete')) return;
     if (!window.confirm(`Remove skill "${skill.label}"?`)) return;
     try {
       await deleteSkillAndSync(skill.label);
-      setSelected(null);
+      setSelected((current) => (
+        current?.label === skill.label ? null : current
+      ));
       showToast(`Removed ${skill.label}.`, 'success');
     } catch (err) {
       showToast(err.message || 'Could not remove skill.');
@@ -370,7 +420,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   };
 
   const startNew  = () => setModalSkill(undefined);
-  const startEdit = (skill) => setModalSkill(skill);
+  const startEdit = (skill) => {
+    if (canUseSharedResource(skill, 'canEdit')) setModalSkill(skill);
+  };
   const closeModal = () => setModalSkill(null);
 
   // ── Grid list ─────────────────────────────────────────────────────────────
@@ -404,13 +456,28 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 <Switch
                   checked={selected.enabled ?? true}
                   aria-label="Skill enabled"
+                  disabled={!canUseSharedResource(selected, 'canDisable')}
+                  title={!canUseSharedResource(selected, 'canDisable') ? 'You do not have permission to enable or disable this skill.' : undefined}
                   onCheckedChange={async (next) => {
-                    setSelected((prev) => ({ ...prev, enabled: next }));
+                    if (!canUseSharedResource(selected, 'canDisable')) return;
+                    const targetLabel = selected.label;
+                    setSelected((current) => (
+                      current?.label === targetLabel
+                        ? { ...current, enabled: next }
+                        : current
+                    ));
                     try {
-                      const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
-                      setSelected(saved);
+                      /* The reload inside the save re-points the open skill
+                         through the effect above; adopting the response here
+                         would trade the catalogue entry for a serializer that
+                         need not carry capabilities. */
+                      await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
                     } catch (err) {
-                      setSelected((prev) => ({ ...prev, enabled: !next }));
+                      setSelected((current) => (
+                        current?.label === targetLabel
+                          ? { ...current, enabled: !next }
+                          : current
+                      ));
                       showToast(err.message || 'Could not update skill.');
                     }
                   }}
@@ -418,9 +485,25 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 <OverflowMenu
                   items={[
                     { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                    { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
+                    {
+                      id: 'edit', label: 'Edit', icon: Ico.edit(14),
+                      disabled: !canUseSharedResource(selected, 'canEdit'),
+                      hint: !canUseSharedResource(selected, 'canEdit')
+                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        : undefined,
+                      title: !canUseSharedResource(selected, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
+                      onClick: () => startEdit(selected),
+                    },
                     { divider: true },
-                    { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
+                    {
+                      id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
+                      disabled: !canUseSharedResource(selected, 'canDelete'),
+                      hint: !canUseSharedResource(selected, 'canDelete')
+                        ? (selected.isBuiltin ? 'Built-in' : 'Admin or creator')
+                        : undefined,
+                      title: !canUseSharedResource(selected, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
+                      onClick: () => remove(selected),
+                    },
                   ]}
                 />
               </>
@@ -428,11 +511,23 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           />
           <div className="pt-6 px-8 pb-8">
 
+          <SharedResourceAttribution
+            resource={selected}
+            className={canUseSharedResource(selected, 'canEdit') ? 'mb-4' : 'mb-2'}
+          />
+          {!canUseSharedResource(selected, 'canEdit') && (
+            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
+              {selected.isBuiltin
+                ? 'Built-in skills are read only.'
+                : 'Read only — only the creator or an organization admin can change this skill.'}
+            </p>
+          )}
+
           {/* Scope */}
           <div className="mb-4">
             <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
-              {selected.projects?.[0] || 'All projects'}
+              {projectLabelByName(projects, selected.projects?.[0]) || 'All projects'}
             </p>
           </div>
 
@@ -475,16 +570,18 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <EmptyState>Loading…</EmptyState>
           ) : sorted.length === 0 ? (
             <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
-          ) : view === 'list' ? (
+          ) : effectiveView === 'list' ? (
             <div className="pt-4 px-8 pb-[60px]">
-              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
-                {['Name', 'Description', 'Project', 'Updated'].map((h) => (
+              <div className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
+                {['Name', 'Description', 'Project', 'Author', 'Updated'].map((h) => (
                   <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
                 ))}
               </div>
               {sorted.map((skill) => {
                 const project = skill.projects?.[0] || skill.project;
                 const age = relativeAge(skill.updatedAt);
+                const attribution = sharedResourceAttribution(skill);
+                const author = attribution?.createdBy;
                 return (
                   <div
                     key={skill.label}
@@ -492,13 +589,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     tabIndex={0}
                     onClick={() => setSelected(skill)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
+                    className="grid grid-cols-[1fr_2fr_1fr_1.2fr_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                   >
                     <span className="font-[family-name:var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
                     <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
                     <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 whitespace-nowrap">{project || '—'}</span>
+                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" title={author || undefined}>{author || '—'}</span>
                     <span className="font-mono text-[11.5px] text-ink-4 whitespace-nowrap">{age || '—'}</span>
                   </div>
                 );
@@ -507,7 +605,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           ) : (
             <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
               {sorted.map((skill) => (
-                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} />
+                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
               ))}
             </div>
           )}
@@ -516,7 +614,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       <UploadSkillModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onSaved={onSkillSaved}
+        onSaved={onSkillUploaded}
         onError={showToast}
       />
       <SkillModal
