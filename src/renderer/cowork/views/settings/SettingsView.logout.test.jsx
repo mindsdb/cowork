@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 // ENG-1206 regression: signing out must never leave the confirm modal stuck on
 // "Signing out…". On Electron SUCCESS the main process drives the reload that
@@ -47,6 +47,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { LOGOUT_BUSY_LOCK_MS } from '../../hooks/useLogout';
 
 let reloadSpy;
 
@@ -94,6 +95,13 @@ describe('SettingsView sign-out (ENG-1206)', () => {
     Object.defineProperty(window.location, 'reload', { configurable: true, value: reloadSpy });
   });
 
+  afterEach(async () => {
+    // The sign-out store is module state shared with the sidebar user menu, so
+    // a test that leaves an invoke pending would hold the next one's guard.
+    spies.logout.mockResolvedValue(undefined);
+    await act(async () => {});
+  });
+
   it('reloads to re-route to onboarding when host.logout() rejects on Electron', async () => {
     spies.logout.mockRejectedValue(new Error('EPERM: operation not permitted, open .env'));
 
@@ -115,10 +123,41 @@ describe('SettingsView sign-out (ENG-1206)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
 
     // On Electron SUCCESS the renderer must NOT reload itself (that races the
-    // main-driven webContents.reload() and re-sticks the modal) — it stays busy
-    // until main unmounts it. It DOES rotate the device identity once.
+    // main-driven webContents.reload() and re-sticks the modal). It DOES
+    // rotate the device identity once.
     await waitFor(() => expect(spies.resetDeviceIdentity).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(within(dialog).getByText('Signing out…')).toBeTruthy());
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  /*
+   * This assertion used to read the other way round: it pinned that
+   * the modal STAYS on "Signing out…", which encoded the trap as expected
+   * behavior. A tester whose sidecar restart ran long sat in front of that
+   * spinner for minutes with Escape, Cancel and the backdrop all disabled.
+   */
+  it('lets Escape dismiss the dialog once the lock window passes, with the sign-out still running', async () => {
+    spies.logout.mockReturnValue(new Promise(() => {}));
+
+    // Open on real timers: the dialog mounts asynchronously through Base UI.
+    const dialog = await openConfirm();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(spies.logout).toHaveBeenCalledTimes(1));
+
+    // The lock is a timer, so drive it rather than waiting it out.
+    vi.useFakeTimers();
+    try {
+      act(() => { vi.advanceTimersByTime(LOGOUT_BUSY_LOCK_MS); });
+      fireEvent.keyDown(document, { key: 'Escape' });
+      act(() => { vi.runOnlyPendingTimers(); });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // Dismissing is not the same as finishing: the Account card still says so,
+    // and nothing reloaded the page to get us out.
+    const cardButton = screen.getByRole('button', { name: /Signing out/ });
+    expect(cardButton).toBeDisabled();
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 });

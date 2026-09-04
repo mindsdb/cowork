@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { codingApi, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
+import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
@@ -27,6 +27,7 @@ import { supportsTaskCapability } from './taskCapabilities';
 import { useCodeTaskActions, withControlTimeout } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
+import { connectorReturnLabel, withProjectConnection, type ConnectorReturn } from './projectConnections';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
 import { useProjectActions } from './useProjectActions';
@@ -55,10 +56,12 @@ export default function CodeView({
   defaultModel,
   models,
   modelMeta,
+  account = null,
   skillScopeKey = 'signed-out',
   connections = [],
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
+  onOpenProjects = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
   active = true,
@@ -75,10 +78,13 @@ export default function CodeView({
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  /** The signed-in account, used to prefill a Git identity when a commit needs one. */
+  account?: { name?: string | null; email?: string | null } | null;
   skillScopeKey?: string;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
+  onOpenProjects?: () => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
   active?: boolean;
@@ -88,6 +94,13 @@ export default function CodeView({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  // A commit that stopped because Git has no author identity on this
+  // computer; Review › Deliver shows a setup card and retries this message.
+  const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
+  // The setup belongs to the task whose commit stopped; switching tasks drops it.
+  useEffect(() => {
+    setGitIdentitySetup((current) => (current && current.sessionId === selectedId ? current : null));
+  }, [selectedId]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -97,8 +110,9 @@ export default function CodeView({
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
-  const [connectorReturnProjectId, setConnectorReturnProjectId] = useState<string | null>(null);
-  const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
+  // Set while the Connectors view was opened on behalf of a project: accounts
+  // connected there are added to that project, and Back returns to its origin.
+  const [connectorReturn, setConnectorReturn] = useState<ConnectorReturn | null>(null);
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
   const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
@@ -143,6 +157,17 @@ export default function CodeView({
     remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
+  const commitTask = (sessionId: string, message: string) => runAction(async () => {
+    try {
+      await codingApi.commit(sessionId, message);
+      setGitIdentitySetup(null);
+    } catch (reason) {
+      if (codingErrorCode(reason) !== 'git_identity_missing') throw reason;
+      // Not a failure to report: the Deliver tab asks for the identity and
+      // retries this very message once it is saved.
+      setGitIdentitySetup({ sessionId, message });
+    }
+  }, false, true);
   const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
     session ? supportsTaskCapability(session, capability) : false
   );
@@ -183,9 +208,20 @@ export default function CodeView({
     setReferenceRequest(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
+  // Changing view closes the project editor, except when the Connectors view
+  // is handing the user back to the project they were editing.
+  const resumeProjectEditorId = useRef<string | null>(null);
   useEffect(() => {
-    setProjectEditor(null);
+    const resumeId = resumeProjectEditorId.current;
+    resumeProjectEditorId.current = null;
+    setProjectEditor(resumeId ? { id: resumeId } : null);
   }, [newTask, projectsOpen, skillsOpen, selectedId]);
+
+  // Leaving Connectors by any other route (the sidebar, opening a task) ends
+  // the hand-back, so a later standalone visit adds nothing to that project.
+  useEffect(() => {
+    if (!connectorsOpen) setConnectorReturn(null);
+  }, [connectorsOpen]);
 
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
@@ -327,35 +363,29 @@ export default function CodeView({
             connections={connections}
             projects={projects.projects}
             onConnectionsChange={onConnectionsChange}
-            returnProjectName={projects.projects.find((project) => project.id === connectorReturnProjectId)?.name || ''}
-            backLabel={connectorReturnToSettings ? 'Back to project' : 'Back to task'}
-            onBack={connectorReturnProjectId ? () => {
-              projects.setSelectedId(connectorReturnProjectId);
-              setConnectorReturnProjectId(null);
-              setConnectorReturnToSettings(false);
-              onOpenNewTask();
-            } : undefined}
-            onConnected={connectorReturnProjectId ? async (provider, connection) => {
-              const project = projects.projects.find((item) => item.id === connectorReturnProjectId);
-              if (!project) return;
-              if (!connectorReturnToSettings) {
-                const key = `${provider}:${connection.name}`;
-                const current = new Set(project.connections.map((item) => `${item.provider}:${item.name}`));
-                if (!current.has(key)) {
-                  await codingApi.updateProject(project.id, {
-                    connections: [...project.connections, {
-                      provider,
-                      name: connection.name,
-                      label: connection.display_name || connection.user_label || connection.label || connection.name,
-                    }],
-                  });
-                  await projects.load();
-                }
+            returnProjectName={projects.projects.find((project) => project.id === connectorReturn?.projectId)?.name || ''}
+            backLabel={connectorReturn ? connectorReturnLabel(connectorReturn.destination) : undefined}
+            onBack={connectorReturn ? () => {
+              const { projectId, destination } = connectorReturn;
+              setConnectorReturn(null);
+              projects.setSelectedId(projectId);
+              if (destination === 'settings') {
+                resumeProjectEditorId.current = projectId;
+                onOpenProjects();
+              } else {
+                onOpenNewTask();
               }
-              projects.setSelectedId(project.id);
-              setConnectorReturnProjectId(null);
-              setConnectorReturnToSettings(false);
-              onOpenNewTask();
+            } : undefined}
+            onConnected={connectorReturn ? async (provider, connection) => {
+              const project = projects.projects.find((item) => item.id === connectorReturn.projectId);
+              if (!project) return;
+              const connections = withProjectConnection(project, provider, connection);
+              if (!connections) return;
+              const saved = await codingApi.updateProject(project.id, { connections });
+              // Keep the saved list even if the refresh fails, so the next
+              // account is added on top of this one rather than replacing it.
+              projects.replace(saved);
+              await projects.load();
             } : undefined}
           />
         ) : projectsOpen ? (
@@ -390,8 +420,7 @@ export default function CodeView({
             onProjectConnectionsChange={projects.load}
             onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
             onOpenConnectors={() => {
-              setConnectorReturnToSettings(false);
-              setConnectorReturnProjectId(projects.selectedId);
+              if (projects.selectedId) setConnectorReturn({ projectId: projects.selectedId, destination: 'task' });
               onOpenConnectors();
             }}
             onCreateProject={() => setProjectEditor({ id: null })}
@@ -501,7 +530,15 @@ export default function CodeView({
               error={actionError || automationError}
               onClose={() => setReviewOpen(false)}
               onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
-              onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
+              onCommit={(message) => commitTask(session.id, message)}
+              gitIdentitySetup={gitIdentitySetup && gitIdentitySetup.sessionId === session.id ? {
+                name: account?.name || '',
+                email: account?.email || '',
+                onSubmit: async (name, email) => {
+                  await codingApi.setGitIdentity({ name, email });
+                  await commitTask(gitIdentitySetup.sessionId, gitIdentitySetup.message);
+                },
+              } : null}
               onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
               onValidate={async () => (await runResult(
                 () => codingApi.validate(session.id),
@@ -634,8 +671,7 @@ export default function CodeView({
             }
           }}
           onOpenConnectors={() => {
-            setConnectorReturnToSettings(true);
-            setConnectorReturnProjectId(projectEditor?.id || null);
+            if (projectEditor?.id) setConnectorReturn({ projectId: projectEditor.id, destination: 'settings' });
             onOpenConnectors();
           }}
           onOpenSkills={() => {
