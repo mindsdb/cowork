@@ -174,6 +174,32 @@ export function enableDraftComments(artifact) {
   return request(`${ref.base}/comments-access`, { method: 'POST', body: '{}' });
 }
 
+// Owner-only, like enableDraftComments above.
+//
+// On Cloud an artifact autopublishes to its owner alone; these two are how the
+// owner then chooses an audience. The read exists because the artifact CARD
+// withholds `accessEmails`/`accessPassword` in org mode — one artifacts root is
+// shared by the whole organization, so a card cannot tell owner from co-member
+// and must assume the worst. This route can, so the Share dialog pre-fills from
+// here rather than from the card (ENG-2316).
+export function loadArtifactAccess(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/access`);
+}
+
+// Setting an audience is a re-publish server-side: the target stores access
+// alongside the bundle and reuses the existing report_id, so the shared URL
+// survives the change and nothing has to be unpublished first.
+export function setArtifactAccess(artifact, access) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/access`, {
+    method: 'PUT',
+    body: JSON.stringify({ access }),
+  });
+}
+
 export function requestAgentRepair(artifact, payload) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

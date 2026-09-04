@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
@@ -18,6 +19,8 @@ import {
   validateDatasource,
 } from '../api';
 import { trackArtifactPublished } from '../lib/analytics';
+import SharedResourceAttribution from '../components/SharedResourceAttribution';
+import { canUseSharedResource } from '../lib/sharedResourceAccess';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -55,7 +58,7 @@ function shouldUseTextarea(field) {
   return isLongField(field) && !field.secret;
 }
 
-export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
+export default function UtilitiesView({ kind, project, onRefreshArtifacts, projects = [] }) {
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');
@@ -96,6 +99,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
           selected={selected}
           onSelect={setSelected}
           project={project}
+          projects={projects}
           setData={setData}
           setStatus={setStatus}
         />
@@ -108,7 +112,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
   );
 }
 
-function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
+function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
@@ -124,11 +128,26 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
 
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({
-    scope: 'Global', category: '', content: '', projectName: null, projectId: null,
+    path: null, scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
 
-  const refresh = async () => {
-    const latest = await fetchMemory();
+  // The editor writes the slot the draft was seeded from, which is not
+  // necessarily whatever the sidebar has selected by the time Save runs.
+  // Authorize the entry that actually receives the write.
+  const draftTarget = useMemo(
+    () => (draft.path ? findMemoryEntry(sections, draft.path) : null),
+    [sections, draft.path],
+  );
+
+  const selectEntry = (file) => {
+    // Moving the sidebar off the entry being edited would leave the header
+    // naming one memory while the textarea holds another one's draft.
+    if (file?.path !== draft.path) setEditing(null);
+    onSelect(file);
+  };
+
+  const refresh = async ({ forceFresh = false } = {}) => {
+    const latest = await fetchMemory(undefined, { forceFresh });
     setData(latest);
     if (selected?.path) {
       const updated = findMemoryEntry(latest?.sections, selected.path);
@@ -138,8 +157,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   };
 
   const startEdit = (file) => {
+    if (!canUseSharedResource(file, 'canEdit')) return;
     setEditing('edit');
     setDraft({
+      path: file.path || null,
       scope: file.scope || 'Global',
       category: file.category,
       content: file.content || file.preview || '',
@@ -150,6 +171,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   };
 
   const save = async () => {
+    if (!canUseSharedResource(draftTarget, 'canEdit')) {
+      setStatus('You do not have permission to edit this shared memory.');
+      return;
+    }
     if (!draft.category) {
       setStatus('No memory category selected.');
       return;
@@ -167,13 +192,14 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
       });
       setStatus(`Saved ${labelCategory(draft.category)} memory.`);
       setEditing(null);
-      await refresh();
+      await refresh({ forceFresh: true });
     } catch (err) {
       setStatus(err.message || 'Could not save memory.');
     }
   };
 
   const remove = async (file) => {
+    if (!canUseSharedResource(file, 'canDelete')) return;
     const label = labelCategory(file.category);
     if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
     try {
@@ -185,7 +211,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
       setStatus(`Deleted ${label} memory.`);
       setEditing(null);
       onSelect(null);
-      await refresh();
+      await refresh({ forceFresh: true });
     } catch (err) {
       setStatus(err.message || 'Could not delete memory.');
     }
@@ -208,16 +234,16 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               heading="Global"
               files={globalSection.files || []}
               selected={selected}
-              onSelect={onSelect}
+              onSelect={selectEntry}
             />
           )}
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={`Project · ${section.projectName}`}
+              heading={`Project · ${projectLabelByName(projects, section.projectName)}`}
               files={section.files || []}
               selected={selected}
-              onSelect={onSelect}
+              onSelect={selectEntry}
               isActive={section.projectName === project?.name}
             />
           ))}
@@ -233,9 +259,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
                     {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${selected.projectName}`
+                      ? `Project · ${projectLabelByName(projects, selected.projectName)}`
                       : selected.scope}
                   </div>
+                  <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
                 </div>
                 <Button variant="subtle" onClick={() => setEditing(null)}>Cancel</Button>
                 <Button variant="primary" onClick={save}>Save</Button>
@@ -255,12 +282,28 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
                     {displayed.scope === 'Project' && displayed.projectName
-                      ? `Project · ${displayed.projectName}`
+                      ? `Project · ${projectLabelByName(projects, displayed.projectName)}`
                       : displayed.scope}
                   </div>
+                  <SharedResourceAttribution resource={displayed} className="mt-1" />
+                  {!canUseSharedResource(displayed, 'canEdit') && (
+                    <div className="mt-1 text-[12px] text-ink-3" role="note">
+                      Read only. Only the memory author or an organization admin can change it.
+                    </div>
+                  )}
                 </div>
-                <Button variant="subtle" onClick={() => startEdit(displayed)}>Edit</Button>
-                <Button variant="subtle" onClick={() => remove(displayed)}>Delete</Button>
+                <Button
+                  variant="subtle"
+                  disabled={!canUseSharedResource(displayed, 'canEdit')}
+                  title={!canUseSharedResource(displayed, 'canEdit') ? 'You do not have permission to edit this shared memory.' : undefined}
+                  onClick={() => startEdit(displayed)}
+                >Edit</Button>
+                <Button
+                  variant="subtle"
+                  disabled={!canUseSharedResource(displayed, 'canDelete')}
+                  title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
+                  onClick={() => remove(displayed)}
+                >Delete</Button>
               </div>
               <div className={memoryViewerClass}>
                 <MarkdownContent

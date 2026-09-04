@@ -1,3 +1,5 @@
+import { projectLabel } from './projectLabel';
+
 // Tying an artifact card to its project.
 //
 // The server now sends `projectId`/`projectName`, which is the only workable
@@ -7,17 +9,23 @@
 // addresses by path.
 
 export function projectNameOf(artifact, projects = []) {
-  if (artifact?.projectName) return artifact.projectName;
+  // The projects list is consulted BEFORE the server's `projectName`, because
+  // only the list reliably carries `display_name`. Every *filesystem-derived*
+  // producer of `projectName` reads the directory (`os.path.basename`), so it is
+  // the slug and would show `untitled-project-2` for a project the
+  // sidebar calls `Мій тестовий проєкт` (ENG-1676). `projectName` stays as the
+  // fallback for org mode, where the list may not span the artifact's project.
   if (artifact?.projectId) {
     const byId = projects.find((p) => String(p.id) === String(artifact.projectId));
-    if (byId) return byId.name;
+    if (byId) return projectLabel(byId);
   }
+  if (artifact?.projectName) return artifact.projectName;
   const path = artifact?.path || '';
   if (path) {
     const match = projects.find(
       (p) => p.path && path.startsWith(p.path.replace(/\/+$/, '') + '/'),
     );
-    if (match) return match.name;
+    if (match) return projectLabel(match);
     const segment = path.match(/\/projects\/([^/]+)\//);
     if (segment) return segment[1];
   }

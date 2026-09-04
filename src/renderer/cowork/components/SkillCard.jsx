@@ -23,6 +23,10 @@ import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
 import { downloadBlob } from '../lib/browserDownload';
 import { deleteSkillDraft } from '../api';
+import {
+  canUseSharedResource,
+  isReservedProjectName,
+} from '../lib/sharedResourceAccess';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
 // The event payload already carries the full SKILL.md, so download works
@@ -58,10 +62,29 @@ export default function SkillCard({ skill, projectName }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [status, setStatus] = useState(null); // { kind: 'ok'|'error', text }
-  const { skills } = useSkills();
+  const { skills, catalogueStatus, reload } = useSkills();
 
   const name = skill.name || skill.slug || 'Skill';
   const slug = skill.slug || skill.label;
+  const catalogueLoaded = catalogueStatus === 'loaded';
+  /* The catalogue status is module-global, so every mounted card sees
+     'loading' whenever any surface refreshes the list. The store keeps the
+     last settled list across that refresh, so the remembered entry stays the
+     newest server verdict: honouring it keeps a forbidden skill read only
+     instead of flipping to an enabled create for the length of the reload.
+     A remembered entry can only withhold the button, never authorise a
+     replace. */
+  const knownSkill = Array.isArray(skills)
+    ? skills.find((candidate) => candidate.label === slug)
+    : null;
+  // Only a verified catalogue can classify this draft as an update. Without
+  // one, POST the member-wide create and let the server resolve identity
+  // atomically; a collision may become a PUT only after a fresh capability
+  // response explicitly allows it.
+  const existingSkill = catalogueLoaded ? knownSkill : null;
+  const canSave = knownSkill
+    ? canUseSharedResource(knownSkill, 'canEdit')
+    : true;
   // "Saved" only when THIS revision is in the store — compare instructions, not
   // just slug existence: editing an existing skill seeds the draft from the
   // stored version, so slug-existence alone would falsely show "Saved" before
@@ -80,7 +103,7 @@ export default function SkillCard({ skill, projectName }) {
 
   const handleSave = async (e) => {
     e.stopPropagation();
-    if (saving || saved) return;
+    if (saving || saved || !canSave) return;
     setSaving(true);
     setStatus(null);
 
@@ -95,13 +118,14 @@ export default function SkillCard({ skill, projectName }) {
       declarative: skill.instructions || '',
     };
     // A saved skill with this slug → PUT; else POST.
-    const exists = Array.isArray(skills) && skills.some((s) => s.label === slug);
+    const exists = !!existingSkill;
 
-    // Scope is set on CREATE only, and only for a real project — general/default
-    // are reserved (global), so they stay unscoped. On UPDATE we omit `projects`:
+    // Scope is set on CREATE only, and only for a real project. Hosted Cowork
+    // reserves `general`; desktop also preserves its legacy `default` project.
+    // On UPDATE we omit `projects`:
     // the API replaces the whole list, so sending just the current project would
     // wipe the skill's other project associations.
-    const isReserved = projectName === 'general' || projectName === 'default';
+    const isReserved = isReservedProjectName(projectName);
     const createPayload = (projectName && !isReserved)
       ? { ...payload, projects: [projectName] }
       : payload;
@@ -118,10 +142,24 @@ export default function SkillCard({ skill, projectName }) {
       await saveSkillAndSync(exists ? payload : createPayload, exists);
       markSaved();
     } catch (err) {
-      // Stale list (created since the last fetch): retry as an update — `payload`
-      // carries no `projects`, so the skill's existing scope is preserved.
+      // A stale list can race another create. Refresh before considering an
+      // update so hosted Cowork never turns a 409 into a PUT without a fresh
+      // server capability decision. Desktop keeps its local-owner fallback.
       if (!exists && /already exists/i.test(err?.message || '')) {
         try {
+          const refreshed = await reload?.({ afterCurrent: true });
+          const collision = refreshed?.ok && Array.isArray(refreshed.skills)
+            ? refreshed.skills.find((candidate) => candidate.label === slug)
+            : null;
+          if (!canUseSharedResource(collision, 'canEdit')) {
+            setStatus({
+              kind: 'error',
+              text: collision
+                ? 'You do not have permission to replace this shared skill.'
+                : 'Could not verify permission to replace this shared skill. Try again.',
+            });
+            return;
+          }
           await saveSkillAndSync(payload, true);
           markSaved();
         } catch (err2) {
@@ -187,10 +225,11 @@ export default function SkillCard({ skill, projectName }) {
             <Button
               size="sm"
               variant={saved ? 'subtle' : 'primary'}
-              disabled={saving || saved}
+              disabled={saving || saved || !canSave}
+              title={!canSave ? 'You do not have permission to replace this shared skill.' : undefined}
               onClick={handleSave}
             >
-              {saved ? 'Saved' : saving ? 'Saving…' : 'Save skill'}
+              {saved ? 'Saved' : saving ? 'Saving…' : !canSave ? 'Read only' : 'Save skill'}
             </Button>
           </div>
         </div>

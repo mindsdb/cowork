@@ -12,8 +12,6 @@
 import Ico from '../Icons';
 import { Badge } from '../ui';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
-
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
 // public artifact gets the green "success" treatment — password/restricted
 // are neutral so a protected artifact can never read as "Shared / available
@@ -49,11 +47,13 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   // Transient phases win over the persisted state.
   if (phase === 'failed') {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <span className="inline-flex items-center gap-2 min-w-0">
         <Badge variant="danger" size="sm">Sharing failed</Badge>
-        <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+        <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
           Couldn't share.{onRetry ? ' ' : ''}
           {onRetry && (
+            // `all: unset` stays inline — as a utility its ordering vs the
+            // sibling utilities isn't guaranteed, so it could reset them.
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onRetry(); }}
@@ -79,14 +79,14 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // Fills the status area: access badge on the left, the "Unpublished
     // changes" warning pushed to the right (margin-left:auto). On a tight
     // card it wraps to its own line, still right-aligned there.
-    <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
+    <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
       <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
         {badge.label}
       </Badge>
       {artifact.modified && (
         inlineChanges
           ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
-          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Badge variant="warning" size="sm" dot>Unshared changes</Badge></span>
+          : <span className="ml-auto inline-flex"><Badge variant="warning" size="sm" dot>Unshared changes</Badge></span>
       )}
     </span>
   );
