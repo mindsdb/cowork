@@ -24,6 +24,7 @@ const workspaceMock = vi.hoisted(() => ({
 }));
 
 const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
+const loadArtifactDraftText = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -35,7 +36,7 @@ vi.mock('../../api', () => ({
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
-  loadArtifactDraftText: vi.fn(),
+  loadArtifactDraftText,
   loadArtifactDraftDocument,
 }));
 vi.mock('../../../platform/host', () => ({
@@ -154,7 +155,7 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
 
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
 
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(await screen.findByText('boom (HTTP 500)')).toBeInTheDocument();
     expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
   });
 
@@ -232,5 +233,111 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('src')).toContain('https://evil.example/index.html');
     expect(frame).not.toHaveAttribute('srcdoc');
     expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * ENG-2319. The text branch (.md/.txt/.csv) had no coverage at all, which is
+ * how it kept two defects the draft-HTML branch above does not have: it showed
+ * whatever it caught, so Chromium's "Failed to fetch" reached the modal on a
+ * CSV, and it had no embedded/cross-origin fallback, so a data: draft failed
+ * for CSV where the same URL renders fine as HTML.
+ */
+describe('ArtifactViewer draft text preview', () => {
+  const csvArtifact = {
+    ...artifact,
+    title: 'Signups',
+    ext: '.csv',
+    path: '/artifacts/launch/signups.csv',
+    canonicalPath: '/artifacts/launch/signups.csv',
+    draftUrl: '/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/signups.csv',
+  };
+
+  const csvBody = (content = 'id,name\n1,Ada\n') => ({ content, truncated: false, mime: 'text/csv' });
+
+  beforeEach(() => {
+    loadArtifactDraftText.mockReset();
+    loadArtifactDraftDocument.mockReset();
+  });
+
+  it('renders the CSV as a table', async () => {
+    loadArtifactDraftText.mockResolvedValue(csvBody());
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'name' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Ada' })).toBeInTheDocument();
+  });
+
+  it('never shows the browser text when the fetch fails at the network layer', async () => {
+    loadArtifactDraftText.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(
+      'Could not reach the server to load this preview. Check the connection, then reload.',
+    )).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+  });
+
+  it('names a 403 as no-access, the same as the draft-HTML branch', async () => {
+    loadArtifactDraftText.mockRejectedValue(
+      Object.assign(new Error('Could not load private draft (403)'), { status: 403 }),
+    );
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('You do not have access to this draft.')).toBeInTheDocument();
+  });
+
+  it('names a 401 as an expired session, the same as the draft-HTML branch', async () => {
+    loadArtifactDraftText.mockRejectedValue(
+      Object.assign(new Error('Could not load private draft (401)'), { status: 401 }),
+    );
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Your session expired — reload the page and try again.'))
+      .toBeInTheDocument();
+  });
+
+  it('keeps the loader phrasing, which already names the status', async () => {
+    loadArtifactDraftText.mockRejectedValue(
+      Object.assign(new Error('Could not load private draft (404)'), { status: 404 }),
+    );
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Could not load private draft (404)')).toBeInTheDocument();
+  });
+
+  it('fetches a same-origin draft with credentials', async () => {
+    loadArtifactDraftText.mockResolvedValue(csvBody());
+
+    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
+
+    await screen.findByRole('table');
+    expect(loadArtifactDraftText).toHaveBeenCalledWith(
+      csvArtifact.draftUrl,
+      { withCredentials: true },
+    );
+  });
+
+  /*
+   * The text path's equivalent of the draft-HTML branch's plain `src=`
+   * navigation: read it, just without the bearer. Refusing outright is what
+   * made a data: CSV fail where a data: HTML draft renders.
+   */
+  it.each([
+    ['an embedded data:', 'data:text/csv;charset=utf-8,id%2Cname%0A1%2CAda'],
+    ['a cross-origin', 'https://cdn.example/signups.csv'],
+  ])('reads %s draft URL without credentials', async (_label, draftUrl) => {
+    loadArtifactDraftText.mockResolvedValue(csvBody());
+
+    render(<ArtifactViewer open artifact={{ ...csvArtifact, draftUrl }} onClose={vi.fn()} />);
+
+    await screen.findByRole('table');
+    expect(loadArtifactDraftText).toHaveBeenCalledWith(draftUrl, { withCredentials: false });
   });
 });
