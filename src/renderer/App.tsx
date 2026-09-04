@@ -9,7 +9,7 @@ import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
-import { resolveBootTarget } from './lib/bootTarget';
+import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
 import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
@@ -201,7 +201,17 @@ export default function App() {
       // hasLocalTermsConsent() is internally try/caught (returns false on any
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
-      const decision = await resolveBootTarget(host, hasLocalTermsConsent());
+      // ENG-2167: third consent source. On hosted web the first two can never
+      // fire — readSettings degrades to {} and cowork-server has no
+      // ANTON_TERMS_CONSENT — so localStorage was the only one left, and it is
+      // per-browser. Registration already agreed the same Terms and Privacy
+      // Policy. Resolved here rather than inside resolveBootTarget so that unit
+      // stays free of module loading, and never throws (see its doc comment).
+      const decision = await resolveBootTarget(
+        host,
+        hasLocalTermsConsent(),
+        await resolveRegistrationConsent(host.isWeb, () => import('./lib/keycloak')),
+      );
       const target: Page = decision.target;
       // Fail-safe for an unresolved mode: treat it as org in the web build. The
       // opposite default would render desktop-only artifact actions (Share,
