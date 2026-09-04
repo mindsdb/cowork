@@ -29,14 +29,30 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
+// `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
+// and "only me" is `restricted` with nothing selected. Deriving it here — and
+// collapsing it back in `buildAccessPayload` — is what lets the picker offer
+// "Only you" and "Specific people" as two visibly different choices instead of
+// one option whose meaning depends on whether a textarea happens to be empty.
 export function accessDraftFromArtifact(artifact) {
-  const mode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
+  const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
+  const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
+    ? 'ownerOnly'
+    : serverMode;
   return {
     mode,
     password: artifact?.accessPassword || '',
     emailsText: (artifact?.accessEmails || []).join(', '),
     orgAllowed: !!artifact?.orgAllowed,
   };
+}
+
+// "Only me" on the wire is `restricted` with no recipients and no org. The
+// server also sends an explicit `ownerOnly`; prefer it, and fall back to the
+// derivation for a record written before that flag existed.
+export function isOwnerOnlySelection(artifact) {
+  if (artifact?.ownerOnly != null) return !!artifact.ownerOnly;
+  return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed;
 }
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
@@ -63,10 +79,17 @@ export function parseEmailList(raw) {
 export function isAccessDraftValid(draft) {
   if (!draft) return false;
   if (draft.mode === 'public') return true;
+  // Nothing to fill in — it is a complete selection on its own.
+  if (draft.mode === 'ownerOnly') return true;
   if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
   if (draft.mode === 'restricted') {
-    const { invalid } = parseEmailList(draft.emailsText);
-    return invalid.length === 0;
+    const { valid, invalid } = parseEmailList(draft.emailsText);
+    if (invalid.length) return false;
+    // An empty "Specific people" used to be how you said "only me". It is a
+    // separate option now, so an empty list here is an unfinished selection
+    // rather than a silent private publish — block it instead of quietly
+    // doing something other than what the label says.
+    return valid.length > 0 || !!draft.orgAllowed;
   }
   return false;
 }
@@ -75,6 +98,12 @@ export function isAccessDraftValid(draft) {
 // is derived, never stored on the draft: the textarea is the source of truth.
 export function buildAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
+  // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
+  // `restricted` with neither emails nor an org would otherwise be read as an
+  // empty selection and degrade to public — the exact opposite of the choice.
+  if (draft?.mode === 'ownerOnly') {
+    return { mode: 'restricted', emails: [], org_allowed: false, owner_only: true };
+  }
   if (draft?.mode === 'restricted') {
     const { valid } = parseEmailList(draft.emailsText);
     const orgAllowed = !!draft.orgAllowed;
@@ -98,12 +127,10 @@ export const ACCESS_LABELS = {
   password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
   restricted: {
     icon: Ico.people,
-    title: 'For you and selected users',
-    desc: 'Only you and people you list — or your whole org',
+    title: 'Specific people',
+    desc: 'Only the people you list — or your whole org',
   },
-  // Not a mode: the summary variant shown when a restricted publish has no
-  // recipients and no org (ENG-1769).
-  ownerOnly: { icon: Ico.people, title: 'Only you', desc: 'Nobody else can open this' },
+  ownerOnly: { icon: Ico.lock, title: 'Only you', desc: 'Nobody else can open this' },
 };
 
 function OptionCard({ value, active, icon, title, desc }) {
@@ -147,7 +174,9 @@ function OptionCard({ value, active, icon, title, desc }) {
 export function AccessChooser({
   value,
   onChange,
-  modes = ['public', 'password', 'restricted'],
+  // Order runs private → public, so the least exposing choice is the one the
+  // eye lands on first.
+  modes = ['ownerOnly', 'restricted', 'password', 'public'],
   onSubmit,
 }) {
   const draft = value;
@@ -162,17 +191,25 @@ export function AccessChooser({
         className="flex flex-col gap-2"
         aria-label="Who can access your app"
       >
-        {modes.includes('public') && (
-          <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
-            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
+        {/* "Only you" is its own option rather than an empty "Specific people".
+            The two used to be the same radio, distinguished only by whether the
+            textarea below it happened to be blank — so the choice a person had
+            made was not visible in the choice they had selected. */}
+        {modes.includes('ownerOnly') && (
+          <OptionCard value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
+            title={ACCESS_LABELS.ownerOnly.title} desc={ACCESS_LABELS.ownerOnly.desc} />
+        )}
+        {modes.includes('restricted') && (
+          <OptionCard value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
+            title={ACCESS_LABELS.restricted.title} desc={ACCESS_LABELS.restricted.desc} />
         )}
         {modes.includes('password') && (
           <OptionCard value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
             title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
         )}
-        {modes.includes('restricted') && (
-          <OptionCard value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
-            title={ACCESS_LABELS.restricted.title} desc={ACCESS_LABELS.restricted.desc} />
+        {modes.includes('public') && (
+          <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
+            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
         )}
       </RadioGroup>
 
@@ -217,7 +254,9 @@ export function AccessChooser({
             {invalidEmails.length
               ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
               : (parsedEmails.length === 0 && !draft.orgAllowed
-                ? 'Only you will have access'
+                // Not "only you will have access": that is now a choice of its
+                // own, so arriving here means the selection is simply unfinished.
+                ? 'Add someone, or choose “Only you”'
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>

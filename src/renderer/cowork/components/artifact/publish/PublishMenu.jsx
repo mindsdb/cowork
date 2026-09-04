@@ -26,6 +26,7 @@ import {
   ACCESS_LABELS,
   buildAccessPayload,
   isAccessDraftValid,
+  isOwnerOnlySelection,
   parseEmailList,
 } from './AccessChooser';
 
@@ -33,8 +34,11 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 
 function draftFromController(pub) {
+  // Same derivation as accessDraftFromArtifact: the controller carries the
+  // server's three modes, and the picker offers "Only you" as its own.
+  const serverMode = pub.accessMode || 'public';
   return {
-    mode: pub.accessMode || 'public',
+    mode: serverMode === 'restricted' && isOwnerOnlySelection(pub) ? 'ownerOnly' : serverMode,
     password: pub.accessPassword || '',
     emailsText: (pub.accessEmails || []).join(', '),
     orgAllowed: !!pub.orgAllowed,
@@ -46,6 +50,8 @@ function draftFromController(pub) {
 // "Up to date" status (nothing to publish).
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
+  // Nothing else to compare: the mode IS the whole selection.
+  if (draft.mode === 'ownerOnly') return false;
   if (draft.mode === 'password') return (draft.password || '') !== (current.password || '');
   if (draft.mode === 'restricted') {
     const a = parseEmailList(draft.emailsText).valid.join(',');
@@ -212,6 +218,10 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
+  // Published is not the same as shared: an owner-only artifact has a URL that
+  // only its owner can open.
+  const isSharedWithSomeone = isPublished
+    && !(pub.accessMode === 'restricted' && isOwnerOnlySelection(pub));
   const [open, setOpen] = useState(false);
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
@@ -317,7 +327,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           title={disabled ? (disabledReason || undefined) : undefined}
           style={triggerStyle}
         >
-          {isPublished ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(13)}</span></>) : 'Share'}
+          {/* "Shared" is a claim about other people having access. An
+              owner-only artifact is published — on Cloud everything is, from
+              birth — but nobody else can open it, so the button that offers to
+              change that still reads "Share". */}
+          {isSharedWithSomeone
+            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(13)}</span></>)
+            : 'Share'}
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
