@@ -30,6 +30,11 @@ describe('formatting', () => {
     expect(formatTokensShort(5_000_000)).toBe('5M');
     expect(formatTokensShort(900)).toBe('900');
   });
+  it('says 1M, not 1000K, once the K form would round up to a thousand', () => {
+    expect(formatTokensShort(999_999)).toBe('1M');
+    expect(formatTokensShort(999_950)).toBe('1M');
+    expect(formatTokensShort(999_949)).toBe('999.9K');
+  });
   it('formats dollars with two decimals and keeps the sign', () => {
     expect(formatUsd(8.42)).toBe('$8.42');
     expect(formatUsd(0)).toBe('$0.00');
@@ -148,6 +153,38 @@ describe('deriveComposerWarning', () => {
     expect(labels(w)).toEqual(['Add funds', 'Set up auto top up']);
   });
 
+  it('balance empty but free tokens remain: the router and Air still run, so no stop sign', () => {
+    // cowork-server swaps a wallet-locked model for Air while the grant lasts,
+    // so the next task starts. Only an explicit paid pick is stuck.
+    const depleted = usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
+    expect(deriveComposerWarning(depleted, { model: 'model-router' })).toBeNull();
+    expect(deriveComposerWarning(depleted, { model: null })).toBeNull();
+    expect(deriveComposerWarning(depleted, { model: 'mindshub_air' })).toBeNull();
+    expect(deriveComposerWarning(depleted, { model: 'claude-sonnet-4' })?.kind).toBe('balance_empty');
+    // Free tokens low as well: the free-token line carries the balance news.
+    const depletedLowFree = usage({
+      freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET },
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    });
+    const w = deriveComposerWarning(depletedLowFree, { model: 'model-router' });
+    expect(w.kind).toBe('free_low');
+    expect(w.body).toMatch(/Your balance is empty\.$/);
+    expect(labels(w)).toEqual(['View usage', 'Add funds']);
+    // An uncapped grant keeps Air free forever; no grant at all leaves only the balance.
+    expect(deriveComposerWarning(usage({
+      freeTokens: { limit: -1, used: 10, remaining: -1 },
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    }), { model: 'model-router' })).toBeNull();
+    expect(deriveComposerWarning(usage({
+      freeTokens: null,
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    }), { model: 'model-router' })?.kind).toBe('balance_empty');
+    expect(deriveComposerWarning(usage({
+      freeTokens: { limit: 0, used: 0, remaining: 0 },
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    }), { model: 'mindshub_air' })?.kind).toBe('balance_empty');
+  });
+
   it('balance empty and free tokens used on Air: names both and the reset date', () => {
     const w = deriveComposerWarning(usage({
       freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
@@ -194,6 +231,18 @@ describe('usageTransitions', () => {
       usage({ freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     );
     expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET }]);
+  });
+  it('skips the free-tokens news for a task on an explicit paid model, which was on the balance all along', () => {
+    const before = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
+    const after = usage({
+      freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET },
+      autoTopUp: { enabled: true, status: 'payment_failed' },
+    });
+    expect(usageTransitions(before, after, { model: 'claude-sonnet-4' })).toEqual([{ kind: 'auto_top_up_failed' }]);
+    expect(usageTransitions(before, after, { model: { id: 'claude-sonnet-4' } })).toEqual([{ kind: 'auto_top_up_failed' }]);
+    for (const model of ['model-router', 'mindshub_air', null]) {
+      expect(usageTransitions(before, after, { model }).map((t) => t.kind)).toEqual(['free_used', 'auto_top_up_failed']);
+    }
   });
   it('reports an auto top up that just failed', () => {
     const t = usageTransitions(

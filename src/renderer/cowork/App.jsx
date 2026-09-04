@@ -2544,16 +2544,19 @@ function AppCore() {
   // question, and they are client-side only (gone on reload, by design).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
-    const changes = usageTransitions(prevHubUsage.current, hubUsage);
+    const before = prevHubUsage.current;
     prevHubUsage.current = hubUsage;
     const streamingId = activeStreamingTaskIdRef.current;
-    if (!changes.length || !streamingId) return;
+    if (!streamingId || !usageTransitions(before, hubUsage).length) return;
     const createdAt = new Date().toISOString();
-    setTasks((prev) => prev.map((t) => (
-      t.id === streamingId
-        ? { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] }
-        : t
-    )));
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== streamingId) return t;
+      // The task's own pick decides which resource it spends, same as the
+      // composer: a task on an explicit paid model never hears about free tokens.
+      const changes = usageTransitions(before, hubUsage, { model: t.model });
+      if (!changes.length) return t;
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
+    }));
   }, [hubUsage]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
