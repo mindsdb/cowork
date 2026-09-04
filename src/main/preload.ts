@@ -147,6 +147,19 @@ contextBridge.exposeInMainWorld('antontron', {
   // Auth (Electron-only)
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
+  accountOwnershipPending: () => ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_PENDING),
+  // Resolved at preload time, which re-runs on every reload, so it is never the
+  // stale value an additionalArguments entry would be after a sign-out reload.
+  accountSession: (() => {
+    try {
+      return ipcRenderer.sendSync(IPC.ACCOUNT_SIGNED_IN_SYNC) as {
+        accountId: string | null;
+        legacyState: 'keep' | 'purge' | 'undecided';
+      };
+    } catch { return { accountId: null, legacyState: 'keep' as const }; }
+  })(),
+  decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
+    ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),
 
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),

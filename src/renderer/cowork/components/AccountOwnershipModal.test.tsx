@@ -1,0 +1,125 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+// The modal is the only place a person can answer "is this history mine?", and
+// both answers are consequential — one hands over a data root, the other leaves
+// it behind — so what matters is that each button reports the right answer and
+// that neither can be fired twice while the first is still running.
+import AccountOwnershipModal from './AccountOwnershipModal';
+
+describe('AccountOwnershipModal', () => {
+  it('reports keeping the existing history', async () => {
+    const onDecide = vi.fn().mockResolvedValue(undefined);
+    render(<AccountOwnershipModal open accountLabel="a@example.com" onDecide={onDecide} onDismiss={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /this history is mine/i }));
+
+    expect(onDecide).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it('reports starting fresh', async () => {
+    const onDecide = vi.fn().mockResolvedValue(undefined);
+    render(<AccountOwnershipModal open accountLabel="b@example.com" onDecide={onDecide} onDismiss={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /start fresh/i }));
+
+    expect(onDecide).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it('names the account so the person knows who they are answering for', () => {
+    render(<AccountOwnershipModal open accountLabel="a@example.com" onDecide={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(/a@example\.com/)).toBeTruthy();
+  });
+
+  it('still asks answerably when there is no label to show', () => {
+    render(<AccountOwnershipModal open accountLabel={null} onDecide={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(/this account/i)).toBeTruthy();
+  });
+
+  it('says plainly that neither answer deletes anything', () => {
+    // The reason this is a question and not a silent choice: a person has to be
+    // able to pick without fearing they are discarding their own work.
+    render(<AccountOwnershipModal open accountLabel={null} onDecide={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(/nothing is deleted either way/i)).toBeTruthy();
+  });
+
+  it('cannot be answered twice while the first answer is in flight', async () => {
+    let release: (() => void) | undefined;
+    const onDecide = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
+    render(<AccountOwnershipModal open accountLabel={null} onDecide={onDecide} onDismiss={vi.fn()} />);
+
+    const keep = screen.getByRole<HTMLButtonElement>('button', { name: /this history is mine/i });
+    await userEvent.click(keep);
+    // Both buttons disabled, so a double-click cannot adopt and decline at once.
+    await waitFor(() => expect(keep.disabled).toBe(true));
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: /starting fresh|start fresh/i }).disabled,
+    ).toBe(true);
+
+    release?.();
+    expect(onDecide).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('when the answer does not take effect', () => {
+  it('shows why, and keeps both answers available', () => {
+    // Main can refuse: the claim failed to write, or another launch won it, or
+    // the signed-in account changed. Closing on that would leave the person on
+    // an empty app having just said the history was theirs.
+    render(
+      <AccountOwnershipModal
+        open
+        accountLabel="a@example.com"
+        error="Could not take that history. Nothing was changed — try again."
+        onDecide={vi.fn()} onDismiss={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/could not take that history/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /this history is mine/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start fresh/i })).toBeTruthy();
+  });
+
+  it('says nothing about failure when there is none', () => {
+    render(<AccountOwnershipModal open accountLabel={null} onDecide={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.queryByText(/could not/i)).toBeNull();
+  });
+});
+
+describe('closing without answering', () => {
+  it('is allowed, because the other branch is remembered permanently', async () => {
+    // A forced choice turns a mis-click on "Start fresh" into an install whose
+    // history is unreachable from the app. Dismissing answers nothing.
+    const onDismiss = vi.fn();
+    const onDecide = vi.fn();
+    render(
+      <AccountOwnershipModal
+        open
+        accountLabel="a@example.com"
+        onDecide={onDecide}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onDismiss).toHaveBeenCalled();
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('is refused while an answer is still in flight', async () => {
+    // Dismissing mid-answer would drop the result of a claim already underway.
+    let release: (() => void) | undefined;
+    const onDismiss = vi.fn();
+    const onDecide = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
+    render(
+      <AccountOwnershipModal open accountLabel={null} onDecide={onDecide} onDismiss={onDismiss} />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /this history is mine/i }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    release?.();
+  });
+});

@@ -50,6 +50,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
+import { purgeStaleAccountState } from './lib/accountLocalState';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2518,6 +2519,18 @@ function AppCore() {
   });
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
+
+  // Drop the previous account's browser-local caches once we know who is signed
+  // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
+  // has its own epoch, and only a change of ACCOUNT invalidates this state.
+  //
+  // This handles a MARKED cache naming another account. An unmarked one needs
+  // to know who owns the default data root, which only the main process can
+  // answer, so that verdict is applied by the pre-mount purge in main.tsx and
+  // left at its 'keep' default here.
+  useEffect(() => {
+    purgeStaleAccountState(codeAccountUser?.sub ?? null);
+  }, [codeAccountUser?.sub]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its

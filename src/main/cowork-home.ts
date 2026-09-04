@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
+import { accountDataHome, readActiveAccount } from './account-data';
 import { BUILD_KINDS, CHANNELS, normalizeBuildKind, type BuildKind } from './channels';
 
 const LEGACY_HOME = path.join(os.homedir(), '.anton');
@@ -139,12 +140,52 @@ export function coworkHome(): string {
   return path.join(os.homedir(), CHANNELS[buildKind()].homeDirName);
 }
 
+/**
+ * The data root for the account currently signed in: `coworkHome()` itself for
+ * the account that owns it, a subtree otherwise.
+ *
+ * `coworkHome()` stays the SHARED root and keeps everything that answers "who is
+ * signed in" — the refresh token, the account record, the ownership claim, the
+ * server owner token — because those cannot be per-account without a bootstrap
+ * cycle. Everything an account OWNS hangs off this instead.
+ */
+export function accountDataRoot(): string {
+  const shared = coworkHome();
+  return accountDataHome(shared, readActiveAccount(shared));
+}
+
+/**
+ * The account's data root, created if it is not there yet.
+ *
+ * Every writer of `coworkEnvPath()` or `coworkStatePath()` must go through this
+ * rather than creating `coworkHome()`: a second account's root does not exist
+ * until something makes it, and an atomic write puts its temp file in the target
+ * directory, so writing first would fail with ENOENT and lose the value.
+ */
+export function ensureAccountDataRoot(): string {
+  const root = accountDataRoot();
+  fs.mkdirSync(root, { recursive: true });
+  return root;
+}
+
+/**
+ * The account's own dotenv, and below it its provider state.
+ *
+ * Per-account rather than shared, because these are written by whichever
+ * account is signed in: a second account entering its own provider key would
+ * otherwise write it into the owning account's file, and the owner would import
+ * it on their next sign-in. It also puts the dotenv where the sidecar reads it,
+ * since cowork-server derives its chain from COWORK_HOME.
+ *
+ * Accepted cost: terms consent, DEV_MODE and the keychain preference travel
+ * with the account, so a second account on one machine accepts terms again.
+ */
 export function coworkEnvPath(): string {
-  return path.join(coworkHome(), '.env');
+  return path.join(accountDataRoot(), '.env');
 }
 
 export function coworkStatePath(): string {
-  return path.join(coworkHome(), 'state.json');
+  return path.join(accountDataRoot(), 'state.json');
 }
 
 export function readEnvFile(): Record<string, string> {

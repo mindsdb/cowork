@@ -20,10 +20,20 @@ import * as path from 'path';
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
 }));
+/** The account's dotenv. Empty for every test but the account-root one, which
+ *  needs the value to CHANGE to see whether the cached token was re-read. */
+const envState = vi.hoisted(() => ({ authToken: null as string | null }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
   buildKind: () => 'prod',
-  readEnvFile: () => ({}),
+  readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
+}));
+/** Only the root resolution is faked; the rest of account-data stays real so
+ *  the owner token every other test in this file depends on is unchanged. */
+const accountState = vi.hoisted(() => ({ root: null as string | null }));
+vi.mock('./account-data', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./account-data')>()),
+  resolveAccountRoot: () => accountState.root,
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -53,7 +63,10 @@ import {
   resolveServerPort,
   stopServer,
   setServerStartedHook,
+  ensureSidecarOnCurrentAccountRoot,
+  sidecarIsOnCurrentAccountRoot,
 } from './server-process';
+import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
@@ -102,6 +115,9 @@ function setPlatform(value: string): void {
 let signals: Array<[number, string]> = [];
 
 beforeEach(() => {
+  envState.authToken = null;
+  accountState.root = null;
+  resetServerAuthTokenCache();
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
@@ -753,5 +769,55 @@ describe('post-start credential hook', () => {
 
     expect(result.ok).toBe(true);
     expect(isServerRunning()).toBe(true);
+  });
+});
+
+describe('the sidecar account root', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawn a child that comes up healthy, the way a real start does. */
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('drops the cached bearer token when it moves the sidecar to another root', async () => {
+    // The token lives in the account's own dotenv, so a root change changes
+    // which token is valid. Nothing else clears this cache: it is main-process
+    // module state, so the renderer reload that follows a root change does not
+    // touch it, and every request would carry a token the new sidecar refuses.
+    accountState.root = null;
+    envState.authToken = 'token-for-the-shared-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await ensureSidecarOnCurrentAccountRoot();
+
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(sidecarIsOnCurrentAccountRoot()).toBe(true);
+  });
+
+  it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    // A restart here would kill a live turn for nothing.
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      throw new Error('the sidecar must not be restarted when the root is unchanged');
+    }) as never);
+
+    await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
   });
 });

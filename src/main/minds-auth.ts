@@ -1,7 +1,10 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
+import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
-import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { claimDefaultRoot } from './account-data';
+import { accountIdFromToken, decodeJwtPayload } from './jwt';
+import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -404,18 +407,9 @@ interface OrgRef {
   source?: string;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    // Buffer is fine in the main process (Node); base64 → utf8.
-    const decoded = Buffer.from(payload, 'base64').toString('utf-8');
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
+/** The signed-in account, from the token already in hand. */
+export function signedInAccountId(): string | null {
+  return accountIdFromToken(getAccessToken());
 }
 
 function normalizeOrgRef(value: any, source: string): OrgRef | null {
@@ -584,7 +578,7 @@ function readStoredOrgPreference(userId: string): string | null {
 
 function storeOrgPreference(userId: string, orgId: string): void {
   try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     const next = writeOrgPreference(readCoworkState(), userId, orgId);
     fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
   } catch (error) {
@@ -1234,18 +1228,19 @@ export async function writeEnvFileAtomic(
  * `mindsSignInSettingWrites` no longer carries `minds_api_key`, so what this
  * writes is the MindsHub URL and the provider selection.
  *
- * **No restart.** The sidecar used to be stopped and started here so it would
- * re-read `.env`. Nothing needs re-reading now: settings go over loopback and
- * the credential is handed over the same way, so a sign-in no longer kills a
- * running turn.
+ * **No restart, with one exception.** The sidecar used to be stopped and
+ * started here so it would re-read `.env`. Nothing needs re-reading now:
+ * settings go over loopback and the credential is handed over the same way, so
+ * an ordinary sign-in still does not kill a running turn. A sign-in that
+ * CHANGES the account's data root does restart it, because the store paths are
+ * process environment and there is no other way to move a running sidecar off
+ * the previous account's database.
  */
-export async function commitMindsSignIn(): Promise<void> {
-  const homeDir = coworkHome();
-  // ~/.cowork normally exists by the time SSO finalize runs (the server creates
-  // it on boot), but if the server failed to start the write would ENOENT.
-  if (!fs.existsSync(homeDir)) {
-    fs.mkdirSync(homeDir, { recursive: true });
-  }
+export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }> {
+  // The account's own root, not the shared home: on a second account's first
+  // sign-in nothing has created it yet, and writeEnvFileAtomic puts its temp
+  // file beside the target, so writing first would ENOENT and drop the value.
+  const homeDir = ensureAccountDataRoot();
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
@@ -1279,10 +1274,31 @@ export async function commitMindsSignIn(): Promise<void> {
     const mindsEntry = existingProviders.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
     mindsEntry.isDefault = true;
     state.preferences.providers = [mindsEntry];
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
     console.warn('[minds-auth] failed to set provider state', error);
+  }
+
+  // Give this account a data root before anything starts the sidecar. The
+  // account itself was already recorded by the token store, which is the choke
+  // point every sign-in passes through; this only settles ownership of the
+  // default root, which is safe to attempt more than once.
+  // Whether this sign-in moved the session onto a different data root. The
+  // renderer has to be reloaded when it did: a sign-in ends by switching page
+  // rather than reloading, so React would seed the composer draft and the
+  // settings cache from the PREVIOUS account during render, and the draft
+  // store's module cache would then re-persist them under this account.
+  let dataRootChanged = false;
+  const accountId = signedInAccountId();
+  if (accountId) {
+    try {
+      // The SHARED home, not the account's own root: ownership is of the
+      // default root, and a subtree cannot settle it.
+      claimDefaultRoot(coworkHome(), accountId);
+    } catch (err) {
+      console.warn('[minds-auth] could not settle the account data root', err);
+    }
   }
 
   // On a fresh install the server isn't available yet: the setup wizard runs
@@ -1296,17 +1312,31 @@ export async function commitMindsSignIn(): Promise<void> {
     // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
     console.log('[minds-auth] server not installed yet — setup will sync after install');
-    return;
+    return { dataRootChanged };
   }
 
   // A sidecar that died is started rather than restarted: a stop/start would
   // drop a credential a previous push had already established.
-  if (!isServerRunning() && !isServerStarting()) {
+  //
+  // The exception is a changed data root. The store paths are process
+  // environment, so a running sidecar cannot be moved onto this account's
+  // database any other way, and leaving it would show the new account the
+  // previous one's tasks. Safe here specifically because the credential push
+  // below runs after it, and `setServerStartedHook` re-pushes on every start.
+  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
+    console.log('[minds-auth] account data root changed — restarting the sidecar');
+    dataRootChanged = true;
+    // The bearer token lives in the account's own dotenv, so a cached one from
+    // the previous root would be refused by the new sidecar.
+    resetServerAuthTokenCache();
+    await stopServer();
+    await startServer();
+  } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
   }
   if (!isServerRunning() && !isServerStarting()) {
     console.warn('[minds-auth] sidecar unavailable — sign-in will sync on its next start');
-    return;
+    return { dataRootChanged };
   }
 
   // The credential goes FIRST, and a failure here ABORTS before the provider
@@ -1317,7 +1347,7 @@ export async function commitMindsSignIn(): Promise<void> {
   // the next sign-in retries the whole sequence.
   if (!(await syncUsableMindsCredential())) {
     console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
-    return;
+    return { dataRootChanged };
   }
   settleMindsResumeCredentialGate(true);
 
@@ -1359,6 +1389,8 @@ export async function commitMindsSignIn(): Promise<void> {
   } catch (error) {
     console.warn('[minds-auth] health check after sign-in failed:', error);
   }
+
+  return { dataRootChanged };
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;

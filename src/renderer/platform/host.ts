@@ -17,6 +17,7 @@ import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
+import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -1443,6 +1444,76 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+export interface AccountSession {
+  accountId: string | null;
+  legacyState: LegacyStateVerdict;
+}
+
+/**
+ * The signed-in account and the verdict on unmarked browser state, resolved at
+ * preload time and therefore readable synchronously. The async accessors cannot
+ * serve the one caller that needs it — the browser-cache purge, which has to run
+ * before React mounts.
+ */
+export function accountSessionSync(): AccountSession {
+  const unknown: AccountSession = { accountId: null, legacyState: 'keep' };
+  if (!isElectron) return unknown;
+  const value = (bridge as { accountSession?: unknown }).accountSession;
+  if (!value || typeof value !== 'object') return unknown;
+  const { accountId, legacyState } = value as Partial<AccountSession>;
+  return {
+    accountId: typeof accountId === 'string' && accountId ? accountId : null,
+    legacyState: legacyState === 'purge' || legacyState === 'undecided' ? legacyState : 'keep',
+  };
+}
+
+export interface AccountOwnershipQuestion {
+  accountId: string;
+  accountLabel: string | null;
+}
+
+/**
+ * Whether the shell needs to ask who owns the data already on this machine, and
+ * who it is asking. Desktop-only: on web the server is org-scoped, so there is
+ * no shared local store to be ambiguous about. Fail-closed to "no question" — a
+ * bridge that cannot answer must not raise a modal nobody can act on.
+ */
+export async function accountOwnershipPending(): Promise<AccountOwnershipQuestion | null> {
+  if (!isElectron || typeof bridge.accountOwnershipPending !== 'function') return null;
+  try {
+    const result = await bridge.accountOwnershipPending();
+    if (!result?.pending || typeof result.accountId !== 'string') return null;
+    return {
+      accountId: result.accountId,
+      accountLabel: typeof result.accountLabel === 'string' ? result.accountLabel : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Answer it. The account id goes back so main can refuse an answer meant for a
+ * different account than the one now signed in.
+ */
+export async function decideAccountOwnership(
+  accountId: string,
+  keepExisting: boolean,
+): Promise<{ ok: boolean; reason: string | null }> {
+  if (!isElectron || typeof bridge.decideAccountOwnership !== 'function') {
+    return { ok: false, reason: 'unsupported' };
+  }
+  try {
+    const result = await bridge.decideAccountOwnership(accountId, keepExisting);
+    return {
+      ok: Boolean(result?.ok),
+      reason: typeof result?.reason === 'string' ? result.reason : null,
+    };
+  } catch {
+    return { ok: false, reason: 'unavailable' };
+  }
+}
+
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
@@ -1452,6 +1523,9 @@ export const host = {
   isMac,
   getApiOrigin,
   isLocalApiOrigin,
+  accountOwnershipPending,
+  decideAccountOwnership,
+  accountSessionSync,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,
