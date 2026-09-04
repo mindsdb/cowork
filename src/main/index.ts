@@ -1163,13 +1163,24 @@ function setupIPC() {
   // Nothing is minted and nothing is written: the token goes to the sidecar's
   // runtime holder, and the refresh timer keeps handing over a fresh one.
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
-  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string) => {
+  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string, chosenByUser?: boolean) => {
     const token = getAccessToken();
     if (!token) {
       console.error('[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
-    const selected = await selectEntitledOrg(token, { preferOrgId: organizationId });
+    // `chosenByUser` travels separately from the id because the id alone does
+    // not say who decided. Today only the onboarding picker sends one, but a
+    // caller that later passes a remembered id must not inherit "a person just
+    // answered this" along with it (ENG-2199).
+    // Compared strictly rather than coerced: this flag's whole job is to
+    // suppress a fallback, so anything but a real `true` off the wire must not
+    // arm it. Today's renderer sends a boolean or nothing, so this is the
+    // contract written down rather than a hole being closed.
+    const selected = await selectEntitledOrg(token, {
+      preferOrgId: organizationId,
+      chosenByUser: chosenByUser === true,
+    });
     if (!selected.token) {
       console.error('[mindshub:finalize] could not select an organization:', selected.error);
       return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
@@ -1180,9 +1191,9 @@ function setupIPC() {
       console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
       return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
     }
-    // The organization the presented token names, which the ranking asks for
-    // and the entitlement hunt can still move. Onboarding names this one
-    // rather than the one it requested.
+    // The organization the presented token names. The ranking asks for one and
+    // the entitlement hunt can still move it — but never past an explicit
+    // pick — so onboarding names this rather than what it requested.
     return { ok: true, organization: selected.organization };
   });
 

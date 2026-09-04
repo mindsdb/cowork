@@ -490,6 +490,11 @@ Three things decide it, in order:
 1. **A pick the person made** — stored in `state.json` under
    `preferences.mindsOrganization`, keyed by the Keycloak subject so one
    machine signed into a second account does not inherit the first's choice.
+   Only a pick is ever written: the onboarding picker and the account menu.
+   Where a sign-in happens to land is not recorded, because the key is a single
+   slot and an automatic write to it would replace whatever a person chose —
+   possibly another account's, which no guard keyed on the stored value can
+   even see.
 2. **Company organizations rank ahead of the personal one**, which Keycloak
    names `personal_<userId>`. Within each group the order Keycloak returned is
    kept, so "the first company organization" means the same thing on every
