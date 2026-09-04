@@ -373,7 +373,7 @@ export function ArtifactViewer({
         ? loadArtifactDraftText(draftPreviewUrl, {
             // The same split the draft-HTML branch makes below, so a
             // data:/blob: or cross-origin draft renders here too instead of
-            // failing only for text (ENG-2319).
+            // failing only for text.
             withCredentials: canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()),
           })
         : previewArtifact(actionPath);

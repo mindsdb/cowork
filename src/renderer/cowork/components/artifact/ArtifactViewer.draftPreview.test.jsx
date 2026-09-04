@@ -237,8 +237,8 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
 });
 
 /*
- * ENG-2319. The text branch (.md/.txt/.csv) had no coverage at all, which is
- * how it kept two defects the draft-HTML branch above does not have: it showed
+ * The text branch (.md/.txt/.csv) had no coverage at all, which is how it kept
+ * two defects the draft-HTML branch above does not have: it showed
  * whatever it caught, so Chromium's "Failed to fetch" reached the modal on a
  * CSV, and it had no embedded/cross-origin fallback, so a data: draft failed
  * for CSV where the same URL renders fine as HTML.

@@ -20,7 +20,7 @@ const TRANSPORT_FAILURE_MESSAGE =
  * the viewer loads a preview down three paths (inline text, draft document,
  * local mount) and each used to phrase its own failures. The draft-HTML path
  * mapped 401 and 403; the text path printed whatever it caught, which is how
- * Chromium's "Failed to fetch" reached the modal on a CSV (ENG-2319).
+ * Chromium's "Failed to fetch" reached the modal on a CSV.
  *
  * Two rules: a status is always named, and a browser-internal string is never
  * shown. Anything else is one of our own messages and passes through, since

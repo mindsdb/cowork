@@ -88,7 +88,7 @@ describe('loadArtifactDraftText', () => {
    * The status has to travel on the error, not only inside its message. The
    * viewer maps 401 and 403 to their own copy and cannot read a number back
    * out of a sentence, so a CSV used to show every failure as raw text while
-   * the HTML branch showed the mapped one (ENG-2319).
+   * the HTML branch showed the mapped one.
    */
   it('carries the status on the error for a non-ok response', async () => {
     authFetch.mockResolvedValueOnce({ ok: false, status: 403 });

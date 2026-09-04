@@ -67,8 +67,8 @@ function resolveSameOriginDraftUrl(draftUrl) {
    * blob: URL used to fail here only because it was concatenated onto the
    * origin and the result would not parse, so the reader was told the URL was
    * invalid when the real answer is that it carries its own payload and needs
-   * no credential (ENG-2319). `data:1234/x,hi` even parsed, and was reported
-   * as cross-origin instead.
+   * no credential. `data:1234/x,hi` even parsed, and was reported as
+   * cross-origin instead.
    */
   if (EMBEDDED_DRAFT_URL_RE.test(draftUrl)) {
     throw new Error('Refusing to send credentials to an embedded draft URL');
@@ -106,7 +106,7 @@ function resolveSameOriginDraftUrl(draftUrl) {
  * draft URLs carry their own payload or origin and must not receive the web
  * Keycloak bearer, but they can still be read without one. Fetching them
  * bare is what makes a data: CSV render instead of erroring where the same
- * URL renders fine as HTML (ENG-2319). The viewer decides which mode applies
+ * URL renders fine as HTML. The viewer decides which mode applies
  * with `canFetchDraftWithCredentials`; the credentialed path keeps its
  * same-origin backstop below.
  */

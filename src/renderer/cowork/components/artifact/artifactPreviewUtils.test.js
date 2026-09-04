@@ -282,9 +282,9 @@ describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
 });
 
 /*
- * ENG-2319. A CSV preview printed Chromium's "Failed to fetch" where the table
- * should have been, because the text branch showed whatever it caught. These
- * pin the two rules the mapper owes its callers: a status is always named, and
+ * A CSV preview printed Chromium's "Failed to fetch" where the table should
+ * have been, because the text branch showed whatever it caught. These pin the
+ * two rules the mapper owes its callers: a status is always named, and
  * a browser-internal string never reaches the modal.
  */
 describe('draftPreviewErrorMessage', () => {
@@ -343,7 +343,7 @@ describe('draftPreviewErrorMessage', () => {
 
 /*
  * The CSV preview path had no coverage at all, which is how the three parsing
- * defects below survived (ENG-2319). `.csv` is the only artifact type these
+ * defects below survived. `.csv` is the only artifact type these
  * four exports serve, so a wrong cell here is a wrong table on screen.
  */
 describe('parseCsv', () => {
