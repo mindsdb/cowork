@@ -25,7 +25,7 @@ describe('the account ownership dialog', () => {
 
   // Deliberately not asserted here: that the mount sits outside every
   // `page === ...` branch. Any textual test of that is a heuristic dressed up as
-  // a guarantee — the first version of it passed for the wrong reason. QA step 4
-  // covers it directly by upgrading a signed-in install and checking the person
-  // is asked rather than left on the sign-in screen.
+  // a guarantee. The paired manual check covers it directly, by upgrading a
+  // signed-in install and confirming the person is asked rather than left on
+  // the sign-in screen.
 });

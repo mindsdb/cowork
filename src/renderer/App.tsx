@@ -284,9 +284,11 @@ export default function App() {
     }
     setOwnershipError(null);
     setOwnership(null);
-    // Taking the existing data restarted the sidecar onto it, so everything
-    // already on screen was read from the other database. Reload, don't patch.
-    if (keepExisting) window.location.reload();
+    // Reload on BOTH answers. Taking the data restarted the sidecar onto it;
+    // declining moved the sidecar off it. Either way everything already on
+    // screen, and the conversation caches behind it, came from the other
+    // database.
+    window.location.reload();
   }, [ownership]);
 
   const isMac = host.isMac();

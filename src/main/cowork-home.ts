@@ -155,19 +155,6 @@ export function accountDataRoot(): string {
 }
 
 /**
- * The account's own dotenv and provider state.
- *
- * Per-account, not shared, because these are written by whichever account is
- * signed in: a second account entering its own provider key would otherwise
- * write it into the owning account's file, and the owner would import it on
- * their next sign-in. It also puts the file where the sidecar reads it, since
- * cowork-server derives its dotenv chain from COWORK_HOME.
- *
- * The cost, accepted deliberately: terms consent, DEV_MODE and the keychain
- * preference travel with the account, so a second account on one machine
- * accepts terms again.
- */
-/**
  * The account's data root, created if it is not there yet.
  *
  * Every writer of `coworkEnvPath()` or `coworkStatePath()` must go through this
@@ -181,6 +168,18 @@ export function ensureAccountDataRoot(): string {
   return root;
 }
 
+/**
+ * The account's own dotenv, and below it its provider state.
+ *
+ * Per-account rather than shared, because these are written by whichever
+ * account is signed in: a second account entering its own provider key would
+ * otherwise write it into the owning account's file, and the owner would import
+ * it on their next sign-in. It also puts the dotenv where the sidecar reads it,
+ * since cowork-server derives its chain from COWORK_HOME.
+ *
+ * Accepted cost: terms consent, DEV_MODE and the keychain preference travel
+ * with the account, so a second account on one machine accepts terms again.
+ */
 export function coworkEnvPath(): string {
   return path.join(accountDataRoot(), '.env');
 }

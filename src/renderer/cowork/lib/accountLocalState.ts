@@ -17,7 +17,7 @@ const LAST_ACCOUNT_KEY = 'anton.lastAccount';
 /**
  * Key PREFIXES, not exact keys, for two reasons: the conversation caches carry
  * one entry per conversation id, and the draft and settings caches append an
- * organization epoch (see storageKeyForOrganizationEpoch), so their live keys
+ * organization identity (see lib/organizationCacheIdentity), so their live keys
  * are longer than the base name they are declared with.
  */
 const ACCOUNT_SCOPED_PREFIXES = [

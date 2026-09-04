@@ -2,7 +2,7 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { writeActiveAccountSync } from './account-data';
+import { clearActiveAccountRecord, writeActiveAccountSync } from './account-data';
 import { accountIdFromToken } from './jwt';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
@@ -147,20 +147,33 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 }
 
 // Which account the app is signed in as, recorded HERE because this is the one
-// choke point every MindsHub auth transition flows through. Recording it further
-// out missed sign-ins that never reach the finalize step, and left the account
-// unnameable at boot until a network refresh had succeeded — which put an
-// offline launch on the wrong data root. Writing it here and clearing it in
-// clearTokens is what keeps the record's lifetime equal to the session's, so
-// "no record" and "no session" are the same state rather than two.
+// choke point every MindsHub auth transition flows through: a sign-in that never
+// reaches the finalize step still records, and the account stays nameable at
+// boot with no network. Writing it here and clearing it in clearTokens keeps the
+// record's lifetime equal to the session's, so "no record" and "no session" are
+// one state rather than two.
 function recordSignedInAccount(accessToken: string): void {
   const accountId = accountIdFromToken(accessToken);
   if (!accountId) return;
   try {
     writeActiveAccountSync(coworkHome(), accountId);
   } catch (e) {
-    // Best-effort: every sign-in re-records, so a lost write repairs itself.
+    // NOT best-effort. A lost write does not repair itself: the record still
+    // names the PREVIOUS account, so this account is resolved onto that
+    // account's data root and every check downstream compares against the same
+    // stale record and agrees. Removing it instead leaves the record absent,
+    // which resolves to an empty quarantine root rather than someone else's
+    // data. An empty app is recoverable; a cross-account read is the bug.
     console.warn('[token-store] could not record the signed-in account', e);
+    try {
+      clearActiveAccountRecord(coworkHome());
+    } catch (removeErr) {
+      console.error(
+        '[token-store] could not record OR clear the signed-in account — '
+        + 'this session may resolve onto another account data root',
+        removeErr,
+      );
+    }
   }
 }
 

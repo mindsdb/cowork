@@ -1190,7 +1190,18 @@ function setupIPC() {
       return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
     }
     try {
-      await commitMindsSignIn();
+      const { dataRootChanged } = await commitMindsSignIn();
+      if (dataRootChanged) {
+        // Reload from main, the same way sign-out does. A sign-in otherwise
+        // ends by switching page in the SAME document, so React seeds the
+        // composer draft and the settings cache from the previous account
+        // during render — and the draft store's module cache then re-persists
+        // them under this account, where nothing purges them again. The purge
+        // only runs before mount, so the document has to be new.
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.reload();
+        }
+      }
     } catch (err: any) {
       console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
       return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
@@ -1262,8 +1273,15 @@ function setupIPC() {
   // shares — an async answer arrives a frame too late and the previous account's
   // unsent text is already on screen and in state.
   ipcMain.on(IPC.ACCOUNT_SIGNED_IN_SYNC, (event) => {
-    const active = readActiveAccount(coworkHome());
-    event.returnValue = active.kind === 'signed-in' ? active.accountId : null;
+    // The renderer blocks on this reply, and coworkHome() throws by design on a
+    // mispackaged build-config, so it must answer even then.
+    try {
+      const active = readActiveAccount(coworkHome());
+      event.returnValue = active.kind === 'signed-in' ? active.accountId : null;
+    } catch (err) {
+      console.warn('[account] could not resolve the signed-in account', err);
+      event.returnValue = null;
+    }
   });
 
   ipcMain.handle(IPC.ACCOUNT_OWNERSHIP_PENDING, () => {
@@ -1319,15 +1337,11 @@ function setupIPC() {
     }
 
     // The stores are process environment, so the sidecar must restart to read
-    // the root it now owns.
-    if (isServerRunning() || isServerStarting()) {
-      try {
-        await stopServer();
-        await startServer();
-      } catch (err) {
-        console.warn('[account] could not restart onto the adopted root', err);
-      }
-    }
+    // the root it now owns. Through the same helper as the decline branch:
+    // adopting moves this account's dotenv from its own subtree to the shared
+    // home, and the cached bearer token has to be dropped with it or every
+    // request from the reloaded renderer carries one the new sidecar refuses.
+    await ensureSidecarOnCurrentAccountRoot();
     return { ok: true, keptExisting: true };
   });
 

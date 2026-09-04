@@ -59,7 +59,7 @@ const homeHolder = vi.hoisted(() => ({
 // The env and state paths are NOT stubbed to a flat temp file. They resolve to
 // an account root that may not exist yet, and `ensureAccountDataRoot` is what
 // creates it — a stub that flattened them could not see a writer that creates
-// the wrong directory, which is exactly the bug this mock previously hid.
+// the wrong directory.
 vi.mock('./cowork-home', async () => {
   const fs = await import('fs');
   const path = await import('path');
@@ -211,7 +211,7 @@ describe('commitMindsSignIn — .env failure handling', () => {
     homeHolder.antonInstalled = true;
     control.renameFailCode = 'EPERM';
     control.renameFailTimes = Infinity;
-    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+    await expect(commitMindsSignIn()).resolves.toEqual({ dataRootChanged: false });
   }, 15000);
 
   it('is FATAL on the pre-install path (nothing else has recorded the sign-in yet)', async () => {
@@ -252,7 +252,7 @@ describe('commitMindsSignIn — the account data root', () => {
     asFreshInstall();
     asAccount(ACCOUNT_A);
 
-    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+    await expect(commitMindsSignIn()).resolves.toEqual({ dataRootChanged: false });
 
     expect(readJson('active-account.json').accountId).toBe(ACCOUNT_A);
     expect(readJson('.account').accountId).toBe(ACCOUNT_A);
@@ -291,7 +291,7 @@ describe('commitMindsSignIn — the account data root', () => {
     homeHolder.antonInstalled = false;
     // No saveTokens call: nothing to derive a root from, so nothing is written
     // and the sidecar keeps whatever root it already had.
-    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+    await expect(commitMindsSignIn()).resolves.toEqual({ dataRootChanged: false });
     expect(fs.existsSync(path.join(dir, 'active-account.json'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.account'))).toBe(false);
   });
@@ -318,10 +318,14 @@ describe('commitMindsSignIn — the account-switch restart', () => {
     serverState.onCurrentRoot = false;
     asAccount(ACCOUNT_A);
 
-    await commitMindsSignIn();
+    const result = await commitMindsSignIn();
 
     expect(serverState.stops).toBe(1);
     expect(serverState.starts).toBe(1);
+    // The renderer reloads on this flag. A sign-in ends by switching page, not
+    // by reloading, so without it React seeds the composer draft and the
+    // settings cache from the previous account during render.
+    expect(result.dataRootChanged).toBe(true);
   });
 
   it('leaves a running sidecar alone when it is already on the right root', async () => {
@@ -331,10 +335,11 @@ describe('commitMindsSignIn — the account-switch restart', () => {
     serverState.onCurrentRoot = true;
     asAccount(ACCOUNT_A);
 
-    await commitMindsSignIn();
+    const result = await commitMindsSignIn();
 
     expect(serverState.stops).toBe(0);
     expect(serverState.starts).toBe(0);
+    expect(result.dataRootChanged).toBe(false);
   });
 });
 
@@ -358,7 +363,7 @@ describe('commitMindsSignIn — a second account writing to a root that does not
     expect(fs.existsSync(homeHolder.accountRoot)).toBe(false);
     asAccount(ACCOUNT_B);
 
-    await expect(commitMindsSignIn()).resolves.toBeUndefined();
+    await expect(commitMindsSignIn()).resolves.toEqual({ dataRootChanged: false });
 
     expect(fs.existsSync(path.join(homeHolder.accountRoot, '.env'))).toBe(true);
     expect(fs.readFileSync(path.join(homeHolder.accountRoot, '.env'), 'utf-8'))

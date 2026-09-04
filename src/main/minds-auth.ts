@@ -1,5 +1,6 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
+import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot } from './account-data';
 import { accountIdFromToken, decodeJwtPayload } from './jwt';
@@ -1235,7 +1236,7 @@ export async function writeEnvFileAtomic(
  * process environment and there is no other way to move a running sidecar off
  * the previous account's database.
  */
-export async function commitMindsSignIn(): Promise<void> {
+export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }> {
   // The account's own root, not the shared home: on a second account's first
   // sign-in nothing has created it yet, and writeEnvFileAtomic puts its temp
   // file beside the target, so writing first would ENOENT and drop the value.
@@ -1283,10 +1284,18 @@ export async function commitMindsSignIn(): Promise<void> {
   // account itself was already recorded by the token store, which is the choke
   // point every sign-in passes through; this only settles ownership of the
   // default root, which is safe to attempt more than once.
+  // Whether this sign-in moved the session onto a different data root. The
+  // renderer has to be reloaded when it did: a sign-in ends by switching page
+  // rather than reloading, so React would seed the composer draft and the
+  // settings cache from the PREVIOUS account during render, and the draft
+  // store's module cache would then re-persist them under this account.
+  let dataRootChanged = false;
   const accountId = signedInAccountId();
   if (accountId) {
     try {
-      claimDefaultRoot(homeDir, accountId);
+      // The SHARED home, not the account's own root: ownership is of the
+      // default root, and a subtree cannot settle it.
+      claimDefaultRoot(coworkHome(), accountId);
     } catch (err) {
       console.warn('[minds-auth] could not settle the account data root', err);
     }
@@ -1303,7 +1312,7 @@ export async function commitMindsSignIn(): Promise<void> {
     // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
     console.log('[minds-auth] server not installed yet — setup will sync after install');
-    return;
+    return { dataRootChanged };
   }
 
   // A sidecar that died is started rather than restarted: a stop/start would
@@ -1316,6 +1325,10 @@ export async function commitMindsSignIn(): Promise<void> {
   // below runs after it, and `setServerStartedHook` re-pushes on every start.
   if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
     console.log('[minds-auth] account data root changed — restarting the sidecar');
+    dataRootChanged = true;
+    // The bearer token lives in the account's own dotenv, so a cached one from
+    // the previous root would be refused by the new sidecar.
+    resetServerAuthTokenCache();
     await stopServer();
     await startServer();
   } else if (!isServerRunning() && !isServerStarting()) {
@@ -1323,7 +1336,7 @@ export async function commitMindsSignIn(): Promise<void> {
   }
   if (!isServerRunning() && !isServerStarting()) {
     console.warn('[minds-auth] sidecar unavailable — sign-in will sync on its next start');
-    return;
+    return { dataRootChanged };
   }
 
   // The credential goes FIRST, and a failure here ABORTS before the provider
@@ -1334,7 +1347,7 @@ export async function commitMindsSignIn(): Promise<void> {
   // the next sign-in retries the whole sequence.
   if (!(await syncUsableMindsCredential())) {
     console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
-    return;
+    return { dataRootChanged };
   }
   settleMindsResumeCredentialGate(true);
 
@@ -1376,6 +1389,8 @@ export async function commitMindsSignIn(): Promise<void> {
   } catch (error) {
     console.warn('[minds-auth] health check after sign-in failed:', error);
   }
+
+  return { dataRootChanged };
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;

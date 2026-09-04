@@ -4,15 +4,16 @@ import * as os from 'os';
 import * as path from 'path';
 
 // This module decides which account's data a session reads, so the whole
-// resolution table is enumerated below rather than sampled. The cells that cost
-// earlier attempts a real bug are called out where they appear: an account
-// taking data it cannot prove is its own, and a session that cannot name itself
-// being sent away from data that was already its own.
+// resolution table is enumerated below rather than sampled. Two cells carry the
+// design and are called out where they appear: an account must never take data
+// it cannot prove is its own, and a session that cannot name itself must not be
+// sent away from data that already was.
 import {
   accountDataHome,
   accountOwnerToken,
   adoptDefaultRootAsIncumbent,
   claimDefaultRoot,
+  clearActiveAccountRecord,
   declineDefaultRoot,
   hadPreExistingData,
   hasDeclinedDefaultRoot,
@@ -156,9 +157,8 @@ describe('resolveAccountRoot - signed out', () => {
 
 describe('resolveAccountRoot - never signed in', () => {
   it('keeps its own data when nobody has ever been partitioned here', () => {
-    // The case that cost the previous attempt an install's whole history: a
-    // desktop on local provider keys that never signed in to MindsHub. There is
-    // no second identity to leak to, so it stays where it always was.
+    // A desktop on local provider keys that never signed in to MindsHub. There
+    // is no second identity to leak to, so it stays where it always was.
     upgraded();
     expect(resolveAccountRoot(home, NEVER)).toBeNull();
     expect(resolveAccountRoot(home, signedOut(null))).toBeNull();
@@ -458,5 +458,38 @@ describe('records that were hand-edited or written by an older build', () => {
   it('an explicit false is the only thing that means "fresh"', () => {
     write('.pre-existing-data', { hadData: false });
     expect(hadPreExistingData(home)).toBe(false);
+  });
+});
+
+describe('a record that could not be written', () => {
+  it('is removed, so the session cannot resolve onto the previous account', () => {
+    // Leaving the previous account's name in place is worse than having no
+    // record: every check downstream compares against the same stale value and
+    // agrees, so the new account is served the old account's database.
+    fresh();
+    claimDefaultRoot(home, A);
+    fs.writeFileSync(
+      path.join(home, 'active-account.json'),
+      JSON.stringify({ accountId: null, lastAccountId: A }),
+      'utf-8',
+    );
+    expect(resolveAccountRoot(home, readActiveAccount(home))).toBeNull();
+
+    clearActiveAccountRecord(home);
+
+    expect(readActiveAccount(home)).toEqual(NEVER);
+    expect(resolveAccountRoot(home, readActiveAccount(home))).toMatch(/^_unresolved-/);
+  });
+
+  it('is safe to clear when there is nothing to clear', () => {
+    expect(() => clearActiveAccountRecord(home)).not.toThrow();
+  });
+});
+
+describe('claiming leaves no temp file behind', () => {
+  it('cleans up after itself', () => {
+    fresh();
+    claimDefaultRoot(home, A);
+    expect(fs.readdirSync(home).filter((n) => n.startsWith('.account.tmp-'))).toEqual([]);
   });
 });

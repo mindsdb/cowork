@@ -11,10 +11,11 @@
 // variable at an account's root moves the database, every file store, the master
 // key and the dotenv chain together. `test_cowork_home.py` pins that.
 //
-// Ownership is an exclusive file create: the filesystem picks the winner and no
-// account can overwrite another's claim. Everything unproven resolves AWAY from
-// the default root rather than onto it, because the failure being guarded is
-// precisely "this account is looking at someone else's data".
+// Ownership is an exclusive create, written whole and then linked into place,
+// so the filesystem picks the winner and no account can overwrite another's
+// claim. Everything unproven resolves AWAY from the default root rather than
+// onto it, because the failure being guarded is precisely "this account is
+// looking at someone else's data".
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -168,7 +169,20 @@ function writeClaim(home: string, accountId: string): ClaimState {
       encoding: 'utf-8',
       mode: 0o600,
     });
-    fs.linkSync(tmp, target);
+    try {
+      fs.linkSync(tmp, target);
+    } catch (linkErr) {
+      if ((linkErr as NodeJS.ErrnoException).code === 'EEXIST') throw linkErr;
+      // Some filesystems cannot hard-link (exFAT, certain Windows policies).
+      // Falling back to an exclusive create keeps the install usable: it is
+      // what this did before, and a torn claim there is far less bad than an
+      // install that can never claim or adopt its own root at all.
+      fs.writeFileSync(target, JSON.stringify({ accountId }) + '\n', {
+        encoding: 'utf-8',
+        mode: 0o600,
+        flag: 'wx',
+      });
+    }
     return { kind: 'claimed', accountId };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return { kind: 'unreadable' };
@@ -280,6 +294,18 @@ export function writeActiveAccountSync(home: string, accountId: string | null): 
 }
 
 /**
+ * Remove the record entirely, so the session reads as never-signed-in.
+ *
+ * Only for a caller that failed to WRITE the record: leaving the previous
+ * account's name there would resolve this session onto that account's data,
+ * while an absent record resolves to an empty quarantine root whenever anyone
+ * owns the default one.
+ */
+export function clearActiveAccountRecord(home: string): void {
+  fs.rmSync(path.join(home, ACTIVE_FILE), { force: true });
+}
+
+/**
  * Which account's stores this session uses. `null` means the default root and
  * therefore no override at all.
  *
@@ -294,11 +320,11 @@ export function writeActiveAccountSync(home: string, accountId: string | null): 
  * | unclaimed, old data      | own (and asked)  | own (last's)      | see below       |
  * | unreadable               | own              | own (last's)      | quarantine      |
  *
- * The last cell is the one that cost the previous attempt an install's whole
- * history: a session that cannot name itself stays on the default root as long
- * as nobody has been partitioned here, because there is then no second identity
- * to leak to and this is the behaviour the install already had. Once
- * `accounts/*` exists that is no longer true, so it quarantines instead.
+ * The last cell is the load-bearing one: a session that cannot name itself stays
+ * on the default root as long as nobody has been partitioned here, because there
+ * is then no second identity to leak to and this is the behaviour the install
+ * already had. Once `accounts/*` exists that is no longer true, so it
+ * quarantines instead.
  */
 export function resolveAccountRoot(home: string, active: ActiveAccount): string | null {
   const claim = readAccountClaim(home);
