@@ -1708,9 +1708,17 @@ export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 // The match endpoint runs a no-LLM cascade (exact id/alias →
 // token-overlap) so most calls finish without a model round-trip.
 
-export async function fetchConnectors() {
+// `includeUnavailable` only changes the org-mode (cloud) response: the server
+// then also returns connectors the hosted build can't run, each flagged
+// `cloud_available: false`, so the picker can list them as desktop-only.
+// Against a server without that param the flag is simply absent and every
+// connector reads as available — the old behaviour.
+export async function fetchConnectors({ includeUnavailable = false } = {}) {
   try {
-    const data = await req('/connectors/specs');
+    const path = includeUnavailable
+      ? '/connectors/specs?include_unavailable=true'
+      : '/connectors/specs';
+    const data = await req(path);
     return Array.isArray(data) ? data : [];
   } catch {
     return [];

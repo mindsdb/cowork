@@ -5060,6 +5060,13 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
+        // Cloud: the directory also lists connectors only the desktop app can
+        // run. Picking one closes the directory and offers the download rather
+        // than opening a connect form that couldn't work here.
+        onDesktopOnly={(c) => {
+          setConnectorPickerOpen(false);
+          setComingSoonFeature(c?.label || 'This connector');
+        }}
       />
 
       <ThemeModal
