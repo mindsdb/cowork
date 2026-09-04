@@ -80,6 +80,7 @@ export function ArtifactViewerHeader({
   } = publication;
   const {
     canOpenInBrowser,
+    canOpenInBrowserTab,
     canOpenLocalFile,
     isBackendArtifact,
     backendPort,
@@ -87,6 +88,7 @@ export function ArtifactViewerHeader({
     deleteBusy,
     onReload,
     onOpenInBrowser,
+    onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
     onDownload,
@@ -140,6 +142,18 @@ export function ArtifactViewerHeader({
           editDisabledReason={editDisabledReason}
           reviewDisabledReason={reviewDisabledReason}
         />
+        {/* Beside the tabs rather than in the ⋯ menu: that menu is hidden in org
+            mode because its other entries are OS/file actions and `/publish`
+            routes an org deployment cannot answer, and this belongs on both.
+            Hidden outright when there is no URL to open — a button that opens
+            nothing is worse than no button. */}
+        {canOpenInBrowserTab && (
+          <Tooltip content="Open in a browser tab">
+            <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
+              {Ico.arrowUpRight(15)}
+            </IconButton>
+          </Tooltip>
+        )}
       </div>
 
       {/* Right — comments, publishing, more actions, and close. */}

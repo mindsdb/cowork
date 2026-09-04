@@ -616,6 +616,25 @@ export function ArtifactViewer({
   // the local/served preview.
   const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
 
+  // "Open this artifact in a browser tab", for the control beside the mode
+  // tabs. Distinct from `onOpenInBrowser` above, which falls back to handing
+  // the path to the OS — that opens the file, not a browser, and on an org
+  // deployment there is no local file to hand over at all.
+  //
+  // Preference order: the published URL is what the artifact *is* and what a
+  // person would share; the served URL is desktop's local HTTP view; the
+  // authenticated draft URL is org mode's route to an artifact nobody has
+  // published yet.
+  const browserTabUrl = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // host.openExternal is already right on both deployments: Electron hands the
+  // URL to the OS (a real browser, outside the app), web opens a new tab.
+  const onOpenInBrowserTab = () => {
+    if (!browserTabUrl) return;
+    host.openExternal(browserTabUrl).catch(() => {
+      setErr('Could not open this artifact in a browser.');
+    });
+  };
+
   // Universal "save to disk" — type-agnostic stream with
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
@@ -675,6 +694,7 @@ export function ArtifactViewer({
   };
   const artifactActions = {
     canOpenInBrowser,
+    canOpenInBrowserTab: !!browserTabUrl,
     canOpenLocalFile,
     isBackendArtifact,
     backendPort,
@@ -682,6 +702,7 @@ export function ArtifactViewer({
     deleteBusy,
     onReload,
     onOpenInBrowser,
+    onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
     onDownload,
