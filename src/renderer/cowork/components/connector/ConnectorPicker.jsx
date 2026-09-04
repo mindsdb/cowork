@@ -183,6 +183,11 @@ function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[1
 // and picking one opens the download-the-desktop-app modal instead of a form.
 const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 
+// Its counterpart: what this deployment can actually connect right now. Named
+// for the deployment rather than "Featured" because on cloud it isn't a curated
+// subset — it is the whole of what works here.
+const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
+
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
@@ -415,7 +420,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             // Featured. Show all of them as one block instead; the desktop
             // catalogue below is what gives the directory its body.
             <ConnectorSection
-              title="Featured"
+              title={CLOUD_AVAILABLE_TITLE}
               connectors={available}
               onPick={onPick}
               className="mb-6"

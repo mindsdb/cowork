@@ -2,8 +2,8 @@
 //   • desktop — Featured on top, then every category; a featured connector
 //     appears in both, which reads as a shortcut across ~213 connectors
 //   • cloud — too few connectors to bother with category sections, so the
-//     available ones are one block, followed by the desktop-only catalogue
-//     whose tiles hand the pick to the download-the-app path
+//     available ones are one "Available here" block, followed by the
+//     desktop-only catalogue whose tiles hand the pick to the download path
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -28,6 +28,7 @@ const DRIVE = {
 const SLACK = { id: 'slack', label: 'Slack', category: 'communication' };
 
 const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
+const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
 // The section heading and its grid are siblings, so scope tile lookups to the
 // heading's parent rather than the whole dialog.
@@ -55,7 +56,7 @@ describe('ConnectorPicker grouping', () => {
     expect(within(communication).getByText('2')).toBeInTheDocument();
   });
 
-  it('drops category sections on cloud and lists every available connector once', async () => {
+  it('lists every available connector once under "Available here" on cloud', async () => {
     fetchConnectors.mockResolvedValue([
       GMAIL,
       DRIVE,
@@ -66,12 +67,13 @@ describe('ConnectorPicker grouping', () => {
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText('Gmail');
-    const featured = section('Featured');
-    expect(within(featured).getByText('Gmail')).toBeInTheDocument();
-    expect(within(featured).getByText('Google Drive')).toBeInTheDocument();
-    expect(within(featured).getByText('Slack')).toBeInTheDocument();
-    // One tile each, and no per-category sections at all.
+    const availableHere = section(CLOUD_AVAILABLE_TITLE);
+    expect(within(availableHere).getByText('Gmail')).toBeInTheDocument();
+    expect(within(availableHere).getByText('Google Drive')).toBeInTheDocument();
+    expect(within(availableHere).getByText('Slack')).toBeInTheDocument();
+    // One tile each, and no per-category or "Featured" sections at all.
     expect(screen.getAllByText('Gmail')).toHaveLength(1);
+    expect(screen.queryByText('Featured')).toBeNull();
     expect(screen.queryByText('Communication')).toBeNull();
     expect(screen.queryByText('Files')).toBeNull();
   });

@@ -234,7 +234,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     }
   };
 
-  const projectLabel = projectNameOf(artifact, projects);
+  // Not `projectLabel`: that name belongs to the imported
+  // `projectLabel(project)` function the tooltip below calls, and shadowing it
+  // with this string made that call throw "projectLabel is not a function",
+  // blanking the whole page. Not `projectName` either — that name is reserved
+  // for slugs (projectLabelSurfaces guards it). This is a resolved display
+  // label: projectNameOf routes through projectLabel itself.
+  const projectDisplay = projectNameOf(artifact, projects);
   // The project the artifact belongs to. When resolved, the project label
   // becomes a clickable affordance that navigates to that project's page.
   const projectMatch = projectOf(artifact, projects);
@@ -350,10 +356,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
               }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
-            >{projectLabel}</button>
+            >{projectDisplay}</button>
           </Tooltip>
         ) : (
-          <span title={projectLabel} className="font-[family-name:var(--font-body)] text-[12px] text-ink-3 min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel}</span>
+          <span title={projectDisplay} className="font-[family-name:var(--font-body)] text-[12px] text-ink-3 min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap">{projectDisplay}</span>
         )}
         <span className="ml-auto shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{artifact.updated || '—'}</span>
       </div>
