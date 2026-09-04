@@ -127,6 +127,8 @@ export function ArtifactViewer({
   // Dismissed per repair, not per open: a suggestion the artifact has moved
   // past is worth mentioning once, not on every visit to the artifact.
   const [dismissedRepairId, setDismissedRepairId] = useState('');
+  // Rendered twice: inline in the repair notice, and as the discard dialog's
+  // error, so a failure is visible whether or not that dialog is open.
   const [repairNoticeError, setRepairNoticeError] = useState('');
   // The repair the create guard named, so the refusal can offer a way out
   // instead of stating a fact the user cannot act on.
