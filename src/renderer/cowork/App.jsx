@@ -642,6 +642,48 @@ function AppCore() {
   // Reset to false at every new stream reservation below.
   const activeStreamProducedRef = useRef(false);
   const activeStreamGenerationRef = useRef(0);
+  // Every live stream, keyed by conversation. Concurrent streams are intended
+  // (a background task keeps draining while another is on screen), so the refs
+  // above cannot own teardown: Stop has to reach the controller belonging to
+  // the conversation it stops, not whichever one claimed them last.
+  const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
+
+  // A second stream on the SAME conversation replaces the first, which has to
+  // be aborted: left attached it keeps replaying into a turn nobody reads and
+  // can later cancel it on its own idle timer. A stream on a different
+  // conversation is deliberately untouched.
+  const registerStream = useCallback((cid, ctrl) => {
+    if (!cid || !ctrl) return;
+    const prev = liveStreamsRef.current.get(cid);
+    if (prev?.ctrl && prev.ctrl !== ctrl) {
+      try { prev.ctrl.abort(); } catch { /* already closed */ }
+    }
+    liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
+  }, []);
+
+  // Drop the record only when `ctrl` is still the registered one, so a stream
+  // that ends after being replaced cannot evict its successor.
+  const releaseStream = useCallback((cid, ctrl) => {
+    if (!cid) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec && (!ctrl || rec.ctrl === ctrl)) liveStreamsRef.current.delete(cid);
+  }, []);
+
+  const abortStream = useCallback((cid) => {
+    if (!cid) return null;
+    const rec = liveStreamsRef.current.get(cid);
+    if (!rec) return null;
+    if (rec.ctrl) { try { rec.ctrl.abort(); } catch { /* already closed */ } }
+    liveStreamsRef.current.delete(cid);
+    return rec;
+  }, []);
+
+  // The pad belongs to the turn that opened it, not to the app.
+  const setStreamPad = useCallback((cid, pad) => {
+    if (!cid || !pad) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec) rec.pad = pad;
+  }, []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -1053,7 +1095,12 @@ function AppCore() {
 
     activeStreamGenerationRef.current += 1;
 
-    const padName = activeScratchpadRef.current;
+    // Tear down the record for the conversation being stopped, not whichever
+    // one claimed the shared refs last: with concurrent streams those differ,
+    // and cancelling the wrong pad kills a cell inside a still-running turn.
+    const stopped = cidToCancel ? abortStream(cidToCancel) : null;
+
+    const padName = stopped ? stopped.pad : activeScratchpadRef.current;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
@@ -1129,7 +1176,7 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone, releaseLiveStepsWithAliases]);
+  }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
@@ -1891,7 +1938,7 @@ function AppCore() {
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = tailInFlight(taskId, {
+    const ctrl = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
                   // over text deltas, and from_seq=0 keeps the rebuild
                   // simple. A per-task last-seen-seq optimisation is
@@ -1901,12 +1948,16 @@ function AppCore() {
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        releaseStream(taskId, ctrl);
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
@@ -1969,8 +2020,10 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad]);
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and

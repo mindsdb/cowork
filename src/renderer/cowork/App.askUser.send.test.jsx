@@ -1270,3 +1270,49 @@ describe('a background refresh must not blank the open transcript (ENG-2246)', (
     await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
   });
 });
+
+describe('a tail displaced by opening another running conversation', () => {
+  it('is still torn down when its own conversation is stopped', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Opening Beta attaches a second tail. Concurrent background streams are
+    // intended (see the two draining suites above), so Alpha's must survive.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    expect(tailB.kind).toBe('tail');
+    expect(tailA.abort).not.toHaveBeenCalled();
+
+    // Back on Alpha. Stopping conv-a must tear down every tail this app opened
+    // for conv-a, not only the most recent one — a tail left attached keeps
+    // replaying into a dead turn and can later cancel it on its own idle timer.
+    await openByTitle(user, 'Alpha task');
+    await emit({ type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    expect(tailA.abort).toHaveBeenCalled();
+  });
+
+  it('leaves a running conversation attached when the opened one is idle', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Beta has no producer, so opening it must not reach any teardown: the
+    // common navigation must never touch the conversation that is running.
+    await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-b'));
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
