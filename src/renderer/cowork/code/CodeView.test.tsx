@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
   steerQueued: vi.fn(),
   cancel: vi.fn(),
   runProjectAction: vi.fn(),
+  commit: vi.fn(),
+  setGitIdentity: vi.fn(),
+  updateProject: vi.fn(),
+  projectsLoad: vi.fn(async () => {}),
+  projectsReplace: vi.fn(),
+  projectsSetSelectedId: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
 }));
@@ -38,8 +44,12 @@ vi.mock('./api', () => ({
     steerQueued: mocks.steerQueued,
     cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
+    commit: mocks.commit,
+    setGitIdentity: mocks.setGitIdentity,
+    updateProject: mocks.updateProject,
   },
   openCodingEventStream: vi.fn(() => () => {}),
+  codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
 vi.mock('./CodeCommandPalette', async (importOriginal) => {
@@ -55,14 +65,16 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
     onDelete: () => void;
     onStatus: () => void;
+    onToggleReview: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
+      <button type="button" onClick={onToggleReview}>Review menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
@@ -70,6 +82,37 @@ vi.mock('./TaskBar', () => ({
   ),
 }));
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./useCodeProjects', () => ({
+  useCodeProjects: () => ({
+    projects: [{
+      schema_version: 1, id: 'project-1', name: 'Web app', resources: [], folders: [], connections: [],
+      environment: { variables: {}, port_names: [] }, default_engine_id: 'codex', default_model: 'gpt',
+      permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
+    }],
+    selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
+  }),
+}));
+vi.mock('./CodeConnectorsView', () => ({
+  CodeConnectorsView: ({ returnProjectName, backLabel, onBack, onConnected }: {
+    returnProjectName?: string; backLabel?: string; onBack?: () => void;
+    onConnected?: (provider: 'github' | 'linear', connection: { engine: string; name: string; display_name: string; status: string }) => Promise<void> | void;
+  }) => (
+    <div>
+      <span>Connectors view for {returnProjectName || 'nobody'}</span>
+      {onBack && <button type="button" onClick={onBack}>{backLabel}</button>}
+      <button type="button" onClick={() => void onConnected?.('github', { engine: 'github', name: 'octo', display_name: 'Octo Cat', status: 'ready' })}>Connect GitHub stub</button>
+    </div>
+  ),
+}));
+vi.mock('./CodeProjectsView', () => ({
+  CodeProjectsView: ({ onEdit }: { onEdit: (id: string) => void }) => <button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button>,
+}));
+vi.mock('./ProjectSettingsModal', () => ({
+  ProjectSettingsModal: ({ open, suspended, onOpenConnectors }: { open: boolean; suspended?: boolean; onOpenConnectors?: () => void }) => (
+    open || suspended ? <div>{open ? 'Project settings modal' : 'Project settings modal (suspended)'}<button type="button" onClick={onOpenConnectors}>Open Connectors from settings</button></div> : null
+  ),
+}));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
 vi.mock('./FilesPanel', () => ({
   FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
@@ -81,7 +124,24 @@ vi.mock('./ApprovalCard', () => ({
     <button type="button" disabled={busy} onClick={() => onDecision('approve_once')}>Approval</button>
   ),
 }));
-vi.mock('./ReviewPanel', () => ({ ReviewPanel: () => null }));
+vi.mock('./ReviewPanel', () => ({
+  ReviewPanel: ({ open, error, onCommit, gitIdentitySetup }: {
+    open: boolean;
+    error: string;
+    onCommit: (message: string) => Promise<void>;
+    gitIdentitySetup?: { name: string; email: string; onSubmit: (name: string, email: string) => Promise<void> } | null;
+  }) => (open ? (
+    <div>
+      {error && <div role="alert">{error}</div>}
+      <button type="button" onClick={() => void onCommit('Prepare change').catch(() => {})}>Commit stub</button>
+      {gitIdentitySetup && (
+        <button type="button" onClick={() => void gitIdentitySetup.onSubmit(gitIdentitySetup.name, gitIdentitySetup.email)}>
+          Identity stub {gitIdentitySetup.name} {gitIdentitySetup.email}
+        </button>
+      )}
+    </div>
+  ) : null),
+}));
 vi.mock('./TaskTerminal', () => ({
   TaskTerminal: ({ focusTerminalId }: { focusTerminalId?: string | null }) => <div>Terminal {focusTerminalId || 'loading'}</div>,
 }));
@@ -605,3 +665,137 @@ describe('CodeView session-list reconciliation', () => {
     expect(mocks.turn).not.toHaveBeenCalled();
   });
 });
+
+
+describe('CodeView commit without a Git identity', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.sessions.mockResolvedValue({ items: [session('task-1')] });
+    mocks.useCodingSession.mockReturnValue({
+      session: session('task-1'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+  });
+
+  it('asks for the identity, prefilled from the account, then saves it and reruns the same commit', async () => {
+    const missing = Object.assign(new Error('Git needs your name and email before it can commit on this computer.'), { status: 409, code: 'git_identity_missing' });
+    mocks.commit.mockRejectedValueOnce(missing).mockResolvedValueOnce({ is_git: true, worktree_path: '', source_path: '' });
+    mocks.setGitIdentity.mockResolvedValue({ name: 'Ian Unsworth', email: 'ian@example.com' });
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1', account: { name: 'Ian Unsworth', email: 'ian@example.com' } });
+    fireEvent.click(await screen.findByText('Review menu action'));
+
+    fireEvent.click(await screen.findByText('Commit stub'));
+
+    const identity = await screen.findByText('Identity stub Ian Unsworth ian@example.com');
+    // The missing identity is a setup step, not an error banner.
+    expect(screen.queryByText(/Git needs your name and email/)).toBeNull();
+
+    fireEvent.click(identity);
+
+    await waitFor(() => expect(mocks.setGitIdentity).toHaveBeenCalledWith({ name: 'Ian Unsworth', email: 'ian@example.com' }));
+    await waitFor(() => expect(mocks.commit).toHaveBeenCalledTimes(2));
+    expect(mocks.commit).toHaveBeenLastCalledWith('task-1', 'Prepare change');
+    await waitFor(() => expect(screen.queryByText(/Identity stub/)).toBeNull());
+  });
+
+  it('drops the pending setup when the user switches to another task', async () => {
+    const missing = Object.assign(new Error('Git needs your name and email.'), { status: 409, code: 'git_identity_missing' });
+    mocks.commit.mockRejectedValueOnce(missing);
+    mocks.sessions.mockResolvedValue({ items: [session('task-1'), session('task-2')] });
+    const { rerender, props } = renderCode({ sessions: [session('task-1'), session('task-2')], selectedId: 'task-1', account: { name: 'Ian', email: 'ian@example.com' } });
+    fireEvent.click(await screen.findByText('Review menu action'));
+    fireEvent.click(await screen.findByText('Commit stub'));
+    await screen.findByText('Identity stub Ian ian@example.com');
+
+    mocks.useCodingSession.mockReturnValue({
+      session: session('task-2'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+    rerender(<CodeView {...props} selectedId="task-2" />);
+
+    await waitFor(() => expect(screen.queryByText(/Identity stub/)).toBeNull());
+    expect(mocks.setGitIdentity).not.toHaveBeenCalled();
+  });
+
+  it('still reports any other commit failure', async () => {
+    mocks.commit.mockRejectedValueOnce(Object.assign(new Error('No repositories were committed: hook failed. All task changes remain available to retry.'), { status: 409 }));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
+    fireEvent.click(await screen.findByText('Review menu action'));
+
+    fireEvent.click(await screen.findByText('Commit stub'));
+
+    expect(await screen.findByText(/hook failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Identity stub/)).toBeNull();
+  });
+});
+
+describe('CodeView connector return flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.sessions.mockResolvedValue({ items: [] });
+    mocks.updateProject.mockImplementation(async (id: string, body: { connections: unknown[] }) => ({ id, name: 'Web app', connections: body.connections }));
+    mocks.useCodingSession.mockReturnValue({
+      session: null, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+  });
+
+  it('adds each connected account to the project and only leaves the Connectors view on Back', async () => {
+    const onOpenNewTask = vi.fn();
+    const onOpenConnectors = vi.fn();
+    const onOpenProjects = vi.fn();
+    const { rerender, props } = renderCode({ newTask: true, onOpenNewTask, onOpenConnectors, onOpenProjects });
+    // The New Task panel is stubbed; arm the return flow the way it does.
+    // (CodeView only exposes it through the panel's onOpenConnectors prop.)
+    rerender(<CodeView {...props} newTask={false} projectsOpen />);
+    fireEvent.click(screen.getByText('Edit project stub'));
+    fireEvent.click(screen.getByText('Open Connectors from settings'));
+    expect(onOpenConnectors).toHaveBeenCalledOnce();
+
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Connect GitHub stub'));
+    await waitFor(() => expect(mocks.updateProject).toHaveBeenCalledWith('project-1', {
+      connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
+    }));
+    // The saved project lands in the list before the refresh, so a failed
+    // refresh cannot make the next account replace this one.
+    await waitFor(() => expect(mocks.projectsReplace).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'project-1', connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
+    })));
+    await waitFor(() => expect(mocks.projectsLoad).toHaveBeenCalled());
+    // Connecting does not throw the user out; they can connect the next account.
+    expect(onOpenNewTask).not.toHaveBeenCalled();
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to project settings' }));
+    expect(mocks.projectsSetSelectedId).toHaveBeenCalledWith('project-1');
+    expect(onOpenProjects).toHaveBeenCalledOnce();
+    expect(onOpenNewTask).not.toHaveBeenCalled();
+    // The parent switches back to the Projects view; the editor resumes there.
+    rerender(<CodeView {...props} newTask={false} projectsOpen connectorsOpen={false} />);
+    expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+  });
+
+  it('forgets the hand-back when Connectors is left by another route', async () => {
+    const onOpenConnectors = vi.fn();
+    const { rerender, props } = renderCode({ newTask: true, onOpenConnectors });
+    rerender(<CodeView {...props} newTask={false} projectsOpen />);
+    fireEvent.click(screen.getByText('Edit project stub'));
+    fireEvent.click(screen.getByText('Open Connectors from settings'));
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    // The sidebar takes the user elsewhere, then back to the standalone Connectors page.
+    rerender(<CodeView {...props} newTask projectsOpen={false} connectorsOpen={false} />);
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+
+    expect(screen.getByText('Connectors view for nobody')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back to/ })).toBeNull();
+    fireEvent.click(screen.getByText('Connect GitHub stub'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.updateProject).not.toHaveBeenCalled();
+  });
+});
+

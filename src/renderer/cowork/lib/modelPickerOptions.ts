@@ -16,6 +16,8 @@ export interface ModelPickerMeta {
   modelProviders?: Record<string, string>;
   modelFamilies?: Record<string, string>;
   modelEnabled?: Record<string, boolean>;
+  /** Per-model reasoning effort levels the gateway advertises: id → { efforts, default }. */
+  modelEfforts?: Record<string, { efforts: string[]; default?: string }>;
   onRefresh?: () => Promise<unknown> | unknown;
 }
 

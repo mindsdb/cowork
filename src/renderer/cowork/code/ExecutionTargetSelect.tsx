@@ -92,7 +92,7 @@ export function ExecutionTargetSelect({
       disabled={disabled || !computerOptions.length}
       loading={loading}
       className="meta-pill code-composer-picker code-computer-picker"
-      minWidth={250}
+      menuMinWidth={280}
     />
   );
 }
