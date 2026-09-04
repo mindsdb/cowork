@@ -66,6 +66,48 @@ describe('getInstalledVersion — uv discovery', () => {
     expect(toolList?.[0]).toBe('/custom/tools/uv');
   });
 
+  it('looks a second time when the first listing right after an install comes back empty', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      let listings = 0;
+      vi.mocked(cp.execFile).mockImplementation(((
+        _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => {
+        listings += 1;
+        // First `uv tool list` after `uv tool install` on a slow machine: uv
+        // answers before the receipt is readable, so nothing is listed yet.
+        if (listings === 1) cb(null, 'No tools installed\n', '');
+        else cb(null, 'cowork-server v0.26.9.4.1\n- cowork-server\n', '');
+        return {} as never;
+      }) as never);
+
+      const pending = getInstalledVersion();
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toBe('0.26.9.4.1');
+      expect(listings).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up after the second empty listing rather than looping', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(cp.execFile).mockImplementation(((
+        _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      ) => { cb(null, 'No tools installed\n', ''); return {} as never; }) as never);
+
+      const pending = getInstalledVersion();
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toBeNull();
+      expect(vi.mocked(cp.execFile).mock.calls.filter((c) => (c[1] as string[])[0] === 'tool')).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('resolves null when uv is not runnable anywhere', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(cp.execFile).mockImplementation(((

@@ -250,14 +250,16 @@ export async function resolveUv(): Promise<string | null> {
 // import for uv-related helpers.
 export { compareVersions } from './update-logic';
 
-/** Get the installed cowork-server version from `uv tool list`. */
-export async function getInstalledVersion(uv?: string): Promise<string | null> {
-  // resolveUv covers uv installed via winget/scoop/pip, which lives outside
-  // every probed dir but still resolves on PATH. Without the fallback the
-  // post-install verification reported "binary not found" for a perfectly
-  // good install (ENG-1293). Null when uv is truly absent, exactly as before.
-  const uvBin = uv ?? await resolveUv();
-  if (!uvBin) return null;
+// One `uv tool list` right after `uv tool install` can come back empty or
+// late on a slow machine (seen on a fresh Windows VM: the first-run verify
+// step reported "version could not be determined" although the very next
+// listing answered in under a second). A second look a moment later is cheap
+// and turns that into a non-event; a machine where uv really is broken still
+// reports null, just two seconds later.
+const VERSION_PROBE_ATTEMPTS = 2;
+const VERSION_PROBE_RETRY_DELAY_MS = 2000;
+
+function probeInstalledVersion(uvBin: string): Promise<string | null> {
   return new Promise((resolve) => {
     // NO_COLOR: a forced-color env (concurrently sets FORCE_COLOR in dev)
     // makes uv emit ANSI codes that break the parser's anchored regex.
@@ -267,4 +269,19 @@ export async function getInstalledVersion(uv?: string): Promise<string | null> {
       resolve(parseInstalledVersion(stdout));
     });
   });
+}
+
+/** Get the installed cowork-server version from `uv tool list`. */
+export async function getInstalledVersion(uv?: string): Promise<string | null> {
+  // resolveUv covers uv installed via winget/scoop/pip, which lives outside
+  // every probed dir but still resolves on PATH. Without the fallback the
+  // post-install verification reported "binary not found" for a perfectly
+  // good install (ENG-1293). Null when uv is truly absent, exactly as before.
+  const uvBin = uv ?? await resolveUv();
+  if (!uvBin) return null;
+  for (let attempt = 1; ; attempt += 1) {
+    const version = await probeInstalledVersion(uvBin);
+    if (version || attempt >= VERSION_PROBE_ATTEMPTS) return version;
+    await new Promise((resolve) => setTimeout(resolve, VERSION_PROBE_RETRY_DELAY_MS));
+  }
 }
