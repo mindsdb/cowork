@@ -73,7 +73,7 @@
     "vitest": "^4.1.9"
   },
   "optionalDependencies": {
-    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "appdmg": "^0.6.6",
     "node-pty": "^1.2.0-beta.15"
