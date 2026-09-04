@@ -5,6 +5,7 @@
 // Design source: docs/design-handoff/Anton Projects (D1 · Quiet).
 
 import { useEffect, useRef, useState } from 'react';
+import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
 import { Card, Tooltip } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
@@ -160,7 +161,7 @@ export function ProjectCard({
   };
 
   const submitRename = () => {
-    const next = renameInputRef.current?.value ?? project.name;
+    const next = renameInputRef.current?.value ?? projectLabel(project);
     onRenameSubmit?.(next);
   };
 
@@ -197,7 +198,7 @@ export function ProjectCard({
           <input
             ref={renameInputRef}
             type="text"
-            defaultValue={project.name}
+            defaultValue={projectLabel(project)}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
@@ -230,7 +231,7 @@ export function ProjectCard({
             flex: 1, minWidth: 0,
             color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{project.name}</span>
+          }}>{projectLabel(project)}</span>
         )}
 
         {/* Pin button — visible on hover for unpinned, always for pinned */}

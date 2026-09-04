@@ -9,6 +9,7 @@
 //            click-through to the conversation that ran.
 
 import { useEffect, useMemo, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
 import { Alert, Button } from '../components/ui';
@@ -233,7 +234,8 @@ export default function ScheduleDetailView({
 
   // Resolve the project name from the stored id (ENG-1255) — the schedule
   // response keys the project by id (a UUID), not a name.
-  const projectName = projects.find((p) => p.id === task.projectId)?.name || '';
+  // The label, resolved by id -- named for what it holds (ENG-1676).
+  const projectDisplay = projectLabel(projects.find((p) => p.id === task.projectId)) || '';
 
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
@@ -315,8 +317,8 @@ export default function ScheduleDetailView({
             />
             <SummaryStat
               label="Project"
-              value={projectName || '—'}
-              hint={projectName}
+              value={projectDisplay || '—'}
+              hint={projectDisplay}
             />
             <SummaryStat
               label="Model"

@@ -9,6 +9,7 @@
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
@@ -1787,9 +1788,9 @@ export default function ChatView({
                     <>
                       <CrumbSep />
                       <CrumbButton
-                        label={project.name}
+                        label={projectLabel(project)}
                         onClick={() => onOpenProject?.(project)}
-                        title={`Open project: ${project.name}`}
+                        title={`Open project: ${projectLabel(project)}`}
                         maxWidth={200}
                       />
                     </>
@@ -2637,6 +2638,7 @@ export default function ChatView({
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
+          projects={projects}
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}

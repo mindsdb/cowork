@@ -1009,6 +1009,7 @@ export default function Sidebar({
       />
 
       <RecentsModal
+        projects={projects}
         open={recentsModalOpen}
         onClose={() => setRecentsModalOpen(false)}
         // Cap at 100 — beyond that the list is more usefully reached

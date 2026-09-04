@@ -5,6 +5,7 @@
 // creates the project if it's new, then calls the move endpoint.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button, Checkbox, Input } from './ui';
 
@@ -35,12 +36,12 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
     const others = projects.filter((p) => p.name !== currentName);
     if (!q) return others;
     const lc = q.toLowerCase();
-    return others.filter((p) => p.name.toLowerCase().includes(lc));
+    return others.filter((p) => projectMatches(p, lc));
   }, [projects, currentName, q]);
 
   // A typed name that matches no existing project (and isn't the current
   // one) becomes a "create new project" option.
-  const exactMatch = projects.some((p) => p.name.toLowerCase() === q.toLowerCase());
+  const exactMatch = projects.some((p) => projectNamed(p, q));
   const canCreateNew = q.length > 0 && !exactMatch && q !== currentName;
 
   const destName = selected || (canCreateNew ? q : null);
@@ -96,7 +97,7 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
               style={rowStyle(selected === p.name)}
               onClick={() => { setSelected(p.name); }}
             >
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectLabel(p)}</span>
               {selected === p.name && <span aria-hidden>✓</span>}
             </button>
           ))}
