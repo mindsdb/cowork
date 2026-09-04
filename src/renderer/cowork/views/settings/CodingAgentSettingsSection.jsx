@@ -46,6 +46,10 @@ export default function CodingAgentSettingsSection({
     });
   }, [modelId, settings.modelEnabled, settings.modelFamilies, settings.modelLabels, settings.modelProviders, settings.recommendedModels]);
 
+  // Bumped when the setup modal finishes so the agent list is read again from
+  // the restarted sidecar: an existing user's `enabled` is already true, so
+  // that alone would not refetch, and the old list still marks Codex unavailable.
+  const [catalogReload, setCatalogReload] = useState(0);
   useEffect(() => {
     if (host.isWeb || !enabled) return undefined;
     let active = true;
@@ -61,7 +65,7 @@ export default function CodingAgentSettingsSection({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [enabled]);
+  }, [enabled, catalogReload]);
 
   useEffect(() => {
     if (host.isWeb || !enabled) return undefined;
@@ -94,23 +98,28 @@ export default function CodingAgentSettingsSection({
     title: engine.available ? undefined : engine.reason || 'Unavailable',
   }));
   // The coding agent's components are installed the first time Code Mode is
-  // switched on (they are large, so the first install leaves them out). Until
-  // the status is known the toggle behaves as before.
-  const [runtimeInstalled, setRuntimeInstalled] = useState(null);
+  // switched on (they are large, so the first install leaves them out), and so
+  // is Git where the computer has none. Either one missing means setup is
+  // needed: after a partial run where the components landed but Git did not,
+  // Code Mode still cannot clone, branch or commit. Until the status is known
+  // the toggle behaves as before.
+  const [setupStatus, setSetupStatus] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(() => {
     if (!available) return undefined;
     let cancelled = false;
-    // Older bridges (and the web host) have no setup step: treat as installed.
+    // Older bridges (and the web host) have no setup step: treat as complete.
     const status = typeof host.codeSetupStatus === 'function'
       ? host.codeSetupStatus()
-      : Promise.resolve({ installed: true });
+      : Promise.resolve({ installed: true, gitWorks: true });
     Promise.resolve(status)
-      .then((result) => { if (!cancelled) setRuntimeInstalled(result?.installed !== false); })
-      .catch(() => { if (!cancelled) setRuntimeInstalled(true); });
+      .then((result) => { if (!cancelled) setSetupStatus({ installed: result?.installed !== false, gitWorks: result?.gitWorks !== false }); })
+      .catch(() => { if (!cancelled) setSetupStatus({ installed: true, gitWorks: true }); });
     return () => { cancelled = true; };
   }, [available, setupOpen]);
-  const needsSetup = runtimeInstalled === false;
+  const componentsMissing = setupStatus?.installed === false;
+  const gitMissing = setupStatus?.gitWorks === false;
+  const needsSetup = componentsMissing || gitMissing;
   const handleEnabledChange = (next) => {
     if (next && needsSetup) {
       setSetupOpen(true);
@@ -119,10 +128,12 @@ export default function CodingAgentSettingsSection({
     onEnabledChange(next);
   };
   const completeSetup = () => {
-    setRuntimeInstalled(true);
+    setSetupStatus({ installed: true, gitWorks: true });
     setSetupOpen(false);
+    setCatalogReload((count) => count + 1);
     onEnabledChange(true);
   };
+  const missingPiece = componentsMissing ? 'its components are not installed' : 'Git is not installed';
 
   if (!available) return null;
 
@@ -131,9 +142,9 @@ export default function CodingAgentSettingsSection({
       <Section
         title="Enable Code Mode"
         subtitle={enabled
-          ? (needsSetup ? 'Code Mode is on, but its components are not installed on this computer yet.' : 'Code is available on this computer.')
+          ? (needsSetup ? `Code Mode is on, but ${missingPiece} on this computer yet.` : 'Code is available on this computer.')
           : (needsSetup
-            ? 'Build, test, and review code with an agent on this computer. Switching this on downloads the coding agent, about 110 MB.'
+            ? `Build, test, and review code with an agent on this computer. Switching this on ${componentsMissing ? 'downloads the coding agent, about 110 MB' : 'installs Git'}.`
             : 'Build, test, and review code with an agent on this computer.')}
       >
         <div className="flex items-center gap-3">

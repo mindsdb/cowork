@@ -23,6 +23,7 @@ vi.mock('../../code/CodeSetupModal', () => ({
 }));
 vi.mock('../../code/api', () => ({ codingApi: { engines: vi.fn(async () => []), models: vi.fn(async () => ({ items: [] })), terminalShells: vi.fn(async () => ({ items: [] })) } }));
 
+import { codingApi } from '../../code/api';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 
 const baseProps = {
@@ -64,6 +65,51 @@ describe('CodingAgentSettingsSection', () => {
 
     expect(onEnabledChange).toHaveBeenCalledWith(true);
     expect(screen.queryByText('Code setup modal')).toBeNull();
+  });
+
+  it('still runs the setup when the components are there but Git is not', async () => {
+    // The partial-failure path: the components installed, winget did not.
+    mocks.codeSetupStatus.mockResolvedValue({ installed: true, gitWorks: false, devSource: false });
+    const onEnabledChange = vi.fn();
+    const user = userEvent.setup();
+    render(<CodingAgentSettingsSection {...baseProps} enabled={false} onEnabledChange={onEnabledChange} />);
+
+    await waitFor(() => expect(mocks.codeSetupStatus).toHaveBeenCalled());
+    expect(await screen.findByText(/Switching this on installs Git\./)).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Enable Code Mode' }));
+    expect(screen.getByText('Code setup modal')).toBeInTheDocument();
+    expect(onEnabledChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps offering Set up now while Git is missing on a computer that already has Code Mode on', async () => {
+    mocks.codeSetupStatus.mockResolvedValue({ installed: true, gitWorks: false, devSource: false });
+    render(<CodingAgentSettingsSection {...baseProps} enabled onEnabledChange={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Set up now' })).toBeInTheDocument();
+    expect(screen.getByText(/Code Mode is on, but Git is not installed on this computer yet\./)).toBeInTheDocument();
+  });
+
+  it('reads the agent list again once an existing user finishes the setup', async () => {
+    // The status is read on mount, when the modal opens and again when it
+    // closes; by then the components are on disk.
+    mocks.codeSetupStatus
+      .mockResolvedValueOnce({ installed: false, gitWorks: true, devSource: false })
+      .mockResolvedValueOnce({ installed: false, gitWorks: true, devSource: false })
+      .mockResolvedValue({ installed: true, gitWorks: true, devSource: false });
+    vi.mocked(codingApi.engines)
+      .mockResolvedValueOnce([{ id: 'codex', label: 'Codex', available: false, reason: 'Code Mode components are not installed on this computer yet.' }])
+      .mockResolvedValueOnce([{ id: 'codex', label: 'Codex', available: true }]);
+    const user = userEvent.setup();
+    render(<CodingAgentSettingsSection {...baseProps} enabled onEnabledChange={vi.fn()} />);
+
+    const agent = await screen.findByRole('combobox', { name: 'Coding agent engine' });
+    await waitFor(() => expect(agent).toBeDisabled());
+    await user.click(await screen.findByRole('button', { name: 'Set up now' }));
+    await user.click(screen.getByText('Finish setup stub'));
+
+    await waitFor(() => expect(codingApi.engines).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Coding agent engine' })).toBeEnabled());
+    expect(screen.queryByRole('button', { name: 'Set up now' })).toBeNull();
   });
 
   it('offers Set up now to someone who already had Code Mode on before the components moved out of the first install', async () => {
