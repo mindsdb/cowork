@@ -3,9 +3,10 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -23,6 +24,9 @@ vi.mock('../api', async (importOriginal) => {
 // in this file. Only the "Model Router" harness-switch test below
 // exercises it; everything else (api.js's getApiOrigin() at import time,
 // etc.) keeps the real host.
+// Spread the real modules and override only what these tests assert on, so a
+// new export never has to be added here to keep the file importable.
+const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -30,9 +34,16 @@ vi.mock('../../platform/host', async (importOriginal) => {
     host: {
       ...actual.host,
       isWeb: false,
+      openExternal: hostSpies.openExternal,
       detectClaudeCode: vi.fn(async () => ({ installed: true, path: '/usr/local/bin/claude' })),
     },
   };
+});
+
+const analyticsSpies = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
+vi.mock('../lib/analytics', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, trackBillingOpened: analyticsSpies.trackBillingOpened };
 });
 
 const renderComposer = (overrides = {}) => {
@@ -158,12 +169,160 @@ describe('Composer — model picker (ENG-1656)', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  // The bug this closes: a free user could pick a model the wallet can't pay
+  // for, and the turn then ran a different, affordable model, because
+  // resolution substitutes a pin it knows the gateway will deny. So the answer
+  // came from one model while the picker named another.
+  it('offers a needs-credits model as a disabled row that cannot be chosen', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
+    expect(locked).toHaveAttribute('data-disabled');
+    expect(locked).toHaveTextContent('Needs credits');
+    // The row is closed off, so this button is the only thing left on it that
+    // answers "how do I unlock this". Settings' top-up hint does not cover the
+    // case: it renders for the CURRENT model, and the current model here is one
+    // the wallet can pay for.
+    expect(within(locked).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
+
+    await user.click(locked);
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  // The mirror to settingsTransform's own assertion — the two option builders
+  // are meant to produce the same row, and the only thing keeping them honest
+  // is asserting the same facts on both.
+  it('opens billing from a needs-credits row without selecting it', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
+    await user.click(within(locked).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
+    // The row is disabled, so Base UI never reaches its select handler. This
+    // pins that the button did not somehow route around that, not the
+    // button's own stopPropagation, which no test here can distinguish.
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves a model the wallet can pay for selectable', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    // Absent from the map, so available. Locking one row must not lock the list.
+    await user.click(screen.getByRole('option', { name: 'Kimi K3' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
   it('renders a fixed label instead of a picker when modelReadOnly', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], modelReadOnly: true });
 
     expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
     expect(screen.getByTitle('Model is fixed for this task')).toHaveTextContent('MindsHub Air');
+  });
+});
+
+// ─── Reasoning effort sub-picker (ENG-1940) ───────────────────────────
+//
+// ModelSelect's own footer/flyout/trigger-suffix behavior is covered
+// thoroughly, in isolation, by ModelSelect.test.jsx — these cases only
+// check the wiring: Composer threads `modelMeta.modelEfforts` and the
+// current `effort`/`onEffortChange` into the SAME "Choose model" picker
+// (there is no longer a separate sibling control), and it round-trips.
+
+const MODEL_EFFORTS = { sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } };
+
+describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
+  it('shows the resolved effort, muted, on the model picker trigger for a model with effort options', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'high', // not sonnet's default ("medium") — the trigger suffix only shows then
+    });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5 · High');
+  });
+
+  it('shows an "Effort" footer row in the model popup for a model with effort options', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'medium',
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('Medium')).toBeInTheDocument();
+  });
+
+  it('shows no Effort footer at all for a model with no modelEfforts entry', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[0], // mindshub_air — not in MODEL_EFFORTS
+      effort: '',
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    expect(screen.queryByText('Effort')).toBeNull();
+  });
+
+  it('fires onEffortChange with the picked level, from the footer flyout', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'medium',
+      onEffortChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    fireEvent.mouseEnter(screen.getByText('Effort').closest('button'));
+    const panel = screen.getByText(/Higher effort means more thorough responses/).parentElement;
+    await user.click(within(panel).getByText('High').closest('button'));
+
+    expect(props.onEffortChange).toHaveBeenCalledWith('high');
+  });
+
+  it('is suppressed under modelReadOnly, same as the model picker', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'medium',
+      modelReadOnly: true,
+    });
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    expect(screen.queryByText('Effort')).toBeNull();
   });
 });
 
@@ -485,5 +644,71 @@ describe('Composer — task-mode chip (ENG-1594)', () => {
     expect(screen.getByPlaceholderText(MODE.placeholder)).toBeInTheDocument();
     await user.click(chip);
     expect(onClearTaskMode).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ENG-1100: every clipboard paste arrives as "image.png", so two screenshots in
+// one conversation were indistinguishable. The composer renames them on the way
+// in — and does it synchronously, or a user who hits Enter right after Ctrl+V
+// would send the message before the attachment chip exists.
+describe('Composer — pasted image names (ENG-1100)', () => {
+  const CLIPBOARD_NAME = /^clipboard_\d+_[0-9a-f]{8}\.png$/;
+
+  const textarea = () => document.querySelector('textarea.composer-textarea');
+
+  const pasteFiles = (files) => fireEvent.paste(textarea(), {
+    clipboardData: {
+      items: files.map((f) => ({ kind: 'file', getAsFile: () => f })),
+      files,
+    },
+  });
+
+  const pastedImage = (bytes) =>
+    new File([new Uint8Array(bytes)], 'image.png', { type: 'image/png' });
+
+  it('gives two pasted screenshots distinct clipboard_* names', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    // Different byte lengths: extractClipboardFiles dedupes on name+size, and
+    // both files are still called "image.png" at that point.
+    pasteFiles([pastedImage([1, 2, 3]), pastedImage([1, 2, 3, 4])]);
+
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    const attached = onAttachFiles.mock.calls[0][0];
+    expect(attached).toHaveLength(2);
+    expect(attached[0].name).toMatch(CLIPBOARD_NAME);
+    expect(attached[1].name).toMatch(CLIPBOARD_NAME);
+    expect(attached[0].name).not.toBe(attached[1].name);
+  });
+
+  it('attaches synchronously and swallows the paste', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    // No await anywhere: onAttachFiles must have run inside the paste handler.
+    const notPrevented = pasteFiles([pastedImage([1, 2, 3])]);
+
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    expect(notPrevented).toBe(false);
+  });
+
+  it('leaves a text paste alone', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    const notPrevented = pasteFiles([]);
+
+    expect(onAttachFiles).not.toHaveBeenCalled();
+    expect(notPrevented).toBe(true);
+  });
+
+  it('keeps a real filename when a named image is pasted', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    pasteFiles([new File([new Uint8Array([1])], 'chart.png', { type: 'image/png' })]);
+
+    expect(onAttachFiles.mock.calls[0][0][0].name).toBe('chart.png');
   });
 });

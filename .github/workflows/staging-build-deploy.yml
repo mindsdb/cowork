@@ -49,6 +49,8 @@ jobs:
       # the source-aware updater keeps them on git@staging. Fresh installs use the
       # rc stream above.
       server_ref: staging
+      anton_ref: staging
+      server_channel: pypi
     secrets: inherit
 
   notify:

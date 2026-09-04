@@ -105,8 +105,9 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     ...baseSettings(),
     providerStatus: { 'minds-cloud': 'ok' },
     providerStatusDetails: {},
-    // The selected model is listed by MindsHub as unpayable — selectable, with
-    // the top-up hint underneath (ENG-1248).
+    // The selected model is listed by MindsHub as unpayable. Its row is closed
+    // off, and because it is the CURRENT model the top-up hint renders under the
+    // picker — the stranded-pin case, which is the only one that hint covers.
     modelEnabled: { 'gpt-5.6-sol': false },
   });
 

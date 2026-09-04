@@ -166,8 +166,48 @@ describe('Select', () => {
     expect(icon.closest('[role="option"]')).toHaveTextContent('All projects');
   });
 
+  it('supports a concise trigger with richer detail in the open menu', async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        initial="remote"
+        options={[{
+          value: 'remote',
+          label: 'Build computer',
+          triggerLabel: 'Build computer',
+          description: 'Linux · Ready',
+          meta: 'Remote',
+        }]}
+      />,
+    );
+
+    expect(screen.getByRole('combobox')).toHaveTextContent('Build computer');
+    expect(screen.queryByText('Linux · Ready')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: /Build computer/ })).toHaveTextContent('Linux · Ready');
+    expect(screen.getByText('Remote')).toBeInTheDocument();
+  });
+
   it('prefixes the pill variant with its label', () => {
     render(<Harness variant="pill" label="Sort by" initial="date" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Sort by:Date');
+  });
+
+  it('lets domain controls reuse an established trigger treatment', () => {
+    render(<Harness variant="unstyled" className="meta-pill" ariaLabel="Quiet picker" />);
+    const trigger = screen.getByRole('combobox', { name: 'Quiet picker' });
+    expect(trigger).toHaveClass('meta-pill');
+    expect(trigger).not.toHaveClass('border-solid');
+    expect(trigger.querySelector('.lucide-chevrons-up-down')).toBeInTheDocument();
+  });
+
+  it('shows a concise menu title only while the picker is open', async () => {
+    const user = userEvent.setup();
+    render(<Harness menuLabel="Permissions" ariaLabel="Coding permissions" />);
+
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
+
+    expect(screen.getByText('Permissions')).toBeInTheDocument();
   });
 });

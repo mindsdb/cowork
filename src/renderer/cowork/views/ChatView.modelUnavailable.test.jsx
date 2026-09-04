@@ -1,5 +1,6 @@
 // ENG-1304: the model-denial card offers "Switch to MindsHub Air" only when
 // the caller says Air is payable, and never echoes the server error string.
+// ENG-1638: it names the model exactly as the picker does — catalog label first.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -47,5 +48,24 @@ describe('ModelUnavailableCard', () => {
     expect(screen.getByText(/turned off for your workspace/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).not.toBeInTheDocument();
+  });
+
+  it('names the model with the catalog label the picker uses, not the id prettifier (ENG-1638)', () => {
+    // Before: modelLabel('mindshub_air') → "Mindshub air needs credits", under a
+    // picker whose row for the same model read "MindsHub Air".
+    const { rerender } = render(
+      <ModelUnavailableCard
+        code="model_access_denied"
+        failedModel="mindshub_air"
+        modelLabels={{ mindshub_air: 'MindsHub Air' }}
+      />,
+    );
+    expect(screen.getByText('MindsHub Air needs credits')).toBeInTheDocument();
+    expect(screen.queryByText(/Mindshub air/)).not.toBeInTheDocument();
+
+    // No label held for the id (BYOK providers publish none) → the id-derived
+    // fallback, exactly as before.
+    rerender(<ModelUnavailableCard code="model_access_denied" failedModel="claude-opus-4-8" />);
+    expect(screen.getByText('Claude Opus 4.8 needs credits')).toBeInTheDocument();
   });
 });

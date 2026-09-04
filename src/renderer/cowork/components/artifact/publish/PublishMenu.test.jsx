@@ -12,6 +12,7 @@ function makeController(overrides = {}) {
     accessPassword: '',
     accessEmails: [],
     orgAllowed: false,
+    ownerOnly: false,
     accessLoaded: true,
     versions: [],
     modified: false,
@@ -95,5 +96,33 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     })} />);
     expect(screen.getByPlaceholderText('alice@acme.com, bob@acme.com').value)
       .toBe('alice@x.com, bob@x.com');
+  });
+});
+
+describe('PublishMenu — owner-only summary (ENG-1769)', () => {
+  const PUBLISHED_RESTRICTED = {
+    publishedUrl: 'https://share/abc',
+    accessMode: 'restricted',
+    accessLoaded: true,
+  };
+
+  it('summarises an owner-only publish as "Only you"', () => {
+    render(<PublishMenu controller={makeController({
+      ...PUBLISHED_RESTRICTED, accessEmails: [], orgAllowed: false, ownerOnly: true,
+    })} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.getByText('Nobody else can open this')).toBeInTheDocument();
+  });
+
+  it('summarises a restricted publish with recipients as the list variant', () => {
+    render(<PublishMenu controller={makeController({
+      ...PUBLISHED_RESTRICTED, accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false,
+    })} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('For you and selected users')).toBeInTheDocument();
+    expect(screen.queryByText('Only you')).toBeNull();
   });
 });

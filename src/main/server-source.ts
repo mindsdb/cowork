@@ -59,9 +59,9 @@ export type Channel = 'git' | 'pypi';
 // cowork-server from the sibling source dir via `uv run` anyway, so the
 // install channel never applies there.
 //
-// A developer who needs a SPECIFIC backend branch on a packaged preview
-// build still overrides via env (COWORK_SERVER_CHANNEL=git + COWORK_SERVER_REF
-// win over this fallback in getChannel/getInstallSpec).
+// A developer who supplies a SPECIFIC backend ref automatically selects the
+// git channel. COWORK_SERVER_CHANNEL remains the explicit override when a
+// caller intentionally wants different behavior.
 //
 // Same defensive shape as _refForBuildKind: any failure resolves to '' so
 // the caller falls through to 'git'.
@@ -75,12 +75,13 @@ function _channelForBuildKind(): string {
 }
 
 export function getChannel(): Channel {
-  const raw = (
-    process.env.COWORK_SERVER_CHANNEL ||
-    _buildVal('BUILD_COWORK_SERVER_CHANNEL') ||
-    _channelForBuildKind() ||
-    'git'
-  ).toLowerCase();
+  const configuredChannel = process.env.COWORK_SERVER_CHANNEL || _buildVal('BUILD_COWORK_SERVER_CHANNEL');
+  // A server ref is an explicit request for that source revision. Treat it as
+  // a git install unless the caller explicitly selected a channel; otherwise a
+  // packaged preview silently ignores its feature ref, installs the ordinary
+  // PyPI sidecar, and the new UI receives 404s for its feature routes.
+  const configuredRef = process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF');
+  const raw = (configuredChannel || (configuredRef.trim() ? 'git' : '') || _channelForBuildKind() || 'git').toLowerCase();
   return raw === 'pypi' ? 'pypi' : 'git';
 }
 

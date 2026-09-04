@@ -8,8 +8,31 @@ import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
+import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
+import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
+import WorkspaceModeSwitch from './WorkspaceModeSwitch';
+
+// Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
+// share sage (progress is the same banner mid-download); `error` goes amber.
+const UPDATE_TONE_CLASS = {
+  ready: {
+    box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)]',
+    dot: 'bg-[var(--sage-500,#5D9287)]',
+    action: 'text-[var(--sage-500,#5D9287)]',
+  },
+  progress: {
+    box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)]',
+    dot: 'bg-[var(--sage-500,#5D9287)]',
+    action: 'text-[var(--sage-500,#5D9287)]',
+  },
+  error: {
+    box: 'bg-[rgba(196,127,0,0.12)] border-[rgba(196,127,0,0.30)] hover:bg-[rgba(196,127,0,0.22)]',
+    dot: 'bg-[var(--warning,#c47f00)]',
+    action: 'text-[var(--warning,#c47f00)]',
+  },
+};
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -188,6 +211,11 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
 
 export default function Sidebar({
   tasks,
+  // 'loading' | 'ready' | 'failed' — lets the recents list tell an in-flight
+  // load and a failed one apart from a genuinely empty account (ENG-2246).
+  // Defaults to 'ready' so callers that don't pass it behave as before.
+  tasksStatus = 'ready',
+  onRetryTasks,
   pins = [],
   scheduledCount = 0,
   projectsCount = 0,
@@ -195,12 +223,24 @@ export default function Sidebar({
   connectorsCount = 0,
   activeRoute,
   activeTaskId,
+  activeWorkspace = 'cowork',
+  showWorkspaceSwitch = false,
+  activeCodeRoute = null,
+  codingSessions = [],
+  activeCodingSessionId = null,
   serverOnline,
   serverBusy = false,
   serverBusyKind = 'starting', // 'starting' | 'stopping'
   onNavigate,
+  onWorkspaceChange = () => {},
   onSelectTask,
   onNewTask,
+  onSelectCodingSession,
+  onSetCodingSessionPinned,
+  onNewCodingTask,
+  onOpenCodingProjects,
+  onOpenCodingConnectors,
+  onOpenCodingSkills,
   onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
@@ -220,17 +260,10 @@ export default function Sidebar({
   onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
-  updateAvailable = null, // { version: string } or null
-  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
-  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
-  updateError = null, // { version?: string } or null
-  onApplyUpdate,
-  // Download-only shell update notice.
-  shellUpdate = null,
-  shellAutoUpdate = null,
-  onShellAutoUpdateAction,
-  onDownloadShellUpdate,
-  onDismissShellUpdate,
+  // The single derived update banner (deriveUpdateBanner), or null.
+  updateBanner = null,
+  onUpdateAction, // (action: 'apply-ota' | 'shell-auto' | 'download-installer') => void
+  onDismissUpdate, // dismisses the (dismissible) manual installer notice
   agentLabel,
   settingsActive = false,
   // Signed-in state, pushed from App — the user-menu hook re-reads the
@@ -255,6 +288,7 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  const codeRoute = activeWorkspace === 'code';
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
@@ -402,6 +436,8 @@ export default function Sidebar({
   return (
     <aside
       className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
+      aria-hidden={collapsed || undefined}
+      inert={collapsed ? true : undefined}
       style={{
         // Dynamic-only: everything else about this transition lives in the
         // className above. These four properties are collapsed-state-driven
@@ -542,60 +578,109 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {/* New task CTA — the tinted (accent-wash) variant, full width. */}
+        {!host.isWeb && showWorkspaceSwitch && (
+          <WorkspaceModeSwitch
+            value={activeWorkspace}
+            onChange={onWorkspaceChange}
+          />
+        )}
+
+        {/* The MindsHub workspace this session is scoped to. Above the CTA
+            rather than inside the account menu: the current workspace has to be
+            readable without opening anything, and the account menu is where the
+             organization selector lands. Renders nothing until the gate is on. */}
+        {accountUser && <WorkspaceSelector user={accountUser} />}
+
+        {/* The primary action follows the active workspace. Code tasks stay
+            distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
           <Button
             variant="tinted"
             block
             size="lg"
-            onClick={onNewTask}
+            onClick={codeRoute ? onNewCodingTask : onNewTask}
             // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
             style={{ gap: 9 }}
           >
             {Ico.plus(14)}
-            <span className="flex-1 text-left font-medium">New task</span>
+            <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
 
-        {/* Primary nav */}
-        <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-          <NavItem
-            icon={Ico.sparkle(15)}
-            label="Live Artifacts"
-            elementRef={artifactsNavRef}
-            onClick={() => {
-              // Opening the artifacts view IS the tip's goal — count it
-              // as a dismissal, same as "Got it" / "Show me".
-              if (artifactTipOpen) onArtifactTipDismiss?.();
-              onNavigate('artifacts');
-            }}
-            active={activeRoute === 'artifacts'}
-            badge={showCounters ? (artifactsCount || null) : null}
-          />
-          {/* Connect Apps and Data — replaces "Customize". Reuses the
-              `customize` route key so existing in-flight links still
-              work. The page now lists connected apps + datasources in
-              a Projects-style grid.
-              Label flips to "Connected Apps" once at least one app /
-              data source is connected; the badge then reads as a
-              live "you have N connections" indicator. */}
-          <NavItem
-            icon={Ico.link(15)}
-            label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
-            onClick={() => onNavigate('customize')}
-            active={activeRoute === 'customize'}
-            badge={showCounters ? (connectorsCount || null) : null}
-          />
-          {/* Channels used to have a standalone entry here, web-only, purely
-              because the web shell hid Settings entirely — Channels lives
-              under Settings on desktop. Settings is now reachable on web too,
-              so the workaround is removed and both platforms find Channels
-              in the same place. */}
-        </div>
+        {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
+            a mixed rail where switching products and navigating within one
+            product look like the same action. */}
+        {!codeRoute && (
+          <div className="nav-list px-2.5 flex flex-col gap-px">
+            <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
+            <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+            <NavItem
+              icon={Ico.sparkle(15)}
+              label="Live Artifacts"
+              elementRef={artifactsNavRef}
+              onClick={() => {
+                // Opening the artifacts view IS the tip's goal — count it
+                // as a dismissal, same as "Got it" / "Show me".
+                if (artifactTipOpen) onArtifactTipDismiss?.();
+                onNavigate('artifacts');
+              }}
+              active={activeRoute === 'artifacts'}
+              badge={showCounters ? (artifactsCount || null) : null}
+            />
+            {/* Connect Apps and Data — replaces "Customize". Reuses the
+                `customize` route key so existing in-flight links still
+                work. The page now lists connected apps + datasources in
+                a Projects-style grid.
+                Label flips to "Connected Apps" once at least one app /
+                data source is connected; the badge then reads as a
+                live "you have N connections" indicator. */}
+            <NavItem
+              icon={Ico.link(15)}
+              label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
+              onClick={() => onNavigate('customize')}
+              active={activeRoute === 'customize'}
+              badge={showCounters ? (connectorsCount || null) : null}
+            />
+            {/* Channels used to have a standalone entry here, web-only, purely
+                because the web shell hid Settings entirely — Channels lives
+                under Settings on desktop. Settings is now reachable on web too,
+                so the workaround is removed and both platforms find Channels
+                in the same place. */}
+          </div>
+        )}
 
+        {codeRoute ? (
+          <>
+            <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
+              <NavItem
+                icon={Ico.folder(15)}
+                label="Projects"
+                onClick={onOpenCodingProjects}
+                active={activeCodeRoute === 'projects'}
+              />
+              <NavItem
+                icon={Ico.link(15)}
+                label="Connectors"
+                onClick={onOpenCodingConnectors}
+                active={activeCodeRoute === 'connectors'}
+              />
+              <NavItem
+                icon={Ico.cube(15)}
+                label="Skills"
+                onClick={onOpenCodingSkills}
+                active={activeCodeRoute === 'skills'}
+              />
+            </div>
+            <CodeSidebarSessions
+              sessions={codingSessions}
+              selectedId={activeCodingSessionId}
+              onSelect={onSelectCodingSession}
+              onSetPinned={onSetCodingSessionPinned}
+            />
+          </>
+        ) : (
+        <>
         {/* Agent — the agent's own brain: what it remembers (Memories)
             and what it can do (Skills library). Pulled out of the old
             bordered inset and presented as a labeled group, so it reads
@@ -669,6 +754,46 @@ export default function Sidebar({
           </Tooltip>
         </div>
         <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+          {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
+              excludes pinned items, so keying on it told a user whose tasks
+              are all pinned that they have none — while their pinned tasks
+              were on screen above. */}
+          {tasksStatus === 'loading' && tasksWithPin.length === 0 && (
+            // Skeleton rows rather than a spinner: the list is about to be
+            // rows, so reserving their shape avoids the jump when they land.
+            <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="px-2 py-2">
+                  <div
+                    className="animate-pulse rounded"
+                    style={{ height: 10, width: `${72 - i * 9}%`, background: 'var(--border, rgba(128,128,128,0.25))' }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          {tasksStatus === 'failed' && tasksWithPin.length === 0 && (
+            // Distinct from "No tasks yet" on purpose: an empty list after a
+            // failed fetch reads as lost work, which is the bug this fixes.
+            <div role="alert" className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+              <div>Couldn&rsquo;t load your tasks.</div>
+              {onRetryTasks && (
+                <button
+                  type="button"
+                  onClick={onRetryTasks}
+                  className="mt-1 bg-transparent border-0 p-0 underline cursor-pointer text-xs"
+                  style={{ color: 'inherit' }}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
+          {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
+            <div className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
+              No tasks yet
+            </div>
+          )}
           {recents.map((t) => {
             // Synthetic schedule-group entries route to the schedule
             // detail view (where the per-run history lives). Lone
@@ -710,112 +835,69 @@ export default function Sidebar({
             </button>
           )}
         </div>
+        </>
+        )}
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
-        {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
-        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
-        {updateAvailable && !shellUpdate && (
-          <button
-            type="button"
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)] [transition:background_120ms_ease]"
-            onClick={onApplyUpdate}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
-            </span>
-            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              Restart
-            </span>
-          </button>
-        )}
-
-        {/* A failed apply keeps the banner (as a retry) instead of silently
-            vanishing until the next poll — mirrors Settings → Software updates. */}
-        {updateError && !shellUpdate && (
-          <button
-            type="button"
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[rgba(196,127,0,0.12)] border border-solid border-[rgba(196,127,0,0.30)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)] [transition:background_120ms_ease]"
-            onClick={onApplyUpdate}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-              Update failed{updateError.version ? ` (${updateError.version})` : ''}
-            </span>
-            <span className="text-2xs text-[var(--warning,#c47f00)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              Try again
-            </span>
-          </button>
-        )}
-
-        {/* Shell auto-update (electron-updater): background download, install on
-            relaunch. Rendered for the active phases; the action is phase-driven
-            (download / restart / retry) and disabled while work is in flight. */}
-        {shellAutoUpdate && ['available', 'downloading', 'ready-to-install', 'installing', 'failed'].includes(shellAutoUpdate.phase) && (
-          <button
-            type="button"
-            onClick={onShellAutoUpdateAction}
-            disabled={shellAutoUpdate.phase === 'downloading' || shellAutoUpdate.phase === 'installing'}
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] font-[inherit] cursor-pointer disabled:cursor-default"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+        {/* One banner for all three update mechanisms, chosen by
+            deriveUpdateBanner (shell-first). Exactly one banner or none. */}
+        {updateBanner && (() => {
+          const tone = UPDATE_TONE_CLASS[updateBanner.tone] || UPDATE_TONE_CLASS.ready;
+          const box = `mt-0 mx-2.5 mb-1.5 py-2 px-3 border border-solid rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] ${tone.box}`;
+          const dot = <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`} />;
+          const label = (
             <span className="flex-1 text-[11.5px] text-left text-ink font-[family-name:var(--font-sans)]">
-              {shellAutoUpdate.phase === 'downloading'
-                ? `Downloading update${shellAutoUpdate.progress?.percent != null ? ` (${Math.round(shellAutoUpdate.progress.percent)}%)` : '…'}`
-                : shellAutoUpdate.phase === 'ready-to-install'
-                  ? 'App update ready'
-                  : shellAutoUpdate.phase === 'installing'
-                    ? 'Installing update…'
-                    : shellAutoUpdate.phase === 'failed'
-                      ? 'App update failed'
-                      : 'New app version available'}
+              {updateBanner.title}
             </span>
-            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              {shellAutoUpdate.phase === 'ready-to-install'
-                ? 'Restart'
-                : shellAutoUpdate.phase === 'failed'
-                  ? (shellAutoUpdate.recoverable ? 'Retry' : 'Download')
-                  : shellAutoUpdate.phase === 'available'
-                    ? 'Download'
-                    : ''}
+          );
+          const action = updateBanner.actionLabel ? (
+            <span className={`text-2xs font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
+              {updateBanner.actionLabel}
             </span>
-          </button>
-        )}
+          ) : null;
 
-        {/* Shell (installer) update notice — the app itself is newer than what's
-            installed; the shell can't hot-update, so this links to the download
-            and is dismissible per-version (ENG-849). */}
-        {shellUpdate && (!shellAutoUpdate || shellAutoUpdate.phase === 'disabled') && (
-          <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
-            <Tooltip content={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}>
+          // The manual installer notice is the only dismissible banner.
+          if (updateBanner.dismissible) {
+            return (
+              <div className={box}>
+                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and open it to update`}>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateAction?.(updateBanner.action)}
+                    className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
+                  >
+                    {dot}{label}{action}
+                  </button>
+                </Tooltip>
+                <Tooltip content="Dismiss">
+                  <button
+                    type="button"
+                    onClick={onDismissUpdate}
+                    aria-label="Dismiss update notice"
+                    className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
+                  >
+                    ×
+                  </button>
+                </Tooltip>
+              </div>
+            );
+          }
+
+          // One clickable pill; an in-flight download/install renders it disabled.
+          return (
             <button
               type="button"
-              onClick={onDownloadShellUpdate}
-              className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
+              onClick={updateBanner.action ? () => onUpdateAction?.(updateBanner.action) : undefined}
+              disabled={updateBanner.disabled}
+              className={`${box} font-[inherit] cursor-pointer disabled:cursor-default [transition:background_120ms_ease]`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-              <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-                New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
-              </span>
-              <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-                Download
-              </span>
+              {dot}{label}{action}
             </button>
-            </Tooltip>
-            <Tooltip content="Dismiss">
-              <button
-                type="button"
-                onClick={onDismissShellUpdate}
-                aria-label="Dismiss update notice"
-                className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
-              >
-                ×
-              </button>
-            </Tooltip>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so

@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 
 interface AntonTronAPI {
+  serverPort?: number | null;
+  codeControlPlaneOrigin?: string | null;
+  codeModeAvailable?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -21,6 +24,7 @@ interface AntonTronAPI {
   checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
+  awaitBootReady: () => Promise<{ ready: boolean }>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
   checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
@@ -33,15 +37,16 @@ interface AntonTronAPI {
   openExternal: (url: string) => Promise<void>;
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;
+  pickCodeFolder: () => Promise<{ ok: boolean; path?: string; cancelled?: boolean; reason?: string }>;
   serverInfo: () => Promise<{ running: boolean; starting: boolean; port: number }>;
-  serverStart: () => Promise<{ ok: boolean; port?: number; reason?: string }>;
-  serverStop: () => Promise<void>;
+  serverStart: () => Promise<{ running: boolean; port?: number; error?: string }>;
+  serverStop: () => Promise<{ running: boolean; port?: number; error?: string }>;
   serverDiagnostics: () => Promise<{
     running: boolean;
     starting: boolean;
     port: number;
     lastError: string | null;
-    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'not-installed' | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | null;
     portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
@@ -53,6 +58,7 @@ interface AntonTronAPI {
     | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number }
   ) => Promise<{
     ok: boolean;
+    code?: 'oauth_credentials_missing';
     reason?: string;
     name?: string;
     account_email?: string;
@@ -88,7 +94,8 @@ interface AntonTronAPI {
     expires_in?: number;
   }>;
   mindshubRefresh: () => Promise<{ ok: boolean; reason?: string; access_token?: string }>;
-  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }>;
+  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }>;
+  mindshubSetUserKey: (key: string) => Promise<{ ok: boolean; reason?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;
   getAccessToken: () => Promise<string | null>;

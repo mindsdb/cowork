@@ -16,7 +16,31 @@ import {
   toDisplayUnits,
   toNaturalUnits,
   formatCount,
+  modelLabel,
+  transformSettingsRows,
+  routerRoleSubtitle,
 } from './settingsTransform';
+
+describe('modelLabel', () => {
+  it('formats named GPT coding models without a version hyphen', () => {
+    expect(modelLabel('gpt-codex')).toBe('GPT Codex');
+    expect(modelLabel('gpt-5.6-sol')).toBe('GPT-5.6 Sol');
+  });
+});
+
+describe('coding-agent settings translation', () => {
+  it('round-trips the independent engine and model settings', () => {
+    const transformed = transformSettingsRows([
+      { key: 'coding_agent_engine', value: 'codex' },
+      { key: 'coding_agent_model', value: 'gpt-codex' },
+    ]);
+    expect(transformed).toMatchObject({ codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' });
+    expect(diffSettingsForWrite(
+      { codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' },
+      { codingAgentEngine: 'other', codingAgentModel: 'old' },
+    )).toEqual({ coding_agent_engine: 'codex', coding_agent_model: 'gpt-codex' });
+  });
+});
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
@@ -191,13 +215,54 @@ describe('buildModelOptions', () => {
     expect(options.some((o) => o.value === '__stale__')).toBe(false);
   });
 
-  // ENG-1248: a model the wallet can't pay for stays selectable — a disabled
-  // row was a dead-end click. The row carries a right-aligned tag instead.
-  it('lists every model in the recommended list, tagging needs-credits ones but keeping them selectable', () => {
+  // A model the wallet can't pay for can't be picked. Picking one used to be
+  // allowed, and the turn then ran a different, affordable model, because
+  // resolution substitutes a pin it knows the gateway will deny.
+  it('lists every model in the recommended list, disabling the needs-credits ones', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
-    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus', disabled: false, tag: 'Needs credits' });
+    expect(byValue.opus).toEqual({
+      value: 'opus',
+      label: 'opus',
+      disabled: true,
+      // Paired with `disabled` on purpose: closing the row off without this
+      // leaves it naming an action it does not offer. ModelSelect turns the
+      // flag into the row's "Add credits" button.
+      locked: true,
+      tag: 'Needs credits',
+    });
+  });
+
+  // An id the map does not mention is available, which is what keeps every BYOK
+  // provider (no availability map at all) and an older gateway (no flag for a
+  // model it does serve) pickable.
+  it('leaves a model the availability map does not mention selectable', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
+    expect(options.find((o) => o.value === 'mindshub_air').disabled).toBe(false);
+    expect(buildModelOptions('sonnet', MINDS_LIST, false, false, {})
+      .every((o) => o.disabled === false)).toBe(true);
+  });
+
+  // The stored pin is never rewritten, so a wallet that drains leaves the user
+  // sitting on a locked model. It still has to render, or the control holds a
+  // value with no matching option and silently desyncs.
+  it('still renders a locked model that is the stored pin, so the control keeps a matching option', () => {
+    const options = buildModelOptions('opus', MINDS_LIST, false, false, { opus: false });
+    const opus = options.find((o) => o.value === 'opus');
+    expect(opus).toBeTruthy();
+    expect(opus.disabled).toBe(true);
+  });
+
+  // `locked` rides with `disabled` and never without it. A row closed off with
+  // no `locked` flag renders no "Add credits" button, which is how the row ends
+  // up telling the user to add credits with nothing to click.
+  it('flags every disabled row as locked, and no affordable row', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
+    for (const o of options) {
+      if (o.value === '__custom__' || o.value === '__stale__') continue;
+      expect(!!o.locked).toBe(o.disabled === true);
+    }
   });
 
   it('appends an "Other…" entry only when allowOther is true', () => {
@@ -245,7 +310,13 @@ describe('buildModelOptions', () => {
   it('keeps the bare label on a labelled needs-credits model, moving the wallet state to the tag', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false }, { opus: 'Claude Opus 5' });
     const opus = options.find((o) => o.value === 'opus');
-    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5', disabled: false, tag: 'Needs credits' });
+    expect(opus).toEqual({
+      value: 'opus',
+      label: 'Claude Opus 5',
+      disabled: true,
+      locked: true,
+      tag: 'Needs credits',
+    });
   });
 
   it('labels the legacy placeholder from the label map too', () => {
@@ -309,6 +380,28 @@ describe('mergeRecommendedModels', () => {
     // Buckets the response left empty keep what we already had.
     expect(merged.recommendedPair).toEqual(held.recommendedPair);
     expect(merged.modelEfforts).toEqual(held.modelEfforts);
+  });
+
+  it('keeps the held order on an on-open refresh, appending new ids and dropping gone ones', () => {
+    // ENG-1737: the picker refetches as it opens, so the response lands on a
+    // list that is already on screen. The server's order can differ between
+    // calls (auth served its catalog in two orders); the rows must not move.
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'], anthropic: ['claude-sonnet-5'] },
+      recommendedPair: { 'minds-cloud': ['haiku', 'sonnet', 'kimi'] },
+    }, { keepOrder: true });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet', 'opus']);
+    // A bucket with nothing in common takes the server's list.
+    expect(merged.recommendedModels.anthropic).toEqual(['claude-sonnet-5']);
+    // The pair is positional (planning, coding, router): never reordered.
+    expect(merged.recommendedPair['minds-cloud']).toEqual(['haiku', 'sonnet', 'kimi']);
+  });
+
+  it('takes the server order without keepOrder (the mount-time load)', () => {
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'] },
+    });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['opus', 'sonnet', 'mindshub_air']);
   });
 
   it('keeps the model list when the MindsHub fetch failed behind a 200', () => {
@@ -736,15 +829,16 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     }
   });
 
-  it('marks a locked pin independently of its head, and keeps both rows selectable', () => {
+  it('marks a locked pin independently of its head, disabling only the locked row', () => {
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
       { 'sonnet-4-5': false }, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
-    // A model the wallet can't pay for stays selectable: the wall is at use time.
+    // Only the row the wallet can't pay for is closed off. The head is
+    // affordable and stays pickable, so a locked version can't take it down.
     expect(byValue.sonnet.disabled).toBe(false);
-    expect(byValue['sonnet-4-5'].disabled).toBe(false);
+    expect(byValue['sonnet-4-5'].disabled).toBe(true);
     // Both facts stay readable on the same row, and the label stays the bare name
     // so the closed trigger and the search never see a marker.
     expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
@@ -759,7 +853,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     );
     const head = options.find((o) => o.value === 'sonnet');
     expect(head.label).toBe('Claude Sonnet 5');
-    expect(head.disabled).toBe(false);
+    expect(head.disabled).toBe(true);
     // Version state reads first, so the wallet state can never hide it.
     expect(head.tag).toBe('Latest · Needs credits');
   });
@@ -836,5 +930,53 @@ describe('diffSettingsForWrite — null tombstones (ENG-1632)', () => {
       { codingModel: 'haiku', routerModel: 'kimi', actFirst: 'false' },
     );
     expect(writes).toEqual({ act_first: 'true' });
+  });
+});
+
+
+describe('mergeRecommendedModels — the gate binding (ENG-1851)', () => {
+  it('takes the gate the server reports', () => {
+    const merged = mergeRecommendedModels({}, {
+      gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false },
+    });
+    expect(merged.gate).toEqual({ provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false });
+  });
+
+  it('keeps what it holds when the server sends none, and null when it never has', () => {
+    const held = { gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false } };
+    expect(mergeRecommendedModels(held, { recommendedModels: {} }).gate).toEqual(held.gate);
+    expect(mergeRecommendedModels({}, { recommendedModels: {} }).gate).toBeNull();
+  });
+});
+
+describe('routerRoleSubtitle (ENG-1851)', () => {
+  const labels = { 'minds-cloud': 'MindsHub', anthropic: 'Anthropic' };
+
+  it('describes the legacy server when no gate is reported — there the gate runs on the pick', () => {
+    expect(routerRoleSubtitle(null)).toMatch(/respond-or-delegate gating on each turn, and history summarization/);
+    expect(routerRoleSubtitle(undefined)).toBe(routerRoleSubtitle(null));
+  });
+
+  it('names the model the server resolved, and only names the provider when it is not the row\'s', () => {
+    const gate = { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false };
+    expect(routerRoleSubtitle(gate, { rowProviderType: 'minds-cloud', providerTypeLabels: labels }))
+      .toBe('Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on mindshub_air, not on this pick.');
+    // The server resolved the role to a provider other than the one the row shows.
+    expect(routerRoleSubtitle({ ...gate, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+      { rowProviderType: 'minds-cloud', providerTypeLabels: labels }))
+      .toContain('runs on claude-haiku-4-5-20251001 (Anthropic), not on this pick.');
+  });
+
+  it('tells an openai-compatible user to pick for speed, since the gate runs on the pick there', () => {
+    const text = routerRoleSubtitle({ provider: 'openai-compatible', model: 'my-fast-model', followsRouterPick: true });
+    expect(text).toMatch(/pick your fastest model here, not your smartest/);
+    expect(text).not.toMatch(/\d/); // no budget figure to go stale against the server constant
+  });
+
+  it('says the gate is off when the server has no model for it', () => {
+    expect(routerRoleSubtitle({ provider: 'openai-compatible', model: null, followsRouterPick: true }))
+      .toMatch(/off until a model is picked here/);
+    expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
+      .toMatch(/off: no model is available/);
   });
 });

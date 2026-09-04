@@ -12,8 +12,8 @@ import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
-import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
-import { Tooltip } from './components/ui';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
+import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -26,46 +26,86 @@ import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CodeView from './code/CodeView';
+import { useCodeModeAccess } from './code/codeModeAccess';
+import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
+import { useCodeWorkspace } from './code/useCodeWorkspace';
+import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
+import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host, getAccessToken } from '../platform/host';
-import { SERVER_START_CAP_MS } from '../../shared/server-status';
-import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
-import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
+import { host } from '../platform/host';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
+import { resolveTaskProject } from './lib/resolveTaskProject';
+import { canUseSharedResource } from './lib/sharedResourceAccess';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
-import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { useAccountUser } from './hooks/useAccountUser';
+import { skillScopeKey } from './lib/accountUser';
+import { useViewportZoomLock } from './hooks/useViewportZoomLock';
+import { useBootDecisions } from './hooks/useBootDecisions';
+import { useServerControl } from './hooks/useServerControl';
+import { useSidebarNav } from './hooks/useSidebarNav';
+import { useSso } from './hooks/useSso';
+import { useThemeSkin } from './hooks/useThemeSkin';
+import { useAppUpdates } from './hooks/useAppUpdates';
+import { deriveUpdateBanner } from '../../shared/update-banner';
+import { useSchedules } from './hooks/useSchedules';
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
-         recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
-         pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
+         recordTaskVisit,
+         runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import {
+  stripStreaming,
+  reconcileTaskMessages,
+  removeThinkingPlaceholder,
+  withThinkingPlaceholder,
+  markActivityDone,
+  applySessionMessages,
+  persistTurnState,
+  mergeConvTurns,
+} from './lib/conversationHistory';
+import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
-import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
+import {
+  CoworkProvider,
+  CoworkRouterProvider,
+  ConversationUnavailable,
+  ConversationLoading,
+  createCoworkRouter,
+  initialNavState,
+  markOptimisticConversation,
+  clearOptimisticConversation,
+} from './CoworkRouter';
+import { Outlet } from 'react-router-dom';
 
-// One-of-ten encouraging follow-ups picked when a connect task is
-// created. Reads as a friendly nudge after the connect-intro card —
-// keeps the chat surface inviting and signals that the agent is
-// available for free-form questions about the form.
+/* One-of-ten encouraging follow-ups picked when a connect task is
+ * created. Reads as a friendly nudge after the connect-intro card —
+ * keeps the chat surface inviting and signals that the agent is
+ * available for free-form questions about the form.
+*/
 const CONNECT_FOLLOWUPS = [
   "Have a question about any of the fields? I'm happy to explain.",
   "Need help finding your credentials? Just ask.",
@@ -399,12 +439,6 @@ const ACCENT_VARS = {
   stone: { '--primary-700': '#3A464B', '--primary-600': '#55666D', '--primary-500': '#64777E', '--primary-400': '#7D95A1', '--primary-300': '#A0BECA', '--primary-50': '#EBF2F5' },
 };
 
-const THINKING_PLACEHOLDER = 'Thinking...';
-
-function stripStreaming(messages) {
-  return messages.filter((m) => m.role !== '_streaming');
-}
-
 // Open the data-vault side panel for a form the agent just streamed.
 // Called from the stream `onDone` handlers — the deterministic, fires-
 // exactly-once-per-turn place to do this. We can't rely on the
@@ -428,329 +462,6 @@ function openStreamedForm(conversationId, finalContent) {
   }
 }
 
-// Status values the stream reducer leaves behind for IN-FLIGHT step
-// activity. A clean turn closes everything to 'completed' / 'done' /
-// 'error' / 'cancelled'. Anything else is "this step was running
-// when the stream died" — we'll mark them done on reload so the rail
-// stops claiming work is still happening.
-const RUNNING_STEP_STATUSES = new Set([
-  'pending', 'thinking', 'streaming', 'in_progress', 'running',
-]);
-
-// Reconcile a task's stored streaming/running state against whether
-// a real SSE stream is alive for it RIGHT NOW. Called when the user
-// navigates into a task:
-//   1. Drop `_streaming` / activity placeholders when not live.
-//   2. Collapse in-progress steps to `completed` when not tailing.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
-  if (!Array.isArray(messages)) return messages;
-  if (isLive) return messages; // legitimate in-flight (local), leave alone
-  // If the server says this conversation's producer is still running,
-  // we're about to (re)attach via tailInFlight — DON'T inject the
-  // "things stopped before I wrapped up" continuation prompt. The
-  // live stream will materialize within ~50ms via the reconnect
-  // path; showing the stopped message first would be both wrong
-  // AND flicker.
-  //
-  // Step-cleanup (RUNNING_STEP_STATUSES → completed) is also skipped
-  // here: those steps may still be progressing under the live tail
-  // and we don't want to prematurely flag them done.
-  if (isServerInFlight) {
-    // If the conversation is in-flight but has no visible content yet
-    // (e.g. a scheduled task that just started), show a thinking
-    // placeholder so the user sees activity instead of a blank chat.
-    const hasContent = messages.length > 0 && messages.some(
-      (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
-    );
-    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
-    return messages;
-  }
-  const cleaned = messages
-    .filter((m) => m && m.role !== '_streaming' && m.role !== 'activity')
-    .map((m) => {
-      if (m.role !== 'assistant') return m;
-      if (!Array.isArray(m.steps) || m.steps.length === 0) return m;
-      let dirty = false;
-      const nextSteps = m.steps.map((s) => {
-        if (s && RUNNING_STEP_STATUSES.has(s.status)) {
-          dirty = true;
-          return { ...s, status: 'completed', completedAt: s.completedAt || Date.now() };
-        }
-        return s;
-      });
-      // Also shake out a top-level message-level streamStatus if any
-      // (the live stream sets it to 'streaming' / 'tool' / etc.).
-      const streamStatusFix = m.streamStatus && m.streamStatus !== 'done'
-        ? { streamStatus: 'done' }
-        : null;
-      if (!dirty && !streamStatusFix) return m;
-      return { ...m, ...(dirty ? { steps: nextSteps } : {}), ...(streamStatusFix || {}) };
-    });
-
-  return cleaned;
-}
-
-function removeThinkingPlaceholder(messages) {
-  return messages.filter((m) => !(m.role === 'activity' && m.placeholder));
-}
-
-function withThinkingPlaceholder(messages, opts = {}) {
-  // Caller-supplied label so the new-task path can read "Creating
-  // task…" while a reply uses the generic "Thinking…". Both the
-  // activity placeholder (fallback render in ChatView) and the
-  // `_streaming` stub (primary render via the existing streaming
-  // branch) carry the same string, so whichever lands in the
-  // viewport reads consistently.
-  const label = opts.label || 'Thinking…';
-  // Two rows:
-  //   1. The activity placeholder — kept so any code path that
-  //      consumes it (rail Progress card today, future surfaces) sees
-  //      the "user just sent" signal.
-  //   2. A `_streaming` stub — picked up by ChatView's existing
-  //      streaming render block (`!streamingMsg.steps?.length &&
-  //      !streamingMsg.content` branch), which renders an animated
-  //      cursor + label inline below the user's message. Without
-  //      this, the chat scroll is silent between send and the first
-  //      SSE event — fine on a warm session (~sub-second) but
-  //      painful on a brand-new task where anton's bootstrap can
-  //      take 20-30s. The stub gets stripped + replaced by the real
-  //      streaming row on the first `flushStreamingMessage` call,
-  //      at which point `_placeholderLabel` is gone and the label
-  //      naturally falls back to the default "Thinking…".
-  return [
-    ...removeThinkingPlaceholder(stripStreaming(messages)),
-    {
-      role: 'activity',
-      content: label,
-      kind: 'placeholder',
-      phase: 'reasoning',
-      state: 'running',
-      placeholder: true,
-      _label: label,
-    },
-    {
-      role: '_streaming',
-      content: '',
-      steps: [],
-      startedAt: Date.now(),
-      // 'thinking' (not 'starting') so PhaseProgress treats the turn
-      // as `isInFlight` and renders the Thinking phase row in the
-      // rail — otherwise the card falls into its "Steps appear here
-      // while Anton works" placeholder branch, which contradicts
-      // the inline cursor in the chat scroll.
-      streamStatus: 'thinking',
-      _placeholderLabel: label,
-    },
-  ];
-}
-
-function markActivityDone(messages) {
-  return messages.map((m) => (
-    m.role === 'activity' && m.state === 'running'
-      ? { ...m, state: 'done' }
-      : m
-  ));
-}
-
-function humanizeToken(value) {
-  return String(value || '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function describeActivity(event, agentName = 'Anton') {
-  if (event?.type === 'tool_result') {
-    const action = humanizeToken(event.action || 'used');
-    const name = humanizeToken(event.name || 'tool');
-    return `${action.charAt(0).toUpperCase()}${action.slice(1)} ${name}`.trim();
-  }
-
-  const message = humanizeToken(event?.message);
-  if (message) return message;
-
-  const phase = humanizeToken(event?.phase);
-  const normalizedPhase = phase.toLowerCase();
-  if (normalizedPhase === 'reasoning') return THINKING_PLACEHOLDER;
-  if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
-  if (normalizedPhase === 'context') return 'Updated context';
-
-  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
-}
-
-// ─── Per-turn step persistence ───────────────────────────────────────────
-//
-// Anton's history file (the canonical conversation record) only stores
-// {role, content}. The streaming adapter builds richer step data —
-// scratchpad cells, artifacts, reasoning timing — but those are dropped
-// on persistence and would be lost on conversation reload, leaving the
-// chat with no Thinking block, no inline artifact cards, and an empty
-// Scratchpad modal.
-//
-// We sidecar the full step list in localStorage keyed by conversation
-// id → assistant turn index. Persistence is local to this install
-// (fine for a desktop app); promote to a server-side sidecar later if
-// cross-device sync matters.
-//
-// Schema (per turn):
-//   { steps: ThinkingStep[], startedAt: number }
-//
-// ThinkingStep shape mirrors `responseStreamAdapter`'s output, including
-// the `_isScratchpad` / `_scratchpadTabId` markers the ScratchpadModal
-// keys off so tabs reattach when the conversation is reopened.
-const CONV_TURNS_KEY = (cid) => `anton:conv-turns:${cid}`;
-const LEGACY_ARTIFACTS_KEY = (cid) => `anton:conv-artifacts:${cid}`;
-
-function readConvTurns(cid) {
-  if (!cid) return null;
-  try {
-    const raw = localStorage.getItem(CONV_TURNS_KEY(cid));
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return data && typeof data === 'object' ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeConvTurns(cid, data) {
-  if (!cid) return;
-  try { localStorage.setItem(CONV_TURNS_KEY(cid), JSON.stringify(data)); }
-  catch {} // private mode / quota — fail silently
-}
-
-// One-time migration from the old artifact-only sidecar. Each entry
-// was an array of artifact-shape steps; promote it to the new shape.
-function migrateLegacyArtifacts(cid) {
-  if (!cid) return;
-  try {
-    const legacy = localStorage.getItem(LEGACY_ARTIFACTS_KEY(cid));
-    if (!legacy) return;
-    const map = JSON.parse(legacy);
-    if (!map || typeof map !== 'object') return;
-    const next = readConvTurns(cid) || {};
-    for (const [idx, arts] of Object.entries(map)) {
-      if (!Array.isArray(arts) || arts.length === 0) continue;
-      const existing = next[idx]?.steps || [];
-      next[idx] = { steps: [...existing, ...arts], startedAt: next[idx]?.startedAt || null };
-    }
-    writeConvTurns(cid, next);
-    localStorage.removeItem(LEGACY_ARTIFACTS_KEY(cid));
-  } catch {}
-}
-
-// Replay the server-persisted event log for one assistant turn
-// through the same reducer the live stream uses. The resulting
-// `steps` and `startedAt` are identical to what the client would
-// have built during a fresh stream — no parity drift.
-function reduceServerEvents(events, fallbackStartedAt) {
-  if (!Array.isArray(events) || events.length === 0) return null;
-  let state = initialStreamState();
-  for (const ev of events) {
-    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
-  }
-  return {
-    steps: state.steps || [],
-    startedAt: state.startedAt || fallbackStartedAt || null,
-    // 'done' once the persisted events carried response.completed,
-    // 'error' on response.failed — the authoritative "this turn
-    // finished" signal from the detached stream buffer.
-    status: state.status,
-  };
-}
-
-function failedEventMeta(events) {
-  if (!Array.isArray(events)) return null;
-  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
-  if (!ev) return null;
-  return {
-    code: ev.code || null,
-    message: ev.error || ev.message || '',
-    reconnectable: ev.reconnectable ?? null,
-    providerLabel: ev.provider_label ?? null,
-    // model-403 (model_access_denied / model_disabled): which model the
-    // gateway rejected, so the card can name it. `failedModel` locally —
-    // "model" is too overloaded in message objects.
-    failedModel: ev.model ?? null,
-    // rate_limited: the gateway's own Retry-After, in seconds, so the card can
-    // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
-    // card then offers an ungated Retry rather than inventing an interval.
-    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
-    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
-    // Absolute instant to gate Retry against. The message's own created_at
-    // is NOT a substitute: the server serialises it offset-less, so JS reads
-    // it as local time — the gate would last hours west of UTC and no-op east
-    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
-    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
-  };
-}
-
-// Walk a messages payload from the server and, for any assistant
-// turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
-// `response.failed` becomes a client-side error bubble after the
-// partial assistant turn. Drops the raw `events` array.
-function hydrateMessagesFromServerEvents(messages) {
-  if (!Array.isArray(messages)) return messages;
-  const out = [];
-  for (const m of messages) {
-    if (!m || m.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
-      out.push(m);
-      continue;
-    }
-    const reduced = reduceServerEvents(m.events, m.startedAt);
-    const { events: _drop, ...rest } = m;
-    if (!reduced) {
-      out.push(rest);
-      continue;
-    }
-    const turnComplete = reduced.status === 'done' || reduced.status === 'error';
-    const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    out.push({
-      ...rest,
-      ...completeFlag,
-      ...(reduced.steps.length > 0
-        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
-        : {}),
-    });
-    if (reduced.status === 'error') {
-      const failed = failedEventMeta(m.events);
-      const code = failed?.code || null;
-      const errText = failed?.message || 'An unexpected error occurred.';
-      if (isAntonConfigError(errText, { code })) {
-        out.push({ role: 'provider_required' });
-      } else {
-        out.push({
-          role: 'error',
-          content: normalizeAntonError(errText, { code }),
-          code,
-          reconnectable: failed?.reconnectable ?? null,
-          providerLabel: failed?.providerLabel ?? null,
-          failedModel: failed?.failedModel ?? null,
-          retryAfter: failed?.retryAfter ?? null,
-          resetAt: failed?.resetAt ?? null,
-          retryAt: failed?.retryAt ?? null,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-function applySessionMessages(
-  cid,
-  rawMessages,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
-) {
-  const hydrated = hydrateMessagesFromServerEvents(rawMessages);
-  const merged = skipLocalSidecar ? hydrated : mergeConvTurns(cid, hydrated);
-  return reconcileTaskMessages(merged, isLive, isServerInFlight);
-}
-
 async function loadSessionMessagesWithRetry(
   cid,
   { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
@@ -767,107 +478,6 @@ async function loadSessionMessagesWithRetry(
     };
   }
   return null;
-}
-
-// Persist the full step set for one assistant turn so reload restores
-// the Thinking block, scratchpad tabs, and inline artifact cards.
-// `turnIndex` is the 0-based position of this assistant message among
-// all assistant messages in the conversation.
-function persistTurnState(cid, turnIndex, steps, startedAt) {
-  if (!cid || !Array.isArray(steps) || steps.length === 0) return;
-  const map = readConvTurns(cid) || {};
-  // Strip any non-serialisable fields (refs, functions). The step
-  // shape is plain data otherwise.
-  const sanitized = steps.map((s) => ({
-    id: s.id,
-    label: s.label || null,
-    badge: s.badge || null,
-    icon: s.icon || null,
-    status: s.status || 'completed',
-    startedAt: s.startedAt ?? null,
-    completedAt: s.completedAt ?? null,
-    reasoningStartedAt: s.reasoningStartedAt ?? null,
-    executionStartedAt: s.executionStartedAt ?? null,
-    executionCompletedAt: s.executionCompletedAt ?? null,
-    // Distinct from `status` — a failed tool/killed cell is still
-    // status:'completed' (the lifecycle finished), with cellStatus
-    // carrying the actual verdict ('error'/'timeout'). Without these two,
-    // a failed step renders as a plain success after reload: `status`
-    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
-    // with ok:false, or a killed scratchpad_done) and the measured
-    // executionDurationMs both got silently dropped by this whitelist.
-    cellStatus: s.cellStatus || null,
-    executionDurationMs: s.executionDurationMs ?? null,
-    data: s.data || null,
-    output: typeof s.output === 'string' ? s.output : null,
-    result: s.result || null,
-    stderr: s.stderr || null,
-    _isScratchpad: !!s._isScratchpad,
-    _isToolCall: !!s._isToolCall,
-    _scratchpadTabId: s._scratchpadTabId || null,
-  }));
-  map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
-  writeConvTurns(cid, map);
-}
-
-// Merge persisted step + timing data onto assistant messages by turn
-// index. Idempotent — if a message already has steps from a fresh
-// stream we don't overwrite (the live data is more accurate).
-function mergeConvTurns(cid, messages) {
-  if (!cid || !messages) return messages;
-  migrateLegacyArtifacts(cid);
-  const map = readConvTurns(cid);
-  if (!map) return messages;
-  let assistantIdx = 0;
-  return messages.map((m) => {
-    if (m.role !== 'assistant') return m;
-    if (m._turnComplete) return m;
-    const saved = map[assistantIdx];
-    assistantIdx += 1;
-    if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
-    const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
-    if (hasLiveSteps) return m;
-    return {
-      ...m,
-      steps: saved.steps,
-      startedAt: m.startedAt || saved.startedAt || null,
-    };
-  });
-}
-
-// Merge a fresh fetchSessions response with the existing tasks,
-// preserving any in-memory state the server hasn't seen yet.
-//
-// Why: anton flushes `_history.json` only at the end of a successful
-// turn. While a stream is in flight the user-typed message + the
-// assistant's `_streaming` row + any captured progress live ONLY in
-// React state. A naive `setTasks(serverData)` after fetchSessions
-// blows that away — most visibly when the user navigates to recents
-// during the very first turn of a new task and comes back: the
-// chat is empty and the title shows the raw conversation id.
-//
-// Strategy: take the server's tasks (authoritative for title /
-// project / status / order), but for each task that exists locally
-// AND is mid-stream OR has unsaved messages, keep the local
-// messages array.
-
-function appendActivity(messages, event) {
-  const content = describeActivity(event);
-  const cleaned = removeThinkingPlaceholder(messages);
-  const previous = cleaned[cleaned.length - 1];
-  if (previous?.role === 'activity' && previous.content === content) {
-    return [...cleaned.slice(0, -1), { ...previous, state: 'running' }];
-  }
-  return [
-    ...cleaned,
-    {
-      role: 'activity',
-      content,
-      kind: event?.type || 'progress',
-      phase: event?.phase || null,
-      state: 'running',
-    },
-  ];
 }
 
 // How long to wait before the next `GET /schedules/` poll:
@@ -893,6 +503,21 @@ function nextPollDelay(schedules) {
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
+// Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
+// captures the token with begin() and applies its result only while isCurrent()
+// still holds. Both starting a newer detail (begin) AND leaving detail — to the
+// grid, Home, or any other route (leave) — advance the token, so a slow
+// `/projects/:A` response can neither overwrite a later `/projects/:B` nor
+// re-select A after the user has navigated away (e.g. Back to the grid).
+export function makeProjectDetailToken() {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    leave: () => { current += 1; },
+    isCurrent: (captured) => captured === current,
+  };
+}
+
 export default function App({ autoOpenSettingsSection } = {}) {
   return (
     <ToastProvider>
@@ -913,7 +538,18 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   const agentLabel = getAgentLabel(settings);
 
   const [tasks, setTasks] = useState([]);
+  // 'loading' until the first list response lands, then 'ready' or 'failed'.
+  // Without this an in-flight load and a genuinely empty account render the
+  // same, and so does a failed one — a returning user reads that as lost
+  // work rather than as a wait (ENG-2246).
+  const [tasksStatus, setTasksStatus] = useState('loading');
   const tasksRef = useRef(tasks);
+  // The transcript warm-up is worth doing once a session, not once per
+  // refreshData: refreshData re-fires the moment serverOnline flips false->true
+  // — a flip its own fetchHealth causes on every desktop cold start — and again
+  // on Retry, manual server start, and run-schedule-now. Each repeat is 50
+  // requests whose results the `local.length > 0` guard then discards.
+  const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   // IDs of tasks deleted this session. Used to filter them out of
   // subsequent fetchSessions responses so zombies can't reappear.
@@ -944,12 +580,20 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     setArtifactTipOpen(false);
     dismissArtifactTip();
   }, []);
-  const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
+  // Scheduled-task data + CRUD lifecycle (list, runs index, refresh, and the
+  // create/update/delete/pause/resume handlers) live in useSchedules. The
+  // poll effect, selectedScheduleId, and handleRunScheduleNow stay below —
+  // they cross into the task-list and routing domains.
+  const {
+    scheduled,
+    scheduleRunsIndex,
+    refreshSchedules,
+    handleCreateSchedule,
+    handleUpdateSchedule,
+    handleDeleteSchedule,
+    handlePauseSchedule,
+    handleResumeSchedule,
+  } = useSchedules();
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
@@ -974,13 +618,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [ssoConnected, setSsoConnected] = useState(false);
-  // Last sign-in failure, painted on the Settings account card. Cleared
-  // on retry and on any authenticated push from main (ENG-761).
-  const [ssoError, setSsoError] = useState('');
-  // Re-entry guard: a second "Sign in" click while a browser flow is
-  // already open would spawn a second loopback attempt.
-  const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -988,6 +625,13 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
+  /* Keys (id, else name) of the projects whose DELETE is on the wire. The
+     server cascades every conversation in the project, so the round trip runs
+     long enough that a card left untouched reads as "nothing happened" and
+     invites a second delete. The confirm modal still closes on confirm — the
+     user has to stay free to navigate while the server works — so the waiting
+     state is shown on the project itself instead. */
+  const [deletingProjectKeys, setDeletingProjectKeys] = useState([]);
 
   // Live stream control — refs to the active fetch's AbortController
   // and the latest scratchpad name so we can fire a Stop that aborts
@@ -1001,6 +645,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // Latest toast manager, reachable from callbacks (like handleStopStream)
+  // defined above where useToastManager() is called. Synced in an effect below.
+  const toastManagerRef = useRef(null);
   // True once the active stream's SSE socket delivers any event — client-side
   // proof the turn started, independent of when it shows up in the in-flight
   // poll (which lags Redis/replica registration). The stranded-slot self-heal
@@ -1143,7 +790,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       // stream just finished from elsewhere — that's the signal to
       // refetch that conversation's messages so the UI catches up.
       const next = new Set(ids);
-      const finished = [...prev].filter((cid) => !next.has(cid));
+      const finished = finishedCids(prev, ids, activeStreamingTaskIdRef.current);
       if (finished.length > 0) {
         // Defer the refetch so we don't synchronously trigger a
         // re-render storm.
@@ -1299,6 +946,11 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // events), so reaching this line means the active stream delivered data.
     // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
+    // Anything the agent just produced is alive by definition, whatever a
+    // previously-loaded artifacts index says. This is the only live-stream
+    // collector, and the replay paths do not call it, so registering here
+    // cannot mistake a reopened conversation's old artifacts for new ones.
+    noteArtifactsFromSteps(steps);
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
@@ -1384,7 +1036,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-    activeStreamGenerationRef.current += 1;
 
     let cidToCancel = activeStreamingTaskIdRef.current;
     if (!cidToCancel) {
@@ -1393,6 +1044,27 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       );
       cidToCancel = streamingTask?.id ?? null;
     }
+
+    // Ask the server to cancel *before* any local teardown. On `error` the
+    // request never landed, so the cancel flag was not written and the remote
+    // turn may still be running (and spending tokens). Bail out with the
+    // in-flight state — Stop control, heartbeat, live stream — fully intact so
+    // the toast's "try again" is actually actionable; tearing down first would
+    // strip the very UI the user needs to retry. This ordering is the whole
+    // point of ENG-1919. The `silent` idle-timeout caller still fires the
+    // cancel but tears down regardless of the result and never toasts.
+    if (cidToCancel) {
+      const cancelResult = await cancelResponse(cidToCancel);
+      if (!silent && cancelResult?.status === 'error') {
+        toastManagerRef.current?.add({
+          type: 'danger',
+          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        });
+        return;
+      }
+    }
+
+    activeStreamGenerationRef.current += 1;
 
     const padName = activeScratchpadRef.current;
     if (padName) {
@@ -1419,7 +1091,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     }));
 
     if (cidToCancel) {
-      try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
       markInFlightDone(cidToCancel);
       // Stop kills the run, and with it any question that run was waiting
       // on. Without this the composer stays hijacked: the next send would be
@@ -1493,12 +1164,31 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    // A stream that merely dropped mid-answer can still have finished on the
+    // server — the reload then carries no error message. Gating on the same
+    // check the UI uses means a turn the user actually saw succeed doesn't
+    // also count as a failure. Unlike fireFirstResponse (once per user), this
+    // fires on every failed turn — the failure rate had no measurement at
+    // all before this.
+    const hasError = loaded
+      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
+      : true;
+    // `some()` over the whole history is right for the UI status below, but
+    // it's a permanent yes once any earlier turn in the conversation has
+    // ever failed — worthless as a failure-tracking gate, since it also
+    // counts turns that actually recovered. A server-declared
+    // response.failed (api.js's onError passes the raw SSE message through,
+    // so `type` survives) is authoritative on its own. Only the client-side
+    // transport codes (stream_error, reconnect_error, stalled) need the
+    // reload heuristic, and only against the *last* turn.
+    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
+    const lastTurnFailed = loaded
+      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
+      : true;
+    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
-        const hasError = loaded.messages.some(
-          (m) => m.role === 'error' || m.role === 'provider_required',
-        );
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
@@ -1528,6 +1218,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            requestId: typeof event?.request_id === 'string' ? event.request_id : null,
           };
       return {
         ...t,
@@ -1549,11 +1240,16 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // cowork-server) — names come from MindsHub's own label for the model where
   // it publishes one, else derived from the id, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
+  const mindsModels = useMemo(() => (
+    recommendedModelOptions(settings.recommendedModels, 'minds-cloud', settings.modelLabels)
+      .map((o) => ({ id: o.id, name: o.label }))
+  ), [settings.recommendedModels, settings.modelLabels]);
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
+    if (providerType === 'minds-cloud') return mindsModels;
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }));
-  }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  }, [mindsModels, settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -1570,7 +1266,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // available — so this can never lock the picker.
   const refreshModelAvailability = useCallback(async () => {
     const data = await fetchRecommendedModels({ refresh: true });
-    const merged = mergeRecommendedModels(settings, data);
+    // keepOrder: the menu is already open on the list we hold when this lands.
+    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
     if (merged) setSettings((prev) => ({ ...prev, ...merged }));
   }, [settings]);
 
@@ -1578,145 +1275,66 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Which models advertise reasoning-effort levels (ENG-1940) — same
+    // settings key SettingsView's per-role effort picker reads, so
+    // Composer's EffortSelect stays in lockstep with it.
+    modelEfforts: settings.modelEfforts,
+    // Account-wide harness toggle (web-only Settings → Agent Harness) —
+    // EffortSelect needs this outside coding mode, where Composer's own
+    // harness state is hardcoded 'anton' and can't say whether Hermes is
+    // actually configured account-wide.
+    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
-  // The user's preferred collapsed state for the sidebar. Effective
-  // collapsed-ness is derived below — we only honor this value while
-  // viewing a chat task; every other surface (home, projects,
-  // artifacts, settings, scheduled, …) keeps the sidebar expanded so
-  // the user can navigate via it directly. Locking outside chat
-  // means the collapse affordance is hidden in those views too.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
-  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
-  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
-  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
-  // Close the popout on Escape (no-op outside the narrow band, where it stays
-  // closed). Backdrop-click and navigation close it too (below).
-  useEffect(() => {
-    if (!navPopoutOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navPopoutOpen]);
 
-  // iOS Safari (and Android Chrome) auto-zoom the page in when a text
-  // input with font-size < 16px gets focus, and don't zoom back out
-  // when it loses focus / the form is submitted — the user is left
-  // viewing a permanently-magnified app after sending a chat message.
-  //
-  // Rather than bumping every input to 16px on mobile (which would
-  // distort the composer's design metrics), we toggle the viewport
-  // meta tag around text-input focus: locking `maximum-scale=1` on
-  // focusin prevents the zoom from happening, restoring the original
-  // value on focusout returns pinch-zoom to the user for the rest of
-  // the app. Net effect matches "auto-dezoom after submit" without
-  // any visible zoom flash.
-  useEffect(() => {
-    if (!isMobile) return undefined;
-    const meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) return undefined;
-    const original = meta.getAttribute('content') || '';
-    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+  // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
+  // text-input focus so mobile browsers don't leave the app magnified.
+  useViewportZoomLock(isMobile);
 
-    // Only the input types that actually trigger iOS auto-zoom — skip
-    // checkboxes / dates / file pickers / buttons (no text caret, no
-    // zoom). contenteditable surfaces count too.
-    const SKIP_INPUT_TYPES = new Set([
-      'button', 'submit', 'reset', 'image', 'file',
-      'checkbox', 'radio', 'range', 'color',
-      'date', 'time', 'datetime-local', 'month', 'week',
-    ]);
-    const isTextInput = (el) => {
-      if (!el || el.nodeType !== 1) return false;
-      const tag = el.tagName;
-      if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
-      if (tag === 'INPUT') {
-        const t = (el.type || 'text').toLowerCase();
-        return !SKIP_INPUT_TYPES.has(t);
-      }
-      return !!el.isContentEditable;
-    };
-
-    const onFocusIn = (e) => {
-      if (isTextInput(e.target)) meta.setAttribute('content', ZOOM_LOCK);
-    };
-    const onFocusOut = (e) => {
-      if (!isTextInput(e.target)) return;
-      // Defer the restore one tick — restoring synchronously can race
-      // with iOS committing the blur and leave the viewport stuck at
-      // the zoomed scale on some iOS versions.
-      setTimeout(() => meta.setAttribute('content', original), 0);
-    };
-
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', onFocusOut);
-    return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', onFocusOut);
-      meta.setAttribute('content', original);
-    };
-  }, [isMobile]);
-
-  // Routes where the user can collapse the sidebar. Currently:
-  // chat task only.
-  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
-  // Coding Mode gets the same off-canvas popout treatment as the narrow/
-  // tablet band (640-900): the docked sidebar is hidden entirely and
-  // replaced by the floating hamburger, sliding in over the content instead
-  // of pushing it — even on a full-width desktop viewport, since the
-  // composer needs the room for its harness-picker chrome. Desktop-only
-  // (Coding Mode doesn't exist on web) and never applies on true mobile
-  // (<640) — MobileShell already owns that layout outright.
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
-  // defaults false when unset) while it's unfinished: this forces every
-  // consumer of the user's own codingModeEnabled preference to read as off
-  // when the build-level flag is off, even if a stale `true` is already
-  // sitting in someone's local settings from earlier testing — there'd be no
-  // UI left to turn it back off otherwise, since the toggle and its Settings
-  // section are hidden the same way (see navItemsForHost / the floating
-  // corner toggle below).
-  const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
-  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
-  // Theme (light | dark) — persisted in localStorage so the choice
-  // survives reloads. The animated background canvas (gravity-field)
-  // and the body's bg colour both follow this value.
-  const [theme, setTheme] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('anton.theme');
-      return saved === 'light' || saved === 'dark' ? saved : 'dark';
-    } catch { return 'dark'; }
-  });
-  // Skin — a second styling axis, orthogonal to light/dark. Each entry
-  // in the SKINS registry (lib/skins.ts) maps to a token-override
-  // stylesheet keyed on body[data-skin]; both color schemes have a
-  // variant per skin, so the two toggles compose freely.
-  const [skin, setSkin] = useState(loadSkin);
-  // The full Display / theme picker modal (ENG-1545), opened from the
-  // sidebar footer's "Display settings" button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Code availability (release policy) and the user's opt-in (device-local)
+  // are deliberately independent. A development fixture may override the UI
+  // gate, but production web never can: it has no desktop capability bridge.
+  const codeModeAccess = useCodeModeAccess();
+  const codeFixtureActive = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('codeFixture');
+  const codeModeEnabled = codeFixtureActive || codeModeAccess.enabled;
+  // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
+  // routes, and the derived popout flag) lives in useSidebarNav.
+  const {
+    sidebarCollapsed, setSidebarCollapsed,
+    navPopoutOpen, setNavPopoutOpen,
+    sidebarCollapsibleRoutes,
+    sidebarPopout,
+  } = useSidebarNav({ isNarrow });
+  // Theme (light | dark), skin, the custom-skin recipe, and the Display
+  // picker modal — plus the body-class / gravity-field / persistence side
+  // effects that keep them applied — all live in useThemeSkin.
+  const {
+    theme, setTheme,
+    skin, setSkin,
+    themeModalOpen, setThemeModalOpen,
+    customTheme, setCustomTheme,
+  } = useThemeSkin();
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
-  // The "design your own" recipe behind the `custom` skin — edited in
-  // Settings → Appearance, applied as inline body token overrides.
-  const [customTheme, setCustomTheme] = useState(loadCustomTheme);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
   // without needing to rebind on every navigation.
   const routeRef = useRef('home');
-  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar (chat
-  // only), Cmd/Ctrl+K opens search, Cmd/Ctrl+N starts a new task.
+  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar in a Cowork
+  // task or anywhere in Code; Cmd/Ctrl+K opens search; Cmd/Ctrl+N starts a
+  // new task.
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
-        // Sidebar collapse is a chat-view affordance. Outside of
-        // task view we keep it expanded so the user can always see
-        // the navigation rail; swallow the shortcut quietly there.
+        // Cowork mirrors Main's task-only affordance; Code treats the whole
+        // workspace as one collapsible navigation scope.
         if (!sidebarCollapsibleRoutes.has(routeRef.current)) return;
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
@@ -1759,31 +1377,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // once on mount — always invokes the up-to-date function.
   const newTaskRef = useRef(null);
 
-  useEffect(() => {
-    try { window.localStorage.setItem('anton.theme', theme); } catch {}
-    // Swap body class so kit's gf-theme-* page background colour applies.
-    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
-    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
-    document.body.dataset.theme = theme;
-    // Tell the gravity field to swap palettes live.
-    if (window.gravityField && typeof window.gravityField.setTheme === 'function') {
-      window.gravityField.setTheme(theme);
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    persistSkin(skin);
-    document.body.dataset.skin = skin;
-  }, [skin]);
-
-  // Custom-skin recipe → inline body tokens. Applied only while the
-  // custom skin is active; cleared otherwise so the stylesheet-driven
-  // skins are untouched.
-  useEffect(() => {
-    persistCustomTheme(customTheme);
-    applyCustomTheme(skin === 'custom' ? customTheme : null, theme === 'light' ? 'light' : 'dark');
-  }, [skin, customTheme, theme]);
-
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
@@ -1796,45 +1389,158 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-dots-off', settings.showDots === false);
+    const visible = settings.showDots !== false;
+    document.body.classList.toggle('gf-dots-off', !visible);
+    window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
+  // Cowork and Code are peer workspaces, not routes within one another.
+  // Keeping this separate from the Cowork route means each surface remains
+  // mounted while the other is visible: drafts, scroll position, selected
+  // tasks, and live streams survive an instant workspace switch.
+  const [workspaceMode, setWorkspaceMode] = useState(() => (
+    codeFixtureActive
+      ? 'code'
+      : 'cowork'
+  ));
+  // Rendering and keyboard routing use the effective mode, so turning the
+  // preference off cannot leave a single-frame Code remnant while React runs
+  // the transition effect below.
+  const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
+    ? 'code'
+    : 'cowork';
+  // Do not boot the coding workspace, its data requests, and its hidden
+  // composer during an ordinary Cowork session. Mount it on first use, then
+  // keep it alive so later Cowork/Code switches preserve in-progress state.
+  const [codeWorkspaceMounted, setCodeWorkspaceMounted] = useState(() => codeFixtureActive);
+  const changeWorkspace = useCallback((next) => {
+    if (next !== 'cowork' && next !== 'code') return;
+    if (next === 'code' && !codeModeEnabled) return;
+    if (sidebarPopout) setNavPopoutOpen(false);
+    if (next === 'code') setCodeWorkspaceMounted(true);
+    setWorkspaceMode(next);
+  }, [codeModeEnabled, sidebarPopout]);
+  const openCode = useCallback(() => changeWorkspace('code'), [changeWorkspace]);
+  // Code owns a separate task history, but its route-specific navigation is
+  // rendered by the canonical Cowork sidebar instead of a second nested rail.
+  const {
+    sessions: codingSessions,
+    selectedId: activeCodingSessionId,
+    newTask: codeNewTask,
+    projectsOpen: codeProjectsOpen,
+    connectorsOpen: codeConnectorsOpen,
+    skillsOpen: codeSkillsOpen,
+    setSessions: setCodingSessions,
+    openNewTask: openNewCodingTask,
+    openProjects: openCodingProjects,
+    openConnectors: openCodingConnectors,
+    openSkills: openCodingSkills,
+    selectSession: selectCodingSession,
+    changeSelection: changeCodingSelection,
+    setSessionPinned: setCodingSessionPinned,
+  } = useCodeWorkspace(openCode);
+  const disableCodeWorkspace = useCallback(() => {
+    setWorkspaceMode('cowork');
+    setCodeWorkspaceMounted(false);
+  }, []);
+  const reportCodeStopIssue = useCallback(({ discoveryFailed, cancelFailures }) => {
+    const title = discoveryFailed
+      ? 'Code Mode is hidden, but running tasks could not be fully checked.'
+      : cancelFailures === 1
+        ? 'Code Mode is hidden, but one task could not be stopped.'
+        : `Code Mode is hidden, but ${cancelFailures} tasks could not be stopped.`;
+    toastManagerRef.current?.add({
+      type: 'warning',
+      title,
+    });
+  }, []);
+  useCodeModeLifecycle({
+    enabled: codeModeEnabled,
+    fixtureActive: codeFixtureActive,
+    sessions: codingSessions,
+    onDisable: disableCodeWorkspace,
+    onSessionsChange: setCodingSessions,
+    onStopIssue: reportCodeStopIssue,
+  });
+  // Seed nav state from the address bar so a web deep-link / refresh paints the
+  // right view instead of flashing Home. Electron's memory router starts at `/`.
+  const initialNav = useRef(initialNavState()).current;
+  // The router is created once (memory router on Electron, browser router on
+  // web). It's stateless w.r.t. AppCore — nav state flows through context.
+  const routerRef = useRef(null);
+  if (!routerRef.current) routerRef.current = createCoworkRouter();
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
-  routeRef.current = route;
+  routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-quiet', route !== 'home');
+    const denseWorkspace = effectiveWorkspaceMode === 'code' || route !== 'home';
+    document.body.classList.toggle('gf-quiet', denseWorkspace);
+    // The field is decorative, so dense work surfaces update it at a much
+    // lower frequency. Its slow drift remains visible without competing with
+    // typing, streaming output, or approval interactions on busy machines.
+    window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
-  }, [route]);
-  // Effective collapse state: only honor the user's preference while
-  // the route allows it (chat task). Everywhere else the sidebar
-  // stays expanded — gives the user permanent access to the nav. Never
-  // applies in popout mode (narrow band or Coding Mode) — there the
-  // sidebar is either fully hidden or slid in as an overlay, not docked
-  // at a collapsed width.
-  const sidebarCollapsedEffective =
-    !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  }, [effectiveWorkspaceMode, route]);
+  // Cowork preserves Main's focused task-only collapse behavior. Code's
+  // project, connector, skill, new-task, and task surfaces all share one
+  // stable desktop navigation pane, so collapse is available throughout the
+  // workspace. Narrow/tablet layouts continue to use the overlay drawer.
+  const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
+  const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
+  const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
+  const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Long-running destructive requests must reconcile against wherever the
+  // user navigated while they were in flight, not the render that launched
+  // them. Keep the active task alongside routeRef for that success boundary.
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
+  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
+  // view offers a retry instead of losing the URL.
+  const [conversationError, setConversationError] = useState(null);
+  // Seed from a `/scheduled/:id` deep-link so refresh restores the detail view.
+  // (selectedProject is resolved from its id by the project route, so null here.)
+  const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  // The project-detail id currently being resolved from the fetched list, or
+  // null once settled. Distinct from `selectedProject` (which the whole app
+  // reads and the URL bridge mirrors): while this differs from the selection we
+  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
+  // refresh on a detail URL shows the loading grid, not a flash of the list.
+  const [projectDetailPending, setProjectDetailPending] = useState(
+    initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
+  );
+  // Monotonic request token so a slow `/projects/:A` response can't overwrite a
+  // later `/projects/:B` resolution, nor re-select A after the user leaves detail
+  // (Back to the grid / Home / any route). See makeProjectDetailToken.
+  const projectDetailTokenRef = useRef(null);
+  if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
-  // In the hosted web shell the FastAPI process IS the host — there
-  // is no subprocess to start/stop, and the SPA only loads at all if
-  // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
-  // don't block the initial render waiting for a poll that never matters.
-  const [serverOnline, setServerOnline] = useState(host.isWeb);
-  const [serverBusy, setServerBusy] = useState(false);
-  const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
+  // Reasoning-effort pick for the home/new-task composer (ENG-1940) —
+  // sibling state to selectedModel. '' means "no explicit pick, use the
+  // model's (or account's) default effort" — never re-synced from
+  // settings, same rationale as selectedModel just above.
+  const [selectedEffort, setSelectedEffort] = useState('');
+  // Local cowork-server lifecycle — online/busy state, start & stop, and the
+  // first-paint seed-and-poll — lives in useServerControl. It re-fetches
+  // through refreshDataRef after a manual start (refreshData writes
+  // serverOnline via setServerOnline, so it's wired in by ref just below).
+  const refreshDataRef = useRef(null);
+  const {
+    serverOnline, setServerOnline,
+    serverBusy, setServerBusy,
+    serverBusyKind, setServerBusyKind,
+    handleServerStart, handleServerStop,
+  } = useServerControl({ refreshDataRef });
 
   // `config_ready` deliberately omitted from the initial state — the
   // boot-time settings redirect at line ~798 keys off `=== false` so
@@ -1853,16 +1559,38 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
 
-  // OTA UI update state
-  const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
-  const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
-  // Download-only shell notice; dismissal is scoped to the offered version.
-  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
-  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
-  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
-    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
+  // OTA UI update + shell (desktop binary) update lifecycle — status, the
+  // apply/download/dismiss handlers, and the host subscriptions that feed
+  // them — all live in useAppUpdates.
+  const {
+    updateStatus,
+    shellUpdate,
+    shellAutoUpdate,
+    shellUpdateDismissed,
+    handleApplyUpdate,
+    handleDownloadShellUpdate,
+    handleShellAutoUpdateDownload,
+    handleShellAutoUpdateInstall,
+    handleShellAutoUpdateRetry,
+    handleShellAutoUpdateAction,
+    dismissShellUpdate,
+  } = useAppUpdates();
+
+  // Collapse the three update mechanisms into one shell-first banner (or null).
+  // The manual notice is dismissal-filtered here before it can win the slot.
+  const updateBanner = deriveUpdateBanner({
+    ota: updateStatus,
+    shellAuto: shellAutoUpdate,
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
   });
+  const handleUpdateAction = useCallback((action) => {
+    if (action === 'apply-ota') return handleApplyUpdate();
+    if (action === 'shell-auto') return handleShellAutoUpdateAction();
+    if (action === 'download-installer') return handleDownloadShellUpdate();
+    return undefined;
+  }, [handleApplyUpdate, handleShellAutoUpdateAction, handleDownloadShellUpdate]);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1870,12 +1598,46 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
-    fetchSessions().then((data) => {
-      if (!Array.isArray(data)) return;
-      // One-time freshness decision for the onboarding checklist, taken on
-      // the session's first successful fetch (refreshData also polls, hence
-      // the ref guard): an account that already has tasks is not a first
-      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+    // A retry after a failure must look like it did something; without this
+    // the error copy sits there until the request resolves.
+    setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
+    // Merges a warmed transcript in without disturbing a live conversation:
+    // anything mid-stream, or already filled, keeps what it has.
+    const warmTranscript = (id, msgs) => setTasks((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      const local = Array.isArray(t.messages) ? t.messages : [];
+      if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
+      return { ...t, messages: msgs };
+    }));
+    // Claimed synchronously, not on resolve: refreshData re-enters on the
+    // serverOnline false->true flip that its own fetchHealth above causes, and
+    // /health beats a 200-conversation list every time — so latching in the
+    // .then() below left the second entry still unwarmed and fired the fan-out
+    // twice, the exact 100 requests this gate exists to prevent.
+    const warming = !warmedRef.current;
+    if (warming) warmedRef.current = true;
+    fetchSessions(warming ? { onItems: warmTranscript } : {}).then((data) => {
+      // Released again whenever nothing was actually warmed: fetchSessions
+      // returns before firing a single /items both on an empty account and on
+      // a failed list. Holding the claim through a failure would mean the
+      // Retry that fixes it never warms anything for the rest of the session.
+      if (warming && !(Array.isArray(data) && data.length > 0)) warmedRef.current = false;
+      if (!Array.isArray(data)) {
+        // A failed list request must not read as "no tasks". Keyed on having rows
+        // on screen, not on having succeeded once: an empty
+        // account's first fetch succeeds with [] -> 'ready', and every later
+        // failure would then be swallowed, leaving "No tasks yet" and no Retry
+        // while the server is unreachable — the exact confusion this PR fixes.
+        setTasksStatus(tasksRef.current.length > 0 ? 'ready' : 'failed');
+        return;
+      }
+      setTasksStatus('ready');
+      // One-time freshness decision for the onboarding checklist, taken on the
+      // session's first successful fetch: an account that already has tasks is
+      // not a first run, and would otherwise sit on a permanent, undismissable
+      // 0/4 card. Hence the ref guard — refreshData re-fires on the
+      // serverOnline flip, Retry, SSO, manual start and run-schedule-now.
+      // No timer drives it; the only setInterval here is refreshInFlightSet.
       if (!onboardingFreshnessResolvedRef.current) {
         onboardingFreshnessResolvedRef.current = true;
         if (data.length > 0) dismissIfUntouched();
@@ -1900,10 +1662,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       setArtifacts(data);
     });
     fetchPins().then((data) => setPins(data.pins || []));
-    fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
+    refreshSchedules();
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -1912,48 +1671,16 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, []);
+  }, [refreshSchedules]);
 
   useEffect(() => {
     refreshData();
   }, [refreshData]);
 
-  const handleServerStart = useCallback(async () => {
-    setServerBusyKind('starting');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStart?.();
-      if (result) {
-        setServerOnline(!!result.running);
-        if (result.running) setTimeout(refreshData, 400);
-      }
-    } catch {} finally { setServerBusy(false); }
-  }, [refreshData]);
-
-  const handleServerStop = useCallback(async () => {
-    setServerBusyKind('stopping');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStop?.();
-      if (result) setServerOnline(!!result.running);
-    } catch {} finally { setServerBusy(false); }
-  }, []);
-
-  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
-  // then subscribe to the same authoritative main-process state.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellAutoUpdate().then((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    }).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
+  // Expose the latest refreshData to useServerControl (it re-fetches after a
+  // manual start) without a definition-order cycle — refreshData writes the
+  // hook's serverOnline, so the hook can't take it as a direct argument.
+  useEffect(() => { refreshDataRef.current = refreshData; }, [refreshData]);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
@@ -2004,34 +1731,19 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
 
-  // One-shot: once the backend has been online at least once during
-  // this app session, the home view should skip the boot
-  // choreography (orb → caret → typewriter). Re-running the intro on
-  // every "new task" click is jarring; the choreography is a "the
-  // app is starting" cue, not a per-navigation flourish.
-  const [bootIntroDone, setBootIntroDone] = useState(false);
-  useEffect(() => {
-    if (serverOnline && !bootIntroDone) setBootIntroDone(true);
-  }, [serverOnline, bootIntroDone]);
-
-  // Listen for OTA update status pushed from main process. No-op in
-  // web — host returns a noop unsubscriber there.
-  useEffect(() => {
-    return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') {
-        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
-        return;
-      }
-      setUpdateStatus(status);
-    });
-  }, []);
-
-  // Recover a cached notice after an OTA reload drops the original push.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  // Session-scoped boot decisions (skip-intro flag, offline watchdog,
+  // config-redirect, default-project bootstrap) live in useBootDecisions.
+  const bootIntroDone = useBootDecisions({
+    serverOnline,
+    health,
+    projects,
+    selectedProject,
+    setServerHelpOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    setSelectedProject,
+    setProjects,
+  });
 
   // Listen for background OAuth refresh failures pushed from main process.
   // timeout: 0 — persists until the user manually dismisses it, same as
@@ -2053,225 +1765,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     });
   }, []);
 
-  const handleApplyUpdate = useCallback(async () => {
-    console.log('[ui-update] install clicked, applying update...');
-    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
-    setUpdateApplying(true);
-    setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
-    try {
-      const result = await host.applyUpdate();
-      console.log('[ui-update] applyUpdate result:', result);
-      // Window will reload with the new bundle — no further action needed
-    } catch (err) {
-      console.error('[ui-update] applyUpdate failed:', err);
-      setUpdateApplying(false);
-      // Keep the version so the sidebar can offer a labelled retry rather than
-      // going silent until the next poll.
-      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
-    }
-  }, [updateApplying, updateStatus]);
-
-  // Settings can pass a URL; a bare click falls back to the cached notice, and
-  // failing that to the human download page. Note: bare downloads.mindshub.ai
-  // now 302s to the marketing homepage — the real per-OS installer page lives
-  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
-  // last fallback is the only link that cohort ever gets.
-  const handleDownloadShellUpdate = useCallback((url) => {
-    const explicit = typeof url === 'string' && url ? url : null;
-    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
-  }, [shellUpdate]);
-
-  const handleShellAutoUpdateDownload = useCallback(async () => {
-    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateInstall = useCallback(async () => {
-    await host.installShellAutoUpdate().catch(() => false);
-  }, []);
-
-  const handleShellAutoUpdateRetry = useCallback(async () => {
-    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateAction = useCallback(() => {
-    switch (shellAutoUpdate?.phase) {
-      case 'available':
-        return handleShellAutoUpdateDownload();
-      case 'ready-to-install':
-        return handleShellAutoUpdateInstall();
-      case 'failed':
-        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
-        return handleDownloadShellUpdate();
-      default:
-        return undefined;
-    }
-  }, [
-    shellAutoUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleDownloadShellUpdate,
-  ]);
-
-  const dismissShellUpdate = useCallback(() => {
-    const v = shellUpdate?.version;
-    if (!v) return;
-    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
-    setShellUpdateDismissed(v);
-  }, [shellUpdate]);
-
-  // ── Boot lifecycle decisions ─────────────────────────────────────
-  // Both of these used to live inside HomeView, but the user can
-  // navigate (settings → home → settings) which would re-mount
-  // HomeView and re-fire each. App.jsx is the natural home — these
-  // refs are app-session-level by virtue of being component-scoped
-  // here, not view-scoped.
-
-  // Watchdog — if the local backend never comes online, pop the help
-  // modal so the user has logs / restart available. Once.
-  const bootWatchdogFiredRef = useRef(false);
-  useEffect(() => {
-    if (serverOnline) return undefined;
-    if (bootWatchdogFiredRef.current) return undefined;
-    const t = setTimeout(() => {
-      bootWatchdogFiredRef.current = true;
-      setServerHelpOpen(true);
-    }, 12_000);
-    return () => clearTimeout(t);
-  }, [serverOnline]);
-
-  // Config redirect — server is up but config_ready is explicitly
-  // false → take the user to Settings so they can finish setup.
-  // Tested as `=== false` (not falsy) on purpose: we don't want to
-  // route on initial undefined / pending values, only on a confirmed
-  // negative from the server. Once per session.
-  const bootConfigRedirectFiredRef = useRef(false);
-  useEffect(() => {
-    if (bootConfigRedirectFiredRef.current) return;
-    if (!serverOnline) return;
-    // Web sessions (mobile or desktop browser) always land on the
-    // new-task composer regardless of config state. The auto-redirect
-    // to Settings is Electron-only — there a missing provider means
-    // the install can't reach any LLM at all. In the hosted web
-    // shell, config is centralized server-side, so first-paint
-    // shouldn't shove the user into a configuration screen.
-    if (host.isWeb) return;
-    if (health.config_ready === false) {
-      bootConfigRedirectFiredRef.current = true;
-      // Missing provider → land straight on the Agent (provider) section, on
-      // desktop and in the mobile master-detail alike.
-      setSettingsSection('agent');
-      setSettingsOpen(true);
-    }
-  }, [serverOnline, health.config_ready]);
-
-  // Default the new-task project to "general". If the projects list
-  // is loaded and it doesn't include "general", create it first. The
-  // server provisions general on startup, so this only fires on
-  // upgrades from an older build that didn't have that.
-  const generalDefaultRef = useRef(false);
-  useEffect(() => {
-    if (selectedProject) return;        // user has picked something — don't override
-    if (!serverOnline) return;          // wait for server
-    if (generalDefaultRef.current) return; // only run once per session
-    if (projects.length === 0) return;  // wait for projects to load
-    const general = projects.find((p) => p.name === 'general');
-    if (general) {
-      generalDefaultRef.current = true;
-      setSelectedProject(general);
-      return;
-    }
-    // No general project — bootstrap it then re-fetch + select.
-    generalDefaultRef.current = true;
-    (async () => {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        const created = (fresh || []).find((p) => p.name === 'general');
-        if (created) setSelectedProject(created);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[default-project] could not bootstrap general', e);
-        generalDefaultRef.current = false; // allow retry on next render
-      }
-    })();
-  }, [projects, selectedProject, serverOnline]);
-
-  // Seed server state from main's truth on first paint so the toggle
-  // button reflects reality (running OR starting) even before /health
-  // has returned. While main is mid-start, show the spinner; poll
-  // every 600 ms until it resolves — OR until we've polled long
-  // enough that we'd expect main to have decided one way or the
-  // other.
-  //
-  // The earlier version stopped as soon as `info.starting === false`,
-  // which lost the race against main's boot path: the renderer
-  // mounts and runs its first tick before main has finished
-  // `checkInstallStatus()` + spawned the python (so `pendingStart`
-  // is still null and `info.starting === false` even though the
-  // boot path is about to start one). The renderer would settle on
-  // "offline" and never re-poll, leaving the user looking at a
-  // grey status pill while a perfectly healthy server was
-  // listening in the background.
-  //
-  // Fix: keep ticking until either `info.running` flips true OR a
-  // hard ceiling elapses. After the ceiling we stop and trust the
-  // status pill / sidebar toggle to recover by user action.
-  //
-  // The ceiling has to outlast main's start budget, or this loop declares
-  // the backend offline while main is still legitimately waiting for it —
-  // the user sees the failure panel for a start that goes on to succeed.
-  // Derived from the shared cap rather than a second hand-picked number so
-  // the two cannot drift apart.
-  useEffect(() => {
-    if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
-    let cancelled = false;
-    let timer = null;
-    const startedAt = Date.now();
-    const POLL_CEILING_MS = SERVER_START_CAP_MS + 60_000;
-
-    // Exactly one timer per tick. An earlier version scheduled inside the
-    // starting/not-running branch AND again below it, overwriting `timer` and
-    // leaking the first — so the poll rate doubled every tick. A warm start
-    // resolved in two ticks and hid it; a slow start would have turned it into
-    // thousands of concurrent polls.
-    const tick = async () => {
-      try {
-        const info = await host.serverInfo();
-        if (cancelled || !info) return;
-        const running = info.running === true;
-        const starting = info.starting === true;
-        if (typeof info.running === 'boolean') setServerOnline(running);
-        if (starting) setServerBusyKind('starting');
-        setServerBusy(starting);
-        if (running) return; // settled
-        // Keep polling while main says it's still starting (main owns the
-        // hard cap, so this can't run forever), and otherwise until the
-        // ceiling — which covers the window where main is still resolving
-        // `checkInstallStatus` before kicking off `startServer`.
-        if (starting || Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, starting ? 600 : 1000);
-        }
-      } catch {
-        // Polling errors (IPC blip, restart) shouldn't kill the
-        // loop — keep trying within the ceiling so a transient
-        // hiccup doesn't strand the renderer in offline state.
-        if (Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, 600);
-        }
-      }
-    };
-
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
   const saveSettings = useCallback(async (patch = settings) => {
     const result = await updateSettings(patch);
     setSettings((prev) => ({
@@ -2290,55 +1783,54 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
-  // Tasks belong to one project for life. Resolve via projectName
-  // first (server's canonical id), then projectPath, then fall back
-  // to the currently-selected project for orphans.
-  // Resolve the project a given task belongs to (by name, then path,
-  // else a synthetic entry from its path). Returns null when the task
-  // carries no project hints — callers decide the fallback. Shared by
-  // `currentTaskProject` and the cross-task queue drain, which must
-  // resolve a project for a task the user isn't currently viewing.
-  const resolveTaskProject = (task) => {
-    if (!task) return null;
-    if (task.projectName) {
-      const byName = projects.find((p) => p.name === task.projectName);
-      if (byName) return byName;
-    }
-    if (task.projectPath) {
-      const byPath = projects.find((p) => p.path === task.projectPath);
-      if (byPath) return byPath;
-      return {
-        id: task.projectPath,
-        name: task.projectName || task.projectPath.split('/').pop(),
-        path: task.projectPath,
-      };
-    }
-    return null;
-  };
-  const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
+  const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
+  // Only fall back to a default task when no id is requested. A requested id
+  // that isn't local yet (deep link / scheduled-run open) is still loading —
+  // falling back to tasks[0] would flash an unrelated recent conversation.
+  const currentTask = resolvedTask || (route === 'task' && !activeTaskId ? tasks[0] : null);
+  // Loader hit a transient failure and there's nothing local — show the retry
+  // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
+  // A locally-available conversation keeps rendering during a blip.
+  const showConversationError =
+    route === 'task' &&
+    conversationError != null &&
+    conversationError === activeTaskId &&
+    !resolvedTask;
+  // Requested id not resolved and not (yet) errored: show a loading state, not
+  // the wrong conversation, until openConversation merges it into local state.
+  const showConversationLoading =
+    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  // A detail URL whose id isn't yet the selected project (resolving, or cold
+  // deep link): show the grid, never a stale project, under `/projects/:id`.
+  const projectDetailResolving =
+    projectDetailPending != null &&
+    !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
+  const selectedProjectForView = projectDetailResolving ? null : selectedProject;
+  const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
   const currentTaskModel = currentTask?.model
     ? (currentTask.model === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
+  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
+  // it has one, else whatever the home composer currently shows.
+  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
   // (ENG-1304): offered only while Air itself is payable — the free monthly
   // grant covers Air, so it's the one model an empty wallet can usually
   // still run. `modelEnabled` is the same availability map the Settings
   // picker tags rows with (absent id ⇒ available).
-  const AIR_MODEL_ID = 'mindshub_air';
   const airAvailableForSwitch =
-    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
-    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
+    && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
   const handleSwitchToAirAndResend = (text) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
-    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
@@ -2493,80 +1985,84 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
+  // Navigation intent only: flipping route + activeTaskId drives the URL to
+  // `/c/:id`, whose loader + openConversation() (below) do the hydration and
+  // stream reattach — so sidebar click / deep link / refresh / Back all run one
+  // path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    const task = tasks.find((t) => t.id === id);
-    if (task) {
-      // Record the visit for recents ordering, but never auto-pin.
-      // Pin/unpin is now an explicit action via the task menu.
-      recordTaskVisit(task, false).then(() => {
-        fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-    });
-      }).catch(() => {});
-
-      // Is this conversation actually mid-stream right now? If yes,
-      // we LEAVE running indicators alone. If no, reconcile strips
-      // zombie placeholders and collapses stale step state.
-      const isLive = activeStreamingTaskIdRef.current === id;
-
-      // Cross-client cache (Option B): when the server says this
-      // conversation's producer is still running, skip the "things
-      // stopped" continuation prompt. The reconnect path below will
-      // attach to the live tail within ~50ms; showing the stopped
-      // message in between would flicker.
-      const isServerInFlight = inFlightSetRef.current.has(id);
-
-      // If this task didn't get its messages preloaded (we only fan
-      // out to the recent N at startup), fetch them now so the chat
-      // view doesn't render empty.
-      if (!task.messages || task.messages.length === 0) {
-        fetchSession(id).then((fresh) => {
-          if (!fresh || !Array.isArray(fresh.messages)) return;
-          // Server-in-flight conversations may have no messages yet
-          // (e.g. a scheduled task that just started). Don't bail —
-          // reconcile will inject a thinking placeholder.
-          if (fresh.messages.length === 0 && !isServerInFlight) return;
-          // Two layers of restoration, in order of trust:
-          //   1. Server sidecar (`{cid}_turns.json`) — events for each
-          //      assistant turn, replayed through the same reducer the
-          //      live stream uses. Survives any client reset and
-          //      anyone reading the conversation gets the same view.
-          //   2. localStorage sidecar — legacy fallback for turns
-          //      created before the server sidecar shipped.
-          const reconciled = applySessionMessages(id, fresh.messages, { isLive, isServerInFlight });
-          const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-          setTasks((prev) => prev.map((t) =>
-            t.id === id ? {
-              ...t,
-              messages: reconciled,
-              ...(dc !== undefined ? { disabledConnections: dc } : {}),
-            } : t
-          ));
-        }).catch(() => {});
-      } else {
-        // Already preloaded — still hydrate once so reopening surfaces
-        // any data persisted in a prior session.
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
-          return { ...t, messages: applySessionMessages(id, t.messages, { isLive, isServerInFlight }) };
-        }));
-      }
-    }
+    setWorkspaceMode('cowork');
+    // Clear the composer here (the sync nav intent), not in openConversation:
+    // that runs after the async loader and would wipe a queued-message redirect
+    // ChatView stages for the conversation. Matches staging's ordering.
     setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
-    // Phase 2 reconnect — fire-and-forget. If a turn is still running
-    // server-side for this conversation (closed-tab-came-back, or
-    // opened from another tab/device), this re-attaches the live SSE
-    // stream and replays from seq 0. Cheap no-op when the producer
-    // isn't running.
-    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
+
+  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
+  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
+  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
+  // failure).
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    // Composer is cleared by selectTask (sync), not here — see there. On a
+    // loader failure flag it for a retry; any resolvable result clears a stale
+    // error. The render only shows it when the conversation is absent locally,
+    // so a sidebar click during a blip keeps rendering.
+    if (loaded?.unavailable) setConversationError(id);
+    else setConversationError((cur) => (cur === id ? null : cur));
+    // Phase 2 reconnect — fire-and-forget. If a turn is still running
+    // server-side for this conversation (closed-tab-came-back, or opened
+    // from another tab/device), this re-attaches the live SSE stream and
+    // replays from seq 0. Cheap no-op when the producer isn't running.
+    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
+    if (!loaded || loaded.optimistic || loaded.unavailable || !loaded.task) return;
+    const fresh = loaded.task;
+    // Is this conversation actually mid-stream right now? If yes, we LEAVE
+    // running indicators alone. If no, reconcile strips zombie placeholders
+    // and collapses stale step state.
+    const isLive = activeStreamingTaskIdRef.current === id;
+    // Cross-client cache (Option B): when the server says this
+    // conversation's producer is still running, skip the "things stopped"
+    // continuation prompt — the reconnect above attaches to the live tail.
+    const isServerInFlight = inFlightSetRef.current.has(id);
+
+    // Record the visit for recents ordering (never auto-pin), then refresh
+    // pins + the capped recents list. Runs before the empty-transcript return
+    // below so every successful open updates recency — matching the prior
+    // selectTask path, which recorded a visit regardless of message count.
+    recordTaskVisit(fresh, false).then(() => {
+      fetchPins().then((data) => setPins(data.pins || []));
+      fetchSessions().then((data) => {
+        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      });
+    }).catch(() => {});
+
+    // Empty and not mid-flight: surface the record so a capped-list deep
+    // link (conversation absent from the recents fetch) still renders, but
+    // don't wipe any locally-restored messages.
+    if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
+      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      return;
+    }
+
+    // Two layers of restoration, in order of trust: the server sidecar
+    // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
+    // legacy localStorage sidecar. Merge into recents, inserting the
+    // conversation if it wasn't in the capped fetch.
+    const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
+    const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
+    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    setTasks((prev) => (prev.some((t) => t.id === id)
+      ? prev.map((t) => (t.id === id ? patch(t) : t))
+      : [patch(fresh), ...prev]));
+  }, [reconnectInFlight]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    setWorkspaceMode('cowork');
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2574,6 +2070,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   };
 
   const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setWorkspaceMode('cowork');
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill({ text, bump: Date.now() });
@@ -2668,6 +2165,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2944,6 +2442,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -3012,66 +2511,26 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     setRoute,
   });
 
-  // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
-  // the latest newTask closure (which captures fresh setRoute/setTasks).
-  useEffect(() => { newTaskRef.current = newTask; });
+  // Cmd/Ctrl+N follows the workspace on screen while preserving the latest
+  // Cowork new-task closure (which captures fresh setRoute/setTasks).
+  useEffect(() => {
+    newTaskRef.current = effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask;
+  }, [effectiveWorkspaceMode, newTask, openNewCodingTask]);
 
   const clearActive = useCallback(() => {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
-  }, [settingsOpen]);
-
-  // Authoritative signed-in state, pushed from the main process on every
-  // token-store transition (login, silent refresh, logout, session
-  // death). The UI no longer depends solely on the promise of whichever
-  // call initiated the sign-in — that promise can be lost (ENG-761)
-  // while the main process is in fact authenticated, or vice versa.
-  useEffect(() => {
-    if (!host.isElectron) return undefined;
-    return host.onMindsHubAuthChanged(({ authenticated }) => {
-      setSsoConnected(!!authenticated);
-      if (authenticated) setSsoError('');
-    });
-  }, []);
-
-  const handleSsoSignIn = async () => {
-    if (!host.isElectron || ssoBusyRef.current) return;
-    ssoBusyRef.current = true;
-    setSsoError('');
-    try {
-      const loginResult = await host.mindshubLogin();
-      if (!loginResult?.ok) {
-        // ENG-761: this used to silently return — the browser said
-        // "You're authorized!" while the app showed nothing. Surface the
-        // failure where the user will look for it: the account card.
-        setSsoError(String(loginResult?.reason || 'Sign in failed. Please try again.'));
-        setSettingsSection('account');
-        setSettingsOpen(true);
-        return;
-      }
-      // Signed in — flip the UI now; key provisioning below takes several
-      // seconds (org bootstrap + server restart) and is not a sign-in gate.
-      setSsoConnected(true);
-      try {
-        // The result is still not acted on — key provisioning is not a sign-in
-        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
-        // user signed in with no working key, no BYOK route and no message; the
-        // `unhandled` outcome is how often that happens. Fixing the UX needs its
-        // own ticket; this only makes it visible.
-        const finalizeResult = await host.mindshubFinalize();
-        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
-      } catch (e) {
-        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
-      }
-      refreshData();
-    } finally {
-      ssoBusyRef.current = false;
-    }
-  };
+  // MindsHub SSO — connected flag, sign-in error, and the login/provisioning
+  // flow (incl. the main-process auth-changed subscription) live in useSso.
+  const { ssoConnected, ssoError, handleSsoSignIn } = useSso({
+    settingsOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    refreshData,
+  });
+  const codeAccountUser = useAccountUser(ssoConnected);
+  const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -3079,12 +2538,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
-    // Channels lives inside Settings, not behind its own route, so it needs
-    // its own org-mode intercept here rather than reusing navigate()'s.
-    if (orgMode && section === 'channels') {
-      setComingSoonFeature('Channels');
-      return;
-    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
@@ -3092,6 +2545,12 @@ function AppCore({ autoOpenSettingsSection } = {}) {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    // Compatibility for any stale internal entry point while the dedicated
+    // workspace switch replaces Code as an ordinary navigation row.
+    if (key === 'code') {
+      openCode();
+      return;
+    }
     // Connectors aren't available on Cloud yet — intercept any entry point
     // (sidebar, Settings, deep link) in org mode and show the "coming soon"
     // popup instead of routing to a half-working surface.
@@ -3105,46 +2564,80 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    }
     if (key === 'projects') {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      // Clicking "Projects" in the sidebar should always land on the
-      // grid of all projects, not the previously-selected project's
-      // detail. Clear the selection so ProjectsView starts in grid
-      // mode. The chat-header crumb routes through onOpenProject
-      // (which sets selectedProject AFTER routing) so it's unaffected.
+      // Clicking "Projects" in the sidebar should always land on the grid of
+      // all projects, not the previously-selected project's detail. Clearing
+      // here (not in enterRoute) keeps the chat-header crumb path — which
+      // routes through onOpenProject and sets selectedProject AFTER routing —
+      // unaffected.
       setSelectedProject(null);
     }
-    if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
-    }
+    setWorkspaceMode('cowork');
+    // Flip route state; the URL bridge mirrors it and the route element's
+    // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
 
-  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
-  // direct setRoute (or org mode resolving after a route is already set) could
-  // still land on connectors. Bounce home and show the popup rather than
-  // render a surface that isn't available on Cloud.
-  useEffect(() => {
-    if (orgMode && route === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      setRoute('home');
-    }
-  }, [orgMode, route]);
 
-  // Same safety net for Channels: the in-Settings nav calls onSectionChange
-  // (= setSettingsSection) directly, bypassing openSettings entirely.
-  useEffect(() => {
-    if (orgMode && settingsSection === 'channels') {
-      setComingSoonFeature('Channels');
-      setSettingsSection('agent');
+  // URL → state sync for the route elements. enterRoute is the single place a
+  // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
+  // Back-Forward all run the same path.
+  const enterHome = useCallback(() => {
+    setRoute('home');
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null);
+  }, []);
+
+  const enterRoute = useCallback((key) => {
+    setRoute(key);
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
+    if (key === 'artifacts') {
+      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    } else if (key === 'projects') {
+      // Bare `/projects` is the grid — clear the selection so a Back from
+      // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
+      setSelectedProject(null);
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    } else if (key === 'scheduled') {
+      refreshSchedules();
     }
-  }, [orgMode, settingsSection]);
+  }, [refreshSchedules]);
+
+  // Detail routes → state (v1). No single-resource loader: resolve the entity
+  // client-side from the fetched list, so refresh / deep-link restore the
+  // selection with no server change.
+  // Returns a promise resolving to `false` when the id isn't in the list (the
+  // route element then replaces the dead URL with `/projects`), else truthy.
+  const enterProjectDetail = useCallback((projectId) => {
+    setRoute('projects');
+    setConversationError(null);
+    // Resolving this id: render the grid (not a stale project) until it settles.
+    setProjectDetailPending(projectId);
+    const reqId = projectDetailTokenRef.current.begin();
+    return fetchProjects().then((data) => {
+      if (!projectDetailTokenRef.current.isCurrent(reqId)) return true; // superseded — a newer id owns pending, or we left detail
+      if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
+      setProjects(data);
+      const found = data.find((p) => p.id === projectId || p.name === projectId);
+      if (found) { setProjectDetailPending(null); setSelectedProject(found); return true; }
+      // Confirmed missing: keep `pending` set (stays on the grid) — the route
+      // element replaces the URL with `/projects`, whose enterRoute clears it.
+      return false;
+    }).catch(() => {
+      if (projectDetailTokenRef.current.isCurrent(reqId)) setProjectDetailPending(null);
+      return true; // transient failure → keep the URL, don't bounce
+    });
+  }, []);
+
+  const enterScheduleDetail = useCallback((scheduleId) => {
+    setRoute('schedule-detail');
+    setSelectedScheduleId(scheduleId);
+    setConversationError(null);
+    refreshSchedules().catch(() => {});
+  }, [refreshSchedules]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3303,9 +2796,10 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
       const generalFallback = projects.find((p) => p.name === 'general');
-      const effectiveProjectName = selectedProject?.name || 'general';
-      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
-      const effectiveProjectPath = selectedProject?.path
+      const requestedProject = meta?.project || selectedProject;
+      const effectiveProjectName = requestedProject?.name || 'general';
+      const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
+      const effectiveProjectPath = requestedProject?.path
         || generalFallback?.path
         || null;
       setTasks((prev) => [{
@@ -3321,6 +2815,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         projectName: effectiveProjectName,
         projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
+        reasoningEffort: selectedEffort ?? null,
         attachments: [],
         disabledConnections: [],
         updatedAt: new Date().toISOString(),
@@ -3328,7 +2823,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       setActiveTaskId(taskId);
       setRoute('task');
       setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // Orphan fallback: if the user hasn't picked a project, route the
@@ -3336,18 +2831,24 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
-    if (!selectedProject && !generalProject) {
+    const requestedProject = meta?.project || selectedProject;
+    if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
-    const effectiveProjectName = selectedProject?.name || 'general';
-    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
-    const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+    const effectiveProjectName = requestedProject?.name || 'general';
+    const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
+    const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
-    const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    const suppliedConversationId = meta?.conversationId || null;
+    const taskId = suppliedConversationId
+      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
+    // Flag the not-yet-persisted id so the route loader renders from local
+    // state instead of 404ing home.
+    markOptimisticConversation(taskId);
 
     const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
       effectiveProjectName,
@@ -3379,6 +2880,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      reasoningEffort: selectedEffort ?? null,
       // The composer's harness pick (ENG-1656 follow-up) — Anton or
       // Hermes here; 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
@@ -3404,6 +2906,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      // The canonical id isn't loadable yet either — keep the loader off it.
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
       )));
@@ -3469,11 +2973,12 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: hasPendingFiles ? taskId : undefined,
+      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
@@ -3507,6 +3012,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        // Turn done → conversation persisted; drop the optimistic flag so a
+        // later revisit hydrates fresh instead of replaying this snapshot.
+        clearOptimisticConversation(finalId);
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
@@ -3583,15 +3091,24 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // we add the user message + thinking placeholder and start the
     // SSE stream — same shape as handleSendInTask from that point on.
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
+    return true;
   };
 
   // Send inside an existing task
+  //
+  // Answers `true` when the text is on its way — a stream started, or it was
+  // queued behind the turn already running — and `false` when nothing was sent.
+  // Same contract as handleSendFromHome, and the artifact viewer depends on it:
+  // addressing a comment with the agent mints the repair record BEFORE sending
+  // and cancels it on `false`. Without that answer a repair whose prompt never
+  // left the composer sits `queued` forever, polling, showing "Agent is
+  // thinking…" for a turn that will never run.
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
-    if (!targetTask) return;
+    if (!targetTask) return false;
     const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
@@ -3614,7 +3131,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       // Only a fresh send owns the live composer's attachments; a drained
       // queued item must not clear the composer of whatever task is on screen.
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // A pending question owns the composer: typed text is the answer, not a
@@ -3650,7 +3167,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
         });
       }
-      return;
+      // The text became the answer to the agent's question, so it did not start
+      // a turn of its own — a caller waiting on this prompt gets `false`.
+      return false;
     }
     if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
       // Two mechanisms, both already used in this file: a toast so the user
@@ -3707,7 +3226,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      // Queued counts as sent: the drain runs it when the slot frees, so a
+      // repair waiting on this prompt will get its turn.
+      return true;
     }
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
@@ -3730,7 +3251,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // resolves the same project a live send to it would (parity — otherwise
     // even the on-screen task's own follow-up loses the fallback on drain).
     const taskProject = opts.targetTask
-      ? (resolveTaskProject(targetTask) || selectedProject)
+      ? (resolveTaskProject(targetTask, projects) || selectedProject)
       : currentTaskProject;
     let taskProjectName = targetTask.projectName
       || (taskProject?.name)
@@ -3771,6 +3292,15 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     const taskModel = opts.modelOverride
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
+      || null;
+    // Sibling precedence chain to taskModel (ENG-1940): a same-tick
+    // override, else the task's own saved pick, else — only for a live
+    // send to the task on screen — the home composer's current pick.
+    // selectedEffort defaults to '', so the trailing `|| null` collapses
+    // that (and any other falsy pick) to null the same way taskModel's does.
+    const taskEffort = (opts.effortOverride
+      ?? targetTask.reasoningEffort
+      ?? (opts.targetTask ? null : selectedEffort))
       || null;
 
     let sendingAttachments, attachmentIds, driveReference;
@@ -3838,6 +3368,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -3899,6 +3430,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
+      reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -3919,6 +3451,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        // Turn done → conversation persisted; drop the optimistic flag (set if
+        // `id` was a tmp-connect id that adopted a server id).
+        clearOptimisticConversation(resolvedId);
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
@@ -3976,6 +3511,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         })();
       },
     });
+    // The stream is running; whatever happens to it now is reported through the
+    // callbacks above, not through this return value.
+    return true;
   };
 
   // Drain the next queued message once the single stream slot is free.
@@ -4013,6 +3551,57 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   // thus the current handleSendInTask). See the ref declaration above.
   drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
+  // ── Addressing an artifact comment with the agent ──────────────────────
+  // Two callbacks, one decision. The viewer asks which chat a repair belongs to
+  // BEFORE minting the repair record (cowork-server only finishes a handoff in
+  // the turn whose conversation matches the id on it), then hands the prompt
+  // back to be sent. The resolution is carried between the two here so the send
+  // can't pick a different chat than the repair is bound to.
+  const artifactRepairTargetRef = useRef(null);
+
+  const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    artifactRepairTargetRef.current = target.id ? target : null;
+    // Adopt the record now: an origin chat older than the capped recents fetch
+    // is unknown to `tasks`, and the send below appends the turn through it.
+    if (target.id) {
+      setTasks((prev) => (
+        prev.some((t) => String(t.id || '') === target.id) ? prev : [target.task, ...prev]
+      ));
+    }
+    return target.id;
+  }, []);
+
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+    const project = projects.find((item) =>
+      String(item.id || '') === String(artifact?.projectId || ''))
+      || projects.find((item) => item.name === artifact?.projectName)
+      || null;
+    const target = artifactRepairTargetRef.current;
+    artifactRepairTargetRef.current = null;
+    // Only resume a chat the repair was actually minted against; anything else
+    // (no origin, unreachable chat, a stale resolution) starts a new one.
+    if (!target || !conversationId || target.id !== String(conversationId)) {
+      return handleSendFromHome(prompt, { project, conversationId });
+    }
+    // Preflight before touching the chat: returning false makes the viewer
+    // cancel the repair, which beats leaving a handoff queued against a turn
+    // that never starts.
+    if (!(await ensureProviderReady())) return false;
+    const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
+    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
+    // while the turn is in flight; the flag drops when the turn completes.
+    markOptimisticConversation(target.id);
+    selectTask(target.id);
+    // handleSendInTask queues the prompt itself if that chat is already busy.
+    await handleSendInTask(prompt, [], { targetTask });
+    return true;
+  };
+
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
   // same React state machine. The user sees a normal Anton bubble
@@ -4042,6 +3631,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -4177,6 +3767,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
+        // Turn done → conversation persisted; drop the optimistic flag.
+        clearOptimisticConversation(resolvedId);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -4284,7 +3876,11 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      // Merge, never replace: since ENG-2246 these rows carry `messages: []`,
+      // so a wholesale replace blanks the open transcript (ChatView renders
+      // currentTask, and nothing refetches on a `tasks` change), drops
+      // `_streaming` placeholders, and wipes the client-only model pin.
+      if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
 
@@ -4331,15 +3927,65 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       return;
     }
     try {
-      await Promise.all([
-        deleteConversation(taskId),
-        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
-      ]);
+      await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
+      // Unpin only once the delete has really happened. Run in parallel, a
+      // refused delete still committed the unpin server-side, and the
+      // restored row came back silently unpinned across reloads.
+      await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
+      /*
+        The chat is still on the server, so put the row back rather than leave
+        the sidebar claiming it is gone. Console-only used to mean the user saw
+        a successful delete, deleted it again on the next visit, and only found
+        out on a reload. The access log carried the same ids two and three
+        times over.
+
+        Dropping the tombstone first is what makes the refetch work at all:
+        every consumer of fetchSessions filters through deletedTaskIdsRef, and
+        nothing else ever clears it, so the row would stay hidden for the life
+        of the mount. Same recovery as handleRenameTask above.
+
+        The route is deliberately not restored. The user asked to leave this
+        chat, and yanking them back into it is a bigger surprise than the row
+        reappearing in the list where the toast says to look.
+      */
+      deletedTaskIdsRef.current.delete(taskId);
+      const fresh = await fetchSessions().catch(() => null);
+      setTasks((prev) => {
+        /*
+          fetchSessions resolves `{ error: true }` on a failed list and `[]`
+          for an empty account — treat either as no answer, because
+          replacing the list with one would blank every chat in the
+          sidebar. mergeTasksFromServer, same as
+          every other consumer, keeps streaming messages, model pins and
+          tmp- rows that a wholesale replace would clobber. prev already
+          lost this row to the optimistic filter above, so when the refetch
+          brought nothing back, re-seat the captured task — the toast says
+          the chat is back in the list, and it has to be true.
+        */
+        // Shape-checked rather than truthiness-checked, to say what is meant:
+        // fetchSessions can resolve a non-array error object, and this line
+        // previously excluded it only because `{ error: true }?.length` is
+        // undefined. mergeTasksFromServer shape-guards too (`if
+        // (!Array.isArray(serverTasks)) return local`), so neither form can
+        // blank the sidebar — verified by mutation. This is about intent, not
+        // a latent bug.
+        const merged = mergeTasksFromServer(Array.isArray(fresh) && fresh.length ? fresh : null, prev);
+        if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
+        return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
+      });
+      toastManager.add({
+        type: 'danger',
+        // Needs action before it makes sense to move on, so it persists
+        // until dismissed, like the OAuth refresh-failure toast.
+        timeout: 0,
+        title: "Couldn't delete this chat. It is back in your list; try again.",
+        description: e?.message,
+      });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
@@ -4419,10 +4065,41 @@ function AppCore({ autoOpenSettingsSection } = {}) {
 
   const handleDeleteProject = (project) => {
     if (!project?.name) return;
+    if (!canUseSharedResource(project, 'canDelete')) return;
+    // Re-confirming a delete that is already on the wire would fire a duplicate
+    // DELETE; the project shows its waiting state until the server answers.
+    if (deletingProjectKeys.includes(project.id || project.name)) return;
     setPendingDeleteProject(project);
   };
   const performDeleteProject = async (project) => {
     if (!project?.name) return;
+    const deletingKey = project.id || project.name;
+    setDeletingProjectKeys((prev) => (
+      prev.includes(deletingKey) ? prev : [...prev, deletingKey]
+    ));
+    try {
+      await runDeleteProject(project);
+    } finally {
+      setDeletingProjectKeys((prev) => prev.filter((key) => key !== deletingKey));
+    }
+  };
+  const runDeleteProject = async (project) => {
+    // Authorization is server-owned. Do not remove the project, its tasks, or
+    // their drafts until DELETE succeeds: a member's 403 must leave the UI in
+    // the exact pre-confirmation state instead of briefly looking successful.
+    try {
+      await deleteProject(project);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteProject] failed', e);
+      toastManager.add({
+        type: 'danger',
+        timeout: 0,
+        title: "Couldn't delete this project. Nothing was removed; try again.",
+        description: e?.message || String(e),
+      });
+      return;
+    }
     // The server cascades a project delete to its conversations (ENG-701),
     // so tombstone their ids the same way performDeleteTask does for a single
     // delete. Without this, an in-flight fetchSessions that started before the
@@ -4439,24 +4116,28 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
     doomedTaskIds.forEach((id) => clearDraft(id));
-    // Optimistic — drop locally before the round-trip.
+    // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
       t.projectName !== project.name && t.projectPath !== project.path
     ));
-    if (selectedProject?.name === project.name) setSelectedProject(null);
+    setSelectedProject((current) => {
+      const isDeletedProject = current && (
+        (project.id && current.id && current.id === project.id)
+        || current.name === project.name
+      );
+      return isDeletedProject ? null : current;
+    });
     // If the conversation currently open belonged to this project, clear it —
     // otherwise currentTask silently falls back to tasks[0] (an unrelated
     // conversation from another project). Only leave the chat view when we're
     // actually on it; from the projects view (where deletes usually happen)
     // the user should stay put — same policy as performDeleteTask.
-    if (activeTaskId && doomedTaskIds.includes(activeTaskId)) {
+    const liveActiveTaskId = activeTaskIdRef.current;
+    if (liveActiveTaskId && doomedTaskIds.includes(liveActiveTaskId)) {
+      activeTaskIdRef.current = null;
       setActiveTaskId(null);
-      if (route === 'task') setRoute('home');
-    }
-    try { await deleteProject(project); } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteProject] failed', e);
+      if (routeRef.current === 'task') setRoute('home');
     }
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
@@ -4501,18 +4182,13 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     }
     // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    // Merge, never replace — same reason as handleRenameTask above. Repro for
+    // the replace: open chat A, then Move to project on any task; the open
+    // transcript went blank with nothing to bring it back.
+    if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     const freshProjects = await fetchProjects();
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
-
-  const refreshSchedules = useCallback(async () => {
-    const data = await fetchSchedules();
-    const list = data.schedules || [];
-    setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
-    return list;
-  }, []);
 
   // Diffs the full conversation list against known tasks and adds any
   // unseen ones — catches every new conversation since the last check,
@@ -4565,31 +4241,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
-  const handleCreateSchedule = async (payload) => {
-    await createSchedule(payload);
-    await refreshSchedules();
-  };
-
-  const handleUpdateSchedule = async (id, payload) => {
-    await updateSchedule(id, payload);
-    await refreshSchedules();
-  };
-
-  const handleDeleteSchedule = async (id) => {
-    await deleteSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handlePauseSchedule = async (id) => {
-    await pauseSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handleResumeSchedule = async (id) => {
-    await resumeSchedule(id);
-    await refreshSchedules();
-  };
-
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
@@ -4606,6 +4257,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
   };
 
   const handleSearchSelect = (result) => {
+    setWorkspaceMode('cowork');
     if (result.type === 'task' || (result.type === 'pin' && result.route === 'task')) {
       selectTask(result.id);
     } else if (result.type === 'project') {
@@ -4711,7 +4363,10 @@ function AppCore({ autoOpenSettingsSection } = {}) {
     },
   };
 
-  return (
+  // The app chrome — sidebar, content column, modals. Still holds the
+  // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
+  // via context.
+  const shell = (
     <div style={{
       ...appStyle, ...accentCss,
       display: 'flex', gap: 9, padding: 9,
@@ -4755,79 +4410,28 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         />
       )}
 
-      {/* Floating corner row — back to its original bottom-right placement,
-          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
-          which never moved). Same corner on every route, task view
-          included — one consistent location, not a bespoke per-view
-          control.
-            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
-              picker) — the sidebar's old "Display settings" button (now
-              removed) folded into this.
-            - Coding Mode (desktop only): a bare "</>" glyph beside it,
-              deliberately un-boxed so it reads as a status indicator, not
-              a second button of the same weight — lit accent when on,
-              greyed out when off. Toggles the setting directly on click;
-              no modal, since there's nothing else to configure here.
-            - Hidden entirely on mobile — MobileShell renders its own theme
-              toggle in the top bar (opposite the hamburger) instead, and
-              the coding-mode toggle is dropped there rather than given a
-              second spot.
-            - Narrow/tablet band (popout sidebar, not yet phone-width): the
-              bottom-right corner overlaps task rows and the composer's
-              send button there, so the row moves to the top-right instead
-              — just left of the per-view expand/collapse-right-panel
-              button (see .floating-toggle-row--top-right). This is keyed
-              on the true viewport band (`isNarrow`), not `sidebarPopout` —
-              Coding Mode's popout sidebar is desktop-width, so this row
-              stays put in its usual bottom-right corner there. */}
-      {!isMobile && (() => {
-        const showCodingToggle = !host.isWeb && host.codingModeOptionsEnabled && settings.showCodingModeToggle !== false;
-        const codingModeOn = showCodingToggle && codingModeActive;
-        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
-        if (!showCodingToggle && !showThemeToggle) return null;
-        return (
-          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-            {showCodingToggle && (
-              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !settings.codingModeEnabled;
-                    setSetting('codingModeEnabled', next);
-                    saveSettings({ codingModeEnabled: next }).catch(() => {});
-                  }}
-                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
-                  aria-pressed={codingModeOn}
-                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
-                >
-                  {Ico.code(15)}
-                </button>
-              </Tooltip>
-            )}
-            {showThemeToggle && (
-              // With the 8-bit skin toggle hidden there's nothing else to
-              // pick in the modal — just flip dark/light directly. The
-              // modal only earns the extra click when it actually offers
-              // something beyond that.
-              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
-                <button
-                  onClick={() => {
-                    if (settings.show8bitToggle === false) {
-                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                    } else {
-                      setThemeModalOpen(true);
-                    }
-                  }}
-                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
-                  className="floating-toggle"
-                >
-                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-                </button>
-              </Tooltip>
-            )}
-          </div>
-        );
-      })()}
+      {/* Code has one deliberate entry point while it is opt-in: Settings.
+          Keeping this corner control exclusively about appearance prevents a
+          hidden product from leaking into ordinary Cowork. */}
+      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+        <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
+          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+            <button
+              onClick={() => {
+                if (settings.show8bitToggle === false) {
+                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                } else {
+                  setThemeModalOpen(true);
+                }
+              }}
+              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              className="floating-toggle"
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {!isMobile && (
       <div
@@ -4844,32 +4448,48 @@ function AppCore({ autoOpenSettingsSection } = {}) {
       >
         <Sidebar
           tasks={tasks}
+          tasksStatus={tasksStatus}
+          onRetryTasks={refreshData}
           pins={pins}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
-          activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
+          activeRoute={effectiveWorkspaceMode === 'code'
+            ? null
+            : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
+          activeWorkspace={effectiveWorkspaceMode}
+          showWorkspaceSwitch={codeModeEnabled}
+          activeCodeRoute={effectiveWorkspaceMode === 'code'
+            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
           // activeTaskId persists across navigation, so passing it unconditionally
           // left the last-opened task highlighted on Projects/Settings/etc.
-          activeTaskId={route === 'task' ? activeTaskId : null}
+          activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
+          codingSessions={codingSessions}
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+            ? activeCodingSessionId
+            : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
           isSsoConnected={ssoConnected}
           onNavigate={navigate}
+          onWorkspaceChange={changeWorkspace}
           onSelectTask={selectTask}
           onNewTask={newTask}
+          onSelectCodingSession={selectCodingSession}
+          onSetCodingSessionPinned={setCodingSessionPinned}
+          onNewCodingTask={openNewCodingTask}
+          onOpenCodingProjects={openCodingProjects}
+          onOpenCodingConnectors={openCodingConnectors}
+          onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
-          onToggleCollapsed={
-            sidebarPopout
-              ? () => setNavPopoutOpen(false)
-              : (sidebarCollapsibleRoutes.has(route)
-                  ? () => setSidebarCollapsed((c) => !c)
-                  : undefined)
-          }
+          onToggleCollapsed={sidebarPopout
+            ? () => setNavPopoutOpen(false)
+            : (sidebarCanCollapse ? () => setSidebarCollapsed((c) => !c) : undefined)}
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}
@@ -4888,14 +4508,9 @@ function AppCore({ autoOpenSettingsSection } = {}) {
           showCounters={settings.showCounters !== false}
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
-          updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
-          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
-          onApplyUpdate={handleApplyUpdate}
-          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
-          shellAutoUpdate={shellAutoUpdate}
-          onShellAutoUpdateAction={handleShellAutoUpdateAction}
-          onDownloadShellUpdate={handleDownloadShellUpdate}
-          onDismissShellUpdate={dismissShellUpdate}
+          updateBanner={updateBanner}
+          onUpdateAction={handleUpdateAction}
+          onDismissUpdate={dismissShellUpdate}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -4952,6 +4567,14 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
+        {/* Sync the active Cowork route to the address bar even while its
+            workspace panel is temporarily hidden behind Code Mode. */}
+        <Outlet />
+        <div
+          className="workspace-mode-panel"
+          hidden={effectiveWorkspaceMode !== 'cowork'}
+          aria-hidden={effectiveWorkspaceMode !== 'cowork'}
+        >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -4964,6 +4587,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             projects={projects}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4979,6 +4604,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4988,16 +4614,21 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
           />
         )}
 
-        {route === 'task' && currentTask && (
+        {route === 'task' && showConversationError && <ConversationUnavailable />}
+
+        {route === 'task' && showConversationLoading && <ConversationLoading />}
+
+        {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -5019,6 +4650,11 @@ function AppCore({ autoOpenSettingsSection } = {}) {
               // send, with no changes needed there.
               if (!currentTask) return;
               setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            effort={currentTaskEffort}
+            onEffortChange={(e) => {
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, reasoningEffort: e } : t)));
             }}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -5119,7 +4755,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         {route === 'projects' && (
           <ProjectsView
             projects={projects}
-            selectedProject={selectedProject}
+            selectedProject={selectedProjectForView}
+            loading={projectDetailResolving}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5127,6 +4764,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             modelMeta={modelMeta}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text, meta) => {
@@ -5135,11 +4774,12 @@ function AppCore({ autoOpenSettingsSection } = {}) {
               // the new task lands in the right workspace.
               handleSendFromHome(text, meta);
             }}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
+            deletingProjectKeys={deletingProjectKeys}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -5159,6 +4799,7 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             }}
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -5234,6 +4875,8 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
+            onAddressWithAgent={addressArtifactWithAgent}
+            resolveRepairConversation={resolveArtifactRepairConversation}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -5275,6 +4918,47 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
           />
+        )}
+
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
+          <UtilitiesView
+            kind={route}
+            project={selectedProject}
+            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
+            agentLabel={agentLabel}
+          />
+        )}
+        </div>
+
+        {codeModeEnabled && codeWorkspaceMounted && (
+          <div
+            className="workspace-mode-panel"
+            hidden={effectiveWorkspaceMode !== 'code'}
+            aria-hidden={effectiveWorkspaceMode !== 'code'}
+          >
+            <CodeView
+              active={effectiveWorkspaceMode === 'code'}
+              sessions={codingSessions}
+              selectedId={activeCodingSessionId}
+              newTask={codeNewTask}
+              projectsOpen={codeProjectsOpen}
+              connectorsOpen={codeConnectorsOpen}
+              skillsOpen={codeSkillsOpen}
+              defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
+              defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
+              models={mindsModels}
+              modelMeta={modelMeta}
+              skillScopeKey={codeSkillScopeKey}
+              connections={connectors}
+              onConnectionsChange={setConnectors}
+              onOpenConnectors={openCodingConnectors}
+              onOpenSkills={openCodingSkills}
+              onOpenNewTask={openNewCodingTask}
+              onSessionsChange={setCodingSessions}
+              onSelectionChange={changeCodingSelection}
+            />
+          </div>
         )}
 
         {/* Settings modal — rendered over whatever route is active */}
@@ -5376,15 +5060,6 @@ function AppCore({ autoOpenSettingsSection } = {}) {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
-        {['memory', 'publish'].includes(route) && (
-          <UtilitiesView
-            kind={route}
-            project={selectedProject}
-            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
-            agentLabel={agentLabel}
-          />
-        )}
       </AppShell>
       <SearchModal
         open={searchOpen}
@@ -5408,24 +5083,10 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         onSkinChange={setSkin}
       />
 
-      <Modal
-        open={comingSoonFeature != null}
+      <ComingSoonModal
+        feature={comingSoonFeature}
         onClose={() => setComingSoonFeature(null)}
-        size="sm"
-        labelledBy="coming-soon-title"
-      >
-        <ModalHeader
-          id="coming-soon-title"
-          title="Coming soon to Cloud"
-          onClose={() => setComingSoonFeature(null)}
-        />
-        <ModalBody>
-          <p>
-            This feature isn’t available on Cloud just yet. In the meantime, you
-            can try it in the local version.
-          </p>
-        </ModalBody>
-      </Modal>
+      />
 
       {!host.isWeb && (
       <ServerOfflineHelpModal
@@ -5577,5 +5238,28 @@ function AppCore({ autoOpenSettingsSection } = {}) {
         </div>
       )}
     </div>
+  );
+
+  // Hand the shell + nav state + URL→state handlers to the router; CoworkLayout
+  // renders `shell` and the route elements consume the handlers.
+  const coworkValue = {
+    shell,
+    route,
+    activeTaskId,
+    // Bridge mirrors the selected detail entity into the URL. Prefer the stable
+    // id; fall back to name for projects that predate ids.
+    selectedProjectId: selectedProject?.id || selectedProject?.name || null,
+    selectedScheduleId,
+    enterHome,
+    enterRoute,
+    openConversation,
+    enterProjectDetail,
+    enterScheduleDetail,
+  };
+
+  return (
+    <CoworkProvider value={coworkValue}>
+      <CoworkRouterProvider router={routerRef.current} />
+    </CoworkProvider>
   );
 }

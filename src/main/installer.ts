@@ -393,8 +393,10 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           sendInstallError(win, 'git is required but not found.');
           return false;
         } else if (process.platform !== 'win32') {
-          // Linux/other: no winget here, and auto-installing via the right
-          // package manager is guesswork — tell the user what to run.
+          // Linux/other: the deb declares git as a package dependency, so
+          // this only triggers if git was removed after install. No winget
+          // here, and auto-installing via the right package manager is
+          // guesswork — tell the user what to run.
           setStep('git', 'error');
           sendLog(win, '\nERROR: git is not installed.\n');
           sendLog(win, 'Install it with your package manager, e.g.:\n');

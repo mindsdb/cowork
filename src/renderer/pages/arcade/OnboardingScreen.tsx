@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
+import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '../../../shared/minds-orgs';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
@@ -22,7 +23,7 @@ type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
 // on email verification for minutes (ENG-917). 'signup-verify': that wait
 // timed out — the account likely exists and is verified, one Sign-in click
 // finishes; deliberately an info state, never an error.
-type Phase = 'choose' | 'validating' | 'signup-wait' | 'signup-verify' | 'minds-no-llm' | 'success' | 'error';
+type Phase = 'choose' | 'validating' | 'pick-org' | 'signup-wait' | 'signup-verify' | 'minds-no-llm' | 'success' | 'error';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
@@ -219,6 +220,15 @@ export default function OnboardingScreen({
   const finalizedRef = useRef(false);
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
+  // Which MindsHub organization the API key gets minted in. Only ever asked
+  // when the account belongs to more than one company organization: with a
+  // single one there is no choice to make, and the success screen names it
+  // anyway. `orgChoices` empty means the question was never worth asking.
+  const [orgChoices, setOrgChoices] = useState<MindsOrg[]>([]);
+  const [pickedOrgId, setPickedOrgId] = useState('');
+  // The organization the key actually landed in, which the ranking asks for
+  // and the entitlement fallback can still move.
+  const [mintedOrg, setMintedOrg] = useState<MindsOrg | null>(null);
 
   // ENG-912: a console-hosted (web) instance is pre-provisioned server-side
   // (config_ready:true, key seeded), but the browser can't read that key
@@ -259,18 +269,24 @@ export default function OnboardingScreen({
   // here. Empty until the fetch resolves; the picker degrades to a free-text
   // input in that window (and if the backend is unreachable).
   const [recModels, setRecModels] = useState<Record<string, string[]>>({});
+  // Catalog display labels by id. Without these the BYOK select derived every
+  // name from the id, so it could disagree with the Settings picker for the
+  // same model (ENG-1638).
+  const [recLabels, setRecLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
     fetchRecommendedModels().then((rec) => {
       const map = (rec?.recommendedModels as Record<string, string[]> | undefined);
       if (!cancelled && map) setRecModels(map);
+      const labels = (rec?.modelLabels as Record<string, string> | undefined);
+      if (!cancelled && labels) setRecLabels(labels);
     });
     return () => { cancelled = true; };
   }, []);
 
-  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic'), [recModels]);
-  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai'), [recModels]);
-  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini'), [recModels]);
+  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic', recLabels), [recModels, recLabels]);
+  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai', recLabels), [recModels, recLabels]);
+  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini', recLabels), [recModels, recLabels]);
 
   const models = byokProvider === 'anthropic'
     ? ANTHROPIC_MODELS
@@ -388,10 +404,24 @@ export default function OnboardingScreen({
         return;
       }
 
+      // The key goes to the main process, which stores it in the OS keychain
+      // and hands it to the sidecar at runtime. Writing it as an env line here
+      // would put a long-lived bearer back in `~/.cowork/.env`, which is the
+      // thing this whole path exists to stop.
+      //
+      // The web shell has no main process to route it to, so it keeps writing
+      // the line: there the server holds the credential either way, and the
+      // runtime hand-over is a desktop mechanism.
+      const stored = await host.mindshubSetUserKey(apiKey.trim());
+      if (stored.supported && !stored.ok) {
+        setPhase('error');
+        setErrorMsg(stored.reason || 'Could not save the MindsHub key.');
+        return;
+      }
       const mindsLines = [
         'ANTON_TERMS_CONSENT=true',
         `ANTON_MINDS_ENABLED=true`,
-        `ANTON_MINDS_API_KEY=${apiKey.trim()}`,
+        ...(stored.supported ? [] : [`ANTON_MINDS_API_KEY=${apiKey.trim()}`]),
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
@@ -541,18 +571,44 @@ export default function OnboardingScreen({
   // Post-auth completion shared by sign-in and sign-up: once Keycloak hands
   // back tokens the two flows are identical — provision the LLM key, route
   // free users to the paywall/BYOK, commit the env on success.
+  // Between signing in and minting, ask which organization the key belongs to —
+  // but only when the answer is not already obvious. One company organization
+  // is a label rather than a choice, and an account with nothing but its own
+  // personal organization sees the app exactly as it did before this existed.
   const completeMindsAuth = async () => {
     setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
-    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string };
+    const { orgs } = await host.mindshubListOrgs();
+    if (needsOrgPick(orgs)) {
+      const ranked = rankMindsOrgs(orgs);
+      setOrgChoices(ranked);
+      // Ranked, so this is the first company organization — the answer the
+      // ranking would have reached on its own.
+      setPickedOrgId(ranked[0].id);
+      setPhase('pick-org');
+      return;
+    }
+    await mintMindsKey();
+  };
+
+  const mintMindsKey = async (organizationId?: string) => {
+    setPhase('validating');
+    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
     try {
-      finalizeResult = await host.mindshubFinalize();
+      finalizeResult = await host.mindshubFinalize(organizationId);
     } catch (e: any) {
       setPhase('error');
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
       return;
     }
-    // No LLM credits — account authenticated but key wasn't provisioned.
-    // Save terms consent and redirect to BYOK so the user can pick a provider.
+    // No LLM credits — account authenticated but the app could not set MindsHub
+    // up. Save terms consent and redirect to BYOK so the user can pick a
+    // provider.
+    //
+    // Nothing produces this any more: the refusal it detected came from the
+    // key mint, and the app no longer mints. A user with no entitlement now
+    // signs in and meets the gateway's top-up card on their first message
+    // instead. Kept because the branch costs nothing and the shape is still
+    // declared across the bridge.
     if (finalizeResult.upgradeRequired) {
       // ENG-1533: on the commonest path — first run — a provisioning refusal
       // shows no paywall at all, it offers BYOK. That is why the refusal is its
@@ -570,7 +626,10 @@ export default function OnboardingScreen({
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
       return;
     }
-    // Provider only — the backend resolves the default model on load.
+    // Provider only — the backend resolves the default model on load, and
+    // finalize hands the credential straight to the sidecar rather than
+    // returning one for us to write. There is deliberately no
+    // ANTON_MINDS_API_KEY line here any more.
     const lines = [
       'ANTON_TERMS_CONSENT=true',
       'ANTON_MINDS_ENABLED=true',
@@ -578,13 +637,7 @@ export default function OnboardingScreen({
       'ANTON_PLANNING_PROVIDER=minds-cloud',
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
-    if (finalizeResult.apiKey) {
-      // ENG-436: write ONLY the dedicated minds slot. minds-cloud
-      // resolves from minds_api_key/minds_url everywhere (main agent +
-      // scratchpad), so we no longer copy the minds key into the OpenAI
-      // slot — that left a user's own OpenAI key clobbered.
-      lines.push(`ANTON_MINDS_API_KEY=${finalizeResult.apiKey}`);
-    }
+    setMintedOrg(finalizeResult.organization ?? null);
     await saveFinal(lines);
   };
 
@@ -643,11 +696,12 @@ export default function OnboardingScreen({
   // effect handles consent + entry itself (loading above, then success below).
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title="Welcome" subtitle="you're all set">
+      <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
           <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
-            Your workspace is ready to go.
+            Your workspace is ready. Give the agent a task. It does the work and hands back
+            the results.
           </div>
           <button
             className="arc-btn"
@@ -667,6 +721,52 @@ export default function OnboardingScreen({
     );
   }
 
+  // ── Pick an organization ───────────────────────────────────────────
+  // Only reached when the account belongs to more than one company
+  // organization. The key is minted into whichever is picked here, and that
+  // is what pays for every turn afterwards, which is why the copy says so in
+  // those words rather than naming the key.
+  if (phase === 'pick-org') {
+    return (
+      <ArcadeShell title="Choose an organization" subtitle="who pays for your usage">
+        <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
+          <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
+            You belong to more than one organization. Pick the one this computer
+            should work in — its credits pay for your usage, and its admins can
+            see and revoke this computer's access. You can change it later from
+            the account menu.
+          </div>
+
+          <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
+            {orgChoices.map((org) => (
+              <label key={org.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="minds-organization"
+                  value={org.id}
+                  checked={pickedOrgId === org.id}
+                  onChange={() => setPickedOrgId(org.id)}
+                />
+                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={organizationLabel(org) ?? undefined}>
+                  {organizationLabel(org)}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="arc-btn"
+            disabled={!pickedOrgId}
+            onClick={() => mintMindsKey(pickedOrgId)}
+          >
+            Continue
+          </button>
+        </div>
+      </ArcadeShell>
+    );
+  }
+
   // ── Victory ────────────────────────────────────────────────────────
   if (phase === 'success') {
     return (
@@ -676,6 +776,11 @@ export default function OnboardingScreen({
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--arc-green)' }}>
             You're all set!
           </div>
+          {mintedOrg && (
+            <div style={{ fontSize: 11.5, letterSpacing: '0.06em', color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 340 }}>
+              Working in <strong>{organizationLabel(mintedOrg)}</strong>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>
             <PixelSprite name="coin" size={18} /> Ready to go
           </div>

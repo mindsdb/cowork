@@ -77,7 +77,7 @@ vi.mock('./server-process', () => ({
 // Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
 // writeEnvFileAtomic must write atomically (never truncate the user's other
 // creds) and ride out a transient lock on the rename instead of throwing.
-import { writeEnvFileAtomic, writeMindsKeyToEnvAndRestart } from './minds-auth';
+import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
 
 let dir: string;
 let target: string;
@@ -168,23 +168,23 @@ describe('writeEnvFileAtomic', () => {
   });
 });
 
-describe('writeMindsKeyToEnvAndRestart — .env failure handling', () => {
-  it('is non-fatal on the installed path (the DB sync is authoritative)', async () => {
-    // The wedge (ENG-1209): a locked .env aborted before the DB sync, stranding
-    // the user with an already-revoked key. With the server installed, an
-    // exhausted-retry write must no longer propagate.
+describe('commitMindsSignIn — .env failure handling', () => {
+  it('is non-fatal on the installed path (the settings sync carries the config)', async () => {
+    // The wedge: a locked .env aborted the whole sign-in. With the
+    // server installed, the settings PUTs re-establish everything this file
+    // holds, so an exhausted-retry write must not propagate.
     homeHolder.antonInstalled = true;
     control.renameFailCode = 'EPERM';
     control.renameFailTimes = Infinity;
-    await expect(writeMindsKeyToEnvAndRestart('mdb_newkey')).resolves.toBeUndefined();
+    await expect(commitMindsSignIn()).resolves.toBeUndefined();
   }, 15000);
 
-  it('is FATAL on the pre-install path (.env is the only store, no DB fallback)', async () => {
-    // No server yet → early-return with no DB sync, so a failed .env write must
-    // surface rather than report a false success with the credential nowhere.
+  it('is FATAL on the pre-install path (nothing else has recorded the sign-in yet)', async () => {
+    // No server yet → early-return with no settings sync, so a failed write
+    // must surface rather than report a sign-in nothing recorded.
     homeHolder.antonInstalled = false;
     control.renameFailCode = 'EPERM';
     control.renameFailTimes = Infinity;
-    await expect(writeMindsKeyToEnvAndRestart('mdb_newkey')).rejects.toThrow(/EPERM/);
+    await expect(commitMindsSignIn()).rejects.toThrow(/EPERM/);
   }, 15000);
 });

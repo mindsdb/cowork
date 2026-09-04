@@ -154,6 +154,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         if (outcome?.status === 'success') {
           clearInterval(oauthPollRef.current);
           setBusy(false);
+          // Bring this tab back to the foreground now that sign-in
+          // finished — mirrors desktop regaining window focus once its
+          // own browser-tab OAuth flow completes (ENG-2190). Doesn't
+          // depend on a popup reference (window.open()'s return value is
+          // discarded above — noopener-adjacent by not being captured at
+          // all) — the tab that opened it closes itself independently via
+          // a script in auth's callback page.
+          try { window.focus(); } catch { /* best effort */ }
           try { await fetchDatasources(); } catch { /* best effort */ }
           patchForm(conversationId, {
             form_id: formId,
@@ -227,8 +235,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
     // PostHog projects are account-scoped. Users know their project by name,
     // not the numeric ID that the connector engine needs, so discover choices
-    // before posting the generic connector submission.
+    // before posting the generic connector submission. Only applies to the
+    // personal-API-key method — browser_oauth_builtin has no personal_api_key/
+    // host fields to probe with (its own branch below handles project context
+    // differently, or not at all yet).
     if (spec._connector_id === 'posthog' && kind === 'primary'
+      && authMethod !== 'browser_oauth_builtin'
       && !String(values?.project_id || '').trim()
       && !String(values?.posthog_project_choice || '').trim()) {
       setBusy(true);
@@ -441,6 +453,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             setBusy(false);
             return;
           }
+          // Bring the app tab back to the foreground now that sign-in
+          // finished — mirrors desktop regaining window focus once its
+          // own browser-tab OAuth flow completes (ENG-2190). The popup
+          // also closes itself independently via a script in the
+          // callback page (see auth's render_callback_page) — this is
+          // just the faster path for the case where `popup` is a live
+          // reference. It isn't always: the popup-blocked fallback above
+          // routes through host.openExternal() instead, which opens a new
+          // tab without keeping a reference to it at all — that case (and
+          // the browser_oauth_builtin path above, which never captures a
+          // reference either) relies solely on the callback page's own
+          // self-close script to close the tab.
+          if (popup) { try { popup.close(); } catch {} }
+          try { window.focus(); } catch {}
           // The server callback already persisted the connection — just
           // flip the form into its success branch + recap in chat.
           patchForm(conversationId, {
@@ -670,19 +696,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
+      // `shrink-0`: the panel sits in the right rail's flex column —
+      // without it, the rail squeezes the panel down to fit its own
+      // height, our `overflow-hidden` clips the content, and the rail's
+      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
+      // to 0 makes the panel claim its full content height so the rail's
+      // scroll engages naturally.
+      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
       style={{
-        position: 'relative',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        // The panel sits in the right rail's flex column — without
-        // `flex-shrink: 0`, the rail squeezes the panel down to fit
-        // its own height, our `overflow: hidden` clips the content,
-        // and the rail's `overflowY: auto` never sees anything to
-        // scroll. Pinning shrink to 0 makes the panel claim its full
-        // content height so the rail's scroll engages naturally.
-        flexShrink: 0,
         // Highlight ring driven from outside (e.g. the chat's
         // connect-intro bubble on hover) — accent border + soft
         // halo so the form card draws the eye without layout shift.
@@ -699,58 +720,33 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           breadcrumb is dropped — the connection is done, there's nothing
           to go back to — leaving just the close button (ENG-1534). The X
           sits flush right in every case. */}
-      <div style={{
-        display: 'flex', alignItems: 'stretch',
-        borderBottom: '1px solid var(--line)',
-        minHeight: 42,
-      }}>
+      <div className="flex items-stretch border-b border-t-0 border-x-0 border-solid border-line min-h-[42px]">
         {spec._is_success ? (
-          <div style={{ flex: 1, minWidth: 0 }} />
+          <div className="flex-1 min-w-0" />
         ) : activeMethodSpec ? (
           <button
             type="button"
             onClick={onBackToOptions}
             disabled={busy}
+            className="flex-1 min-w-0 flex items-center gap-2 px-[14px] py-0 bg-transparent border-0 text-left font-[family-name:var(--font-body)]"
             style={{
-              flex: 1, minWidth: 0,
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '0 14px',
-              background: 'transparent', border: 0,
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
-              fontFamily: FONT_BODY,
-              textAlign: 'left',
               transition: 'background 120ms ease',
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <span style={{
-              color: 'var(--accent)',
-              fontSize: 13, fontWeight: 600,
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              flexShrink: 0,
-            }}>
+            <span className="text-accent text-[13px] font-semibold inline-flex items-center gap-1 shrink-0">
               <span aria-hidden>{'←'}</span>
               Back to options
             </span>
-            <span style={{
-              color: 'var(--ink-4)', fontSize: 12.5,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minWidth: 0, flex: 1,
-            }}>
+            <span className="text-ink-4 text-sm overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
               · {activeMethodSpec.label || activeMethodSpec.id}
             </span>
           </button>
         ) : (
-          <div style={{
-            flex: 1, minWidth: 0,
-            display: 'flex', alignItems: 'center',
-            padding: '0 14px',
-            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <div className="flex-1 min-w-0 flex items-center px-[14px] py-0 font-[family-name:var(--font-body)] text-[13px] font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">
             Connect
           </div>
         )}
@@ -759,56 +755,43 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             type="button"
             onClick={handleClose}
             aria-label="Close form"
-            style={{
-              flexShrink: 0,
-              width: 38, alignSelf: 'stretch',
-              background: 'transparent', border: 0,
-              color: 'var(--ink-4)',
-              display: 'inline-grid', placeItems: 'center',
-              cursor: 'pointer',
-              transition: 'color 140ms ease, background 140ms ease',
-            }}
+            className="shrink-0 w-[38px] self-stretch bg-transparent border-0 text-ink-4 inline-grid place-items-center cursor-pointer"
+            style={{ transition: 'color 140ms ease, background 140ms ease' }}
             onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
           >
-            {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
+            {Ico.close ? Ico.close(13) : <span className="text-[16px] leading-none">×</span>}
           </button>
         </Tooltip>
       </div>
 
-      <div style={{ padding: '10px 14px 14px' }}>
+      <div className="pt-[10px] px-[14px] pb-[14px]">
         {spec._is_probing ? (
           /* Probe running — replace the form with a spinner so the
              popup shows clear progress instead of appearing frozen. */
-          <div style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            padding: '32px 20px 36px', gap: 12,
-          }}>
+          <div className="flex flex-col items-center justify-center pt-8 px-5 pb-[36px] gap-3">
             <span
               aria-hidden
+              className="block w-[22px] h-[22px] rounded-full"
               style={{
-                display: 'block',
-                width: 22, height: 22,
-                borderRadius: '50%',
                 border: '2.5px solid color-mix(in srgb, var(--accent) 25%, transparent)',
                 borderTopColor: 'var(--accent)',
                 animation: 'spin 720ms linear infinite',
               }}
             />
-            <span style={{ color: 'var(--ink-2)', fontSize: 13, textAlign: 'center' }}>
+            <span className="text-ink-2 text-[13px] text-center">
               {spec.status_text || 'Testing connection…'}
             </span>
           </div>
         ) : spec.form_error && !spec._is_error ? (
           /* Probe returned failure — show error card + Try again. */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0 2px' }}>
+          <div className="flex flex-col gap-3 pt-1 px-0 pb-[2px]">
             <Alert variant="danger" title="Connection failed">
-              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+              <div className="text-sm text-ink-2 leading-[1.55]">
                 {spec.form_error}
               </div>
               {spec.subtitle && (
-                <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.4, marginTop: 6 }}>
+                <div className="text-sm text-ink-3 leading-[1.4] mt-[6px]">
                   {spec.subtitle}
                 </div>
               )}
@@ -844,7 +827,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   ...(Object.keys(methodsPatch).length ? { methods: methodsPatch } : {}),
                 });
               }}
-              style={{ alignSelf: 'flex-start' }}
+              className="self-start"
             >
               Try again
             </Button>
@@ -855,27 +838,23 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             {showStatusToast && (
               <div
                 key={spec.status_text}
+                className="flex items-center gap-[10px] mb-3 pt-2 pr-[10px] pb-2 pl-3 rounded-card-row text-ink-2 text-sm"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  marginBottom: 12,
-                  padding: '8px 10px 8px 12px', borderRadius: 8,
                   background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
                   border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  color: 'var(--ink-2)', fontSize: 12.5,
                   animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
                 }}
               >
                 <span
                   aria-hidden
+                  className="w-[11px] h-[11px] flex-[0_0_11px] rounded-full"
                   style={{
-                    width: 11, height: 11, flex: '0 0 11px',
-                    borderRadius: '50%',
                     border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                     borderTopColor: 'var(--accent)',
                     animation: 'spin 720ms linear infinite',
                   }}
                 />
-                <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                   {spec.status_text}
                 </span>
                 <Tooltip content="Dismiss">
@@ -883,18 +862,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     type="button"
                     onClick={() => setDismissedStatus(spec.status_text)}
                     aria-label="Dismiss status"
-                    style={{
-                      width: 20, height: 20, borderRadius: 5,
-                      background: 'transparent', border: 0, padding: 0,
-                      color: 'var(--ink-4)',
-                      display: 'inline-grid', placeItems: 'center',
-                      cursor: 'pointer', flex: '0 0 20px',
-                      transition: 'color 120ms ease, background 120ms ease',
-                    }}
+                    className="w-[20px] h-[20px] rounded-[5px] bg-transparent border-0 p-0 text-ink-4 inline-grid place-items-center cursor-pointer flex-[0_0_20px]"
+                    style={{ transition: 'color 120ms ease, background 120ms ease' }}
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
-                    {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
+                    {Ico.close ? Ico.close(11) : <span className="text-base leading-none">×</span>}
                   </button>
                 </Tooltip>
               </div>

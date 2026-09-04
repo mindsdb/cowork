@@ -22,6 +22,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView from './ChatView';
+import { hydrateMessagesFromServerEvents } from '../lib/conversationHistory';
 
 const taskWith = (messages) => ({
   id: 'conv-a',
@@ -254,6 +255,38 @@ describe('image_format failure card', () => {
   });
 });
 
+describe('content_recovery failure card', () => {
+  it('says it already fixed the issue, not that the user should re-upload', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'content_recovery',
+          "An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. I've fixed it automatically — you can keep going.",
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText(/removed automatically/i)).toBeInTheDocument();
+    // Distinct from image_format's "convert to PNG or JPEG" — that advice is
+    // wrong here, the failure isn't anything wrong with the image itself.
+    expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'issue fixed', code: 'content_recovery' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 describe('policy_unavailable failure card', () => {
   it('names the outage and retries the failed message', async () => {
     const user = userEvent.setup();
@@ -280,6 +313,46 @@ describe('policy_unavailable failure card', () => {
   });
 });
 
+describe('worker_unresponsive failure card', () => {
+  it('says the turn never ran and retries the failed message', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'worker_unresponsive',
+          "The agent didn't start, so this turn never ran.",
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText(/never reached the agent/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('blames the infrastructure, not the request', () => {
+    // The whole reason this code exists: during the 2026-08-31 outage every
+    // turn read as an agent failure, so users retried their WORDING instead of
+    // retrying the request. The copy has to point away from their input.
+    render(
+      <ChatView task={taskWith(failedTurn('worker_unresponsive', 'nothing ran'))} />,
+    );
+    expect(screen.getByText(/fault on our side/)).toBeInTheDocument();
+    expect(screen.queryByText('An unexpected error occurred.')).not.toBeInTheDocument();
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'nothing ran', code: 'worker_unresponsive' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 describe('anton_error / unmapped failure fallback', () => {
   it('renders as a danger alert, not answer prose', () => {
     render(
@@ -287,6 +360,42 @@ describe('anton_error / unmapped failure fallback', () => {
     );
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('An unexpected error occurred.');
+  });
+
+  it('surfaces the request id when the failure carries one, so a report is traceable', () => {
+    render(
+      <ChatView task={taskWith(failedTurn(
+        'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+      ))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-abc');
+  });
+
+  it('omits the reference line when the failure carries no request id', () => {
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent('Reference:');
+  });
+
+  it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {
+    // The case that matters most: the user refreshes, THEN goes to copy the
+    // id for support. Spans the real hydrate function, not a hand-built
+    // message shape, so a drift between what conversationHistory.js extracts
+    // and what ChatView reads would be caught here.
+    const messages = hydrateMessagesFromServerEvents([
+      {
+        role: 'assistant', content: '', events: [{
+          type: 'response.failed', code: 'anton_error',
+          error: 'An unexpected error occurred.', request_id: 'corr-reload',
+        }],
+      },
+    ]);
+    render(<ChatView task={taskWith(messages)} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-reload');
   });
 });
 
@@ -309,6 +418,10 @@ const WIRE_CODES = [
   'rate_limited',
   // ENG-1537 — the spent free allowance, split off the credits card.
   'included_allowance_exhausted',
+  // ENG-1992 — a content-shaped rejection the server already repaired.
+  'content_recovery',
+  // ENG-2126 — the worker never answered, so the turn never ran.
+  'worker_unresponsive',
   'anton_error',
 ];
 

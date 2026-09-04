@@ -19,9 +19,9 @@
 //   />
 //
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
-// Item shape:   { value, label, disabled?, title?, tag?, ... }  — extra fields
+// Item shape:   { value, label, disabled?, title?, icon?, tag?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
-//   `tag` renders as a compact right-aligned pill on the row (a model's version
+//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (a model's version
 //   state, the "Needs credits" wallet state, or both) without touching the
 //   label, so search still matches the bare model name and nothing truncates.
 //
@@ -30,13 +30,25 @@
 //     label + value. `contains` is Base UI's locale-aware substring test.
 //   - `renderValue(selected)`: replaces the default trigger content
 //     (truncated label, or placeholder styling when nothing is selected).
+//   - `footer`: a plain React node (not a render function — a domain picker
+//     that needs live values, e.g. ModelSelect's effort row, closes over
+//     them itself before passing the node down) rendered inside the popup
+//     AFTER the scrollable list, below a top divider. It sits outside Base
+//     UI's item/filter/keyboard-nav machinery entirely — it is not a
+//     `BaseCombobox.Item`/`BaseCombobox.Collection` child, so it never
+//     participates in search filtering or arrow-key highlighting, and a
+//     click inside it never fires `onValueChange` or closes the popup
+//     (that's on the footer's own content to do, e.g. by driving the same
+//     `open`/`onOpenChange` the caller passed in). Used for a fixed,
+//     always-present row below the model list (ModelSelect's "Effort"
+//     footer) rather than another filterable option.
 
 import { useMemo } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
-import { triggerVariants } from './Select.jsx';
+import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
 const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -58,9 +70,11 @@ export function Combobox({
   groups = [],
   filter,
   renderValue,
+  footer,
   placeholder = 'Select',
   searchPlaceholder = 'Search',
   searchAriaLabel = 'Search',
+  menuLabel,
   emptyText = 'No results',
   variant = 'field',
   size = 'md',
@@ -75,6 +89,13 @@ export function Combobox({
   className,
   style,
   zIndex = 95,
+  // Compute the popup's position once at open instead of live-tracking the
+  // anchor. For a popup whose own interactions rewrite the anchor's content
+  // (ModelSelect: picking a model relabels — and resizes — the trigger pill
+  // while the popup stays open), tracking would drag the whole popup
+  // sideways to follow the resize. The tradeoff (no repositioning on
+  // scroll/resize while open) is fine for a short-lived menu.
+  disableAnchorTracking = false,
   ...rest
 }) {
   const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
@@ -87,7 +108,6 @@ export function Combobox({
     if (value == null || value === '') return null;
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
-
   const { contains } = BaseCombobox.useFilter();
 
   return (
@@ -111,6 +131,7 @@ export function Combobox({
       <BaseCombobox.Trigger
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel}
+        aria-description={selected?.label ? `Selected: ${selected.label}` : undefined}
         aria-invalid={invalid || undefined}
         aria-busy={loading || undefined}
         title={title}
@@ -135,6 +156,7 @@ export function Combobox({
           sideOffset={6}
           align="start"
           style={{ zIndex }}
+          disableAnchorTracking={disableAnchorTracking}
         >
           <BaseCombobox.Popup
             className={cn(
@@ -149,6 +171,7 @@ export function Combobox({
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}
           >
+            <PickerMenuHeading>{menuLabel}</PickerMenuHeading>
             {/* Search row — pinned; only the list below scrolls. Border
                 widths are set per-side: with preflight disabled,
                 `border-solid` alone would resurrect the UA's `medium`
@@ -171,9 +194,25 @@ export function Combobox({
             <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-[12.5px] text-ink-4">
               {emptyText}
             </BaseCombobox.Empty>
-            <BaseCombobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">
+            <BaseCombobox.List
+              // With a footer present, the list's cap shrinks by the footer's
+              // ~40px so the POPUP's total height (list + footer) stays what
+              // it was without one. This matters when the footer appears
+              // while the popup is already open (ModelSelect: picking a model
+              // with effort options mounts the Effort row in place): the
+              // composer's popup sits ABOVE its trigger, bottom edge pinned
+              // to the anchor, so any growth extends the top edge upward —
+              // a visible jump. Constant total height = no jump; the list
+              // just scrolls in slightly less room.
+              className={cn(
+                footer
+                  ? 'max-h-[min(280px,calc(var(--available-height,320px)-84px))]'
+                  : 'max-h-[min(320px,calc(var(--available-height,320px)-44px))]',
+                'overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0',
+              )}
+            >
               {(group) => (
-                <BaseCombobox.Group key={group.key} items={group.items}>
+                <BaseCombobox.Group key={group.key} items={group.items} className={group.className}>
                   {group.name && (
                     <BaseCombobox.GroupLabel className="pt-[8px] px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
                       {group.name}
@@ -188,18 +227,18 @@ export function Combobox({
                         title={item.title}
                         className={cn(
                           'grid items-center gap-[6px]',
-                          (item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
+                          (item.icon || item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
                           'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px]',
                           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
                           'data-[highlighted]:bg-surface-2',
                           'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
                         )}
                       >
-                        <span className="inline-flex justify-center text-accent">
-                          <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
+                        <span className={cn('inline-flex justify-center', item.icon ? 'text-ink-3' : 'text-accent')}>
+                          {item.icon || <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>}
                         </span>
                         <span className="min-w-0 truncate">{item.label}</span>
-                        {(item.tag || item.action) && (
+                        {(item.icon || item.tag || item.action) && (
                           <span className="shrink-0 flex items-center gap-[6px]">
                             {item.tag && (
                               <span className="rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
@@ -211,6 +250,11 @@ export function Combobox({
                                 owns its own onClick (must stopPropagation,
                                 or the click also selects this item). */}
                             {item.action}
+                            {item.icon && (
+                              <span className="inline-flex text-accent">
+                                <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
+                              </span>
+                            )}
                           </span>
                         )}
                       </BaseCombobox.Item>
@@ -219,6 +263,19 @@ export function Combobox({
                 </BaseCombobox.Group>
               )}
             </BaseCombobox.List>
+            {/* Trailing footer slot — plain content, NOT a BaseCombobox.Item,
+                so it never enters the list's filter/highlight/keyboard-nav
+                machinery. Top border mirrors the search row's `border-b`
+                convention (same reasoning: `border-solid` is load-bearing
+                with preflight disabled). */}
+            {footer && (
+              // fade-in covers the mid-open appearance case (ModelSelect's
+              // Effort row mounting on a model pick) — opacity only, so it
+              // adds no motion on top of the list's height rebalancing above.
+              <div className="border-solid border-line border-t border-b-0 border-x-0 animate-fade-in">
+                {footer}
+              </div>
+            )}
           </BaseCombobox.Popup>
         </BaseCombobox.Positioner>
       </BaseCombobox.Portal>

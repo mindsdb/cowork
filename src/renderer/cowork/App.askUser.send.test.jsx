@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -8,6 +8,14 @@ const spies = vi.hoisted(() => ({
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  // Default matches the real fn under this file's denied-network env (an
+  // unavailable result, which the render ignores for locally-present tasks);
+  // the deep-link test overrides it to control loader resolution.
+  fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
+  // Backs loadSessionMessagesWithRetry's reload after a stream error — empty
+  // by default (a turn that recovered), so a test that wants trackTurnFailed
+  // to fire on a real failure overrides it with an error-role message.
+  fetchSession: vi.fn(async () => ({ messages: [] })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -22,7 +30,8 @@ vi.mock('./api', async (importOriginal) => ({
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
     { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
-  fetchSession: vi.fn(async () => ({ messages: [] })),
+  fetchSession: (...args) => spies.fetchSession(...args),
+  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchArtifacts: vi.fn(async () => []),
@@ -124,14 +133,19 @@ vi.mock('./lib/analytics', () => ({
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
   fireFirstResponse: vi.fn(),
+  trackTurnFailed: vi.fn(),
 }));
 
 import App from './App';
+import { trackTurnFailed } from './lib/analytics';
+import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
   createProject,
   uploadAttachments,
+  renameConversation,
+  moveTaskToProject,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -206,6 +220,10 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
+  // App uses createBrowserRouter under jsdom, which writes the shared window
+  // history that happy-dom keeps across tests — so a URL one test pushes leaks
+  // into the next. Reset to '/' so each test starts on Home.
+  window.history.replaceState(null, '', '/');
   // Composer text lives in a module-level, per-surface store (lib/draftStore),
   // so unsent text from the previous test would otherwise still be in the box.
   __resetDraftsForTests();
@@ -213,8 +231,13 @@ beforeEach(() => {
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
+  trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+  spies.fetchSessionResult.mockReset();
+  spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
+  spies.fetchSession.mockReset();
+  spies.fetchSession.mockImplementation(async () => ({ messages: [] }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -632,6 +655,103 @@ describe('a superseded stream\'s late abort', () => {
   });
 });
 
+describe('turn failure telemetry', () => {
+  it('tracks a real turn failure, but not a cancelled one', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // The reload after the error must show the failure persisted server-side
+    // for trackTurnFailed to count it — see the recovered-turn test below.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [{ role: 'error', content: 'boom' }],
+    }));
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', { code: 'anton_error' });
+
+    trackTurnFailed.mockClear();
+    await send(user, composer, 'try again');
+    const secondHandle = await waitForStream(handle);
+    await act(async () => {
+      secondHandle.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not count a turn as failed when the reload shows it actually finished', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: the reload comes back with no error message — the
+    // stream dropped mid-answer, but the server had already finished the
+    // turn, so the user sees a normal answer and this must not count.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not count a recovered turn just because an earlier turn in the same conversation once failed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // An older turn left a persisted error row, but the reload's last
+    // message is this turn's real answer — `some()` over the whole
+    // conversation would find the stale error and count it forever.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'turn 1' },
+        { role: 'error', content: 'boom' },
+        { role: 'user', content: 'turn 2' },
+        { role: 'assistant', content: 'here is your answer' },
+      ],
+    }));
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('counts a server-declared response.failed on its own, without waiting on the reload', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: reload comes back empty (not yet persisted, or racing
+    // the failure). A response.failed the server itself sent is
+    // authoritative and must count regardless.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    const event = { type: 'response.failed', code: 'provider_error' };
+    await act(async () => {
+      handle.opts.onError('The agent failed', event);
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', event);
+  });
+});
+
 describe('new-session stream (send from home)', () => {
   it('releases a pending question when the new turn is aborted', async () => {
     const user = userEvent.setup();
@@ -861,6 +981,44 @@ describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
   });
 });
 
+describe('Stop when the cancel request never lands (ENG-1919)', () => {
+  it('keeps the in-flight turn alive and surfaces an actionable failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    // Commit the `_streaming` message so the composer shows a Stop control.
+    await emit({ type: 'response.created' });
+    const live = streams[streams.length - 1];
+
+    // The cancel POST never reaches the server (network down / 5xx).
+    spies.cancelResponse.mockResolvedValueOnce({
+      status: 'error', conversation_id: 'conv-a',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // The user is told the turn may still be running instead of seeing a fake
+    // stopped state.
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+
+    // The in-flight state was never torn down: the stream was not aborted and
+    // the Stop control is still there, so the toast's "try again" is real.
+    expect(live.abort).not.toHaveBeenCalled();
+    const retry = await screen.findByRole('button', { name: /stop/i });
+
+    // A second Stop actually retries the cancel — this time it lands (the
+    // default mock returns a non-error result) and tears the turn down.
+    await user.click(retry);
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(live.abort).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop/i })).toBeNull(),
+    );
+  });
+});
+
 describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
   it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
     const user = userEvent.setup();
@@ -1007,5 +1165,108 @@ describe('attachment send that would strand at "Queued"', () => {
     expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+});
+
+describe('a requested conversation id not present locally (ENG-1233 Major 4)', () => {
+  it('renders a loading state, never the tasks[0] recent-conversation fallback', async () => {
+    // The render condition the fix targets: route === 'task' with a requested
+    // activeTaskId that isn't in `tasks` and hasn't errored. We reach it stably
+    // via the optimistic deep link (the loader returns { optimistic } and
+    // openConversation deliberately doesn't merge it into `tasks`) — the same
+    // "requested id, unresolved" state a deep link / scheduled-run open passes
+    // through transiently. The old `tasks[0]` fallback would have rendered
+    // "Alpha task" (conv-a) here; the fix shows the loading state.
+    markOptimisticConversation('conv-ghost');
+    window.history.replaceState(null, '', '/c/conv-ghost');
+    render(<App />);
+
+    // Loading shows — which means currentTask did NOT fall back to a recent.
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+
+    clearOptimisticConversation('conv-ghost');
+  });
+});
+
+// ─── ENG-2246: a server refresh must not blank the open transcript ──────────
+//
+// fetchSessions now resolves on the conversation LIST alone, so every row it
+// returns carries `messages: []`. Two call sites still replaced `tasks`
+// wholesale with that, which wiped the transcript of whatever chat was open —
+// ChatView renders the task, and nothing refetches on a `tasks` change, so
+// there was no way back short of a reload. Both now merge.
+describe('a background refresh must not blank the open transcript (ENG-2246)', () => {
+  const LINE = 'remember this line';
+  const rows = (messages) => ([
+    { id: 'conv-a', title: 'Alpha task', messages, status: 'idle', projectName: 'general' },
+    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+  ]);
+
+  // Flipped to false once the chat is open, so the refresh under test returns
+  // the real post-ENG-2246 shape while the local task still holds the messages.
+  let listCarriesTranscript = true;
+
+  beforeEach(() => {
+    listCarriesTranscript = true;
+    fetchSessions.mockImplementation(async () => rows(listCarriesTranscript ? [{ role: 'user', content: LINE }] : []));
+  });
+  afterEach(() => {
+    fetchSessions.mockImplementation(async () => rows([]));
+    renameConversation.mockReset();
+    renameConversation.mockImplementation(async () => ({}));
+    moveTaskToProject.mockClear();
+  });
+
+  /** Opens the sidebar row's kebab menu. The kebab carries pointer-events:none
+   *  until the row is hovered, which userEvent's pointer model refuses to
+   *  traverse — hence fireEvent for the hover. */
+  async function openRowMenu(user) {
+    // Scoped to the sidebar: the chat header carries the same accessible name.
+    const sidebar = within(document.querySelector('aside'));
+    const row = sidebar.getByRole('button', { name: 'Alpha task' });
+    fireEvent.mouseEnter(row.parentElement);
+    // fireEvent, not user.click: opening the chat above already moved
+    // userEvent's virtual pointer, so its move onto the kebab fires the
+    // hoverProps mouseleave first — which re-hides the kebab (pointer-events:
+    // none) a moment before userEvent asserts it is clickable.
+    fireEvent.click(within(row.parentElement).getByRole('button', { name: 'Task menu' }));
+  }
+
+  it('survives the rollback refetch when a rename fails', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(LINE)).toBeInTheDocument();
+
+    listCarriesTranscript = false;
+    renameConversation.mockRejectedValueOnce(new Error('server said no'));
+
+    await openRowMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const input = await screen.findByLabelText('Rename task');
+    await user.clear(input);
+    await user.keyboard('Renamed{Enter}');
+
+    await waitFor(() => expect(renameConversation).toHaveBeenCalled());
+    // The rollback reloads from the server to recover the canonical title. It
+    // must not take the empty transcript along with it.
+    await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
+  });
+
+  it('survives the refresh after a move to another project', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(LINE)).toBeInTheDocument();
+
+    listCarriesTranscript = false;
+
+    await openRowMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Move to project…' }));
+    await user.type(await screen.findByPlaceholderText(/Search projects/i), 'Archive');
+    await user.click(await screen.findByRole('button', { name: /Move to Archive/i }));
+
+    await waitFor(() => expect(moveTaskToProject).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
   });
 });

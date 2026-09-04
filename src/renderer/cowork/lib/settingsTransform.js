@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
-import { isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily } from './modelCatalog';
+import { isMovingAlias, isFrozenAlias, hasFrozenVersions, isModelLocked, orderByFamily } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -36,10 +36,12 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
-  // Router (anton's "thalamus" role) — the cheap front-model that gates each
-  // turn respond-vs-delegate AND runs history summarization. Selectable so
-  // users can point routing+summarization at a cheap model (defaults per
-  // provider: MindsHub→kimi, else smallest).
+  coding_agent_engine: 'codingAgentEngine',
+  coding_agent_model: 'codingAgentModel',
+  // Router role — history summarization, on the user's pick. The
+  // respond-or-delegate gate ahead of each turn resolves its own model
+  // server-side (ENG-1851; `settings.gate`, see routerRoleSubtitle) and only
+  // runs on this pick for openai-compatible, which has no default to fall to.
   router_provider: 'routerProvider',
   router_model: 'routerModel',
   openai_base_url: 'openaiBaseUrl',
@@ -182,6 +184,11 @@ const _cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
  *   gpt-5.5-mini               → "GPT-5.5 Mini"
  *   gemini-3-flash-preview     → "Gemini 3 Flash Preview"
  *   o4-mini                    → "o4 Mini"
+ *
+ * This is the FALLBACK half of the naming rule, not the rule. Render paths must
+ * call `displayModelLabel` (catalog label first) — calling this directly is
+ * how the 402/403 card came to say "Mindshub air" under a picker that said
+ * "MindsHub Air" (ENG-1638). Exported for tests and for displayModelLabel.
  */
 export function modelLabel(id) {
   if (!id) return '';
@@ -194,7 +201,8 @@ export function modelLabel(id) {
   }
   if (s.startsWith('gpt-')) {
     const [head, ...rest] = s.slice(4).split('-');
-    return `GPT-${head}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
+    const family = /^\d/.test(head) ? `GPT-${head}` : `GPT ${_cap(head)}`;
+    return `${family}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
   }
   if (s.startsWith('gemini-')) {
     return `Gemini ${s.slice(7).split('-').map(_cap).join(' ')}`;
@@ -224,6 +232,12 @@ export function recommendedModelOptions(recommendedModels, providerType, modelLa
   return ids.map((id) => ({ id, label: displayModelLabel(id, modelLabels) }));
 }
 
+/** `live` in the order of `current`, with ids new to `live` appended. */
+function keepListOrder(current, live) {
+  const held = (current || []).filter((id) => live.includes(id));
+  return [...held, ...live.filter((id) => !held.includes(id))];
+}
+
 /**
  * Merge a `/settings/recommended-models` response into the settings we already
  * hold, returning just the keys it owns. Used by both the mount-time load and
@@ -250,13 +264,13 @@ export function recommendedModelOptions(recommendedModels, providerType, modelLa
  * @returns {object|null} the subset of settings keys to apply, null if nothing
  *   is usable (caller leaves what it has alone)
  */
-export function mergeRecommendedModels(prev, rec) {
+export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   if (!rec || typeof rec !== 'object') return null;
   const base = prev || {};
-  const overlayLists = (current, live) => {
+  const overlayLists = (current, live, reorder) => {
     const merged = { ...current };
     for (const [k, v] of Object.entries(live || {})) {
-      if (Array.isArray(v) && v.length) merged[k] = v;
+      if (Array.isArray(v) && v.length) merged[k] = reorder ? reorder(current?.[k], v) : v;
     }
     return merged;
   };
@@ -264,7 +278,12 @@ export function mergeRecommendedModels(prev, rec) {
     live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
   );
   return {
-    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels),
+    // `keepOrder` is for the refresh a picker fires as it opens: the list is on
+    // screen by the time the response lands, so a row that moves is a row that
+    // jumps under the cursor (ENG-1737). Ids we already hold keep their place,
+    // new ids go on the end, ids the server dropped go. The mount-time load
+    // takes the server's order as-is; it is the order the next open starts from.
+    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
     modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
@@ -275,7 +294,48 @@ export function mergeRecommendedModels(prev, rec) {
     // tags rather than breaking it.
     modelProviders: overlayMap(base.modelProviders, rec.modelProviders),
     modelFamilies: overlayMap(base.modelFamilies, rec.modelFamilies),
+    // Which model the server's per-turn route gate runs on (ENG-1851). Sent by
+    // servers that resolve it apart from the router pick; an older server sends
+    // nothing and the row falls back to describing what that server does.
+    gate: (rec.gate && typeof rec.gate === 'object') ? rec.gate : (base.gate ?? null),
   };
+}
+
+// ─── Role row copy ──────────────────────────────────────────────────
+
+/**
+ * Subtitle for the router role's Settings row (ENG-1851).
+ *
+ * The router pick has two consumers: history summarization, and the
+ * respond-or-delegate gate that runs ahead of each chat turn on a strict
+ * latency budget. The server resolves the gate's model apart from the pick and
+ * reports it as `gate` — `{ provider, model, followsRouterPick }` — and the row
+ * shows that rather than restating the rule, so the copy stays true across the
+ * UI/server OTA skew and whichever provider the server resolved the role to.
+ * A server that sends no `gate` is one whose gate does run on this pick, and
+ * the legacy copy describes it.
+ *
+ * Pure so the copy decision is unit-tested directly; RoleRow inlines the JSX.
+ */
+export function routerRoleSubtitle(gate, { rowProviderType = '', providerTypeLabels = {} } = {}) {
+  if (!gate || typeof gate !== 'object') {
+    return 'Used for fast respond-or-delegate gating on each turn, and history summarization.';
+  }
+  if (!gate.model) {
+    return gate.followsRouterPick
+      ? 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off until a model is picked here.'
+      : 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off: no model is available for it.';
+  }
+  if (gate.followsRouterPick) {
+    return 'Used for history summarization and for the respond-or-delegate gate ahead of each chat turn, '
+      + 'which has a strict latency budget: pick your fastest model here, not your smartest.';
+  }
+  // Name the provider only when it is not the one this row shows — the server
+  // may have resolved the role elsewhere (a stored provider with no key).
+  const where = gate.provider && gate.provider !== rowProviderType
+    ? ` (${providerTypeLabels[gate.provider] || gate.provider})`
+    : '';
+  return `Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on ${gate.model}${where}, not on this pick.`;
 }
 
 // ─── Model picker select-value resolution ───────────────────────────
@@ -369,8 +429,9 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders selectable
- *   with a "Needs credits" tag (ENG-1248).
+ *   (settings.modelEnabled); a model mapped to `false` renders disabled, tagged
+ *   "Needs credits", and flagged `locked` so the picker puts an "Add credits"
+ *   button on the row.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -387,7 +448,7 @@ export function buildModelOptions(
   meta = {},
 ) {
   const list = Array.isArray(modelList) ? modelList : [];
-  const isLocked = (m) => modelEnabled[m] === false;
+  const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
   const { modelProviders = {}, modelFamilies = {} } = meta || {};
@@ -437,14 +498,29 @@ export function buildModelOptions(
 
   const modelOption = (m) => {
     const tag = tagFor(m);
+    const locked = isLocked(m);
     return {
       value: m,
       label: labelFor(m),
-      // A model the wallet can't currently pay for stays selectable: the wall
-      // moves to use time, where the top-up card offers a way out. A disabled
-      // row was a dead end, and the call site derives its own top-up hint from
-      // the same modelEnabled map.
-      disabled: false,
+      /*
+       * A model the wallet can't currently pay for can't be picked. Letting it
+       * be picked meant the turn ran a different, affordable model instead,
+       * because resolution substitutes a pin it knows will be denied. So the
+       * user was told one model wrote their code while another did.
+       *
+       * The row stays visible so the model is still discoverable, and `locked`
+       * is what ModelSelect turns into the "Add credits" button on the row.
+       * Closing the pick without that button would leave the row naming an
+       * action it does not offer: the call site's top-up hint only renders when
+       * the CURRENT model is locked, so it says nothing to someone sitting on an
+       * affordable model and looking at one they can't pay for.
+       *
+       * A stored pin that is locked also still renders here, disabled and
+       * selected, which is what keeps a saved value from ever being a value with
+       * no matching option.
+       */
+      disabled: locked,
+      ...(locked ? { locked: true } : {}),
       ...(tag ? { tag } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
@@ -467,12 +543,11 @@ export function buildModelOptions(
           pin: 'top',
         }]
       : []),
-    // Wallet-based access (ENG-412, #434), pay-as-you-go shape (ENG-1248): a
-    // model the org's wallet can't currently pay for stays selectable, and the
-    // "Needs credits" state rides in the same pill as the version state rather
-    // than in the label. A disabled row was a dead end (click did nothing, no
-    // route to credits), and the label suffix ate the width (truncated
-    // "…Add credits to unl.").
+    // Wallet-based access, pay-as-you-go shape: a model the org's wallet can't
+    // currently pay for renders disabled, carrying the route to credits on the
+    // row. The "Needs credits" state rides in the same pill as the version state
+    // rather than in the label, because a label suffix ate the width and
+    // truncated to "…Add credits to unl.".
     ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];

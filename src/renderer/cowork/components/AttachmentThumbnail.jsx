@@ -17,23 +17,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
+import { fetchAuthenticatedBlob } from '../lib/authenticatedResource';
 
-export function AttachmentThumbnail({
-  file = null,
-  url = null,
-  alt = '',
-  onOpen = null,
-  // `cover`: fixed square tile, image cropped to fill (composer chip).
-  // Otherwise: natural aspect bounded by maxW/maxH (chat bubble).
-  cover = false,
-  size = 30,
-  maxW = 240,
-  maxH = 200,
-}) {
+// Shared by AttachmentThumbnail and ArtifactViewer's image preview — both
+// need the same blob-fetch workaround for the loopback-<img> CSP block (see
+// module comment above). Pass exactly one of `file` (a File/Blob) or `url`.
+// Returns `{ src, failed }`; `src` is '' while loading.
+export function useBlobImageSrc({ file = null, url = null } = {}) {
   const [src, setSrc] = useState('');
   const [failed, setFailed] = useState(false);
-  // Hold the object URL we created so cleanup revokes the right one even
-  // if the source changes before an in-flight fetch resolves.
   const createdRef = useRef('');
 
   useEffect(() => {
@@ -57,8 +49,7 @@ export function AttachmentThumbnail({
     if (file) {
       try { adopt(file); } catch { setFailed(true); }
     } else if (url) {
-      fetch(url)
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+      fetchAuthenticatedBlob(url)
         .then(adopt)
         .catch(() => { if (!cancelled) setFailed(true); });
     } else {
@@ -67,6 +58,23 @@ export function AttachmentThumbnail({
 
     return () => { cancelled = true; revoke(); };
   }, [file, url]);
+
+  return { src, failed };
+}
+
+export function AttachmentThumbnail({
+  file = null,
+  url = null,
+  alt = '',
+  onOpen = null,
+  // `cover`: fixed square tile, image cropped to fill (composer chip).
+  // Otherwise: natural aspect bounded by maxW/maxH (chat bubble).
+  cover = false,
+  size = 30,
+  maxW = 240,
+  maxH = 200,
+}) {
+  const { src, failed } = useBlobImageSrc({ file, url });
 
   const frameStyle = {
     display: 'inline-flex',

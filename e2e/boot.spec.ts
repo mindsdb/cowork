@@ -20,24 +20,32 @@ const BENIGN_CONSOLE = [/ERR_CONNECTION_REFUSED/i];
 
 let app: ElectronApplication;
 let tmpHome: string;
+let tmpUserData: string;
 
 test.afterEach(async () => {
   await app?.close().catch(() => {});
   if (tmpHome) fs.rmSync(tmpHome, { recursive: true, force: true });
+  if (tmpUserData) fs.rmSync(tmpUserData, { recursive: true, force: true });
 });
 
 test('app boots: window opens, React mounts, no uncaught errors', async () => {
   tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-e2e-'));
+  tmpUserData = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-e2e-user-data-')));
   // ELECTRON_RUN_AS_NODE leaks from IDE-spawned shells (VS Code sets it) and
   // makes the launched binary behave as plain Node — Electron then rejects
   // Playwright's --remote-debugging-port and the launch dies. Always strip.
   const { ELECTRON_RUN_AS_NODE: _stripped, ...cleanEnv } = process.env;
   app = await electron.launch({
-    args: [path.resolve('dist/main/main/index.js')],
+    args: [path.resolve('dist/main/main/index.js'), `--user-data-dir=${tmpUserData}`],
     env: {
       ...(cleanEnv as Record<string, string>),
       HOME: tmpHome, // clean-slate profile (macOS/Linux)
       USERPROFILE: tmpHome, // (Windows)
+      COWORK_DEV_HOME: path.join(tmpHome, '.cowork-e2e'),
+      // app.setName() intentionally chooses the shared dev profile. Suppress
+      // that identity side effect so Playwright's unique user-data-dir remains
+      // authoritative and the smoke can run beside an open development app.
+      COWORK_BUILD_KIND: 'prod',
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
     },
   });

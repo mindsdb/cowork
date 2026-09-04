@@ -12,13 +12,14 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
   MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
+import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
+import { renameClipboardImages } from '../lib/clipboardImageName';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
@@ -107,6 +108,14 @@ export default function Composer({
   onProjectChange,
   model,
   onModelChange,
+  // Reasoning-effort pick for the current model (ENG-1940) — a plain
+  // string ('low'/'medium'/'high', model-specific) or '' for "use the
+  // model's default". Sibling to `model`/`onModelChange`: same shape,
+  // same optionality (a caller that never passes these just never sees
+  // ModelSelect's effort footer, same as ChatView.askUserExpiry.test.jsx-style
+  // callers that omit onModelChange today).
+  effort = '',
+  onEffortChange,
   projects,
   models,
   /**
@@ -394,6 +403,16 @@ export default function Composer({
       ? codingHarness
       : (harnessPickerOptions[0]?.value || 'anton'));
 
+  // Harness gate for ModelSelect's effort footer (ENG-1940) — Hermes has no
+  // effort knob, mirroring SettingsView's harnessSupportsEffort. `effectiveHarness`
+  // already accounts for a coding-mode harness pick (Anton/Hermes/Claude
+  // Code); outside coding mode it's hardcoded 'anton' and says nothing
+  // about the account-wide harness toggle (web-only Settings → Agent
+  // Harness), so fall back to that — threaded in via `modelMeta`, the
+  // existing channel for settings-derived model metadata, rather than a
+  // new prop.
+  const effortHarness = codingModeEnabled ? effectiveHarness : (modelMeta?.harness || 'anton');
+
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
   // provider) empty. Claude Code still needs its own real model regardless,
@@ -406,30 +425,7 @@ export default function Composer({
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
-    const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
-    const list = models || [];
-    const ids = list.map((m) => m.id);
-    const byId = new Map(list.map((m) => [m.id, m]));
-    const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
-    // Only tag once something listed is NOT the latest; on an all-moving catalog the
-    // tag would sit on every row and distinguish nothing.
-    const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    const catalogOptions = ordered.map((m) => {
-      const tag = [
-        tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
-        // A frozen version whose head is also listed. An orphan carries no
-        // tag: "older version" is a claim relative to a newer one, and with
-        // no head present there is nothing for the user to read it against.
-        (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
-        modelEnabled[m.id] === false ? 'Needs credits' : '',
-      ].filter(Boolean).join(' · ');
-      return {
-        value: m.id,
-        label: m.name,
-        ...(tag ? { tag } : {}),
-        ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
-      };
-    });
+    const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
     // `maker: 'mindshub'` is the same escape hatch modelSection() gives an
@@ -882,10 +878,14 @@ export default function Composer({
   // to the textarea's default handling.
   const handlePaste = (event) => {
     if (disabled || busy || !onAttachFiles) return;
+    // Read the clipboard and consume the event BEFORE anything else — both need
+    // the live event. Renaming is sync on purpose (see lib/clipboardImageName):
+    // making this handler async would let an Enter right after Ctrl+V send the
+    // message before the attachment chip exists. ENG-1100.
     const files = extractClipboardFiles(event.clipboardData);
     if (!files.length) return;
     event.preventDefault();
-    handleAttachFiles(files);
+    handleAttachFiles(renameClipboardImages(files));
   };
 
   function pairKey(engine, name) {
@@ -1386,6 +1386,12 @@ export default function Composer({
                 className="meta-pill"
                 ariaLabel="Choose model"
                 placeholder="Select model"
+                // Reasoning-effort footer (ENG-1940) — lives inside this same
+                // popup now (see ModelSelect.jsx), not as a sibling pill.
+                modelEfforts={modelMeta?.modelEfforts}
+                effort={effort}
+                onEffortChange={onEffortChange}
+                harness={effortHarness}
               />
             )}
             {/* Mic / voice input intentionally hidden — voice flow isn't

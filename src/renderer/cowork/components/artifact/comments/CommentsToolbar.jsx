@@ -47,10 +47,10 @@ function ToolButton({ label, on = false, dim = false, onClick, children }) {
             'transition-[background,color,transform] duration-150',
             'group-active/tb:scale-90',
             on
-              ? 'bg-[#202021] text-white'
+              ? 'bg-ink text-surface'
               : dim
-                ? 'text-[#69696B] group-hover/tb:text-[#202021] group-hover/tb:bg-[rgba(32,32,33,0.08)]'
-                : 'text-[#1B1B1B] group-hover/tb:bg-[rgba(32,32,33,0.08)]',
+                ? 'text-ink-3 group-hover/tb:text-ink group-hover/tb:bg-surface-2'
+                : 'text-ink group-hover/tb:bg-surface-2',
           ].join(' ')}
         >
           {children}
@@ -61,7 +61,7 @@ function ToolButton({ label, on = false, dim = false, onClick, children }) {
 }
 
 const Divider = () => (
-  <Toolbar.Separator className="w-px h-[12px] bg-[rgba(39,39,42,0.1)] shrink-0" />
+  <Toolbar.Separator className="w-px h-[12px] bg-line shrink-0" />
 );
 
 export function CommentsToolbar({
@@ -77,11 +77,11 @@ export function CommentsToolbar({
     <Toolbar.Root
       aria-label="Comments toolbar"
       className="absolute left-1/2 bottom-[34px] z-40 h-[32px]
-        flex items-center gap-[2px] px-[4px] rounded-[46px]
+        flex items-center gap-[2px] px-1 rounded-[46px]
         motion-reduce:!animate-none"
       style={{
         transform: 'translateX(-50%)',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(241,241,241,0.9) 114.06%)',
+        background: 'color-mix(in srgb, var(--surface) 92%, transparent)',
         backdropFilter: 'blur(5.6px)',
         WebkitBackdropFilter: 'blur(5.6px)',
         boxShadow: SHADOW_TOOLBAR,
@@ -102,10 +102,9 @@ export function CommentsToolbar({
       <Divider />
       <Toolbar.Button
         onClick={onToggleMarkers}
-        className="h-[24px] px-[8px] flex items-center bg-transparent border-0 rounded-[12px]
-          cursor-pointer text-[12px] font-medium text-black whitespace-nowrap
-          transition-colors hover:bg-[rgba(32,32,33,0.08)]"
-        style={{ fontFamily: 'inherit' }}
+        className="h-[24px] px-2 flex items-center bg-transparent border-0 rounded-card
+          cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap font-[inherit]
+          transition-colors hover:bg-surface-2"
       >
         {markersShown ? 'Hide comment' : 'Show comment'}
       </Toolbar.Button>

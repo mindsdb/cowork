@@ -35,6 +35,11 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { belongsToProject } from '../lib/artifactProject';
 import { host } from '../../platform/host';
+import SharedResourceAttribution from '../components/SharedResourceAttribution';
+import {
+  canUseSharedResource,
+  isReservedProjectName,
+} from '../lib/sharedResourceAccess';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
 //
@@ -112,6 +117,15 @@ function isActive(project, tasks) {
   return ts > 0 && Date.now() - ts < HOUR;
 }
 
+/* Equality probe for the server-owned fields the detail refresh tracks. Both are
+   small plain payloads, so a serialized compare is enough to tell "the server
+   said the same thing again" from "hand the detail subtree a new object".
+   `?? null` folds a missing field and an explicit null into one value so an
+   omitted block reads the same either way. */
+function sameServerField(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 function activitySummaryFor(project, tasks) {
   const list = (tasks || []).filter((t) =>
     t.projectName === project?.name || t.projectPath === project?.path,
@@ -166,6 +180,8 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 // ─── Project menu (kebab popover) ────────────────────────────────────────
 
 function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
+  const canRename = !isReserved && canUseSharedResource(project, 'canRename');
+  const canDelete = !isReserved && canUseSharedResource(project, 'canDelete');
   const items = [
     !hideOpen && {
       id: 'open',
@@ -183,6 +199,9 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       id: 'rename',
       label: 'Rename…',
       icon: Ico.edit(13),
+      disabled: !canRename,
+      hint: !canRename ? 'Admin or creator' : undefined,
+      title: !canRename ? 'You do not have permission to rename this project.' : undefined,
       onClick: () => onRename?.(project),
     },
     onReveal && {
@@ -197,8 +216,13 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       label: 'Delete…',
       icon: Ico.trash(13),
       danger: true,
-      disabled: undeletable,
-      title: undeletable ? "The General project can't be deleted — it's the orphan-fallback workspace." : undefined,
+      disabled: undeletable || !canDelete,
+      hint: !undeletable && !canDelete ? 'Admin or creator' : undefined,
+      title: undeletable
+        ? "The General project can't be deleted — it's the orphan-fallback workspace."
+        : !canDelete
+          ? 'You do not have permission to delete this project.'
+          : undefined,
       onClick: () => onDelete?.(project),
     },
   ].filter(Boolean);
@@ -404,10 +428,13 @@ function ListRow({
   // views. Earlier the list row showed no input when editing, which
   // forced users to flip to grid view to actually rename.
   editing = false,
+  // The server is still working through this project's delete.
+  deleting = false,
   onRenameSubmit,
   onRenameCancel,
 }) {
   const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
+  const [actionFocused, setActionFocused] = useState(false);
   const triggerRef = useRef(null);
   const inputRef = useRef(null);
   const { mem, art } = useRowStats(project);
@@ -420,7 +447,7 @@ function ListRow({
   const activeTaskCount = projectTasks.filter((t) => t.status === 'active').length;
   const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
   const active = isActive(project, tasks);
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const isReserved = isReservedProjectName(project.name);
 
   // Auto-focus + select-all when the row enters edit mode so the user
   // can start typing the new name immediately.
@@ -439,48 +466,54 @@ function ListRow({
 
   return (
     <div
-      role={editing ? undefined : 'button'}
-      tabIndex={editing ? undefined : 0}
-      onClick={editing ? undefined : () => onOpen?.(project)}
+      role={editing || deleting ? undefined : 'button'}
+      tabIndex={editing || deleting ? undefined : 0}
+      onClick={editing || deleting ? undefined : () => onOpen?.(project)}
+      aria-busy={deleting || undefined}
       {...hoverProps}
-      onKeyDown={(e) => { if (!editing && e.key === 'Enter') onOpen?.(project); }}
-      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease] ${hovered ? 'bg-surface' : 'bg-transparent'} ${editing ? 'cursor-default' : 'cursor-pointer'}`}
+      onKeyDown={(e) => { if (!editing && !deleting && e.key === 'Enter') onOpen?.(project); }}
+      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease,opacity_.12s_ease] ${hovered && !deleting ? 'bg-surface' : 'bg-transparent'} ${editing || deleting ? 'cursor-default' : 'cursor-pointer'} ${deleting ? 'opacity-60' : ''}`}
     >
       {/* Name */}
-      <div className="flex items-center gap-2 min-w-0">
-        <span aria-hidden className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)]' : 'bg-ink-5'}`} />
-        <span className="inline-flex text-ink-3 shrink-0">
-          {Ico.folder(13)}
-        </span>
-        {editing ? (
-          <input
-            ref={inputRef}
-            defaultValue={project.name}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-              else if (e.key === 'Escape') { e.preventDefault(); onRenameCancel?.(); }
-            }}
-            onBlur={submitRename}
-            spellCheck={false}
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="flex-[1_1_0] min-w-0 font-display text-[14.5px] font-semibold text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
-          />
-        ) : (
-          <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
-        )}
-        {pinned && !editing && (
-          <span className="inline-flex text-accent shrink-0">
-            {Ico.pin(11)}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span aria-hidden className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)]' : 'bg-ink-5'}`} />
+          <span className="inline-flex text-ink-3 shrink-0">
+            {Ico.folder(13)}
           </span>
-        )}
+          {editing ? (
+            <input
+              ref={inputRef}
+              defaultValue={project.name}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
+                else if (e.key === 'Escape') { e.preventDefault(); onRenameCancel?.(); }
+              }}
+              onBlur={submitRename}
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="flex-[1_1_0] min-w-0 font-display text-[14.5px] font-semibold text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
+            />
+          ) : (
+            <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
+          )}
+          {pinned && !editing && (
+            <span className="inline-flex text-accent shrink-0">
+              {Ico.pin(11)}
+            </span>
+          )}
+        </div>
+        <SharedResourceAttribution resource={project} className="pl-[30px]" />
       </div>
 
       {/* Last activity */}
       <div className="font-body text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">
-        {summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
+        {deleting
+          ? <span className="text-ink-4">Deleting…</span>
+          : summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
       </div>
 
       {/* Number cells */}
@@ -500,8 +533,11 @@ function ListRow({
             const rect = triggerRef.current?.getBoundingClientRect();
             onMenuOpen?.(project, rect);
           }}
+          onKeyDown={(e) => e.stopPropagation()}
+          onFocus={() => setActionFocused(true)}
+          onBlur={() => setActionFocused(false)}
           aria-label="Project menu"
-          className={`w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved ? 'hidden' : 'inline-grid'} ${revealed || isReserved ? 'opacity-100' : 'opacity-0'}`}
+          className={`project-action-trigger w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved || deleting ? 'hidden' : 'inline-grid'} ${revealed || actionFocused || isReserved ? 'opacity-100' : 'opacity-0'}`}
         >
           {Ico.moreVert(15)}
         </button>
@@ -542,6 +578,7 @@ function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   model, onModelChange,
+  effort, onEffortChange,
   codingModeEnabled = false,
   attachments = [],
   connectors = [],
@@ -560,6 +597,8 @@ function ProjectDetail({
   // the grid cards, and exposing the toggle here would imply the
   // detail view participates in that state.
   editing = false,
+  // The server is still working through this project's delete.
+  deleting = false,
   onRenameStart,
   onRenameSubmit,
   onRenameCancel,
@@ -573,6 +612,7 @@ function ProjectDetail({
   codingModelDefault,
   harnessHermesEnabled,
   harnessClaudeCodeEnabled,
+  showMobileContext = false,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -582,11 +622,15 @@ function ProjectDetail({
 
   const [railOpen, setRailOpen] = useState(true);
   const [menuRect, setMenuRect] = useState(null);
+  const [actionFocused, setActionFocused] = useState(false);
   const kebabRef = useRef(null);
   const renameInputRef = useRef(null);
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const isReserved = isReservedProjectName(project.name);
   const { revealed, hoverProps } = useRevealOnHover(!!menuRect);
-  const showKebab = !isReserved && revealed;
+  /* Reveal state only, never the reserved check. A reserved project's kebab is
+     withheld by not rendering it at all, so no stylesheet can hand a coarse
+     pointer a tappable trigger into a menu with nothing but a disabled Delete. */
+  const showKebab = showMobileContext || revealed || actionFocused;
 
   // Focus + select-all the inline input on mount of the editing state.
   useEffect(() => {
@@ -609,23 +653,25 @@ function ProjectDetail({
     <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_220ms_cubic-bezier(.2,.7,.3,1)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
       <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
         {/* Floating expand-rail button (mirrors ChatView). */}
-        <Tooltip content="Expand panel">
-          <button
-            type="button"
-            onClick={() => setRailOpen(true)}
-            aria-label="Expand panel"
-            style={{
-              // Dynamic: the resting/hover-mirroring transition delay differs
-              // by railOpen (0ms vs 120ms/80ms) — not a clean binary class swap.
-              transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
-            }}
-            className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
-          >
-            {Ico.panelExpandLeft(15)}
-          </button>
-        </Tooltip>
+        {!showMobileContext && (
+          <Tooltip content="Expand panel">
+            <button
+              type="button"
+              onClick={() => setRailOpen(true)}
+              aria-label="Expand panel"
+              style={{
+                // Dynamic: the resting/hover-mirroring transition delay differs
+                // by railOpen (0ms vs 120ms/80ms) — not a clean binary class swap.
+                transition:
+                  `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
+                  `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
+              }}
+              className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
+            >
+              {Ico.panelExpandLeft(15)}
+            </button>
+          </Tooltip>
+        )}
 
         {/* Header — Projects › [project] crumb. Top padding honours the
             shell's --titlebar-safe-top so the crumb drops below the traffic
@@ -668,7 +714,15 @@ function ProjectDetail({
                   className="flex-[0_1_auto]"
                 />
               )}
-              {!editing && (
+              {deleting && (
+                <span
+                  aria-live="polite"
+                  className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0"
+                >
+                  Deleting…
+                </span>
+              )}
+              {!editing && !isReserved && !deleting && (
                 <button
                   ref={kebabRef}
                   type="button"
@@ -678,7 +732,9 @@ function ProjectDetail({
                     const rect = kebabRef.current?.getBoundingClientRect();
                     setMenuRect(rect || null);
                   }}
-                  className={`w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                  onFocus={() => setActionFocused(true)}
+                  onBlur={() => setActionFocused(false)}
+                  className={`project-action-trigger w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -703,36 +759,52 @@ function ProjectDetail({
 
         <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
-            <Composer
-              onSend={onSend}
-              project={project}
-              onProjectChange={() => {}}
-              model={model}
-              onModelChange={onModelChange}
-              projects={projects || []}
-              models={models || []}
-              modelMeta={modelMeta}
-              attachments={attachments}
-              connectors={connectors}
-              onNavigateToConnectors={onNavigateToConnectors}
-              onAttachFiles={onAttachFiles}
-              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
-              onRemoveAttachment={onRemoveAttachment}
-              disabledConnections={disabledConnections}
-              onUpdateConnectorMute={onUpdateConnectorMute}
-              metaReadOnly
-              modelReadOnly={false}
-              codingModeEnabled={codingModeEnabled}
-              onOpenSettings={onOpenSettings}
-              codingModelDefault={codingModelDefault}
-              harnessHermesEnabled={harnessHermesEnabled}
-              harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
-              sendsMeta
-              placeholder={`Start a new task in ${project.name}…`}
-              // Keyed on the id, not the name: renaming a project must not
-              // orphan the draft the user is in the middle of typing.
-              draftKey={`project:${project.id || project.name}`}
-            />
+            <div className="flex flex-col gap-2">
+              <SharedResourceAttribution resource={project} />
+              <Composer
+                onSend={onSend}
+                project={project}
+                onProjectChange={() => {}}
+                model={model}
+                onModelChange={onModelChange}
+                effort={effort}
+                onEffortChange={onEffortChange}
+                projects={projects || []}
+                models={models || []}
+                modelMeta={modelMeta}
+                attachments={attachments}
+                connectors={connectors}
+                onNavigateToConnectors={onNavigateToConnectors}
+                onAttachFiles={onAttachFiles}
+                onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+                onRemoveAttachment={onRemoveAttachment}
+                disabledConnections={disabledConnections}
+                onUpdateConnectorMute={onUpdateConnectorMute}
+                metaReadOnly
+                modelReadOnly={false}
+                codingModeEnabled={codingModeEnabled}
+                onOpenSettings={onOpenSettings}
+                codingModelDefault={codingModelDefault}
+                harnessHermesEnabled={harnessHermesEnabled}
+                harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+                sendsMeta
+                placeholder={`Start a new task in ${project.name}…`}
+                // Keyed on the id, not the name: renaming a project must not
+                // orphan the draft the user is in the middle of typing.
+                draftKey={`project:${project.id || project.name}`}
+              />
+            </div>
+
+            {showMobileContext && (
+              <div className="project-detail-mobile-context">
+                <ContextBox
+                  project={project}
+                  onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+                  onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+                  onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+                />
+              </div>
+            )}
 
             <TaskList
               tasks={projectTasks}
@@ -749,28 +821,30 @@ function ProjectDetail({
         </div>
       </div>
 
-      <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-        <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
-          <Tooltip content="Collapse panel">
-            <button
-              type="button"
-              onClick={() => setRailOpen(false)}
-              aria-label="Collapse panel"
-              className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
-            >
-              {Ico.panelCollapseRight(15)}
-            </button>
-          </Tooltip>
-        </div>
-        <WorkingFolderBox project={project} />
-        <ContextBox
-          project={project}
-          onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
-          onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
-          onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
-        />
-        <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
-      </aside>
+      {!showMobileContext && (
+        <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+          <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
+            <Tooltip content="Collapse panel">
+              <button
+                type="button"
+                onClick={() => setRailOpen(false)}
+                aria-label="Collapse panel"
+                className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
+              >
+                {Ico.panelCollapseRight(15)}
+              </button>
+            </Tooltip>
+          </div>
+          <WorkingFolderBox project={project} />
+          <ContextBox
+            project={project}
+            onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+            onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+            onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+          />
+          <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
+        </aside>
+      )}
     </div>
   );
 }
@@ -790,10 +864,16 @@ export default function ProjectsView({
   modelMeta,
   model,
   onModelChange,
+  effort,
+  onEffortChange,
   loading = false,
   onSelectProject,
   onCreateProject,
   onDeleteProject,
+  // Keys (id, else name) of the projects whose DELETE the server is still
+  // working through. Their card, row, and detail header say so and stop
+  // offering the actions that would fire a second one.
+  deletingProjectKeys = [],
   onSendInProject,
   codingModeEnabled = false,
   onSelectTask,
@@ -843,6 +923,33 @@ export default function ProjectsView({
   // selectedProject + routes here) lands directly in detail.
   const [detailProject, setDetailProject] = useState(selectedProject || null);
   useEffect(() => { setDetailProject(selectedProject || null); }, [selectedProject]);
+  /* A refetch can carry changed role capabilities or newer attribution while the
+     detail page stays mounted, so those two server-owned fields are the only
+     ones copied across. Name and path stay local: a list response that started
+     before a rename lands after it, and spreading it would flip the breadcrumb
+     back to the old name. Capabilities are assigned rather than merged so a
+     response that omits them drops the previous decision instead of holding an
+     allow open. An unchanged pair returns the same object so the composer,
+     context box, and task list do not re-render on every poll. */
+  useEffect(() => {
+    setDetailProject((current) => {
+      if (!current) return current;
+      const fresh = projects.find((project) => (
+        (current.id && project.id === current.id)
+        || (!current.id && project.name === current.name)
+      ));
+      if (!fresh) return current;
+      if (
+        sameServerField(current.capabilities, fresh.capabilities)
+        && sameServerField(current.attribution, fresh.attribution)
+      ) return current;
+      return {
+        ...current,
+        capabilities: fresh.capabilities,
+        attribution: fresh.attribution,
+      };
+    });
+  }, [projects]);
 
   // Persist view preference.
   useEffect(() => { localStorage.setItem('anton:projects-view', view); }, [view]);
@@ -875,6 +982,10 @@ export default function ProjectsView({
     window.dispatchEvent(new CustomEvent('anton:projects-changed'));
   };
 
+  const isDeleting = (project) => (
+    !!project && deletingProjectKeys.includes(project.id || project.name)
+  );
+
   const handleOpen = (project) => {
     onSelectProject?.(project);
     setDetailProject(project);
@@ -884,26 +995,46 @@ export default function ProjectsView({
   // edit mode. The card's title becomes an <input>; the parent owns
   // the editing-target state so only one card edits at a time.
   const handleRenameStart = (project) => {
+    if (!canUseSharedResource(project, 'canRename')) return;
     setEditingProjectName(project.name);
   };
   const handleRenameCancel = () => {
     setEditingProjectName(null);
   };
   const handleRenameSubmit = async (oldName, rawNext) => {
-    const next = (rawNext || '').trim();
+    /* Leave edit mode before any guard can bail out. Every early return below
+       used to strand the header as an input that blur and Enter both ignored,
+       with Escape the only way back to the project name. */
     setEditingProjectName(null);
+    /* The list is not the only place the project is known: detail can be seeded
+       from selectedProject before the list loads, and a second rename is
+       submitted before the refetch carrying the first one lands. */
+    const sourceProject = projects.find((project) => project.name === oldName)
+      || (detailProject?.name === oldName ? detailProject : null);
+    if (!sourceProject) return;
+    if (!canUseSharedResource(sourceProject, 'canRename')) {
+      alert('You do not have permission to rename this project.');
+      return;
+    }
+    const next = (rawNext || '').trim();
     if (!next || next === oldName) return;
     try {
-      const result = await renameProject(oldName, next);
+      const result = await renameProject(sourceProject, next);
       const finalName = result?.name || next;
-      const finalPath = result?.path || detailProject?.path;
+      const finalPath = result?.path || sourceProject.path;
       // If we're sitting in detail mode for the renamed project, swap
       // the local detailProject so the breadcrumb shows the new name
       // immediately — App.jsx's selectedProject won't update until the
       // user re-enters the project from the grid.
-      if (detailProject?.name === oldName) {
-        setDetailProject({ ...detailProject, name: finalName, path: finalPath });
-      }
+      setDetailProject((current) => {
+        if (!current) return current;
+        const isRenamedProject = sourceProject.id && current.id
+          ? sourceProject.id === current.id
+          : current.name === oldName;
+        return isRenamedProject
+          ? { ...current, ...result, name: finalName, path: finalPath }
+          : current;
+      });
       // App-level listener refetches projects on this event.
       window.dispatchEvent(new CustomEvent('anton:projects-changed'));
     } catch (e) {
@@ -955,6 +1086,8 @@ export default function ProjectsView({
         modelMeta={modelMeta}
         model={model}
         onModelChange={onModelChange}
+        effort={effort}
+        onEffortChange={onEffortChange}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
@@ -975,17 +1108,15 @@ export default function ProjectsView({
         codingModelDefault={codingModelDefault}
         harnessHermesEnabled={harnessHermesEnabled}
         harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+        showMobileContext={isMobile}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
+        deleting={isDeleting(detailProject)}
         onRenameStart={handleRenameStart}
         onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
         onRenameCancel={handleRenameCancel}
         onReveal={handleReveal}
         onDelete={(proj) => {
-          // Bounce back to the grid first so we don't render a detail
-          // page for a project that's about to disappear, then defer
-          // the destructive call to App.jsx's confirmation flow.
-          setDetailProject(null);
           onDeleteProject?.(proj);
         }}
         onOpenSchedule={onOpenSchedule}
@@ -1057,12 +1188,14 @@ export default function ProjectsView({
               scheduled={scheduled}
               pinned={pinned.has(p.name)}
               editing={editingProjectName === p.name}
+              deleting={isDeleting(p)}
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
               isMenuOpen={menuFor?.project?.name === p.name}
               onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
               onRenameCancel={handleRenameCancel}
+              alwaysShowActions={isMobile}
             />
           ))}
           {/* Trailing dashed "+ New project" card — clicking just
@@ -1095,6 +1228,7 @@ export default function ProjectsView({
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
               isMenuOpen={menuFor?.project?.name === p.name}
               editing={editingProjectName === p.name}
+              deleting={isDeleting(p)}
               onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
               onRenameCancel={handleRenameCancel}
             />
@@ -1107,7 +1241,7 @@ export default function ProjectsView({
         anchorRect={menuFor?.rect}
         project={menuFor?.project}
         pinned={menuFor ? pinned.has(menuFor.project.name) : false}
-        isReserved={menuFor?.project?.name === 'general' || menuFor?.project?.name === 'default'}
+        isReserved={isReservedProjectName(menuFor?.project?.name)}
         onClose={() => setMenuFor(null)}
         onOpen={handleOpen}
         onRename={handleRenameStart}

@@ -18,8 +18,15 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList } from './api';
+// The boundary reloads the document for real; this suite is about what authFetch
+// hands back to its caller, not about the navigation that follows.
+const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
+vi.mock('./lib/organizationTransition', () => transitionMock);
+
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { setOrgMode } from '../lib/orgMode';
+import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -27,6 +34,138 @@ const jsonRes = (body, ok = true, status = 200) => ({
   headers: { get: () => 'application/json' },
   json: async () => body,
   text: async () => JSON.stringify(body),
+});
+
+const ORGANIZATION_A = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+function accessToken(organizationId) {
+  const payload = btoa(JSON.stringify({
+    sub: 'user-1',
+    activate_organization: { id: organizationId },
+  })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `header.${payload}.signature`;
+}
+
+describe('authFetch organization boundary', () => {
+  beforeEach(() => {
+    __resetOrganizationRequestBoundaryForTests();
+    hostMock.isWeb = true;
+    hostMock.getAccessToken.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the document organization beside the browser bearer', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const fetch = vi.fn(async () => jsonRes({ ok: true }));
+    vi.stubGlobal('fetch', fetch);
+
+    await authFetch('/api/v1/projects');
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
+      headers: {
+        Authorization: expect.stringMatching(/^Bearer /),
+        'X-Cowork-Expected-Organization-Id': ORGANIZATION_A,
+      },
+    });
+  });
+
+  /*
+   * The throw is what stops a caller reading a body scoped to an organization
+   * this document did not start in. Returning the response would let every
+   * existing `!res.ok` branch render the rejection as ordinary data.
+   */
+  it('refuses to return a response the server marked for reload', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const rejected = {
+      ...jsonRes({ code: 'organization_reload_required' }, false, 409),
+      headers: new Headers({ 'X-Cowork-Organization-Reload': 'required' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => rejected));
+
+    await expect(authFetch('/api/v1/projects'))
+      .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('listProjectFiles mutation refresh', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('supersedes a coalesced pre-mutation request with a fresh generation', async () => {
+    let resolveStaleFetch;
+    let resolveFreshFetch;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleFetch = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFreshFetch = resolve;
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stale = listProjectFiles('billing-force-fresh-test');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const fresh = listProjectFiles('billing-force-fresh-test', { forceFresh: true });
+    const joinedFresh = listProjectFiles('billing-force-fresh-test');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // Settling the superseded request must neither satisfy new callers nor
+    // remove the fresh generation from the single-flight map.
+    resolveStaleFetch(jsonRes({ files: [{ path: '.anton/anton.md', synthetic: false }] }));
+    await stale;
+    const joinedAfterStaleSettles = listProjectFiles('billing-force-fresh-test');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const freshBody = { files: [{ path: '.anton/anton.md', synthetic: true }] };
+    resolveFreshFetch(jsonRes(freshBody));
+    await expect(Promise.all([fresh, joinedFresh, joinedAfterStaleSettles]))
+      .resolves.toEqual([freshBody, freshBody, freshBody]);
+  });
+
+  it('uses the same fresh generation boundary for memory reads', async () => {
+    let resolveStaleMemory;
+    let resolveFreshMemory;
+    let memoryCalls = 0;
+    const project = { id: 'memory-race-project', name: 'billing' };
+    const fetchMock = vi.fn((url) => {
+      const href = String(url);
+      if (href.includes('/memory/')) {
+        memoryCalls += 1;
+        return new Promise((resolve) => {
+          if (memoryCalls === 1) resolveStaleMemory = resolve;
+          else resolveFreshMemory = resolve;
+        });
+      }
+      if (href.includes('/projects/')) return Promise.resolve(jsonRes([project]));
+      throw new Error(`Unexpected request: ${href}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stale = fetchMemory(project);
+    await vi.waitFor(() => expect(memoryCalls).toBe(1));
+    const fresh = fetchMemory(project, { forceFresh: true });
+    const joinedFresh = fetchMemory(project);
+    await vi.waitFor(() => expect(memoryCalls).toBe(2));
+
+    resolveStaleMemory(jsonRes([{
+      scope: 'project', project_id: project.id, category: 'rules', content: 'old',
+    }]));
+    await stale;
+    const joinedAfterStaleSettles = fetchMemory(project);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(memoryCalls).toBe(2);
+
+    resolveFreshMemory(jsonRes([{
+      scope: 'project', project_id: project.id, category: 'rules', content: 'new',
+    }]));
+    const results = await Promise.all([fresh, joinedFresh, joinedAfterStaleSettles]);
+    expect(results.map((result) => result.sections[0].files[0].content))
+      .toEqual(['new', 'new', 'new']);
+  });
 });
 
 // The `refresh` flag is the whole mechanism behind "a top-up unlocks paid
@@ -121,6 +260,98 @@ describe('updateSettings', () => {
       return jsonRes({});
     }));
     await expect(updateSettings({ greeting: 'x' })).rejects.toThrow(/Failed to save settings/);
+  });
+});
+
+// A MindsHub key the user typed must not be stored by the sidecar at all. The
+// Settings form writes it twice from one keystroke — the `minds_api_key` row
+// and the raw value inside the provider card — so both halves have to be
+// diverted. `providers_json` is a plain column nothing encrypts, which makes
+// the second half the one that actually leaves a readable key on disk.
+describe('updateSettings — a user-supplied MindsHub key never reaches the server', () => {
+  let calls;
+
+  const withElectronHost = (impl) => {
+    hostMock.isElectron = true;
+    hostMock.isWeb = false;
+    hostMock.mindshubSetUserKey = vi.fn(impl);
+  };
+
+  beforeEach(() => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      calls.push({ url: String(url), method, body: options.body });
+      const u = String(url);
+      if (method === 'PUT' && u.endsWith('/settings/')) return jsonRes({ updated: [] });
+      if (method === 'GET' && u.endsWith('/settings/')) return jsonRes([]);
+      if (u.includes('/settings/validate')) return jsonRes({ configReady: true, configError: null });
+      return jsonRes({});
+    }));
+  });
+
+  afterEach(() => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    delete hostMock.mindshubSetUserKey;
+    vi.unstubAllGlobals();
+  });
+
+  const patch = {
+    mindsApiKey: 'mdb_typed_by_hand',
+    providers: [{ type: 'minds-cloud', apiKey: 'mdb_typed_by_hand', isDefault: true }],
+  };
+
+  it('hands the key to main and strips both copies from the write', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings(patch);
+
+    expect(hostMock.mindshubSetUserKey).toHaveBeenCalledWith('mdb_typed_by_hand');
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const body = JSON.parse(put.body);
+    expect(body.values.minds_api_key).toBeUndefined();
+    // The card survives, masked — the same shape the server returns on read.
+    expect(JSON.parse(body.values.providers_json)[0].apiKey).toBe('***');
+    // The clinching assertion: the raw value is nowhere in what we sent.
+    expect(put.body).not.toContain('mdb_typed_by_hand');
+  });
+
+  it('leaves the other provider cards untouched', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings({
+      mindsApiKey: 'mdb_typed_by_hand',
+      providers: [
+        { type: 'minds-cloud', apiKey: 'mdb_typed_by_hand' },
+        { type: 'anthropic', apiKey: 'sk-ant-users-own' },
+      ],
+    });
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const cards = JSON.parse(JSON.parse(put.body).values.providers_json);
+    expect(cards.find((c) => c.type === 'anthropic').apiKey).toBe('sk-ant-users-own');
+  });
+
+  it('fails the save rather than writing the key when main cannot store it', async () => {
+    // Falling through to the settings write here would put the key on disk,
+    // which is the exact outcome this path exists to prevent.
+    withElectronHost(async () => ({ ok: false, supported: true, reason: 'keychain locked' }));
+
+    await expect(updateSettings(patch)).rejects.toThrow(/keychain locked/);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('web keeps writing the key as a setting — there is no main process to route it to', async () => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    // What the real host returns with no bridge behind it.
+    hostMock.mindshubSetUserKey = vi.fn(async () => ({ ok: false, supported: false }));
+
+    await updateSettings(patch);
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    expect(JSON.parse(put.body).values.minds_api_key).toBe('mdb_typed_by_hand');
   });
 });
 
@@ -282,6 +513,20 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
   });
+
+  it('carries the request id onto a generic error row', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err.requestId).toBe('corr-abc');
+  });
 });
 
 // ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
@@ -360,6 +605,29 @@ describe('streamNewSession — harness pick', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).not.toHaveProperty('harness');
+  });
+});
+
+// A dropped connection mid-stream must carry a code distinct from a stalled
+// tail or a reconnect failure, so chat_turn_failed can tell them apart
+// instead of bucketing every client-side drop as unknown.
+describe('streamNewSession — network failure reporting', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports a code when the reader fails mid-stream', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => { throw new Error('network drop'); } }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve(null), onError: (message, event) => resolve(event) });
+    });
+
+    expect(result?.code).toBe('stream_error');
   });
 });
 
@@ -461,5 +729,217 @@ describe('fetchInFlightList', () => {
       json: async () => ({}),
     })));
     expect(await fetchInFlightList()).toEqual([]);
+  });
+});
+
+describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2)', () => {
+  const meta = { id: 'c1', title: 'T', project: null };
+
+  // Drives the two requests independently. A spec is `{ ok?, status?, body? }`,
+  // or the string 'throw' to simulate a network failure (no HTTP status).
+  const stub = (metaSpec, itemsSpec) => {
+    const mk = (spec) => (spec === 'throw'
+      ? () => { throw new Error('offline'); }
+      : async () => ({
+          ok: spec.ok ?? true,
+          status: spec.status ?? 200,
+          headers: { get: () => 'application/json' },
+          json: async () => spec.body ?? {},
+          text: async () => JSON.stringify(spec.body ?? {}),
+        }));
+    const metaFn = mk(metaSpec);
+    const itemsFn = mk(itemsSpec);
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).endsWith('/items') ? itemsFn() : metaFn())));
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns ok with hydrated messages when both requests succeed', async () => {
+    stub({ body: meta }, { body: [{ role: 'user', content: 'hi' }] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages.length).toBeGreaterThan(0);
+  });
+
+  it('maps a 404 on metadata to not_found (dead link → redirect)', async () => {
+    stub({ ok: false, status: 404 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'not_found' });
+  });
+
+  it('maps a 5xx on metadata to unavailable with the code', async () => {
+    stub({ ok: false, status: 503 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 503 });
+  });
+
+  it('maps a non-404 items failure to unavailable — never a blank ok', async () => {
+    // Metadata exists but the transcript 500s: an ok+[] would silently blank a
+    // real conversation, so the route must offer the retry instead.
+    stub({ body: meta }, { ok: false, status: 500 });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 500 });
+  });
+
+  it('maps an items network failure to unavailable (code 0)', async () => {
+    stub({ body: meta }, 'throw');
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 0 });
+  });
+
+  it('treats a 404 on items as an existing-but-empty conversation (the one benign exception)', async () => {
+    stub({ body: meta }, { ok: false, status: 404 });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages).toEqual([]);
+  });
+});
+
+// ENG-1919: Stop must never silently report success when the cancel request
+// did not actually reach the server — otherwise the UI shows a stopped task
+// that is still running (and still spending tokens) on the remote worker.
+describe('cancelResponse', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports ok when the server accepts the cancel', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ cancelled: true, conversation_id: 'conv-a' })));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'ok', cancelled: true, conversation_id: 'conv-a',
+    });
+  });
+
+  it('treats a 404 as already-gone (nothing left to stop)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ status: 'not_found' }, false, 404)));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'gone', conversation_id: 'conv-a',
+    });
+  });
+
+  it('reports error (not success) when the request never lands', async () => {
+    // A network failure: fetch rejects, so the cancel flag was never written
+    // and the turn may still be running. The old code returned a fake
+    // {cancelled:false} here, which is the bug.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'error', conversation_id: 'conv-a',
+    });
+  });
+
+  it('reports error on a 5xx (the server was reached but the cancel failed)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ detail: 'boom' }, false, 500)));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'error', conversation_id: 'conv-a',
+    });
+  });
+
+  it('never throws on a missing conversation id', async () => {
+    expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+/*
+ * Which failures `fetchHubWorkspaces` answers and which it re-throws is the
+ * whole retry contract, and it cannot be seen from the hook's tests: those mock
+ * this module, so a version that swallows everything again keeps them green.
+ * A definite answer is answered; a transient one is thrown for the caller to
+ * ask again.
+ */
+describe('fetchHubWorkspaces', () => {
+  const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Captures the call, because the resolved value alone left the route and the
+  // credential header unpinned: renaming the path or dropping `hubHeaders()`
+  // kept all five cases green, and the header is the only reason the sidecar
+  // forwards anything to auth.
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+
+  it('answers dark for a 404, because a sidecar without the route will not grow one', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('throws on a 5xx, so one blip at launch does not hide the control for the session', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('throws when the sidecar is not listening yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('answers dark when the body is not an object', async () => {
+    respond(jsonRes('nope'));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('passes a 200 through as the server sent it', async () => {
+    const payload = { enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null };
+    respond(jsonRes(payload));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(payload);
+  });
+
+  it('asks the workspaces route and carries the credential in its own header', async () => {
+    // `Authorization` is taken by the loopback token in the desktop shell, so
+    // the caller's JWT has to travel under X-MindsHub-Authorization or the
+    // sidecar has nothing to forward.
+    hostMock.getAccessToken.mockResolvedValueOnce('jwt-abc');
+    respond(jsonRes({ enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null }));
+
+    await fetchHubWorkspaces();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
+    expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
+  });
+});
+
+// /artifacts/status is desktop-only (require_local_tenancy on the server), and
+// usePublish asks for it on every viewer open and every window focus. In org
+// mode each of those logged a 403 — harmless, because the helper already
+// swallows failures, but noise the user reported next to the real comments 401.
+describe('fetchArtifactStatus', () => {
+  afterEach(() => { setOrgMode(false); });
+
+  it('does not call the desktop-only route in org mode', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(true);
+
+    expect(await fetchArtifactStatus('/p/a.html')).toBe(null);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still calls the route on desktop', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ publishedUrl: 'https://x/a', modified: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(false);
+
+    const out = await fetchArtifactStatus('/p/a.html');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/artifacts/status?path=');
+    expect(out.publishedUrl).toBe('https://x/a');
   });
 });

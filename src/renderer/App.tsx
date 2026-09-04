@@ -9,11 +9,12 @@ import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
-import { resolveBootTarget } from './lib/bootTarget';
+import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
 import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
+import { deriveBootStatus } from '../shared/boot-status';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -32,6 +33,12 @@ const COWORKER_KEY = 'anton.coworker';
 // fade), so the animated orb is on screen almost immediately and stays for
 // roughly this long before routing onward.
 const WELCOME_MIN_MS = 1600;
+
+function hasCodeFixture(): boolean {
+  return import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('codeFixture');
+}
 
 function hasLocalTermsConsent(): boolean {
   try {
@@ -78,7 +85,10 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>('loading');
+  // Code fixtures are a development-only visual QA surface. Let them bypass
+  // first-run/auth routing so interrupted, approval, failure, dense, and
+  // responsive states stay deterministic even on a clean local profile.
+  const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
   const [coworker] = useState(recallCoworker);
   // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
   // setup/install screen (server wasn't up to take the DB write). Consumed once
@@ -94,6 +104,20 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
+  // ENG-749/ENG-2296: progress line under the welcome orb while the loading
+  // screen is held open through a boot-time update, so a download isn't a silent
+  // stall. Derived from the OTA phase, the shell-auto phase, and the manual
+  // shell-reinstall notice (deriveBootStatus) so the overlay never shows the
+  // completion-ish "Almost ready…" while a shell update still needs a relaunch
+  // to take effect.
+  const [otaPhase, setOtaPhase] = useState<string | null>(null);
+  const [shellPhase, setShellPhase] = useState<string | null>(null);
+  const [manualShellPending, setManualShellPending] = useState(false);
+  const bootStatus = deriveBootStatus({
+    ota: { phase: otaPhase },
+    shell: { phase: shellPhase },
+    manualShellPending,
+  });
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -126,7 +150,47 @@ export default function App() {
     applyArcadePreset(skin);
   }, [theme, skin]);
 
+  // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
+  // the app's lifetime so the message is live while init() holds on the gate.
+  // `shell-available` isn't an OTA phase but the manual shell-reinstall notice
+  // (ENG-849), so route it to the pending flag — never claim completion while a
+  // reinstall is outstanding — rather than the OTA phase (ENG-2296).
   useEffect(() => {
+    return host.onUpdateStatus((status) => {
+      if (status?.phase === 'shell-available') { setManualShellPending(true); return; }
+      setOtaPhase(status?.phase ?? null);
+    });
+  }, []);
+
+  // Also reflect shell auto-update progress (ENG-2296): the boot line was
+  // previously blind to the shell channel and could claim "Almost ready…" while
+  // a shell relaunch was still pending. Pull once for reload recovery, then
+  // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellAutoUpdate()
+      .then((snapshot) => { if (!cancelled) setShellPhase(snapshot?.phase ?? null); })
+      .catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
+      if (!cancelled) setShellPhase(snapshot?.phase ?? null);
+    });
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
+
+  // Recover the manual shell-reinstall notice after an OTA reload drops the
+  // original `shell-available` push, and surface it on old shells that never
+  // push it at all (ENG-1103 manifest fallback in getShellUpdate). Latch-only:
+  // a null result never clears a notice a push already established.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellUpdate()
+      .then((update) => { if (!cancelled && update) setManualShellPending(true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (hasCodeFixture()) return;
     async function init() {
       const started = Date.now();
       // Whether this browser has booted before is read up front: the web SPA
@@ -142,7 +206,17 @@ export default function App() {
       // hasLocalTermsConsent() is internally try/caught (returns false on any
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
-      const decision = await resolveBootTarget(host, hasLocalTermsConsent());
+      // ENG-2167: third consent source. On hosted web the first two can never
+      // fire — readSettings degrades to {} and cowork-server has no
+      // ANTON_TERMS_CONSENT — so localStorage was the only one left, and it is
+      // per-browser. Registration already agreed the same Terms and Privacy
+      // Policy. Resolved here rather than inside resolveBootTarget so that unit
+      // stays free of module loading, and never throws (see its doc comment).
+      const decision = await resolveBootTarget(
+        host,
+        hasLocalTermsConsent(),
+        await resolveRegistrationConsent(host.isWeb, () => import('./lib/keycloak')),
+      );
       const target: Page = decision.target;
       // Fail-safe for an unresolved mode: treat it as org in the web build. The
       // opposite default would render desktop-only artifact actions (Share,
@@ -206,7 +280,14 @@ export default function App() {
   const handleAuthComplete = async (deferredModelLines?: string[]) => {
     deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
-    try { await host.restartServer(); } catch {}
+    /* The sidecar deliberately keeps running here. `persistOnboarding` has
+     * already written every setting to it over loopback and treats that DB
+     * write as authoritative, so a fresh process would only read back what
+     * this one already holds. Restarting would also throw away the MindsHub
+     * credential, which lives in the sidecar's memory and nowhere else.
+     * `syncMindsCredential` hands it to the replacement before `startServer`
+     * resolves, so the restart buys a stop, a cold start and a re-push, and
+     * changes nothing the user can see. */
     try {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) {
@@ -246,6 +327,11 @@ export default function App() {
           <div className="arc-welcome-title">
             Welcome to MindsHub Cowork
           </div>
+          {bootStatus && (
+            <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>
+              {bootStatus}
+            </div>
+          )}
         </div>
       )}
 

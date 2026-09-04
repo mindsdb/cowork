@@ -159,6 +159,86 @@ describe('createShellAutoUpdater', () => {
     });
   });
 
+  it('classifies a foreign-signed installer (ERR_UPDATER_INVALID_SIGNATURE) as terminal', async () => {
+    // The real electron-updater rejection: NsisUpdater.verifySignature throws
+    // this exact message shape with code ERR_UPDATER_INVALID_SIGNATURE. The
+    // message deliberately contains none of the integrity substrings
+    // (signature/sha512/checksum), so classification must fall back to `code`
+    // — otherwise a refused foreign-signed installer reads as a recoverable
+    // network error and the UI offers Retry instead of refusing terminally.
+    const signer = setup();
+    await signer.updater.check('boot');
+    const rejected = Object.assign(
+      new Error(
+        'New version 2.0.8 is not signed by the application owner: '
+        + 'publisherNames: "Mindsdb, Inc.", raw info: {"StatusMessage":'
+        + '"A certificate chain processed, but terminated in a root certificate '
+        + 'which is not trusted by the trust provider."}',
+      ),
+      { code: 'ERR_UPDATER_INVALID_SIGNATURE' },
+    );
+    signer.adapter.emit('updater-error', rejected);
+    expect(signer.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'artifact-verification-failed',
+      recoverable: false,
+    });
+  });
+
+  it('keys the signer rejection on `code`, not the message text', async () => {
+    // Isolates the code-based branch: a message with none of the integrity
+    // phrases (no "not signed"/"sha512"/"checksum") must still be terminal via
+    // `code` alone — so the check can't silently regress behind the text match.
+    const signer = setup();
+    await signer.updater.check('boot');
+    signer.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('New version rejected'), { code: 'ERR_UPDATER_INVALID_SIGNATURE' }),
+    );
+    expect(signer.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'artifact-verification-failed',
+      recoverable: false,
+    });
+  });
+
+  it('classifies a transient TLS leaf-signature error as recoverable, not terminal', async () => {
+    // Node's TLS failure carries code UNABLE_TO_VERIFY_LEAF_SIGNATURE and the
+    // message "unable to verify leaf signature" — both contain "signature". A
+    // broad substring match would wedge the updater terminally on a transient
+    // proxy/TLS hiccup; it must stay recoverable so the UI offers Retry.
+    const tls = setup();
+    await tls.updater.check('boot');
+    tls.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('unable to verify leaf signature'), {
+        code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      }),
+    );
+    expect(tls.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'update-request-failed',
+      recoverable: true,
+    });
+  });
+
+  it('classifies a permanent updater misconfiguration code as terminal', async () => {
+    // ERR_UPDATER_INVALID_CHANNEL (and its invalid-version/provider siblings)
+    // can never succeed on retry, so they must be terminal rather than offering
+    // an endless Retry from the generic recoverable bucket.
+    const cfg = setup();
+    await cfg.updater.check('boot');
+    cfg.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('invalid channel'), { code: 'ERR_UPDATER_INVALID_CHANNEL' }),
+    );
+    expect(cfg.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'unsupported-install',
+      recoverable: false,
+    });
+  });
+
   it('immediately supplies the authoritative snapshot to subscribers', () => {
     const { updater } = setup();
     const listener = vi.fn();

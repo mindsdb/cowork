@@ -12,7 +12,7 @@
 //      the modal handles read/write/delete via the project files
 //      API. `isAntonMd` (or the path matching
 //      ANTON_PROJECT_INSTRUCTIONS_PATH) flips on the special anton.md
-//      affordances (label, empty-state placeholder, undeletable).
+//      affordances (label and empty-state placeholder).
 //
 //   2. Generic mode: pass `title` + `loader` (or `initialContent`)
 //      + `saver` + optional `remover`. Used by the memory rail to
@@ -41,7 +41,13 @@ import {
   BASE,
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import SharedResourceAttribution from '../SharedResourceAttribution';
 import { host } from '../../../platform/host';
+import {
+  downloadAuthenticatedResource,
+  fetchAuthenticatedBlob,
+} from '../../lib/authenticatedResource';
+import { downloadFilename } from '../../lib/browserDownload';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -77,9 +83,11 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
     const webUrl = dlUrl || rawUrl;
     if (!webUrl) return null;
     return (
-      <a
-        href={webUrl}
-        download
+      <button
+        type="button"
+        onClick={() => {
+          downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
+        }}
         style={{
           textDecoration: 'none',
           cursor: 'pointer',
@@ -89,7 +97,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 6,
         }}
-      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</a>
+      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</button>
     );
   }
 
@@ -184,11 +192,17 @@ export default function ContextFileModal({
   loader,          // optional async () => string. Falls back to readProjectFile.
   saver,           // optional async (content) => void. Falls back to writeProjectFile.
   remover,         // optional async () => void. `null` disables delete; otherwise
-                   //   falls back to deleteProjectFile (anton.md is always undeletable).
+                   //   falls back to deleteProjectFile.
   startInEditMode, // optional bool — overrides the "open in edit if empty" default.
   placeholder,     // optional textarea placeholder
   emptyMessage,    // optional message shown when content is empty + not editing
   dense,           // pass-through to MarkdownContent — smaller type for memory previews
+  editable = true, // server-derived shared-resource edit capability
+  deletable,       // server-derived shared-resource delete capability. Left
+                   //   undefined it means "no decision", which widens to true
+                   //   for ordinary files and stays closed for anton.md.
+  attributionResource,
+  onResourceLoaded,// receives fresh file attribution/capabilities from read/write responses
   onClose,
   onChanged,       // called after a successful save / delete so callers can refresh
 }) {
@@ -211,6 +225,18 @@ export default function ContextFileModal({
   const [previewUrl, setPreviewUrl] = useState('');
   const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
+  /*
+    The load effect must not re-fire when a capability changes. Reading the
+    file back can itself flip `editable` (the listing row carried no decision,
+    the GET did), which would otherwise mean a second read on every open, and
+    a revoked `canEdit` arriving mid-typing would reset the draft. The
+    callback rides a ref for the same reason: an inline arrow from a caller
+    would turn the effect into an unbounded fetch loop.
+  */
+  const editableRef = useRef(editable);
+  const onResourceLoadedRef = useRef(onResourceLoaded);
+  useEffect(() => { editableRef.current = editable; }, [editable]);
+  useEffect(() => { onResourceLoadedRef.current = onResourceLoaded; }, [onResourceLoaded]);
 
   const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
   // Generic mode = caller wired up its own loader/saver and didn't
@@ -270,8 +296,7 @@ export default function ContextFileModal({
         // 'self' data: blob:), but connect-src allows the loopback origin —
         // so fetch the bytes and render them as a blob: URL.
         let objectUrl = '';
-        fetch(url)
-          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+        fetchAuthenticatedBlob(url)
           .then((blob) => {
             if (cancelled) return;
             objectUrl = URL.createObjectURL(blob);
@@ -328,20 +353,21 @@ export default function ContextFileModal({
       // fetch / a draft). Skip the round trip.
       setContent(initialContent);
       setDraft(initialContent);
-      setEditing(startInEditMode ?? (isAnton && !initialContent.trim()));
+      setEditing(editableRef.current && (startInEditMode ?? (isAnton && !initialContent.trim())));
       return undefined;
     }
     setLoading(true);
     const read = typeof loader === 'function'
       ? loader()
-      : readProjectFile(projectName, filePath).then((res) => res?.content || '');
+      : readProjectFile(projectName, filePath);
     Promise.resolve(read)
       .then((body) => {
         if (cancelled) return;
         const text = typeof body === 'string' ? body : (body?.content || '');
+        if (body && typeof body === 'object') onResourceLoadedRef.current?.(body);
         setContent(text);
         setDraft(text);
-        setEditing(startInEditMode ?? (isAnton && !text.trim()));
+        setEditing(editableRef.current && (startInEditMode ?? (isAnton && !text.trim())));
       })
       .catch((e) => {
         if (cancelled) return;
@@ -371,13 +397,18 @@ export default function ContextFileModal({
   }, [editing]);
 
   const save = async () => {
+    if (!editable) return;
     setBusy(true);
     setError('');
     try {
+      let savedResource;
       if (typeof saver === 'function') {
-        await saver(draft);
+        savedResource = await saver(draft);
       } else {
-        await writeProjectFile(projectName, filePath, draft);
+        savedResource = await writeProjectFile(projectName, filePath, draft);
+      }
+      if (savedResource && typeof savedResource === 'object') {
+        onResourceLoaded?.(savedResource);
       }
       setContent(draft);
       setEditing(false);
@@ -389,12 +420,19 @@ export default function ContextFileModal({
     }
   };
 
-  // Delete is hidden when the caller passes `remover === null` OR
-  // when this is anton.md (always-present project instructions).
-  const canDelete = remover !== null && !isAnton;
+  // `null` explicitly disables delete. Project-file mode otherwise falls back
+  // to deleteProjectFile, including the capability-gated instructions file.
+  const deleteApplicable = remover !== null;
+  /*
+    The agent reads the project instructions file every turn, so it stays
+    undeletable unless a caller hands down an explicit server capability. Any
+    surface that opens this modal on that path without one gets the protection
+    for free instead of having to remember two props.
+  */
+  const deleteAllowed = isAnton ? deletable === true : (deletable ?? true);
 
   const handleDelete = async () => {
-    if (!canDelete) return;
+    if (!deleteApplicable || !deleteAllowed) return;
     const confirmTarget = title || filePath || 'this file';
     if (!window.confirm(`Delete ${confirmTarget}? This can't be undone.`)) return;
     setBusy(true);
@@ -447,6 +485,8 @@ export default function ContextFileModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {mode === 'text' && !editing && !loading && (
               <Button
+                disabled={!editable}
+                title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
                 onClick={() => setEditing(true)}
               >Edit</Button>
             )}
@@ -495,6 +535,15 @@ export default function ContextFileModal({
           )}
           {error && (
             <Alert variant="danger" className="shrink-0">{error}</Alert>
+          )}
+          <SharedResourceAttribution
+            resource={attributionResource}
+            className="shrink-0"
+          />
+          {!editable && (
+            <div className="shrink-0 text-[12px] text-ink-3" role="note">
+              Read only. You do not have permission to edit this shared resource.
+            </div>
           )}
           {/* HTML branch — render inside a sandboxed iframe with the
               preview-mount URL so relative assets resolve. */}
@@ -612,11 +661,12 @@ export default function ContextFileModal({
           background: 'var(--surface)',
         }}>
           <div>
-            {canDelete && !editing && !loading && (
+            {deleteApplicable && !editing && !loading && (
               <Button
                 variant="danger"
                 onClick={handleDelete}
-                disabled={busy}
+                disabled={busy || !deleteAllowed}
+                title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
               >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>

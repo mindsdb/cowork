@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { ToastProvider } from './ui/Toast';
 
 // Mutable host mock so each test can flip isWeb. getAccessToken resolves the
 // token behind the footer user menu — null (signed out) unless a test sets
@@ -12,14 +13,141 @@ vi.mock('../../platform/host', () => ({
   getAccessToken: getAccessTokenMock,
   openExternal: vi.fn(async () => {}),
 }));
+// The footer user menu now reads the organization listing through the main
+// process. Stubbed rather than served, because nothing in this file is about
+// organizations; the menu and the hook each have their own test file.
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({
+    orgs: [], activeOrg: null, activeOrgId: null, switching: false,
+    switchOrg: vi.fn(), refresh: vi.fn(),
+  }),
+}));
+
+const hubWorkspacesMock = vi.hoisted(() => ({
+  useHubWorkspaces: vi.fn(() => ({
+    enabled: false,
+    reachable: false,
+    workspaces: [],
+    activeWorkspaceId: null,
+    switching: false,
+    switchWorkspace: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+// Stubbed rather than exercised here: these tests are about the account
+// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
+// at module load and this file's host mock does not provide one. The workspace
+// group has its own test file.
+vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
+
+// WorkspaceSelector calls `useToastManager()` unconditionally, before its own
+// early return, and Base UI requires a provider for it. The real tree has one
+// (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
+// than making the component tolerate its absence.
+const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';
+import { deriveUpdateBanner } from '../../../shared/update-banner';
 
-const baseProps = { tasks: [], onNavigate: () => {} };
+const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
+
+describe('Sidebar — persistent Cowork / Code workspace switch', () => {
+  it('hides the entire workspace switch until Code Mode is enabled', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+  });
+
+  it('switches to Code from the dedicated Electron workspace control', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(<Sidebar {...baseProps} onWorkspaceChange={onWorkspaceChange} />);
+    expect(screen.getByRole('button', { name: 'Cowork' })).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Code' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('code');
+  });
+
+  it('switches directly back to Cowork without using a Cowork navigation route', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onWorkspaceChange={onWorkspaceChange}
+      />
+    );
+    screen.getByRole('button', { name: 'Cowork' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
+  });
+
+  it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
+    hostMock.isWeb = false;
+    const onOpenCodingProjects = vi.fn();
+    const onOpenCodingConnectors = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onOpenCodingProjects={onOpenCodingProjects}
+        onOpenCodingConnectors={onOpenCodingConnectors}
+      />,
+    );
+    screen.getByRole('button', { name: 'Projects' }).click();
+    screen.getByRole('button', { name: 'Connectors' }).click();
+    expect(onOpenCodingProjects).toHaveBeenCalledOnce();
+    expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
+    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
+  });
+
+  it('uses the canonical sidebar collapse control in Code', () => {
+    hostMock.isWeb = false;
+    const onToggleCollapsed = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onToggleCollapsed={onToggleCollapsed}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the collapse control out of the accessibility tree when unavailable', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+  });
+
+  it('removes every sidebar control from the accessibility tree while collapsed', () => {
+    hostMock.isWeb = false;
+    const { container } = render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        collapsed
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
+  });
+
+  it('does not expose local coding on the hosted web shell', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+  });
+});
 
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid
@@ -82,71 +210,115 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   });
 });
 
-describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)', () => {
+describe('Sidebar — the single update banner (consolidated, shell-first)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;
   });
 
-  it('shows the OTA "Update ready" (restart) banner when only an OTA update is pending', () => {
-    render(<Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} />);
-    expect(screen.getByRole('button', { name: /Update ready/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
-  });
+  // Which-banner-wins is covered in update-banner.test.ts; these assert the
+  // sidebar renders one banner and wires its action/dismiss to the callback.
+  const bannerFor = (input) => deriveUpdateBanner(input);
 
-  it('shows the shell reinstall notice when only a shell update is pending', () => {
-    render(<Sidebar {...baseProps} serverOnline shellUpdate={{ version: '2.0.0' }} />);
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-  });
-
-  it('suppresses the OTA banner while a shell reinstall is pending (no double banner)', () => {
-    render(
-      <Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
-    );
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-  });
-
-  it('surfaces a labelled retry when an apply failed (does not go silent)', () => {
-    const onApplyUpdate = vi.fn();
-    render(
-      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} onApplyUpdate={onApplyUpdate} />
-    );
-    const retry = screen.getByRole('button', { name: /Update failed/ });
-    expect(retry).toBeInTheDocument();
-    expect(retry).toHaveTextContent(/Try again/);
-    retry.click();
-    expect(onApplyUpdate).toHaveBeenCalled();
-  });
-
-  it('lets a pending shell reinstall supersede the failed-apply retry too', () => {
-    render(
-      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
-    );
-    expect(screen.queryByRole('button', { name: /Update failed/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-  });
-
-  it('shows the authoritative auto-update action and hides the manual fallback', () => {
-    const onShellAutoUpdateAction = vi.fn();
+  it('renders the OTA "Update ready" (restart) banner and fires apply-ota', () => {
+    const onUpdateAction = vi.fn();
     render(
       <Sidebar
         {...baseProps}
         serverOnline
-        shellUpdate={{ version: '2.0.0' }}
-        shellAutoUpdate={{
-          phase: 'ready-to-install',
-          mode: 'auto',
-          channel: 'prod',
-          currentVersion: '2.0.0',
-          targetVersion: '2.1.0',
-        }}
-        onShellAutoUpdateAction={onShellAutoUpdateAction}
+        updateBanner={bannerFor({ ota: { phase: 'available', version: '1.2.3' } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Update ready/ });
+    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+    fireEvent.click(btn);
+    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+  });
+
+  it('renders the dismissible manual installer notice and fires download + dismiss', () => {
+    const onUpdateAction = vi.fn();
+    const onDismissUpdate = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0' } })}
+        onUpdateAction={onUpdateAction}
+        onDismissUpdate={onDismissUpdate}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /New version available/ }));
+    expect(onUpdateAction).toHaveBeenCalledWith('download-installer');
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss update notice/ }));
+    expect(onDismissUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows exactly one banner (shell-first) when OTA and a shell update both pend', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({
+          ota: { phase: 'available', version: '1.2.3' },
+          shellAuto: { phase: 'ready-to-install' },
+        })}
+        onUpdateAction={vi.fn()}
+      />
+    );
+    // The OTA "Update ready" pill never stacks under the shell banner anymore.
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /App update ready/ })).toBeInTheDocument();
+  });
+
+  it('surfaces a labelled retry when an OTA apply failed (does not go silent)', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ ota: { phase: 'error', version: '1.2.3' } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const retry = screen.getByRole('button', { name: /Update failed/ });
+    expect(retry).toHaveTextContent(/Try again/);
+    fireEvent.click(retry);
+    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+  });
+
+  it('renders the shell auto-update ready banner and fires shell-auto', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellAuto: { phase: 'ready-to-install' } })}
+        onUpdateAction={onUpdateAction}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
-    expect(onShellAutoUpdateAction).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+    expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
+  });
+
+  it('renders an in-flight download as a disabled banner with no action', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellAuto: { phase: 'downloading', progress: { percent: 42 } } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Downloading update/ });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onUpdateAction).not.toHaveBeenCalled();
+  });
+
+  it('renders no banner when nothing is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline updateBanner={bannerFor({})} />);
+    expect(screen.queryByRole('button', { name: /Update ready|New version available|App update/ })).toBeNull();
   });
 });
 
@@ -207,5 +379,58 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+  });
+});
+
+describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', () => {
+  // Before this, all three rendered as an unexplained blank list: `tasks`
+  // started as `[]` with no status, and a failed fetch was collapsed to `[]`
+  // too. A returning user reads an empty sidebar as lost work, not as a wait.
+  it('shows skeleton rows, and no empty-state copy, while loading', () => {
+    render(<Sidebar {...baseProps} tasksStatus="loading" />);
+    expect(screen.getByLabelText('Loading tasks')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+    expect(screen.queryByText(/Couldn’t load your tasks/)).toBeNull();
+  });
+
+  it('shows the empty state only once the fetch has succeeded', () => {
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(screen.getByText('No tasks yet')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+  });
+
+  it('shows a distinct failure with a retry, never the empty state', () => {
+    const onRetryTasks = vi.fn();
+    render(<Sidebar {...baseProps} tasksStatus="failed" onRetryTasks={onRetryTasks} />);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+    fireEvent.click(screen.getByText('Retry'));
+    expect(onRetryTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('never claims "no tasks" to a user whose tasks are all pinned', () => {
+    // recents deliberately excludes pinned items, so keying the empty state on
+    // it told an all-pinned user they had nothing — with their pinned tasks
+    // visible directly above.
+    const t = { id: 'p1', title: 'Pinned thing', messages: [], updatedAt: '2026-09-02T10:00:00Z' };
+    const pins = [{ item_type: 'conversation', item_id: 'p1' }];
+    render(<Sidebar {...baseProps} tasks={[t]} pins={pins} tasksStatus="ready" />);
+    expect(screen.getByText('Pinned thing')).toBeTruthy();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+  });
+
+  it('shows no skeleton while loading if pinned tasks are already on screen', () => {
+    const t = { id: 'p1', title: 'Pinned thing', messages: [], updatedAt: '2026-09-02T10:00:00Z' };
+    const pins = [{ item_type: 'conversation', item_id: 'p1' }];
+    render(<Sidebar {...baseProps} tasks={[t]} pins={pins} tasksStatus="loading" />);
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+  });
+
+  it('never shows loading or empty copy once tasks exist', () => {
+    const tasks = [{ id: 't1', title: 'Real task', messages: [], updatedAt: '2026-09-02T10:00:00Z' }];
+    render(<Sidebar {...baseProps} tasks={tasks} tasksStatus="loading" />);
+    expect(screen.getByText('Real task')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading tasks')).toBeNull();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
   });
 });

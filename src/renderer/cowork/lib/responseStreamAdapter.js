@@ -345,23 +345,27 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       startedAt: eventTs,
       completedAt: eventTs,
       data: {
+        // Keep the server card intact. Artifact capabilities and addressing
+        // evolve together (id, draftUrl, artifactKey, access policy,
+        // and future fields); copying a hand-maintained subset here made a
+        // just-created artifact lose edit/review support until the panel was
+        // reloaded from the artifacts endpoint.
+        ...art,
         title: art.title || art.slug || 'Artifact',
         file_path: filePath,
         path: filePath,
         ext: art.ext || '',
         action: art.type || 'artifact',
-        // Identity + publish state, carried through verbatim. The server builds
-        // this card AFTER the turn's publish reconciliation precisely so it can
-        // arrive with its URL already on it, and on an org deployment that URL is
-        // the only route to the artifact's content — the card is addressed by
-        // projectId + slug there, not by a path the server refuses to serve.
-        // Dropping these left the inline card unable to open the artifact it had
-        // just announced.
+        // Preserve the stable legacy shape for consumers that use truthiness.
         id: art.id || '',
         slug: art.slug || '',
         publishedUrl: art.publishedUrl || '',
         projectId: art.projectId || '',
         projectName: art.projectName || '',
+        // Needed to render an inline thumbnail / in-app preview for image
+        // artifacts (ENG-1998) — without it the card has no URL to fetch
+        // bytes from until the artifact is reopened from the persisted list.
+        serveUrl: art.serveUrl || '',
       },
       output: null,
       result: null,
