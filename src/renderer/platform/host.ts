@@ -1187,10 +1187,30 @@ export async function mindshubFinalize(
   organizationId?: string,
   chosenByUser?: boolean,
 ): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
+  // An explicit pick goes through the method whose presence proves the shell
+  // can carry it. Falling back to `mindshubFinalize(id, true)` would look like
+  // it worked and silently drop the flag on an older main process.
+  if (isElectron && organizationId && chosenByUser && canPickOrganization()) {
+    return bridge.mindshubFinalizeChosen!(organizationId);
+  }
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
     return bridge.mindshubFinalize(organizationId, chosenByUser);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+/**
+ * Whether this shell can be told that a person chose the organization.
+ *
+ * Renderer bundles update over the air while `src/main/**` only arrives in a
+ * new installer, so a newer renderer runs against an older main process as a
+ * matter of course. That shell drops the `chosenByUser` argument, and its
+ * entitlement fallback then overrides the pick — the exact defect ENG-2199
+ * fixes. Asking the question beats making a promise the shell cannot keep, so
+ * the onboarding picker is not offered when this is false.
+ */
+export function canPickOrganization(): boolean {
+  return isElectron && typeof bridge.mindshubFinalizeChosen === 'function';
 }
 
 /**
@@ -1451,6 +1471,7 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  canPickOrganization,
   mindshubSetUserKey,
   mindshubListOrgs,
   mindshubSwitchOrg,

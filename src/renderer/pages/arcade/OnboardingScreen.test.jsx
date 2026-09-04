@@ -418,6 +418,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     hostMock.mindshubLogin = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: ACME }));
+    // The default is a shell that can carry the pick; the old-shell case has
+    // its own test below.
+    hostMock.canPickOrganization = vi.fn(() => true);
     keycloakMock.authenticated = false;
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
@@ -458,6 +461,21 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     expect(screen.getByRole('radio', { name: /acme\.example/ })).toBeChecked();
     // The personal organization is offered too: someone may deliberately want it.
     expect(screen.getByRole('radio', { name: /hazem@example\.com's organization/ })).toBeInTheDocument();
+  });
+
+  it('does not offer a pick a shell older than ENG-2199 cannot honour', async () => {
+    // Renderer bundles update over the air while `src/main/**` waits for an
+    // installer, so a new renderer against an old shell is routine. That shell
+    // drops `chosenByUser` and its entitlement fallback overrides the answer,
+    // so showing the picker would promise something it cannot keep. Those
+    // installs get the ranking, exactly as before the picker existed.
+    hostMock.canPickOrganization = vi.fn(() => false);
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Choose an organization')).toBeNull();
+    // And it does not quietly send a pick the shell would ignore.
+    expect(hostMock.mindshubFinalize.mock.calls[0][0]).toBeUndefined();
   });
 
   it('mints in the organization that was picked', async () => {

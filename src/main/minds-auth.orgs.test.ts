@@ -455,11 +455,23 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     memberships: Array<{ id: string; name: string; displayName?: string }>,
     startIn: { id: string; name: string },
     entitled: string[],
-    opts: { refuse?: string[]; orgsStatus?: number; failRefreshFrom?: number } = {},
+    opts: {
+      refuse?: string[];
+      orgsStatus?: number;
+      /** Every refresh from the Nth on fails transiently. */
+      failRefreshFrom?: number;
+      /** Only the Nth refresh fails, so a retry can succeed. */
+      failRefreshOnce?: number;
+    } = {},
   ) {
     let active = startIn;
     let tokenOrg = startIn;
     let refreshes = 0;
+    // The ranking may move the session before the hunt begins, so "where the
+    // hunt started" is the first organization the entitlement check ran against,
+    // not the one the token arrived naming.
+    let startedFrom = startIn.id;
+    let sawFirstAuth = false;
     const calls = installRoutedFetch([
       // `orgsStatus` is Keycloak failing the membership read. It matters
       // because `listUserOrgs` returns `[]` for a failed read AND for a
@@ -493,6 +505,9 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
           if (opts.failRefreshFrom && refreshes >= opts.failRefreshFrom) {
             return { status: 503, body: {} };
           }
+          if (opts.failRefreshOnce && refreshes === opts.failRefreshOnce) {
+            return { status: 503, body: {} };
+          }
           tokenOrg = active;
           return { status: 200, body: { access_token: tokenFor(active), expires_in: 300, refresh_token: 'rt-2' } };
         },
@@ -500,10 +515,13 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
       {
         method: 'GET',
         match: '/authenticate/',
-        reply: (call) => ({
-          status: 200,
-          body: { entitlements: entitled.includes(orgOfToken(call.auth!)) ? ENTITLED : UNENTITLED },
-        }),
+        reply: (call) => {
+          if (!sawFirstAuth) { startedFrom = orgOfToken(call.auth!); sawFirstAuth = true; }
+          return {
+            status: 200,
+            body: { entitlements: entitled.includes(orgOfToken(call.auth!)) ? ENTITLED : UNENTITLED },
+          };
+        },
       },
     ]);
     // main reads the settled token back out of the store, so the store has to
@@ -514,6 +532,8 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
       switches: () => calls.filter((c) => c.url.includes('switch-organization')).map((c) => JSON.parse(c.body!).id),
       activeOrg: () => active,
       tokenOrg: () => tokenOrg,
+      /** Where the hunt began, which is what a restore has to reach. */
+      startedIn: () => startedFrom,
     };
   }
 
@@ -692,22 +712,36 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     expect(result.organization?.id).toBe(PERSONAL.id);
   });
 
-  it('records nothing when the restore lands but the token does not follow', async () => {
-    // Nothing qualifies, so the hunt exhausts and restores. If that switch
-    // lands while its refresh fails transiently, Keycloak sits in the starting
-    // organization and the token still names the last one tried — the refresh
-    // keeps the old tokens on anything short of `invalid_grant`. Writing from
-    // that token would record an organization the session is not in, and
-    // `chooseMindsOrg` would move the user there on the next launch and keep
-    // them there. A no-pick user has no `chosenByUser` row to be protected by
-    // the other guard, so this is the only thing standing between them and it.
+  it('fails rather than reporting success when the restore cannot be confirmed', async () => {
+    // Nothing qualifies, so the hunt exhausts and restores. If every restore
+    // attempt lands but its refresh fails, the token never confirms the session
+    // is back — and returning it would report "signed in" while the person sits
+    // in an organization the loop happened to try last, chosen by Keycloak's
+    // list order rather than by them. Recoverable, so it surfaces as an error
+    // to retry rather than a silent relocation.
     const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [], { failRefreshFrom: 4 });
 
     const result = await selectEntitledOrg(tokenFor(PERSONAL));
 
-    expect(net.tokenOrg().id).not.toBe(net.activeOrg().id);
+    expect(result.token).toBeUndefined();
+    expect(result.error).toMatch(/could not put this computer back/i);
     expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
-    expect(result.token).toBeTruthy();
+    // The last two switches are both the restore: the thing that failed is the
+    // thing being retried. (Counting every switch to this organization would
+    // also catch the ranking's own move before the hunt began.)
+    expect(net.switches().slice(-2)).toEqual([net.startedIn(), net.startedIn()]);
+  });
+
+  it('retries a restore once and succeeds when the second attempt confirms', async () => {
+    // The retry is the difference between a transient Keycloak wobble and
+    // stranding somebody: without it, one bad refresh is enough to fail a
+    // sign-in that was otherwise fine.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [], { failRefreshOnce: 4 });
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(result.error).toBeUndefined();
+    expect(result.organization?.id).toBe(net.startedIn());
   });
 
   it('does not let an organization it landed on outrank the ranking later', async () => {
@@ -791,10 +825,10 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     // Every request, so "did the selection start work?" is answerable. Pending
     // is NOT enough on its own: with no lock the selection would run and block
     // on this same gate, which looks identical from the outside.
-    const seen: string[] = [];
+    const seen: Array<{ url: string; auth?: string }> = [];
     globalThis.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input);
-      seen.push(url);
+      seen.push({ url, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
       const method = (init?.method || 'GET').toUpperCase();
       const reply = (status: number, body: unknown) =>
         ({ ok: status >= 200 && status < 400, status, json: async () => body });
@@ -846,6 +880,14 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     expect(selected.token).toBeTruthy();
     // And it did run, once the switch was done.
     expect(seen.length).toBeGreaterThan(before);
+    // On the token the switch left behind, not the one captured before the
+    // wait. Acting on the stale claim lets `ensureActiveOrg` fall back to it
+    // and move the session off the organization just chosen.
+    // The membership read is the one that carries the claim `ensureActiveOrg`
+    // acts on; other authed calls here present the sidecar's own owner token.
+    const membershipRead = seen.slice(before).find((call) => call.url.includes('/orgs'));
+    expect(membershipRead?.auth).toBeTruthy();
+    expect(orgOfToken(membershipRead!.auth!)).toBe(ACME.id);
   });
 
   it('never records an organization the person does not belong to', async () => {

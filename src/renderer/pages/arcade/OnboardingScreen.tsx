@@ -578,7 +578,12 @@ export default function OnboardingScreen({
   const completeMindsAuth = async () => {
     setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
     const { orgs } = await host.mindshubListOrgs();
-    if (needsOrgPick(orgs)) {
+    // `canPickOrganization` is a shell check, not a feature flag: an older main
+    // process drops the "a person chose this" flag and its entitlement fallback
+    // overrides the answer, so asking would promise something that cannot be
+    // kept. Those installs get the ranking, exactly as they did before the
+    // picker existed, until the next installer (ENG-2199).
+    if (needsOrgPick(orgs) && host.canPickOrganization()) {
       const ranked = rankMindsOrgs(orgs);
       setOrgChoices(ranked);
       // Ranked, so this is the first company organization — the answer the
