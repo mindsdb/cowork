@@ -137,7 +137,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
-import { trackTurnFailed } from './lib/analytics';
+import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -1419,5 +1419,35 @@ describe('a stream that ends while silenced by a Stop elsewhere', () => {
     await openByTitle(user, 'Alpha task');
     await waitForStream(tailB);
     expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Stop on one conversation', () => {
+  it('does not silence another conversation that is still streaming', async () => {
+    const user = userEvent.setup();
+    // Only Beta has a producer to re-attach to, so Alpha's stream is its own
+    // send and navigating back to it opens no tail to confuse the assertion.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    expect(alpha.kind).toBe('reply');
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    // Stop Beta, whose turn is unrelated to Alpha's.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then completes. Its terminal has to run: it is what commits
+    // the answer, records the turn and releases Alpha's queue.
+    classifyFirstResponse.mockClear();
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    expect(classifyFirstResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ isConfigError: false }),
+    );
   });
 });
