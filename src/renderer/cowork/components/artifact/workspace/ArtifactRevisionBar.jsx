@@ -48,9 +48,13 @@ export function ArtifactRevisionBar({
               }}
             >
               <option value="">History</option>
-              {revisions.slice(1).map((item) => (
-                <option key={item.id} value={item.id}>
+              {/* Head is listed but not selectable: there is nothing to compare
+                  it with, and leaving it out meant the revision just written
+                  was missing from the one place people look for it. */}
+              {revisions.map((item, index) => (
+                <option key={item.id} value={item.id} disabled={index === 0}>
                   Revision {item.number} · {item.summary}
+                  {index === 0 ? ' (current)' : ''}
                 </option>
               ))}
             </select>

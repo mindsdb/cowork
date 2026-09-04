@@ -252,21 +252,34 @@ export function loadAgentRepair(artifact, repairId) {
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}`);
 }
 
-export function cancelAgentRepair(artifact, repairId) {
+export function cancelAgentRepair(artifact, repairId, { discardReady = false } = {}) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  // Discarding a ready repair throws away real agent work, so the server only
+  // does it when this says so; a queued one is released without the flag.
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/cancel`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify({ discardReady }),
   });
 }
 
-export function decideAgentRepair(artifact, repairId, status) {
+export function decideAgentRepair(artifact, repairId, status, { expectedHeadRevisionId = null } = {}) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  // Rejecting restores over whatever is head now, so the server needs the head
+  // the user was actually shown, not the one the repair was computed against.
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/decision`, {
     method: 'POST',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, expectedHeadRevisionId }),
+  });
+}
+
+export function releaseAgentRepairs(artifact, commentThreadId) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/agent-repairs/release`, {
+    method: 'POST',
+    body: JSON.stringify({ commentThreadId }),
   });
 }
 

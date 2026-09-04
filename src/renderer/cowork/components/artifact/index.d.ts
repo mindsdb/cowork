@@ -73,8 +73,18 @@ export interface ArtifactAgentRepair {
   selector?: string | null;
   thread: ArtifactRepairThreadEntry[];
   conversationId: string;
-  status: 'queued' | 'ready' | 'accepted' | 'rejected' | 'cancelled';
+  status:
+    | 'queued'
+    | 'ready'
+    | 'accepted'
+    | 'rejected'
+    | 'cancelled'
+    | 'discarded'
+    | 'no_change'
+    | 'conflict';
   revisionId?: string | null;
+  /** Server-computed: the artifact has a newer revision on this repair's path. */
+  superseded?: boolean;
   createdAt: string;
   updatedAt: string;
 }

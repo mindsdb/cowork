@@ -52,6 +52,8 @@ export function CommentsPanel({
   capabilities = null,
   onStatus,
   onAddressWithAgent,
+  agentBusy = false,
+  agentWorkingThreadId = null,
   onDeleteThread,
   onCreate,
   onClose,
@@ -174,6 +176,8 @@ export function CommentsPanel({
             viewer={viewer}
             canResolve={capabilities?.canResolve === true}
             canAddressWithAgent={capabilities?.canAddressWithAgent === true}
+            agentBusy={agentBusy}
+            agentWorking={agentWorkingThreadId === t.id}
             onStatus={onStatus}
             onAddressWithAgent={onAddressWithAgent}
             onRequestDelete={setPendingDelete}

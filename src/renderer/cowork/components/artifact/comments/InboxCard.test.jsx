@@ -79,3 +79,48 @@ describe('InboxCard collaboration actions', () => {
     expect(screen.queryByRole('button', { name: 'Mark as resolved' })).not.toBeInTheDocument();
   });
 });
+
+describe('InboxCard agent action feedback', () => {
+  const render_ = (props) => render(
+    <InboxCard
+      thread={THREAD}
+      viewer={{ user_id: 'owner', role: 'owner' }}
+      canResolve
+      canAddressWithAgent
+      onAddressWithAgent={vi.fn()}
+      onStatus={vi.fn()}
+      {...props}
+    />,
+  );
+
+  it('says the request is starting while one is in flight', () => {
+    // Clicking used to leave the button unchanged, so nothing on screen said
+    // the click had registered until the turn card appeared in chat.
+    render_({ agentBusy: true });
+
+    const button = screen.getByRole('button', { name: /Starting/ });
+    expect(button).toBeDisabled();
+  });
+
+  it('says the agent is working on this thread', () => {
+    render_({ agentWorking: true });
+
+    const button = screen.getByRole('button', { name: /Agent is working/ });
+    expect(button).toBeDisabled();
+  });
+
+  it('does not report another thread\'s turn as this one\'s', () => {
+    render_({ agentBusy: false, agentWorking: false });
+
+    expect(screen.getByRole('button', { name: 'Address with agent' })).toBeEnabled();
+  });
+
+  it('cannot be clicked twice while a request is in flight', async () => {
+    const onAddressWithAgent = vi.fn();
+    render_({ agentBusy: true, onAddressWithAgent });
+
+    screen.getByRole('button', { name: /Starting/ }).click();
+
+    expect(onAddressWithAgent).not.toHaveBeenCalled();
+  });
+});
