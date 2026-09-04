@@ -157,6 +157,47 @@ describe('ArtifactViewerBody agent repair decisions', () => {
       .toHaveBeenCalledWith('thread-1', 'resolved');
   });
 
+  it('holds the dialog open until the restore lands', async () => {
+    // It rewrites the artifact, so closing on click left a beat where nothing
+    // on screen said the confirm had taken.
+    const conflict = Object.assign(new Error('Artifact changed'), { status: 409 });
+    let settle;
+    const pending = new Promise((resolve) => { settle = resolve; });
+    const decideRepair = vi.fn()
+      .mockRejectedValueOnce(conflict)
+      .mockReturnValueOnce(pending);
+    const tree = setup(decideRepair);
+    render(tree);
+    await act(async () => { await comparison.props.onReject(); });
+
+    const confirm = await screen.findByRole('button', { name: /Restore anyway/i });
+    await act(async () => { confirm.click(); });
+
+    // Still open while the restore is in flight.
+    expect(screen.getByText(/discard everything written since/i)).toBeTruthy();
+
+    await act(async () => { settle({ decided: true }); await pending; });
+
+    expect(screen.queryByText(/discard everything written since/i)).toBeNull();
+  });
+
+  it('keeps a failed restore in the dialog that asked for it', async () => {
+    const conflict = Object.assign(new Error('Artifact changed'), { status: 409 });
+    const second = Object.assign(new Error('This artifact changed after the agent edit'), { status: 409 });
+    const decideRepair = vi.fn()
+      .mockRejectedValueOnce(conflict)
+      .mockRejectedValueOnce(second);
+    const tree = setup(decideRepair);
+    render(tree);
+    await act(async () => { await comparison.props.onReject(); });
+
+    const confirm = await screen.findByRole('button', { name: /Restore anyway/i });
+    await act(async () => { confirm.click(); });
+
+    expect(screen.getByText(/changed after the agent edit/i)).toBeTruthy();
+    expect(screen.getByText(/discard everything written since/i)).toBeTruthy();
+  });
+
   it('asks before restoring over work written after the agent edit', async () => {
     const conflict = Object.assign(new Error('Artifact changed'), { status: 409 });
     const decideRepair = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ decided: true });

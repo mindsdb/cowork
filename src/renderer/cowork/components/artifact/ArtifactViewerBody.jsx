@@ -102,6 +102,7 @@ export function ArtifactViewerBody({
   // moved on, that also discards the work written since, so the server refuses
   // until the user has been told exactly that and said yes.
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
+  const [confirmRejectError, setConfirmRejectError] = useState('');
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -335,17 +336,25 @@ export function ArtifactViewerBody({
           message={"This artifact changed after the agent's edit. Restoring the version "
             + 'from before it will also discard everything written since.'}
           confirmLabel="Restore anyway"
+          busyLabel="Restoring…"
           destructive
           busy={repairBusy}
-          onClose={() => setConfirmRejectHead(null)}
+          error={confirmRejectError}
+          onClose={() => { setConfirmRejectHead(null); setConfirmRejectError(''); }}
           onConfirm={async () => {
-            const confirmedHeadRevisionId = confirmRejectHead;
-            setConfirmRejectHead(null);
+            // Held open until the restore lands: it rewrites the artifact, so
+            // closing first left a beat where nothing said the click had taken.
+            // A failure stays in the dialog, where the decision was made.
+            setConfirmRejectError('');
             setRepairBusy(true);
             try {
-              await workspace.decideRepair('rejected', { confirmedHeadRevisionId });
+              await workspace.decideRepair('rejected', {
+                confirmedHeadRevisionId: confirmRejectHead,
+              });
+              setConfirmRejectHead(null);
             } catch (decisionError) {
-              setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+              setConfirmRejectError(decisionError?.message
+                || 'Could not restore the earlier version. Try again.');
             } finally {
               setRepairBusy(false);
             }
