@@ -678,6 +678,16 @@ function AppCore() {
     return rec;
   }, []);
 
+  // A tmp- conversation adopts its canonical server id mid-stream, so the
+  // record has to move with it or teardown looks for a key nobody holds.
+  const rekeyStream = useCallback((previousId, cid) => {
+    if (!previousId || !cid || previousId === cid) return;
+    const rec = liveStreamsRef.current.get(previousId);
+    if (!rec) return;
+    liveStreamsRef.current.delete(previousId);
+    liveStreamsRef.current.set(cid, rec);
+  }, []);
+
   // The pad belongs to the turn that opened it, not to the app.
   const setStreamPad = useCallback((cid, pad) => {
     if (!cid || !pad) return;
@@ -1192,6 +1202,7 @@ function AppCore() {
       code: event?.code,
       isConfigError: isAntonConfigError(message, event),
     }));
+    ids.forEach((streamId) => releaseStream(streamId));
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
@@ -1263,7 +1274,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
-  }, [markInFlightDone, releaseLiveSteps]);
+  }, [markInFlightDone, releaseLiveSteps, releaseStream]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -2947,6 +2958,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -2976,6 +2988,7 @@ function AppCore() {
     // Append the user message + thinking placeholder, then start the
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
+    let sessionCtrl = null;
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -2995,7 +3008,9 @@ function AppCore() {
             }
           : t,
       ));
-      activeStreamCtrlRef.current = streamNewSessionFn();
+      sessionCtrl = streamNewSessionFn();
+      activeStreamCtrlRef.current = sessionCtrl;
+      registerStream(taskId, sessionCtrl);
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
@@ -3041,7 +3056,8 @@ function AppCore() {
       },
       onDone(sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        releaseStream(sid || resolvedId, sessionCtrl);
+        if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
@@ -3410,6 +3426,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -3458,7 +3475,7 @@ function AppCore() {
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
     const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamMessage(id, sendText, {
+    const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
       projectPath: taskProjectPath,
@@ -3476,12 +3493,16 @@ function AppCore() {
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || id, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        releaseStream(resolvedId || id, ctrl);
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         // Turn done → conversation persisted; drop the optimistic flag (set if
@@ -3544,6 +3565,8 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(resolvedId || id, ctrl);
     // The stream is running; whatever happens to it now is reported through the
     // callbacks above, not through this return value.
     return true;
@@ -3671,6 +3694,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);
       // Migrate the formStore entry so the DataVaultFormPanel
@@ -3728,7 +3752,7 @@ function AppCore() {
     // conversation it just stopped. Making it per conversation would buy
     // nothing while one-stream-at-a-time holds.
     const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamDataVaultSubmission({
+    const vaultCtrl = streamDataVaultSubmission({
       formId,
       // Pass the local id only when it's a real server id — otherwise
       // send null so the server mints a fresh canonical id. (The
@@ -3797,7 +3821,8 @@ function AppCore() {
       onDone(sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
-        activeStreamCtrlRef.current = null;
+        releaseStream(sid || resolvedId || id, vaultCtrl);
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
@@ -3841,7 +3866,8 @@ function AppCore() {
       // that aborts this stream is handleStopStream, which bumps first.
       onError(message) {
         if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        releaseStream(resolvedId || id, vaultCtrl);
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         setTasks((prev) => prev.map((t) => {
@@ -3855,6 +3881,8 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
     });
+    activeStreamCtrlRef.current = vaultCtrl;
+    registerStream(resolvedId || id, vaultCtrl);
   };
 
   const setSetting = (key, value) => {
