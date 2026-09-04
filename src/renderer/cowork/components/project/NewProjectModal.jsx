@@ -187,7 +187,15 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
   const chooseFolder = async () => {
     setError('');
-    const result = await host.pickCodeFolder();
+    let result;
+    try {
+      result = await host.pickCodeFolder();
+    } catch (e) {
+      // A rejected invoke would otherwise throw out of the click handler and
+      // the button would look like it did nothing.
+      setError(e?.message || 'Could not open the folder picker.');
+      return;
+    }
     if (result?.cancelled) return;
     if (!result?.ok || !result.path) {
       setError(result?.reason || 'Could not open the folder picker.');
@@ -303,7 +311,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                     >
                       {folderPath}
                     </span>
-                    <Button variant="muted" disabled={busy} onClick={() => setFolderPath('')}>
+                    <Button variant="subtle" disabled={busy} onClick={() => setFolderPath('')}>
                       Clear
                     </Button>
                   </>

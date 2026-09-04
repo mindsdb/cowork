@@ -105,6 +105,15 @@ describe('NewProjectModal folder selection', () => {
     expect(api.createProject).not.toHaveBeenCalled();
   });
 
+  it('a thrown picker is reported instead of doing nothing', async () => {
+    platform.pickCodeFolder.mockRejectedValue(new Error('ipc channel closed'));
+    open();
+    fireEvent.click(screen.getByRole('button', { name: CHOOSE }));
+
+    await waitFor(() => screen.getByText('ipc channel closed'));
+    expect(api.createProject).not.toHaveBeenCalled();
+  });
+
   it('is not offered in the browser, where a path would be meaningless', () => {
     platform.isElectron = false;
     open();
