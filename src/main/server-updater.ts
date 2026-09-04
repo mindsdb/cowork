@@ -786,14 +786,18 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       ? { updated: false, error: 'could not determine installed version' }
       : { updated: false };
   }
+  // Ask uv where the tool venv really is. The platform heuristic can point at
+  // the wrong folder on Windows (%APPDATA%\uv\tools vs …\uv\data\tools), and a
+  // reinstall decided from the wrong folder would drop the Code Mode extra.
+  const toolsDir = (await uvToolsDir(uv)) ?? undefined;
   if (decision.action === 'up-to-date') {
     // cowork-server is current — but an anton-only release may still be pending
     // (ENG-1094). The cowork-update path above already pulls the right anton via
     // the target wheel, so this only matters when cowork itself is unchanged.
     // Apply path ignores an inconclusive anton lookup — skip silently rather
     // than surface it; the next check/poll retries.
-    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
-    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
+    const anton = await resolveAntonPypiUpdate(toolsDir);
+    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update, toolsDir);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
@@ -817,8 +821,8 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
     // Read before the reinstall rebuilds the venv; both the upgrade and a
     // rollback must carry the Code Mode extra when it is installed today.
-    const toSpec = keepCodeExtra(`${PACKAGE_NAME}==${to}`);
-    const fromSpec = keepCodeExtra(`${PACKAGE_NAME}==${from}`);
+    const toSpec = keepCodeExtra(`${PACKAGE_NAME}==${to}`, toolsDir);
+    const fromSpec = keepCodeExtra(`${PACKAGE_NAME}==${from}`, toolsDir);
     _notify?.({ phase: 'downloading', to }); // sidecar goes down (ENG-749)
     const upgrade = await runUv(
       uv,
@@ -860,13 +864,13 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
  *  with `--with anton-agent==<to>` makes the applied version deterministic
  *  rather than "whatever a bare re-resolution happens to pick". Rolls back to
  *  the prior anton on a health-check failure, mirroring _pypiUpdate. */
-async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }): Promise<ServerUpdateResult> {
+async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }, toolsDir?: string): Promise<ServerUpdateResult> {
   console.log(`[server-updater] anton-only update available: anton-agent ${anton.from} → ${anton.to} (cowork-server ${coworkVersion} unchanged)`);
   return withServerMaintenance(async () => {
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
-    const coworkSpec = keepCodeExtra(`${PACKAGE_NAME}==${coworkVersion}`);
+    const coworkSpec = keepCodeExtra(`${PACKAGE_NAME}==${coworkVersion}`, toolsDir);
     const install = await runUv(uv, [
       'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
       coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.to}`,

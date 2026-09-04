@@ -545,6 +545,38 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     return execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
   }
 
+  it('keeps the Code Mode extra through an update when uv keeps its tools somewhere other than the heuristic path', async () => {
+    // Windows: `uv tool dir` says %APPDATA%\\uv\\tools while the heuristic path is
+    // …\\uv\\data\\tools. The openai_codex dist-info only exists where uv says.
+    installOnPypiChannel(RC);
+    delete process.env.UV_TOOL_DIR; // fall back to the heuristic, which is the wrong folder here
+    vi.mocked(fs.readdirSync).mockImplementation(((p: string) => (
+      String(p).startsWith('/resolved/tools')
+        ? [`cowork_server-${RC}.dist-info`, 'anton_agent-0.9.5.dist-info', 'openai_codex-0.147.0.dist-info']
+        : []
+    )) as never);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (args[0] === 'tool' && args[1] === 'list') cb(null, `cowork-server v${RC}\n`, '');
+      else if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/resolved/tools\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    const result = await maybeUpdateServer();
+
+    expect(result).toEqual({ updated: true, previousVersion: RC, newVersion: STABLE });
+    const installs = installCalls(execCalls);
+    expect(installs).toHaveLength(1);
+    expect(installs[0]).toContain(`cowork-server[code]==${STABLE}`);
+  });
+
   it('repairs a prod install holding a pre-release down to the latest stable', async () => {
     installOnPypiChannel(RC);
     const execCalls = mockUv(RC);
