@@ -63,6 +63,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
           skill_sources: values.skill_sources || [],
           default_engine_id: values.default_engine_id || 'codex',
           default_model: values.default_model || DEFAULT_CODING_AGENT_MODEL,
+          default_reasoning_effort: values.default_reasoning_effort ?? null,
           permission_mode: values.permission_mode || 'supervised',
         });
     await load();
@@ -70,11 +71,17 @@ export function useCodeProjects(sessionProjectId?: string | null) {
     return saved;
   }, [load, setSelectedId]);
 
+  // Put a project the server just returned into the list at once, so the view
+  // reflects a successful save even if the refresh that follows fails.
+  const replace = useCallback((saved: CodeProject) => {
+    setProjects((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+  }, []);
+
   const remove = useCallback(async (id: string) => {
     await codingApi.deleteProject(id);
     if (selectedId === id) setSelectedId(null);
     await load();
   }, [load, selectedId, setSelectedId]);
 
-  return { projects, selected, selectedId, setSelectedId, loading, error, load, save, remove };
+  return { projects, selected, selectedId, setSelectedId, loading, error, load, save, replace, remove };
 }

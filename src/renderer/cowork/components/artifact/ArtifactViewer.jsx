@@ -45,6 +45,7 @@ import {
   countCsvRows,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
+  draftPreviewErrorMessage,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
@@ -412,7 +413,12 @@ export function ArtifactViewer({
     let cancelled = false;
     if (isText) {
       const previewRequest = draftPreviewUrl
-        ? loadArtifactDraftText(draftPreviewUrl)
+        ? loadArtifactDraftText(draftPreviewUrl, {
+            // The same split the draft-HTML branch makes below, so a
+            // data:/blob: or cross-origin draft renders here too instead of
+            // failing only for text.
+            withCredentials: canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()),
+          })
         : previewArtifact(actionPath);
       previewRequest
         .then((data) => {
@@ -426,7 +432,7 @@ export function ArtifactViewer({
             mime: data.mime || '',
           });
         })
-        .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load preview'); })
+        .catch((e) => { if (!cancelled) setErr(draftPreviewErrorMessage(e)); })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
     }
@@ -494,12 +500,7 @@ export function ArtifactViewer({
         })
         .catch((e) => {
           if (cancelled) return;
-          const status = e?.status;
-          setErr(status === 401
-            ? 'Your session expired — reload the page and try again.'
-            : status === 403
-              ? 'You do not have access to this draft.'
-              : (e?.message || 'Could not load this draft'));
+          setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };

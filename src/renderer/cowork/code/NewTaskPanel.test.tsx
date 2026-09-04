@@ -91,6 +91,14 @@ const modelMeta = {
     'gpt-codex': 'gpt-codex',
   },
   modelEnabled: { mindshub_air: true, 'gpt-5.6-sol': true, gpt: true, fable: false, sonnet: false, 'gpt-codex': false },
+  // What the gateway advertised on 2026-09-03; mindshub_air offers no levels.
+  modelEfforts: {
+    'gpt-5.6-sol': { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+    gpt: { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+    fable: { efforts: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
+    sonnet: { efforts: ['low', 'medium', 'high', 'max'], default: 'high' },
+    'gpt-codex': { efforts: ['low', 'medium', 'high', 'xhigh'], default: 'medium' },
+  },
 };
 
 const project = {
@@ -295,6 +303,120 @@ describe('NewTaskPanel', () => {
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
     await user.click(screen.getByRole('button', { name: /start task/i }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt' })));
+  });
+
+  it('offers the effort levels the selected model advertises, starting from its default', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    expect(effort).toHaveTextContent('Medium effort');
+    await user.click(effort);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'None', 'Low', 'MediumModel default', 'High', 'Xhigh', 'Max',
+    ]);
+    await user.click(screen.getByRole('option', { name: /^Max/ }));
+    expect(effort).toHaveTextContent('Max effort');
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Think carefully');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'max' })));
+  });
+
+  it('starts from the Code Project default effort when the model offers it', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[{ ...project, default_reasoning_effort: 'low' }]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    expect(effort).toHaveTextContent('Low effort');
+    await user.click(effort);
+    expect(screen.getByRole('option', { name: /^Low/ })).toHaveTextContent('Project default');
+    await user.keyboard('{Escape}');
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'low' })));
+  });
+
+  it('shows no effort pill for a model that advertises no levels', async () => {
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="mindshub_air"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[{ ...project, default_model: 'mindshub_air' }]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('MindsHub Air');
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+  });
+
+  it('drops a chosen level when switching to a model that does not offer it', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, 'gpt-codex': true } }}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    await user.click(effort);
+    await user.click(screen.getByRole('option', { name: /^Max/ }));
+    expect(effort).toHaveTextContent('Max effort');
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: /GPT 5.3 Codex|gpt-codex/i }));
+    expect(effort).toHaveTextContent('Medium effort');
+    await user.click(effort);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Low', 'MediumModel default', 'High', 'Xhigh']);
   });
 
   it('falls back to the best model the coding runtime actually exposes', async () => {

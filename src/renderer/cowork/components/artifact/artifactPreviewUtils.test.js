@@ -7,6 +7,11 @@ import {
   withArtifactVersion,
   injectDraftBaseHref,
   canFetchDraftWithCredentials,
+  countCsvRows,
+  csvRowsToGfmTable,
+  CSV_PREVIEW_ROW_LIMIT,
+  draftPreviewErrorMessage,
+  parseCsv,
   DRAFT_FRAGMENT_GUARD_SCRIPT,
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
@@ -273,5 +278,199 @@ describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/*
+ * A CSV preview printed Chromium's "Failed to fetch" where the table should
+ * have been, because the text branch showed whatever it caught. These pin the
+ * two rules the mapper owes its callers: a status is always named, and
+ * a browser-internal string never reaches the modal.
+ */
+describe('draftPreviewErrorMessage', () => {
+  it('maps 401 and 403 to the copy the draft-HTML branch already showed', () => {
+    expect(draftPreviewErrorMessage({ status: 401 }))
+      .toBe('Your session expired — reload the page and try again.');
+    expect(draftPreviewErrorMessage({ status: 403 }))
+      .toBe('You do not have access to this draft.');
+  });
+
+  it('names the status for anything else the server answered', () => {
+    expect(draftPreviewErrorMessage({ status: 404 })).toBe('Could not load this preview (HTTP 404).');
+    expect(draftPreviewErrorMessage({ status: 500 })).toBe('Could not load this preview (HTTP 500).');
+  });
+
+  it('keeps a server detail and adds the status to it', () => {
+    expect(draftPreviewErrorMessage(Object.assign(new Error('Artifact not found'), { status: 404 })))
+      .toBe('Artifact not found (HTTP 404)');
+  });
+
+  it('does not make a loader say its status twice', () => {
+    expect(draftPreviewErrorMessage(
+      Object.assign(new Error('Could not load private draft (500)'), { status: 500 }),
+    )).toBe('Could not load private draft (500)');
+  });
+
+  it('never shows the browser text for a fetch that failed at the network layer', () => {
+    const message = draftPreviewErrorMessage(new TypeError('Failed to fetch'));
+
+    expect(message).not.toContain('Failed to fetch');
+    expect(message).toBe('Could not reach the server to load this preview. Check the connection, then reload.');
+  });
+
+  // The message test is the backstop for a runtime that rejects with something
+  // other than a TypeError, or wraps it on the way through.
+  it.each([
+    'Failed to fetch',
+    'Load failed',
+    'NetworkError when attempting to fetch resource.',
+  ])('maps the browser transport string %s even off a plain Error', (raw) => {
+    expect(draftPreviewErrorMessage(new Error(raw))).not.toContain(raw);
+  });
+
+  it('passes our own messages through, since they already read as sentences', () => {
+    expect(draftPreviewErrorMessage(new Error('Preview returned no content')))
+      .toBe('Preview returned no content');
+    expect(draftPreviewErrorMessage(new Error('Refusing to send credentials to an embedded draft URL')))
+      .toBe('Refusing to send credentials to an embedded draft URL');
+  });
+
+  it('falls back to the caller phrasing when there is nothing to report', () => {
+    expect(draftPreviewErrorMessage(undefined)).toBe('Could not load preview');
+    expect(draftPreviewErrorMessage({}, 'Could not load this draft')).toBe('Could not load this draft');
+  });
+});
+
+/*
+ * The CSV preview path had no coverage at all, which is how the three parsing
+ * defects below survived. `.csv` is the only artifact type these
+ * four exports serve, so a wrong cell here is a wrong table on screen.
+ */
+describe('parseCsv', () => {
+  it('parses a header and its rows', () => {
+    expect(parseCsv('id,name\n1,Ada\n2,Grace\n')).toEqual([
+      ['id', 'name'],
+      ['1', 'Ada'],
+      ['2', 'Grace'],
+    ]);
+  });
+
+  it('keeps commas, newlines and escaped quotes inside a quoted field', () => {
+    expect(parseCsv('name,note\n"Ada, L","said ""hi""\nthen left"\n')).toEqual([
+      ['name', 'note'],
+      ['Ada, L', 'said "hi"\nthen left'],
+    ]);
+  });
+
+  it('reads a stray quote mid-value as literal text', () => {
+    // One bare quote used to open a quoted field that never closed, so every
+    // remaining row collapsed into a single cell.
+    expect(parseCsv('id,note\n1,part"ial\n2,fine\n')).toEqual([
+      ['id', 'note'],
+      ['1', 'part"ial'],
+      ['2', 'fine'],
+    ]);
+    expect(parseCsv('id,note\n1,he said "hi" loudly\n')).toEqual([
+      ['id', 'note'],
+      ['1', 'he said "hi" loudly'],
+    ]);
+  });
+
+  it('strips the UTF-8 BOM that spreadsheet exporters write', () => {
+    expect(parseCsv('\uFEFFid,name\n1,Ada\n')[0]).toEqual(['id', 'name']);
+  });
+
+  it.each([
+    ['CRLF', 'id,name\r\n1,Ada\r\n'],
+    ['LF', 'id,name\n1,Ada\n'],
+    ['CR only', 'id,name\r1,Ada\r'],
+  ])('ends a row on %s line endings', (_label, text) => {
+    expect(parseCsv(text)).toEqual([['id', 'name'], ['1', 'Ada']]);
+  });
+
+  it('stops scanning once it has the header plus `limit` rows', () => {
+    const rows = parseCsv('id\n1\n2\n3\n4\n', 2);
+
+    expect(rows).toEqual([['id'], ['1'], ['2']]);
+  });
+
+  it('keeps a trailing row that has no final newline', () => {
+    expect(parseCsv('id,name\n1,Ada')).toEqual([['id', 'name'], ['1', 'Ada']]);
+  });
+
+  it('returns nothing for an empty file', () => {
+    expect(parseCsv('')).toEqual([]);
+  });
+});
+
+describe('countCsvRows', () => {
+  it('counts the header with the data rows, which is what the notice reports', () => {
+    expect(countCsvRows('id,name\n1,Ada\n2,Grace\n')).toBe(3);
+  });
+
+  it('counts a trailing row with no final newline', () => {
+    expect(countCsvRows('id,name\n1,Ada')).toBe(2);
+  });
+
+  it('returns 0 for nothing to count', () => {
+    expect(countCsvRows('')).toBe(0);
+    expect(countCsvRows(undefined)).toBe(0);
+  });
+
+  /*
+   * The two functions read the same file for the same screen: the table comes
+   * from parseCsv, the "showing N of M" notice above it from countCsvRows. If
+   * they disagree on quoting or line endings the notice contradicts the table,
+   * so the shared rules are asserted together rather than once each.
+   */
+  it.each([
+    ['plain', 'id,name\n1,Ada\n2,Grace\n'],
+    ['no trailing newline', 'id,name\n1,Ada'],
+    ['CRLF', 'id,name\r\n1,Ada\r\n'],
+    ['CR only', 'id,name\r1,Ada\r2,Grace\r'],
+    ['BOM', '\uFEFFid,name\n1,Ada\n'],
+    ['newline inside a quoted field', 'id,note\n1,"two\nlines"\n'],
+    ['stray quote', 'id,note\n1,part"ial\n2,fine\n'],
+  ])('agrees with parseCsv on the row count for %s', (_label, text) => {
+    expect(countCsvRows(text)).toBe(parseCsv(text).length);
+  });
+});
+
+describe('csvRowsToGfmTable', () => {
+  it('renders the first row as the header with a separator under it', () => {
+    expect(csvRowsToGfmTable([['id', 'name'], ['1', 'Ada']])).toBe(
+      '| id | name |\n| --- | --- |\n| 1 | Ada |',
+    );
+  });
+
+  it('escapes the backslash before the pipe, so neither breaks the table', () => {
+    expect(csvRowsToGfmTable([['a'], ['x|y'], ['c:\\path']])).toBe(
+      '| a |\n| --- |\n| x\\|y |\n| c:\\\\path |',
+    );
+  });
+
+  it('collapses a line break inside a cell to a space', () => {
+    expect(csvRowsToGfmTable([['note'], ['two\nlines'], ['crlf\r\nlines']])).toBe(
+      '| note |\n| --- |\n| two lines |\n| crlf lines |',
+    );
+  });
+
+  it('pads a short row and truncates a long one to the header width', () => {
+    expect(csvRowsToGfmTable([['a', 'b'], ['1'], ['1', '2', '3']])).toBe(
+      '| a | b |\n| --- | --- |\n| 1 |  |\n| 1 | 2 |',
+    );
+  });
+
+  it('renders nothing for no rows', () => {
+    expect(csvRowsToGfmTable([])).toBe('');
+    expect(csvRowsToGfmTable(null)).toBe('');
+  });
+});
+
+describe('CSV_PREVIEW_ROW_LIMIT', () => {
+  it('caps the inline table at 100 rows', () => {
+    expect(CSV_PREVIEW_ROW_LIMIT).toBe(100);
+    expect(parseCsv(`id\n${'1\n'.repeat(500)}`, CSV_PREVIEW_ROW_LIMIT))
+      .toHaveLength(CSV_PREVIEW_ROW_LIMIT + 1);
   });
 });
