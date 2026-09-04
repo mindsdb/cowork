@@ -422,6 +422,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     hostMock.mindshubLogin = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: ACME }));
+    // The default is a shell that can carry the pick; the old-shell case has
+    // its own test below.
+    hostMock.canPickOrganization = vi.fn(() => true);
     keycloakMock.authenticated = false;
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
@@ -436,7 +439,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
-    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined);
+    // No organization and no claim that anybody chose one: main stays free to
+    // rank, and to move the session to one that can pay (ENG-2199).
+    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined, undefined);
     expect(screen.queryByText('Choose an organization')).toBeNull();
   });
 
@@ -464,6 +469,21 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     expect(screen.getByRole('radio', { name: new RegExp(PERSONAL_ORG_LABEL) })).toBeInTheDocument();
   });
 
+  it('does not offer a pick a shell older than ENG-2199 cannot honour', async () => {
+    // Renderer bundles update over the air while `src/main/**` waits for an
+    // installer, so a new renderer against an old shell is routine. That shell
+    // drops `chosenByUser` and its entitlement fallback overrides the answer,
+    // so showing the picker would promise something it cannot keep. Those
+    // installs get the ranking, exactly as before the picker existed.
+    hostMock.canPickOrganization = vi.fn(() => false);
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Choose an organization')).toBeNull();
+    // And it does not quietly send a pick the shell would ignore.
+    expect(hostMock.mindshubFinalize.mock.calls[0][0]).toBeUndefined();
+  });
+
   it('mints in the organization that was picked', async () => {
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: BETA }));
@@ -471,7 +491,20 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     await screen.findByText('Choose an organization');
     fireEvent.click(screen.getByRole('radio', { name: /Beta Labs/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id));
+    // The second argument is the whole point: it is what tells main a person
+    // answered, and main refuses to move the session off an organization
+    // carrying it. Sending the id alone is what shipped the bug (ENG-2199).
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id, true));
+  });
+
+  it('does not claim a person chose the organization when nobody was asked', async () => {
+    // A picker that never rendered cannot have been answered. Marking this call
+    // as chosen would pin every single-organization install to whatever the
+    // ranking happened to reach, and silence the fallback for all of them.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(hostMock.mindshubFinalize.mock.calls[0][1]).toBeFalsy();
   });
 
   it('names the organization the key actually landed in', async () => {

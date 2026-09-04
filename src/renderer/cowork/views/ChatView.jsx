@@ -9,8 +9,11 @@
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import ArtifactRepairCard from '../components/ArtifactRepairCard';
+import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { Alert, Badge, Card, Tooltip } from '../components/ui';
@@ -296,10 +299,14 @@ function userTurnAttachmentLabel(a) {
 // pasted prompt doesn't dominate the viewport before the answer starts.
 const USER_CLAMP_MAX_PX = 176;
 
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false }) {
   const contentRef = useRef(null);
   const [collapsed, setCollapsed] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
+  // An "Address with agent" handoff is a machine prompt — ids, a base revision
+  // and the raw thread JSON — so it renders as a card rather than as the wall of
+  // identifiers it literally is. Null for every ordinary message.
+  const repair = parseArtifactRepairPrompt(content);
   useLayoutEffect(() => {
     const el = contentRef.current;
     if (!el) return undefined;
@@ -322,6 +329,13 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               charts are gated off so a user typing a special fence in
               the composer can't trigger the side-effect renderers
               reserved for assistant output. */}
+          {repair ? (
+            <ArtifactRepairCard
+              repair={repair}
+              projectId={projectId}
+              streaming={streaming}
+            />
+          ) : (
           <div
             ref={contentRef}
             className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
@@ -334,7 +348,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               enableCharts={false}
             />
           </div>
-          {overflowing && (
+          )}
+          {!repair && overflowing && (
             <button
               type="button"
               className="user-turn-more"
@@ -1787,9 +1802,9 @@ export default function ChatView({
                     <>
                       <CrumbSep />
                       <CrumbButton
-                        label={project.name}
+                        label={projectLabel(project)}
                         onClick={() => onOpenProject?.(project)}
-                        title={`Open project: ${project.name}`}
+                        title={`Open project: ${projectLabel(project)}`}
                         maxWidth={200}
                       />
                     </>
@@ -1985,7 +2000,11 @@ export default function ChatView({
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
+                    projectId={project?.id}
                     conversationId={task?.id}
+                    // Only the last turn can still be the one being worked on,
+                    // and only then does "Making changes" describe the present.
+                    streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                     isLast={i === lastTurnIdx}
@@ -2637,6 +2656,7 @@ export default function ChatView({
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
+          projects={projects}
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}

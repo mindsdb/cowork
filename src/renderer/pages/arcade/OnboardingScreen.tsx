@@ -578,7 +578,12 @@ export default function OnboardingScreen({
   const completeMindsAuth = async () => {
     setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
     const { orgs } = await host.mindshubListOrgs();
-    if (needsOrgPick(orgs)) {
+    // `canPickOrganization` is a shell check, not a feature flag: an older main
+    // process drops the "a person chose this" flag and its entitlement fallback
+    // overrides the answer, so asking would promise something that cannot be
+    // kept. Those installs get the ranking, exactly as they did before the
+    // picker existed, until the next installer (ENG-2199).
+    if (needsOrgPick(orgs) && host.canPickOrganization()) {
       const ranked = rankMindsOrgs(orgs);
       setOrgChoices(ranked);
       // Ranked, so this is the first company organization — the answer the
@@ -590,11 +595,15 @@ export default function OnboardingScreen({
     await mintMindsKey();
   };
 
-  const mintMindsKey = async (organizationId?: string) => {
+  // `pick` is present only when a person answered the organization question on
+  // the picker below. Without it the organization is whatever the ranking or the
+  // stored preference resolves to, and main stays free to move the session to
+  // one that can pay; with it, their answer is final (ENG-2199).
+  const mintMindsKey = async (pick?: { organizationId: string; chosenByUser: boolean }) => {
     setPhase('validating');
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
     try {
-      finalizeResult = await host.mindshubFinalize(organizationId);
+      finalizeResult = await host.mindshubFinalize(pick?.organizationId, pick?.chosenByUser);
     } catch (e: any) {
       setPhase('error');
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
@@ -758,7 +767,7 @@ export default function OnboardingScreen({
             type="button"
             className="arc-btn"
             disabled={!pickedOrgId}
-            onClick={() => mintMindsKey(pickedOrgId)}
+            onClick={() => mintMindsKey({ organizationId: pickedOrgId, chosenByUser: true })}
           >
             Continue
           </button>

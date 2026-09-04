@@ -5,6 +5,7 @@
 // (and legacy context paths).
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { projectLabelByName } from '../../lib/projectLabel';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import { Tooltip } from '../ui';
@@ -30,6 +31,22 @@ import { OverflowMenu } from '../OverflowMenu';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
+import { canUseSharedResource } from '../../lib/sharedResourceAccess';
+
+/*
+  Ticket guard for the async loads that paint shared state. Every start claims
+  the next ticket and a response only applies while its ticket is still the
+  latest, so a read that began before a mutation can never repaint over the
+  refresh that mutation triggered.
+*/
+function useLoadTicket() {
+  const latest = useRef(0);
+  return useMemo(() => ({
+    claim: () => ++latest.current,
+    isCurrent: (ticket) => ticket === latest.current,
+    invalidate: () => { latest.current += 1; },
+  }), []);
+}
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -40,6 +57,41 @@ function relativeAge(ts) {
   if (secs < 3600) return `${Math.floor(secs / 60)}m`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
   return `${Math.floor(secs / 86400)}d`;
+}
+
+function mergeFileResource(current, fresh) {
+  const merged = { ...current, ...fresh };
+  const currentModifiedAt = Date.parse(current?.attribution?.lastModifiedAt || '');
+  const freshModifiedAt = Date.parse(fresh?.attribution?.lastModifiedAt || '');
+  // A synthetic row is the server's explicit tombstone for deleted
+  // instructions. Its null attribution timestamp is intentional, not evidence
+  // that the response predates the current file, so it must replace every bit
+  // of the former resource metadata.
+  const freshIsSynthetic = fresh?.synthetic === true;
+  // Only an ordering both sides can actually prove keeps the current metadata.
+  // A response that simply carries no timestamp is unknown, not older, and
+  // must not pin a revoked capability or another member's edit out of view.
+  const freshMetadataIsOlder = !freshIsSynthetic
+    && Number.isFinite(currentModifiedAt)
+    && Number.isFinite(freshModifiedAt)
+    && freshModifiedAt < currentModifiedAt;
+  if (freshMetadataIsOlder) {
+    // A project-file list request can already be in flight when a write
+    // succeeds. Do not let that older snapshot replace the PUT response's
+    // actor, timestamp, or permission decision when it eventually settles.
+    merged.attribution = current.attribution;
+    merged.capabilities = current.capabilities;
+    merged.modified = current.modified;
+    merged.size = current.size;
+  }
+  if (Object.prototype.hasOwnProperty.call(fresh, 'synthetic')) {
+    merged.synthetic = freshMetadataIsOlder ? current.synthetic : fresh.synthetic;
+  } else if (fresh.modified != null) {
+    // Read/write responses for a real file omit the listing-only synthetic
+    // flag. A modification timestamp proves the placeholder now exists.
+    merged.synthetic = false;
+  }
+  return merged;
 }
 
 function MemoryRow({ entry, onOpen }) {
@@ -146,13 +198,9 @@ function SessionAttachmentRow({
   );
 }
 
-function ContextFileRow({ file, onOpen, onRequestDelete }) {
+function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
-  // The instructions file is foundational (Anton reads it on every
-  // turn). Surfacing a delete on hover would tempt a misclick; the
-  // ContextFileModal opened by clicking the row also hides the
-  // delete affordance for `.anton/anton.md` — same rule both places.
-  const canDelete = !isAnton && !!onRequestDelete;
+  const canDelete = deletable && !!onRequestDelete;
   // The row was a <button>, but nesting a <button> inside a
   // <button> is invalid HTML and breaks the trash icon's click in
   // some browsers. Switch the outer to a div with role="button" so
@@ -280,7 +328,9 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile }) {
+export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+  projects = [],
+}) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   // Google Drive files the user picked via "Attach Google Drive files"
@@ -340,29 +390,34 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   const [attachmentsTick, setAttachmentsTick] = useState(0);
   const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
+  const memoryTicket = useLoadTicket();
+  // Mirrors the sections that were actually applied, so a superseded read can
+  // still resolve the row the user clicked against the newest listing.
+  const appliedSections = useRef([]);
+
   const applyMemorySections = useCallback((data) => {
     if (!data?.sections) return;
+    appliedSections.current = data.sections;
     setSections(data.sections);
     setOpenEntry((prev) => (
       prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
     ));
   }, []);
 
-  const reloadMemory = useCallback(() => (
-    fetchMemory(project)
+  const reloadMemory = useCallback(({ forceFresh = false } = {}) => {
+    const ticket = memoryTicket.claim();
+    return fetchMemory(project, { forceFresh })
       .then((data) => {
+        if (!memoryTicket.isCurrent(ticket)) return null;
         applyMemorySections(data);
         return data;
       })
-      .catch(() => null)
-  ), [project?.id, project?.path, applyMemorySections]);
+      .catch(() => null);
+  }, [project?.id, project?.path, applyMemorySections, memoryTicket]);
 
   const openMemoryEntry = useCallback((entry) => {
-    reloadMemory().then((data) => {
-      const fresh = data?.sections
-        ? findMemoryEntry(data.sections, entry.path) || entry
-        : entry;
-      setOpenEntry(fresh);
+    reloadMemory().then(() => {
+      setOpenEntry(findMemoryEntry(appliedSections.current, entry.path) || entry);
     });
   }, [reloadMemory]);
 
@@ -370,24 +425,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     // Hermes has no memory system of its own — Project/Global memory is an
     // Anton concept, so skip the fetch entirely rather than show sections
     // the harness never reads or writes.
-    if (!showMemory) return;
-    let cancelled = false;
-    fetchMemory(project)
-      .then((data) => {
-        if (cancelled) return;
-        applyMemorySections(data);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [project?.id, project?.path, refreshKey, showMemory, applyMemorySections]);
+    if (!showMemory) return undefined;
+    reloadMemory();
+    return () => { memoryTicket.invalidate(); };
+  }, [refreshKey, showMemory, reloadMemory, memoryTicket]);
 
-  // Ticket pattern: every instructions fetch (mount + reload-on-
-  // edit) bumps `loadVersion`. The async response only applies its
-  // result if its ticket is still the latest. Without this, saving a
-  // context edit and immediately switching projects could let the
-  // late response paint into the new project — the same shape of
-  // bug WorkingFolderLive had.
-  const loadVersion = useRef(0);
+  // Every instructions fetch (mount + reload-on-edit) claims a ticket. Without
+  // it, saving a context edit and immediately switching projects could let the
+  // late response paint into the new project — the same shape of bug
+  // WorkingFolderLive had.
+  const filesTicket = useLoadTicket();
 
   // List every file in the working folder (the project root). Anton
   // creates files in here as the project evolves (the instructions
@@ -396,12 +443,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   // project's real state. Hidden dirs (`.anton/` body, `.git/`, etc.)
   // are filtered out, with the canonical `.anton/anton.md`
   // instructions row pinned to the top so it's always reachable.
-  const reloadFiles = useCallback(() => {
+  const reloadFiles = useCallback(({ forceFresh = false } = {}) => {
     if (!project?.name) { setProjectFiles([]); return; }
-    const ticket = ++loadVersion.current;
-    listProjectFiles(project.name)
+    const ticket = filesTicket.claim();
+    listProjectFiles(project.name, { forceFresh })
       .then((data) => {
-        if (ticket !== loadVersion.current) return;
+        if (!filesTicket.isCurrent(ticket)) return;
         const all = Array.isArray(data?.files) ? data.files : [];
         // Filter: keep the canonical instructions file from `.anton/`
         // but otherwise hide hidden trees (anything starting with `.`
@@ -423,21 +470,48 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           if (ai !== bi) return ai - bi;
           return (b.modified || 0) - (a.modified || 0);
         });
-        setProjectFiles(visible);
+        setProjectFiles((currentFiles) => {
+          const currentByPath = new Map(currentFiles.map((file) => [file.path, file]));
+          return visible.map((fresh) => {
+            const current = currentByPath.get(fresh.path);
+            return current ? mergeFileResource(current, fresh) : fresh;
+          });
+        });
+        // Keep an open modal on the same file while replacing its stale list
+        // metadata with the server's latest attribution and capabilities.
+        setOpenFile((current) => {
+          if (!current?.path) return current;
+          const fresh = visible.find((file) => file.path === current.path);
+          return fresh ? mergeFileResource(current, fresh) : current;
+        });
       })
-      .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
-  }, [project?.name]);
+      .catch(() => { if (filesTicket.isCurrent(ticket)) setProjectFiles([]); });
+  }, [project?.name, filesTicket]);
+
+  const refreshOpenFileResource = useCallback((resource) => {
+    if (!resource || typeof resource !== 'object') return;
+    setProjectFiles((currentFiles) => currentFiles.map((current) => (
+      current.path === resource.path
+        ? mergeFileResource(current, resource)
+        : current
+    )));
+    setOpenFile((current) => (
+      current
+        ? mergeFileResource(current, { ...resource, path: resource.path || current.path })
+        : current
+    ));
+  }, []);
 
   useEffect(() => {
     if (!project?.name) {
       setProjectFiles([]);
       // Bump the ticket so any in-flight load from a prior project
       // gets discarded when it finally lands.
-      loadVersion.current += 1;
+      filesTicket.invalidate();
       return;
     }
     reloadFiles();
-  }, [project?.name, reloadFiles]);
+  }, [project?.name, reloadFiles, filesTicket]);
 
   // Google Drive reference files live on the connection's _picked_files
   // grant, but each entry is tagged with the project(s) it was added
@@ -681,6 +755,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   file={f}
                   onOpen={() => setOpenFile(f)}
                   onRequestDelete={(file) => setPendingDeleteFile(file)}
+                  deletable={f.path !== ANTON_PROJECT_INSTRUCTIONS_PATH || (
+                    host.isWeb
+                    && !f.synthetic
+                    && canUseSharedResource(f, 'canDelete')
+                    && canUseSharedResource(project, 'canEditInstructions')
+                  )}
                 />
               ))}
               {driveFiles.map((f) => (
@@ -896,7 +976,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         title={labelCategory(openEntry?.category) || openEntry?.name || ''}
         subtitle={
           openEntry?.scope === 'Project' && openEntry?.projectName
-            ? `Project · ${openEntry.projectName}`
+            ? `Project · ${projectLabelByName(projects, openEntry.projectName)}`
             : (openEntry?.scope || '')
         }
         initialContent={openEntry?.content || ''}
@@ -920,8 +1000,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         emptyMessage="(empty memory)"
         placeholder="Memory contents — what should the agent remember?"
         dense
+        editable={canUseSharedResource(openEntry, 'canEdit')}
+        deletable={canUseSharedResource(openEntry, 'canDelete')}
+        attributionResource={openEntry}
         onClose={() => setOpenEntry(null)}
-        onChanged={() => { reloadMemory(); }}
+        onChanged={() => { reloadMemory({ forceFresh: true }); }}
       />
       <ContextFileModal
         open={!!openFile}
@@ -929,8 +1012,26 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
+        remover={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH && (
+          openFile?.synthetic || !host.isWeb
+        )
+          ? null
+          : undefined}
+        editable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? canUseSharedResource(openFile, 'canEdit')
+            && canUseSharedResource(project, 'canEditInstructions')
+          : true}
+        deletable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? host.isWeb
+            && canUseSharedResource(openFile, 'canDelete')
+            && canUseSharedResource(project, 'canEditInstructions')
+          : true}
+        attributionResource={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? openFile
+          : null}
+        onResourceLoaded={refreshOpenFileResource}
         onClose={() => setOpenFile(null)}
-        onChanged={() => reloadFiles()}
+        onChanged={() => reloadFiles({ forceFresh: true })}
       />
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
@@ -985,21 +1086,21 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           const target = pendingDeleteFile;
           setPendingDeleteFile(null);
           if (!target || !project?.name) return;
-          // Optimistic remove: pull the row from local state the
-          // instant the user confirms so the modal closing + row
-          // disappearing happen in the same frame. The DELETE +
-          // refetch happens in the background; on failure we
-          // reloadFiles() to restore the canonical list and surface
-          // the error.
-          setProjectFiles((prev) => prev.filter((f) => f.path !== target.path));
+          const isInstructions = target.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
+          if (isInstructions && !(
+            canUseSharedResource(target, 'canDelete')
+            && canUseSharedResource(project, 'canEditInstructions')
+          )) return;
+          // Protected instructions stay visible until the server confirms the
+          // delete. Ordinary project files keep their historical optimistic UI.
+          if (!isInstructions) {
+            setProjectFiles((prev) => prev.filter((f) => f.path !== target.path));
+          }
           try {
             await deleteProjectFile(project.name, target.path);
-            // Quiet success — reloadFiles would also re-bring back
-            // the row if the server actually kept it. We skip the
-            // automatic reload here; the periodic listings on view
-            // remount will re-sync. (If you want belt + suspenders,
-            // uncomment reloadFiles() below.)
-            // reloadFiles();
+            // Instructions have a synthetic always-reachable row after delete,
+            // so refresh its cleared content, attribution, and capabilities.
+            if (isInstructions) reloadFiles({ forceFresh: true });
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error('[context] delete file failed', err);

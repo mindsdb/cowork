@@ -402,6 +402,15 @@ Four consequences worth knowing:
 - **Signing out takes the credential away**, and an install upgrading from a
   build that minted a per-device key is signed out once so that key can be
   revoked while the session still names the organization it belongs to.
+- **Sign-out answers as soon as the credentials are gone.** It also restarts the
+  sidecar, to flush provider objects that might still hold the previous user's
+  credential in memory, and that restart runs in the background rather than
+  holding the reply: the stop and start together are capped near 190 seconds,
+  and longer behind a start already in flight, which is far past what anyone
+  waits in front of a confirm dialog. `src/main/sign-out-restart.ts` owns it and
+  is single-flight. Signing the next user in waits for it, so their credential
+  is not handed to a sidecar the restart is about to take down, and boot routing
+  answers "not configured" until it settles.
 
 A sidecar you start by hand, outside the app, therefore has no MindsHub
 credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
@@ -490,6 +499,11 @@ Three things decide it, in order:
 1. **A pick the person made** — stored in `state.json` under
    `preferences.mindsOrganization`, keyed by the Keycloak subject so one
    machine signed into a second account does not inherit the first's choice.
+   Only a pick is ever written: the onboarding picker and the account menu.
+   Where a sign-in happens to land is not recorded, because the key is a single
+   slot and an automatic write to it would replace whatever a person chose —
+   possibly another account's, which no guard keyed on the stored value can
+   even see.
 2. **Company organizations rank ahead of the personal one**, which Keycloak
    names `personal_<userId>`. Within each group the order Keycloak returned is
    kept, so "the first company organization" means the same thing on every
@@ -570,6 +584,32 @@ deploy cowork-server in audit mode; enforce the expected-organization boundary
 while the capability remains disabled; then enable the capability only after
 every server replica enforces it. Do not combine enforcement and enablement in
 one rollout.
+
+### Shared-resource permissions come from the server
+
+Hosted Cowork never derives project, skill, project-memory, or instruction
+permissions from a role in the renderer. Each resource response carries its
+allowed actions, and a missing capability fails closed: the corresponding
+rename, edit, disable, or delete control stays unavailable until a fresh server
+response explicitly allows it. Packaged skills and the General project therefore
+remain immutable according to the same response contract. Packaged desktop mode
+keeps its local-owner fallback because its files have no organization principal
+or server-owned capability record.
+
+Attribution is display metadata, not authority. The UI may name the immutable
+creator and current last editor, but only the capability fields decide whether a
+control is enabled. Protected deletes wait for the server before removing
+anything from local state; a refusal keeps the resource, selection, tasks,
+drafts, and route in place. Successful protected mutations force a fresh read
+generation, superseding any coalesced pre-mutation request so stale attribution
+or capabilities cannot overwrite the response that just succeeded.
+
+The server ships first. Because the hosted client fails closed on an absent
+capability, a renderer that reaches hosted users before cowork-server#417 is
+deployed reads every response as carrying no capabilities, and rename, delete,
+edit, and disable go unavailable for everyone, creators and organization admins
+included. Deploy cowork-server#417, confirm hosted responses carry
+`capabilities`, and only then deploy the renderer.
 
 ### A model the wallet can't pay for is not selectable
 

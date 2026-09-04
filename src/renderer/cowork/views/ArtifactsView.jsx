@@ -11,6 +11,7 @@
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
@@ -233,7 +234,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     }
   };
 
-  const projectLabel = projectNameOf(artifact, projects);
+  // Not `projectLabel`: that name belongs to the imported
+  // `projectLabel(project)` function the tooltip below calls, and shadowing it
+  // with this string made that call throw "projectLabel is not a function",
+  // blanking the whole page. Not `projectName` either — that name is reserved
+  // for slugs (projectLabelSurfaces guards it). This is a resolved display
+  // label: projectNameOf routes through projectLabel itself.
+  const projectDisplay = projectNameOf(artifact, projects);
   // The project the artifact belongs to. When resolved, the project label
   // becomes a clickable affordance that navigates to that project's page.
   const projectMatch = projectOf(artifact, projects);
@@ -335,7 +342,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
         <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
         {canOpenProject ? (
-          <Tooltip content={`Open ${projectMatch.name}`}>
+          <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
@@ -349,10 +356,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
               }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
-            >{projectLabel}</button>
+            >{projectDisplay}</button>
           </Tooltip>
         ) : (
-          <span title={projectLabel} className="font-[family-name:var(--font-body)] text-[12px] text-ink-3 min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel}</span>
+          <span title={projectDisplay} className="font-[family-name:var(--font-body)] text-[12px] text-ink-3 min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap">{projectDisplay}</span>
         )}
         <span className="ml-auto shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{artifact.updated || '—'}</span>
       </div>
@@ -577,7 +584,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
           {canOpenProject ? (
-            <Tooltip content={`Open ${projectMatch.name}`}>
+            <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}

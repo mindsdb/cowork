@@ -524,6 +524,39 @@ a[href],
   .home-connect-card__actions > * { flex: 1; }
 }
 
+/* Project action menus normally reveal with hover. Keep the same compact
+   controls, but make them discoverable for keyboard users and devices that
+   cannot hover (touch phones, tablets, and coarse-pointer convertibles).
+   A trigger a view withholds on purpose (the General project has no kebab)
+   is never rendered; these guards keep the override off any trigger that is
+   in the DOM but taken out of the accessibility tree or out of flow, so a
+   deliberately hidden control can never be revived by a media query. */
+.project-action-trigger:focus-visible {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+@media (hover: none), (pointer: coarse) {
+  .project-action-trigger:not([hidden]):not(.hidden):not([aria-hidden='true']) {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+  /* The drawn control keeps its 22-26px desktop size; a centred transparent
+     overlay lifts the tappable area to the 44px minimum the rest of the mobile
+     shell uses. The card's pin and kebab sit 34px apart, so the two overlays
+     meet 12px out from each centre — past the 13px glyph box by a hair, and
+     never over the neighbour's icon. */
+  .project-action-trigger { position: relative; }
+  .project-action-trigger::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* ─── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadein-up {
   from { opacity: 0; transform: translateY(6px); }
@@ -4128,6 +4161,83 @@ body[data-theme="dark"] .mshell__drawer-title {
   gap: 8px;
   position: relative;
 }
+/* The "Address with agent" handoff, rendered as a card instead of its raw
+   machine prompt. Sits inside the user bubble, so it inherits the bubble's fill
+   and only has to structure what is on top of it — no second background, or the
+   card would read as a nested surface the transcript does not otherwise use. */
+.artifact-repair-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.artifact-repair-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.artifact-repair-card-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.artifact-repair-card-title {
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+/* The filename earns its place — it is the one identifier from the prompt a
+   person reads — but it is secondary to the status, and long paths must not
+   push the status out of the row. */
+.artifact-repair-card-file {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-repair-card-selector {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-repair-card-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.artifact-repair-card-thread li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* A quiet rule rather than a box: the comment is a quotation of the
+     reviewer, and the bubble already provides the container. */
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+.artifact-repair-card-author {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.artifact-repair-card-comment {
+  color: var(--ink-2);
+  /* The reviewer's own words, so honour their line breaks. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .user-turn-bubble {
   /* Quiet filled block, not an SMS bubble: a borderless --surface-3 fill,
      no shadow. The transcript sits on a flat --bg (there is no dot field),

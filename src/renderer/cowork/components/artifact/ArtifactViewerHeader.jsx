@@ -80,6 +80,7 @@ export function ArtifactViewerHeader({
   } = publication;
   const {
     canOpenInBrowser,
+    canOpenInBrowserTab,
     canOpenLocalFile,
     isBackendArtifact,
     backendPort,
@@ -87,6 +88,7 @@ export function ArtifactViewerHeader({
     deleteBusy,
     onReload,
     onOpenInBrowser,
+    onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
     onDownload,
@@ -140,6 +142,18 @@ export function ArtifactViewerHeader({
           editDisabledReason={editDisabledReason}
           reviewDisabledReason={reviewDisabledReason}
         />
+        {/* Beside the tabs rather than in the ⋯ menu: that menu is hidden in org
+            mode because its other entries are OS/file actions and `/publish`
+            routes an org deployment cannot answer, and this belongs on both.
+            Hidden outright when there is no URL to open — a button that opens
+            nothing is worse than no button. */}
+        {canOpenInBrowserTab && (
+          <Tooltip content="Open in a browser tab">
+            <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
+              {Ico.arrowUpRight(15)}
+            </IconButton>
+          </Tooltip>
+        )}
       </div>
 
       {/* Right — comments, publishing, more actions, and close. */}
@@ -164,13 +178,17 @@ export function ArtifactViewerHeader({
             )}
           </div>
         )}
-        {/* Sharing is owner-side desktop chrome. In org mode this window is a
-            review surface for MVP: publishing and the actions below live on the
-            gallery card instead, which is also where Delete stays reachable. */}
-        {!orgMode && canManage && publishable && (
+        {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
+            desktop-only, on the grounds that org mode's window is a review
+            surface and publishing "lives on the gallery card instead" — but the
+            card filters publish out in org mode too, so that left Cloud with no
+            way to share at all (ENG-2316). On Cloud this changes the audience of
+            an already-autopublished artifact; the controller handles the
+            transport difference. */}
+        {canManage && publishable && (
           <PublishMenu
             controller={pub}
-            disabled={!hasActionPath}
+            disabled={!orgMode && !hasActionPath}
             disabledReason={disabledReason}
           />
         )}
