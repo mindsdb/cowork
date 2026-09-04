@@ -1360,3 +1360,64 @@ describe('Stop with a scratchpad cell open', () => {
     await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
   });
 });
+
+describe('Stop after re-attaching to a conversation with a cell open', () => {
+  it('still cancels the cell the conversation opened before the re-attach', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    cancelScratchpad.mockClear();
+
+    // Alpha opens a cell, then the user leaves and comes back, which re-attaches.
+    await emitOn(tailA, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailA, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+
+    // The replay has not re-reported the cell yet, so the record is all that
+    // remembers it. Stop must still cancel it rather than leave it executing.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('a stream that ends while silenced by a Stop elsewhere', () => {
+  it('still drops its registry record', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+
+    // Stop on Beta bumps the shared generation, which silences Alpha's tail.
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then finishes. The record has to go even though the rest of
+    // the terminal is skipped, or the registry keeps claiming a dead stream.
+    await act(async () => { tailA.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // Proof it went: re-attaching finds nothing to replace, so the finished
+    // tail is never aborted on its way out.
+    await openByTitle(user, 'Alpha task');
+    await waitForStream(tailB);
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});

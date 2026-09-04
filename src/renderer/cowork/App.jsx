@@ -658,7 +658,7 @@ function AppCore() {
     if (prev?.ctrl && prev.ctrl !== ctrl) {
       try { prev.ctrl.abort(); } catch { /* already closed */ }
     }
-    liveStreamsRef.current.set(cid, { ctrl, pad: null });
+    liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
   }, []);
 
   // Drop the record only when `ctrl` is still the registered one, so a stream
@@ -666,7 +666,7 @@ function AppCore() {
   const releaseStream = useCallback((cid, ctrl) => {
     if (!cid) return;
     const rec = liveStreamsRef.current.get(cid);
-    if (rec && (!ctrl || rec.ctrl === ctrl)) liveStreamsRef.current.delete(cid);
+    if (rec && rec.ctrl === ctrl) liveStreamsRef.current.delete(cid);
   }, []);
 
   const abortStream = useCallback((cid) => {
@@ -1290,7 +1290,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
-  }, [markInFlightDone, releaseLiveSteps, releaseStream]);
+  }, [markInFlightDone, releaseLiveSteps]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -2035,12 +2035,16 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
+        // The record is dropped first, before the generation guard can skip
+        // the rest: a record that outlives its stream makes the registry lie
+        // about what is live. It is controller-guarded, so a superseded stream
+        // still cannot evict its successor.
         releaseStream(taskId, ctrl);
-        // Order matters twice over. The generation guard comes first: a
-        // superseded stream's late abort must not clear liveStepsRef for a
-        // NEWER run on the same conversation. The release then comes before
-        // the `cancelled` bail-out, because an aborted run's question is dead
-        // too and leaving it behind would hijack the composer.
+        // Below, the generation guard comes first so a superseded stream's late
+        // abort cannot clear liveStepsRef for a NEWER run on the same
+        // conversation, and releaseLiveSteps comes before the `cancelled`
+        // bail-out because an aborted run's question is dead too and leaving it
+        // behind would hijack the composer.
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
@@ -3078,7 +3082,7 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
-        releaseStream(sid || resolvedId, sessionCtrl);
+        releaseStream(resolvedId, sessionCtrl);
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
@@ -3906,9 +3910,9 @@ function AppCore() {
       },
     });
     activeStreamCtrlRef.current = vaultCtrl;
-    // No setStreamPad: this transport never opens a scratchpad, so its record
-    // keeps a null pad and Stop cancels nothing. That is the point — it used to
-    // fall through to the shared ref and cancel another conversation's cell.
+    // No setStreamPad: the probe does emit scratchpad events on this stream,
+    // but this path never tracked the open pad, so Stop cannot cancel a probe
+    // cell. It used to reach the shared ref and cancel someone else's instead.
     registerStream(resolvedId || id, vaultCtrl);
   };
 
