@@ -138,6 +138,15 @@ RUN mkdir -p /home/anton/.cowork && chown anton:anton /home/anton/.cowork
 # manager, login/PAM stack, or mount machinery is ever executed. A
 # package that isn't in the image can't fail a scan.
 #
+# Snyk periodically opens auto-PRs against this file for CVEs in packages
+# purged below (e.g. CVE-2026-13595 in util-linux/libblkid1, advisory
+# SNYK-DEBIAN13-UTILLINUX-*). Those findings are base-stage attribution:
+# the package ships in python:3.12-slim but is removed here before the
+# runtime image is built, so it never reaches the shipped artifact. The
+# assertion after this RUN enforces exactly that — do not "fix" such a
+# finding by swapping the base image; verify the package is absent from
+# the final image instead.
+#
 # What stays (~30 packages): python + venv's native-lib closure
 # (libc, openssl, sqlite, expat, ffi, gdbm, stdc++, compression libs),
 # ca-certificates + openssl for TLS, dash for `docker exec sh` and
@@ -171,6 +180,38 @@ RUN set -eux; \
         libdb5.3t64 libgmp10 libnettle8t64 libhogweed6t64 libbsd0; \
     python -c "import ssl, sqlite3, uuid; uuid.uuid4(); \
 ssl.create_default_context().cert_store_stats()"
+
+# Enforce the hardening above: fail the build if any CVE-attributed package
+# we purged is still present in the shipped image — in the dpkg DB or on
+# disk. This turns the purge list from "we remembered to list it" into a
+# guarantee the build cannot violate: a future base-image rename, or an
+# edit that drops a name from the list above, breaks the build here instead
+# of silently shipping the CVE. Runs under python (grep/coreutils are gone).
+RUN python - <<'PYEOF'
+import os, re, sys
+BANNED = ("util-linux", "libblkid1", "libmount1", "libuuid1", "libsmartcols1", "bsdutils")
+bad = set()
+status = "/var/lib/dpkg/status"
+if os.path.exists(status):
+    pkg = inst = None
+    for line in open(status, errors="replace"):
+        if line.startswith("Package:"):
+            pkg = line.split(":", 1)[1].strip()
+        elif line.startswith("Status:"):
+            inst = "installed" in line and "not-installed" not in line and "config-files" not in line
+        elif not line.strip():
+            if pkg in BANNED and inst:
+                bad.add("dpkg:" + pkg)
+            pkg = inst = None
+for root in ("/usr/lib", "/lib", "/usr/bin", "/bin", "/sbin", "/usr/sbin"):
+    for dirpath, _, files in os.walk(root):
+        for f in files:
+            if re.search(r"(libblkid|libmount|libuuid|libsmartcols)\.so", f) or f in ("mount", "umount", "lsblk", "blkid", "dmesg"):
+                bad.add(os.path.join(dirpath, f))
+if bad:
+    sys.exit("HARDENING ASSERTION FAILED — purged CVE package present in runtime image:\n  " + "\n  ".join(sorted(bad)))
+print("✓ hardening assertion: no CVE-attributed util-linux/libblkid packages in runtime image")
+PYEOF
 
 USER anton
 
