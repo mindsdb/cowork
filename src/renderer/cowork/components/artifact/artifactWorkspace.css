@@ -106,6 +106,8 @@
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .artifact-comment-agent-action:hover { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); }
+.artifact-comment-agent-action:disabled { opacity: .6; cursor: default; }
+.artifact-comment-agent-action:disabled:hover { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .artifact-comment-secondary-action { padding: 0 8px; border: 0; color: var(--ink-3); background: transparent; }
 .artifact-comment-secondary-action:hover { color: var(--ink); background: var(--surface-2); }
 .artifact-comment-agent-action:focus-visible,

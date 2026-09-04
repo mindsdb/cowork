@@ -74,6 +74,10 @@ export function InboxCard({
   viewer,
   canResolve = false,
   canAddressWithAgent = false,
+  // A repair request in flight anywhere on this artifact, and whether this
+  // thread is the one an agent is currently working on.
+  agentBusy = false,
+  agentWorking = false,
   onStatus,
   onAddressWithAgent,
   onRequestDelete, // ({ threadId }) → panel confirms + dispatches
@@ -168,9 +172,12 @@ export function InboxCard({
           <button
             type="button"
             className="artifact-comment-agent-action"
+            disabled={agentBusy || agentWorking}
+            aria-busy={agentBusy || agentWorking}
             onClick={() => onAddressWithAgent(thread)}
           >
-            {Ico.sparkle(13)} Address with agent
+            {Ico.sparkle(13)}
+            {agentWorking ? 'Agent is working…' : agentBusy ? 'Starting…' : 'Address with agent'}
           </button>
         )}
         {canResolve && (

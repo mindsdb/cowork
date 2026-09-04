@@ -266,6 +266,10 @@ export function ArtifactViewerBody({
             viewer={comments.viewer}
             capabilities={comments.capabilities}
             onStatus={review.onStatus || comments.setStatus}
+            agentBusy={repairBusy}
+            agentWorkingThreadId={workspace.repair?.status === 'queued'
+              ? workspace.repair.commentThreadId
+              : null}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}
