@@ -54,24 +54,38 @@ describe('the finalize IPC handler forwards the flag', () => {
    * boundary, and `organizationLabelSurfaces.test.js` already establishes
    * source reading as how this repo pins a wiring seam a unit test walks past.
    */
-  const handler = (() => {
-    const src = readFileSync(resolve(__dirname, 'index.ts'), 'utf-8');
-    const start = src.indexOf('ipcMain.handle(IPC.MINDSHUB_FINALIZE');
-    expect(start).toBeGreaterThan(-1);
-    return src.slice(start, src.indexOf('\n  });', start));
+  const src = readFileSync(resolve(__dirname, 'index.ts'), 'utf-8');
+  const start = src.indexOf('ipcMain.handle(IPC.MINDSHUB_FINALIZE');
+  const handler = start < 0 ? '' : src.slice(start, src.indexOf('\n  });', start));
+
+  /**
+   * Just the arguments of the `selectEntitledOrg(...)` call, not everything
+   * after it. Scoping matters: with the wider slice, deleting the forwarding
+   * and leaving any later mention of the name — a comment is enough — left
+   * this green while the flag was being dropped.
+   */
+  const selectCall = (() => {
+    const at = handler.indexOf('selectEntitledOrg(');
+    if (at < 0) return '';
+    const end = handler.indexOf('});', at);
+    return end < 0 ? handler.slice(at) : handler.slice(at, end + 3);
   })();
+
+  it('locates the handler at all, so the assertions below are not vacuous', () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(selectCall).toContain('selectEntitledOrg(');
+  });
 
   it('accepts the flag off the wire', () => {
     expect(handler).toMatch(/chosenByUser\??:\s*boolean/);
   });
 
   it('passes it into selectEntitledOrg rather than dropping it', () => {
-    const call = handler.slice(handler.indexOf('selectEntitledOrg('));
-    expect(call).toContain('chosenByUser');
+    expect(selectCall).toMatch(/chosenByUser\s*:/);
   });
 
   it('compares it strictly, so a truthy non-boolean cannot arm the flag', () => {
     // `Boolean(chosenByUser)` would treat the string "false" as a choice.
-    expect(handler).toMatch(/chosenByUser:\s*chosenByUser === true/);
+    expect(selectCall).toMatch(/chosenByUser:\s*chosenByUser === true/);
   });
 });
