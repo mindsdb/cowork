@@ -1019,11 +1019,14 @@ async function doSelectEntitledOrg(
     // them there. Recoverable and worth retrying: everything above is a read
     // apart from the switches, and the next attempt starts from wherever the
     // session actually is.
-    const stranded = namedOrg(settled);
+    // Deliberately unnamed. A personal organization's `displayName` is
+    // `<email>'s organization`, so interpolating it here would put the exact
+    // string ENG-2109 removed from every other surface back into a message a
+    // person reads — which `organizationLabelSurfaces.test.js` guards against
+    // for this file by name.
     return {
       error:
-        'Could not put this computer back in its organization after checking which one can pay'
-        + `${stranded ? `; it is currently in ${stranded.displayName}` : ''}. `
+        'Could not put this computer back in its organization after checking which one can pay. '
         + 'Try again in a moment.',
     };
   }
