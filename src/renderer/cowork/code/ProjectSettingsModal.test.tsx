@@ -380,6 +380,7 @@ describe('ProjectSettingsModal', () => {
         modelIds: () => modelIds,
         modelsLoading: () => false,
         loadModels: async () => {},
+        reloadEngines: vi.fn(),
       },
       onClose: vi.fn(),
       onSave,
