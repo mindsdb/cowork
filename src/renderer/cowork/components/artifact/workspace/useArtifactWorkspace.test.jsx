@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   decideAgentRepair: vi.fn(),
   loadAgentRepair: vi.fn(),
   cancelAgentRepair: vi.fn(),
+  releaseAgentRepairs: vi.fn(),
 }));
 
 vi.mock('../../../../platform/host', () => ({ host: platform }));
@@ -22,6 +23,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   enableDraftComments: (...args) => api.enableDraftComments(...args),
   loadArtifactReview: (...args) => api.loadArtifactReview(...args),
   loadArtifactSource: (...args) => api.loadArtifactSource(...args),
+  releaseAgentRepairs: (...args) => api.releaseAgentRepairs(...args),
   loadArtifactRevisions: (...args) => api.loadArtifactRevisions(...args),
   cancelAgentRepair: (...args) => api.cancelAgentRepair(...args),
   decideAgentRepair: (...args) => api.decideAgentRepair(...args),
@@ -84,6 +86,7 @@ beforeEach(() => {
   api.decideAgentRepair.mockReset();
   api.loadAgentRepair.mockReset();
   api.cancelAgentRepair.mockReset();
+  api.releaseAgentRepairs.mockReset().mockResolvedValue({ released: [] });
   api.saveArtifactSource.mockReset();
 });
 
@@ -523,5 +526,65 @@ describe('useArtifactWorkspace agent repair auto-open', () => {
     expect(api.cancelAgentRepair).toHaveBeenCalledWith(
       artifact, 'repair-1', { discardReady: false },
     );
+  });
+});
+
+describe('useArtifactWorkspace releasing a repair on resolve', () => {
+  const repairAt = (over = {}) => ({
+    id: 'repair-1',
+    status: 'ready',
+    path: 'index.html',
+    revisionId: 'rev-1',
+    commentThreadId: 'thread-1',
+    superseded: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    api.loadAgentRepair.mockResolvedValue({ repair: repairAt(), compare: null });
+  });
+
+  it('releases the repair the resolved comment was waiting on', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    api.releaseAgentRepairs.mockResolvedValue({
+      released: [repairAt({ status: 'discarded' })],
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => { await result.current.releaseRepairsForComment('thread-1'); });
+
+    expect(api.releaseAgentRepairs).toHaveBeenCalledWith(artifact, 'thread-1');
+    expect(result.current.repair.status).toBe('discarded');
+    expect(result.current.comparison).toBeNull();
+  });
+
+  it('does not call the owner-only route as a reviewer', async () => {
+    api.loadArtifactSource.mockRejectedValue(httpError(403, 'Reviewer'));
+    api.loadArtifactReview.mockResolvedValue({ capabilities: reviewerCapabilities });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    let returned;
+    await act(async () => {
+      returned = await result.current.releaseRepairsForComment('thread-1');
+    });
+
+    expect(returned).toBeNull();
+    expect(api.releaseAgentRepairs).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unrelated repair alone', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    api.releaseAgentRepairs.mockResolvedValue({
+      released: [repairAt({ id: 'repair-other', status: 'discarded' })],
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => { await result.current.releaseRepairsForComment('thread-9'); });
+
+    expect(result.current.repair.status).toBe('ready');
   });
 });

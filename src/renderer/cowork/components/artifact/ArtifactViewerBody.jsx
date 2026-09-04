@@ -260,7 +260,23 @@ export function ArtifactViewerBody({
             expired={comments.expired}
             viewer={comments.viewer}
             capabilities={comments.capabilities}
-            onStatus={comments.setStatus}
+            onStatus={async (threadId, nextStatus) => {
+              const ok = await comments.setStatus(threadId, nextStatus);
+              // Resolving the comment is the explicit decision the
+              // accept-or-reject rule was protecting, so it also releases
+              // whatever repair was waiting on this thread. Release after the
+              // resolve, never before: a released repair can no longer be
+              // decided, and the viewer's buttons would start failing again.
+              if (ok && nextStatus === 'resolved') {
+                try {
+                  await workspace.releaseRepairsForComment(threadId);
+                } catch (releaseError) {
+                  setErr(releaseError?.message
+                    || 'The comment was resolved, but its agent suggestion is still open.');
+                }
+              }
+              return ok;
+            }}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}

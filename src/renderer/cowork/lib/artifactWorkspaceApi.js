@@ -237,4 +237,13 @@ export function decideAgentRepair(artifact, repairId, status, { expectedHeadRevi
   });
 }
 
+export function releaseAgentRepairs(artifact, commentThreadId) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/agent-repairs/release`, {
+    method: 'POST',
+    body: JSON.stringify({ commentThreadId }),
+  });
+}
+
 export { artifactRef };

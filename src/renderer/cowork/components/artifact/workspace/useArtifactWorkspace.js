@@ -10,6 +10,7 @@ import {
   loadArtifactRevisions,
   loadArtifactReview,
   loadArtifactSource,
+  releaseAgentRepairs,
   requestAgentRepair,
   restoreArtifactRevision,
   saveArtifactSource,
@@ -398,6 +399,23 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     return cancelled;
   }, [artifact, repair?.id]);
 
+  const releaseRepairsForComment = useCallback(async (commentThreadId) => {
+    // Resolving the comment is the explicit decision the accept-or-reject rule
+    // was protecting. The route is owner-only, and no editable source means no
+    // repair to release, so a reviewer is never sent into a 403 for resolving.
+    if (!commentThreadId || !source) return null;
+    const generation = workspaceGeneration.current;
+    const result = await releaseAgentRepairs(artifact, commentThreadId);
+    if (workspaceGeneration.current === generation) {
+      const mine = (result?.released || []).find((item) => item.id === repair?.id);
+      if (mine) {
+        setRepair(mine);
+        setComparison(null);
+      }
+    }
+    return result;
+  }, [artifact, repair?.id, source]);
+
   const decideRepair = useCallback(async (decision) => {
     if (!repair?.id) {
       // A user-initiated decision with no record behind it is a bug, not a
@@ -457,10 +475,12 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     refreshRepair,
     cancelRepair,
     decideRepair,
+    releaseRepairsForComment,
   }), [
     addressWithAgent, cancelRepair, capabilities, changeMode, commentsReady, compareRevision, comparison,
     conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, refreshRepair, repair, restoreRevision, revisions, save, source, status,
+    mode, refreshRepair, releaseRepairsForComment, repair, restoreRevision, revisions,
+    save, source, status,
     supported, unsupportedReason,
   ]);
 }
