@@ -2538,13 +2538,6 @@ function AppCore() {
       openCode();
       return;
     }
-    // Connectors aren't available on Cloud yet — intercept any entry point
-    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
-    // popup instead of routing to a half-working surface.
-    if (orgMode && key === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      return;
-    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
