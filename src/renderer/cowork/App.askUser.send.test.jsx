@@ -146,6 +146,7 @@ import {
   uploadAttachments,
   renameConversation,
   moveTaskToProject,
+  cancelScratchpad,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -1289,15 +1290,19 @@ describe('a tail displaced by opening another running conversation', () => {
     expect(tailB.kind).toBe('tail');
     expect(tailA.abort).not.toHaveBeenCalled();
 
-    // Back on Alpha. Stopping conv-a must tear down every tail this app opened
-    // for conv-a, not only the most recent one — a tail left attached keeps
-    // replaying into a dead turn and can later cancel it on its own idle timer.
+    // Back on Alpha. Re-opening it must not spin up a duplicate tail, and Stop
+    // must tear down the tail that conv-a actually holds — a tail left attached
+    // keeps replaying into a dead turn and can cancel it on its own idle timer.
     await openByTitle(user, 'Alpha task');
-    await emit({ type: 'response.output_text.delta', delta: 'working' });
+    await emitOn(tailA, { type: 'response.output_text.delta', delta: 'working' });
+    expect(streams.filter((h) => h.kind === 'tail')).toHaveLength(2);
+    expect(tailA.abort).not.toHaveBeenCalled();
+
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
 
     expect(tailA.abort).toHaveBeenCalled();
+    expect(tailB.abort).not.toHaveBeenCalled();
   });
 
   it('leaves a running conversation attached when the opened one is idle', async () => {
@@ -1314,5 +1319,43 @@ describe('a tail displaced by opening another running conversation', () => {
     await openByTitle(user, 'Beta task');
     await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-b'));
     expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('Stop with a scratchpad cell open', () => {
+  it('cancels the cell of a conversation started from home', async () => {
+    const user = userEvent.setup();
+    // Open a task first so HomeView mounts with its composer (see the
+    // new-session suite above for why).
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    cancelScratchpad.mockClear();
+
+    await send(user, composer, 'start something');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+
+    // The agent opens a cell, so Stop has to cancel it: cancelling the turn
+    // alone leaves the cell executing on the server.
+    await emitOn(handle, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(handle, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
   });
 });

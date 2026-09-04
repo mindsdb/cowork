@@ -658,7 +658,7 @@ function AppCore() {
     if (prev?.ctrl && prev.ctrl !== ctrl) {
       try { prev.ctrl.abort(); } catch { /* already closed */ }
     }
-    liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
+    liveStreamsRef.current.set(cid, { ctrl, pad: null });
   }, []);
 
   // Drop the record only when `ctrl` is still the registered one, so a stream
@@ -684,6 +684,10 @@ function AppCore() {
     if (!previousId || !cid || previousId === cid) return;
     const rec = liveStreamsRef.current.get(previousId);
     if (!rec) return;
+    const existing = liveStreamsRef.current.get(cid);
+    if (existing?.ctrl && existing.ctrl !== rec.ctrl) {
+      try { existing.ctrl.abort(); } catch { /* already closed */ }
+    }
     liveStreamsRef.current.delete(previousId);
     liveStreamsRef.current.set(cid, rec);
   }, []);
@@ -807,7 +811,13 @@ function AppCore() {
       // ref: another conversation may legitimately be streaming behind it.
       const reaped = abortStream(streaming);
       const ctrl = activeStreamCtrlRef.current;
-      if (ctrl && ctrl !== reaped?.ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      // Abort the shared controller only when no conversation owns it; one
+      // owned by a different conversation is legitimately still running.
+      const ownedElsewhere = ctrl
+        && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
+      if (ctrl && !reaped && !ownedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
@@ -1119,8 +1129,8 @@ function AppCore() {
     }
 
     const ctrl = activeStreamCtrlRef.current;
-    if (ctrl) {
-      try { ctrl.abort(); } catch {}
+    if (ctrl && (!stopped || ctrl === stopped.ctrl)) {
+      if (!stopped) { try { ctrl.abort(); } catch { /* already closed */ } }
       activeStreamCtrlRef.current = null;
     }
 
@@ -1913,9 +1923,11 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already tailing locally — second-mount of the same task should
-    // not double up.
-    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
+    // Already streaming locally, as a tail or as a send. A second tail would
+    // replay the whole buffer from seq 0 and abort the first for nothing.
+    // Re-point the foreground ref so Stop targets the conversation on screen.
+    if (liveStreamsRef.current.has(taskId)) {
+      activeStreamingTaskIdRef.current = taskId;
       return true;
     }
     let status;
@@ -2025,6 +2037,7 @@ function AppCore() {
         // the `cancelled` bail-out, because an aborted run's question is dead
         // too and leaving it behind would hijack the composer.
         if (streamGen !== activeStreamGenerationRef.current) return;
+        releaseStream(taskId, ctrl);
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3042,7 +3055,10 @@ function AppCore() {
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreamingMessage());
       },
       onProgress(event, sid) {
@@ -3749,11 +3765,10 @@ function AppCore() {
     // behind a turn that cannot complete, and it sits there until the
     // server's 300 s question timeout.
     //
-    // The counter is deliberately global rather than per conversation: there
-    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
-    // live, and the sole bump site (handleStopStream) explicitly releases the
-    // conversation it just stopped. Making it per conversation would buy
-    // nothing while one-stream-at-a-time holds.
+    // The counter is global while streams are now per conversation, so a Stop
+    // on one conversation silences every other live stream's callbacks until a
+    // fresh tail re-attaches. Known gap, tracked separately; making the counter
+    // per conversation is the fix.
     const streamGen = activeStreamGenerationRef.current;
     const vaultCtrl = streamDataVaultSubmission({
       formId,
