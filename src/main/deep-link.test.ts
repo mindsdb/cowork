@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
 import { BUILD_KINDS } from './channels';
-import { schemeForKind, isAuthCallbackUrl, protocolClientArgs } from './deep-link';
+import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, authReturnUrl } from './deep-link';
 
 // A scheme is a machine-wide claim. QA runs a staging build beside prod, so a
 // shared name would send a staging sign-in to whichever build installed last.
@@ -65,5 +65,29 @@ describe('protocolClientArgs', () => {
 
   it('degrades to no override when argv carries no script', () => {
     expect(protocolClientArgs('/usr/bin/electron', ['/usr/bin/electron'], false)).toEqual({});
+  });
+});
+
+// macOS regains focus today. Sending it to the scheme as well would add an
+// "Open MindsHub Cowork?" prompt on the one platform with no bug.
+describe('authReturnUrl', () => {
+  it('returns this build\'s callback URL on Windows', () => {
+    expect(authReturnUrl('prod', 'win32')).toBe('mindshub-cowork://auth-done');
+    expect(authReturnUrl('stable', 'win32')).toBe('mindshub-cowork-staging://auth-done');
+  });
+
+  it('sends darwin nowhere, so the working platform gains no prompt', () => {
+    expect(authReturnUrl('prod', 'darwin')).toBeNull();
+  });
+
+  it('sends linux nowhere either', () => {
+    expect(authReturnUrl('prod', 'linux')).toBeNull();
+  });
+
+  it('round-trips through the matcher the app checks incoming URLs with', () => {
+    const url = authReturnUrl('preview', 'win32');
+    expect(url).not.toBeNull();
+    expect(isAuthCallbackUrl(url as string, 'preview')).toBe(true);
+    expect(isAuthCallbackUrl(url as string, 'prod')).toBe(false);
   });
 });

@@ -42,6 +42,15 @@ export function isAuthCallbackUrl(url: string, kind: BuildKind): boolean {
   return parsed.protocol === `${schemeForKind(kind)}:` && parsed.host === AUTH_CALLBACK_HOST;
 }
 
+/** URL the OAuth callback page sends the browser to, or null when this
+ *  platform should not be sent anywhere. Windows only: macOS already regains
+ *  focus through `app.focus({ steal: true })`, so a scheme navigation there
+ *  would buy the user a browser prompt and nothing else. */
+export function authReturnUrl(kind: BuildKind, platform: string): string | null {
+  if (platform !== 'win32') return null;
+  return `${schemeForKind(kind)}://${AUTH_CALLBACK_HOST}`;
+}
+
 /** Arguments for `app.setAsDefaultProtocolClient`. A packaged app registers its
  *  own executable, but an unpackaged one is launched as `electron <script>`, so
  *  the script path has to be registered alongside or Windows re-launches the

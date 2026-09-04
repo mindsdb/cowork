@@ -5,9 +5,12 @@ import * as http from 'http';
 // test; that one is the mocked Electron net.fetch used everywhere else.
 import * as nodeNet from 'net';
 
+// `app` is here for cowork-home, which oauth-service now reaches through to
+// resolve the channel's scheme; unpackaged → dev, same stub as minds-urls.test.
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
   net: { fetch: vi.fn() },
+  app: { isPackaged: false },
 }));
 
 import { shell, net } from 'electron';
@@ -79,6 +82,43 @@ describe('oauthConnect', () => {
     const exchangeBody = String(exchangeInit.body);
     expect(exchangeBody).toContain('grant_type=authorization_code');
     expect(exchangeBody).toContain('code=the-code');
+  });
+
+  // Windows refuses a foreground request from a process that isn't frontmost,
+  // so the page has to offer the scheme route back. macOS regains focus on its
+  // own and must not be handed a link that only triggers a browser prompt.
+  it('offers the return link on Windows and withholds it on macOS', async () => {
+    const originalPlatform = process.platform;
+    const setPlatform = (value: string) =>
+      Object.defineProperty(process, 'platform', { value, configurable: true });
+
+    const succeed = async () => {
+      const nextAuthUrl = captureAuthUrl();
+      net.fetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 300, token_type: 'Bearer' }),
+      })) as unknown as typeof net.fetch;
+      const flow = oauthConnect(OPTS);
+      const authUrl = await nextAuthUrl();
+      const page = await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+      await flow;
+      return page.body;
+    };
+
+    try {
+      setPlatform('win32');
+      const onWindows = await succeed();
+      expect(onWindows).toContain('://auth-done');
+      expect(onWindows).toMatch(/Return to MindsHub Cowork/);
+
+      setPlatform('darwin');
+      const onMac = await succeed();
+      expect(onMac).not.toContain('://auth-done');
+      expect(onMac).toMatch(/authorized/i);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
   });
 
   // ─── GitHub regression: classic OAuth apps return form-urlencoded ───
