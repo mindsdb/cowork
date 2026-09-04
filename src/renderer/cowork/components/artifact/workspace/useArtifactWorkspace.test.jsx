@@ -87,6 +87,8 @@ beforeEach(() => {
   api.loadAgentRepair.mockReset();
   api.cancelAgentRepair.mockReset();
   api.releaseAgentRepairs.mockReset().mockResolvedValue({ released: [] });
+  // Auto-open is remembered per session, so one test must not suppress another.
+  window.sessionStorage.clear();
   api.saveArtifactSource.mockReset();
 });
 
@@ -389,11 +391,12 @@ describe('useArtifactWorkspace agent repair decisions', () => {
     await act(async () => { outcome = await result.current.decideRepair('accepted'); });
 
     expect(outcome).toEqual({ decided: false, reason: 'missing-repair' });
-    expect(result.current.error).toBe('This suggestion is no longer open');
+    expect(result.current.error)
+      .toBe('That suggestion is no longer open, so there was nothing to decide.');
     expect(api.decideAgentRepair).not.toHaveBeenCalled();
   });
 
-  it('sends the head the user was shown, so a reject cannot clobber a newer edit', async () => {
+  const behindAMovedHead = () => {
     api.loadArtifactSource.mockResolvedValue({
       ...source,
       revision: { id: 'rev-9' },
@@ -401,6 +404,12 @@ describe('useArtifactWorkspace agent repair decisions', () => {
     });
     api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
     api.loadAgentRepair.mockResolvedValue({ repair: readyRepair, compare: null });
+  };
+
+  it('sends no head on an unconfirmed reject, so the server refuses it', async () => {
+    // Sending the current head unconditionally would satisfy the server's
+    // guard every time and quietly restore over the owner's later work.
+    behindAMovedHead();
     api.decideAgentRepair.mockResolvedValue({ ...readyRepair, status: 'rejected' });
     const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
     await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
@@ -408,7 +417,35 @@ describe('useArtifactWorkspace agent repair decisions', () => {
     await act(async () => { await result.current.decideRepair('rejected'); });
 
     expect(api.decideAgentRepair).toHaveBeenCalledWith(
+      artifact, 'repair-1', 'rejected', { expectedHeadRevisionId: null },
+    );
+  });
+
+  it('sends the head the user confirmed against on a confirmed reject', async () => {
+    behindAMovedHead();
+    api.decideAgentRepair.mockResolvedValue({ ...readyRepair, status: 'rejected' });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => {
+      await result.current.decideRepair('rejected', { confirmedHeadRevisionId: 'rev-9' });
+    });
+
+    expect(api.decideAgentRepair).toHaveBeenCalledWith(
       artifact, 'repair-1', 'rejected', { expectedHeadRevisionId: 'rev-9' },
+    );
+  });
+
+  it('sends the head it was shown on accept, which writes no content', async () => {
+    behindAMovedHead();
+    api.decideAgentRepair.mockResolvedValue({ ...readyRepair, status: 'accepted' });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => { await result.current.decideRepair('accepted'); });
+
+    expect(api.decideAgentRepair).toHaveBeenCalledWith(
+      artifact, 'repair-1', 'accepted', { expectedHeadRevisionId: 'rev-9' },
     );
   });
 
@@ -463,6 +500,45 @@ describe('useArtifactWorkspace agent repair auto-open', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.comparison?.kind).toBe('agent');
+  });
+
+  it('opens a given comparison at most once, not on every reopen', async () => {
+    // A decision left pending should not take the canvas again every time the
+    // artifact is reopened for something unrelated.
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    const { result, rerender } = renderHook(
+      ({ isOpen }) => useArtifactWorkspace(artifact, { open: isOpen }),
+      { initialProps: { isOpen: true } },
+    );
+    await waitFor(() => expect(result.current.comparison?.kind).toBe('agent'));
+
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    expect(result.current.comparison).toBeNull();
+    expect(result.current.repair?.id).toBe('repair-1');
+  });
+
+  it('still reports supersession when the detail fetch omits the flag', async () => {
+    // agent_repair_detail returns the stored record, without the server's
+    // computed field, so reading the flag off it alone loses the notice.
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revision: { id: 'rev-9' },
+      repair: repairAt({ superseded: true }),
+    });
+    api.loadAgentRepair.mockResolvedValue({
+      repair: repairAt({ superseded: undefined }),
+      compare: null,
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+    expect(result.current.repairSuperseded).toBe(true);
+
+    await act(async () => { await result.current.refreshRepair(); });
+
+    expect(result.current.repairSuperseded).toBe(true);
   });
 
   it('does not hijack the view once the artifact moved past the suggestion', async () => {

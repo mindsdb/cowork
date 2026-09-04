@@ -3,6 +3,7 @@ import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
 import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
@@ -97,6 +98,10 @@ export function ArtifactViewerBody({
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
   const showEditor = workspace.mode === 'edit' && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
+  // Rejecting restores the pre-agent content over head. Once the artifact has
+  // moved on, that also discards the work written since, so the server refuses
+  // until the user has been told exactly that and said yes.
+  const [confirmRejectHead, setConfirmRejectHead] = useState(null);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -260,23 +265,7 @@ export function ArtifactViewerBody({
             expired={comments.expired}
             viewer={comments.viewer}
             capabilities={comments.capabilities}
-            onStatus={async (threadId, nextStatus) => {
-              const ok = await comments.setStatus(threadId, nextStatus);
-              // Resolving the comment is the explicit decision the
-              // accept-or-reject rule was protecting, so it also releases
-              // whatever repair was waiting on this thread. Release after the
-              // resolve, never before: a released repair can no longer be
-              // decided, and the viewer's buttons would start failing again.
-              if (ok && nextStatus === 'resolved') {
-                try {
-                  await workspace.releaseRepairsForComment(threadId);
-                } catch (releaseError) {
-                  setErr(releaseError?.message
-                    || 'The comment was resolved, but its agent suggestion is still open.');
-                }
-              }
-              return ok;
-            }}
+            onStatus={review.onStatus || comments.setStatus}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}
@@ -298,12 +287,15 @@ export function ArtifactViewerBody({
           onReject={async () => {
             setRepairBusy(true);
             try {
-              const outcome = await workspace.decideRepair('rejected');
-              if (!outcome?.decided) {
-                setErr('That suggestion is no longer open, so there was nothing to reject.');
-              }
+              // No confirmed head on the first attempt: a superseded repair is
+              // refused here rather than quietly reverting the later work.
+              await workspace.decideRepair('rejected');
             } catch (decisionError) {
-              setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+              if (decisionError?.status === 409) {
+                setConfirmRejectHead(workspace.currentRevision?.id || null);
+              } else {
+                setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+              }
             } finally {
               setRepairBusy(false);
             }
@@ -315,10 +307,9 @@ export function ArtifactViewerBody({
               // Only resolve the comment once the decision actually landed;
               // an ignored call used to look identical to a successful one.
               const outcome = await workspace.decideRepair('accepted');
-              if (!outcome?.decided) {
-                setErr('That suggestion is no longer open, so there was nothing to accept.');
-                return;
-              }
+              // The hook owns the message for this case; repeating it here put
+              // the same sentence in two banners at once.
+              if (!outcome?.decided) return;
               const resolved = threadId
                 ? await comments.setStatus(threadId, 'resolved')
                 : true;
@@ -329,6 +320,28 @@ export function ArtifactViewerBody({
               onReload();
             } catch (decisionError) {
               setErr(decisionError?.message || 'Could not accept the agent change. Try again.');
+            } finally {
+              setRepairBusy(false);
+            }
+          }}
+        />
+        <ConfirmModal
+          open={confirmRejectHead !== null}
+          title="Restore the earlier version?"
+          message={"This artifact changed after the agent's edit. Restoring the version "
+            + 'from before it will also discard everything written since.'}
+          confirmLabel="Restore anyway"
+          destructive
+          busy={repairBusy}
+          onClose={() => setConfirmRejectHead(null)}
+          onConfirm={async () => {
+            const confirmedHeadRevisionId = confirmRejectHead;
+            setConfirmRejectHead(null);
+            setRepairBusy(true);
+            try {
+              await workspace.decideRepair('rejected', { confirmedHeadRevisionId });
+            } catch (decisionError) {
+              setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
             } finally {
               setRepairBusy(false);
             }

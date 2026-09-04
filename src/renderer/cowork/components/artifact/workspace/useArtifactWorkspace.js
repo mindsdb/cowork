@@ -29,6 +29,29 @@ const OWNER_CAPABILITIES = {
 // `unsupported` status because the surfaces react identically — but "too old to
 // edit" and "not shared with you" are different facts and reading the wrong one
 // sends the user looking in the wrong place.
+const AUTO_OPENED_KEY = 'cowork.artifact.repair.autoOpened';
+
+// The workspace effect rebuilds state on every open, so a ref cannot remember
+// this across opens. Storage can be unavailable, and a miss only costs one
+// extra auto-open, so both sides fail open.
+function hasAutoOpened(repairId) {
+  try {
+    return (window.sessionStorage.getItem(AUTO_OPENED_KEY) || '').split(',').includes(repairId);
+  } catch {
+    return false;
+  }
+}
+
+function markAutoOpened(repairId) {
+  try {
+    const seen = (window.sessionStorage.getItem(AUTO_OPENED_KEY) || '')
+      .split(',').filter(Boolean);
+    if (seen.includes(repairId)) return;
+    // Bounded: only the recent ones matter, and this is per session anyway.
+    window.sessionStorage.setItem(AUTO_OPENED_KEY, [...seen.slice(-19), repairId].join(','));
+  } catch { /* storage unavailable: auto-open again next time */ }
+}
+
 const NO_WORKSPACE = 'This artifact was created before editing was available';
 const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
 
@@ -51,6 +74,16 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   const dirty = !!source && draft !== source.content;
   const currentRevision = source?.revision || reviewRevision;
+  // Derived, not read off the record: agent_repair_detail returns the stored
+  // repair without the server's computed flag, so trusting the field alone
+  // loses it the moment the comparison is opened. This also holds against a
+  // server that predates the field.
+  const repairSuperseded = !!repair
+    && repair.status === 'ready'
+    && (repair.superseded
+      || (!!repair.revisionId
+        && repair.path === source?.path
+        && repair.revisionId !== currentRevision?.id));
 
   const refreshHistory = useCallback(async (
     path = source?.path,
@@ -168,7 +201,12 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       const decidable = loaded.repair?.status === 'ready'
         && loaded.repair.path === loaded.path
         && loaded.repair.revisionId === loaded.revision?.id;
-      if (decidable) {
+      // Once per repair, not once per open: a decision left pending should not
+      // take the canvas again every time the artifact is reopened for something
+      // unrelated. Per viewer and per session by design - it decides whether to
+      // interrupt, so losing it is harmless, and it needs no server round trip.
+      if (decidable && !hasAutoOpened(loaded.repair.id)) {
+        markAutoOpened(loaded.repair.id);
         // Its own try: a repair whose base revision aged out of history answers
         // 404, and the source catch below reads 404 as "this artifact predates
         // editing" - which would hide the whole workspace over a stale record.
@@ -405,7 +443,18 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     // repair to release, so a reviewer is never sent into a 403 for resolving.
     if (!commentThreadId || !source) return null;
     const generation = workspaceGeneration.current;
-    const result = await releaseAgentRepairs(artifact, commentThreadId);
+    let result = null;
+    try {
+      result = await releaseAgentRepairs(artifact, commentThreadId);
+    } catch (releaseError) {
+      if (workspaceGeneration.current !== generation) return null;
+      // A server from before this route exists answers 404/405. The resolve
+      // itself succeeded, so that is not something to report to the user.
+      if (releaseError?.status !== 404 && releaseError?.status !== 405) {
+        setError('The comment was resolved, but its agent suggestion is still open.');
+      }
+      return null;
+    }
     if (workspaceGeneration.current === generation) {
       const mine = (result?.released || []).find((item) => item.id === repair?.id);
       if (mine) {
@@ -416,17 +465,22 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     return result;
   }, [artifact, repair?.id, source]);
 
-  const decideRepair = useCallback(async (decision) => {
+  const decideRepair = useCallback(async (decision, { confirmedHeadRevisionId = null } = {}) => {
     if (!repair?.id) {
       // A user-initiated decision with no record behind it is a bug, not a
       // normal path: the comparison has outlived the repair that opened it.
-      setError('This suggestion is no longer open');
+      setError('That suggestion is no longer open, so there was nothing to decide.');
       setComparison(null);
       return { decided: false, reason: 'missing-repair' };
     }
     const generation = workspaceGeneration.current;
     const decided = await decideAgentRepair(artifact, repair.id, decision, {
-      expectedHeadRevisionId: currentRevision?.id || null,
+      // Accept writes no content, so the head the user was shown is enough.
+      // Reject restores over head and would discard anything written since, so
+      // it travels only with a head the user was actually warned about.
+      expectedHeadRevisionId: decision === 'accepted'
+        ? (currentRevision?.id || null)
+        : confirmedHeadRevisionId,
     });
     // The write has landed. A workspace replaced since must not turn a
     // completed decision into a silent no-op, so only the state update is
@@ -471,6 +525,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     compareRevision,
     restoreRevision,
     repair,
+    repairSuperseded,
     addressWithAgent,
     refreshRepair,
     cancelRepair,
@@ -479,8 +534,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }), [
     addressWithAgent, cancelRepair, capabilities, changeMode, commentsReady, compareRevision, comparison,
     conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, refreshRepair, releaseRepairsForComment, repair, restoreRevision, revisions,
-    save, source, status,
+    mode, refreshRepair, releaseRepairsForComment, repair, repairSuperseded,
+    restoreRevision, revisions, save, source, status,
     supported, unsupportedReason,
   ]);
 }

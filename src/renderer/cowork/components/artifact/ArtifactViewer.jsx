@@ -128,6 +128,10 @@ export function ArtifactViewer({
   // past is worth mentioning once, not on every visit to the artifact.
   const [dismissedRepairId, setDismissedRepairId] = useState('');
   const [repairNoticeError, setRepairNoticeError] = useState('');
+  // The repair the create guard named, so the refusal can offer a way out
+  // instead of stating a fact the user cannot act on.
+  const [blockedBy, setBlockedBy] = useState(null);
+  const [pendingDiscard, setPendingDiscard] = useState(null);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -148,6 +152,12 @@ export function ArtifactViewer({
     // fresh repair conversation instead of reusing the previous artifact's.
     [artifact?.id, workspace.supported, conversationId, open],
   );
+  // Both are per repair, and this component outlives an artifact switch.
+  useEffect(() => {
+    setRepairNoticeError('');
+    setBlockedBy(null);
+  }, [workspace.repair?.id, artifact?.id]);
+
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
   }, []);
@@ -184,6 +194,29 @@ export function ArtifactViewer({
     enabled: open && commentsEnabled,
     onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
   });
+
+  // A short quote of the blocking thread, so the refusal names the comment the
+  // user has to deal with rather than the artifact as a whole.
+  const blockedComment = useMemo(() => {
+    if (!blockedBy?.commentThreadId) return '';
+    const thread = (comments.threads || [])
+      .find((item) => item.id === blockedBy.commentThreadId);
+    const text = (thread?.payload?.text || '').trim();
+    return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  }, [blockedBy?.commentThreadId, comments.threads]);
+
+  // Every resolve, from the inbox panel and from the on-artifact pin popover
+  // alike, releases whatever repair was waiting on that thread. Resolving is
+  // the decision the accept-or-reject rule was protecting, and a path that
+  // skips this is the wedge itself. Release after the resolve, never before:
+  // a released repair can no longer be decided.
+  const setCommentStatus = useCallback(async (threadId, nextStatus) => {
+    const ok = await comments.setStatus(threadId, nextStatus);
+    if (ok && nextStatus === 'resolved') {
+      await workspace.releaseRepairsForComment(threadId);
+    }
+    return ok;
+  }, [comments, workspace]);
   const createArtifactComment = useCallback((payload) => comments.create({
     ...payload,
     revisionId: workspace.currentRevision?.id || null,
@@ -203,7 +236,7 @@ export function ArtifactViewer({
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: comments.reply,
-    onStatus: comments.setStatus,
+    onStatus: setCommentStatus,
     onEditThread: comments.editThread,
     onDeleteThread: comments.deleteThread,
     onEditReply: comments.editReply,
@@ -295,7 +328,11 @@ export function ArtifactViewer({
         }
       }
     } catch (requestError) {
-      setErr(requestError?.message || 'Could not send this comment to the agent');
+      if (requestError?.status === 422 && requestError?.detail?.repairId) {
+        setBlockedBy(requestError.detail);
+      } else {
+        setErr(requestError?.message || 'Could not send this comment to the agent');
+      }
     } finally {
       setRepairBusy(false);
     }
@@ -750,6 +787,7 @@ export function ArtifactViewer({
     userDir: commentUserDir,
     reportId: commentReportId,
     controller: comments,
+    onStatus: setCommentStatus,
     onAddressWithAgent: addressCommentWithAgent,
     onCreate: createArtifactComment,
     textSelection,
@@ -804,14 +842,10 @@ export function ArtifactViewer({
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather
           than taking over the canvas the way a current one does. */}
-      {workspace.repair?.status === 'ready'
-        && workspace.repair?.superseded
+      {workspace.repairSuperseded
         && workspace.repair.id !== dismissedRepairId && (
         <div className="artifact-repair-notice" role="status">
-          <span>
-            {repairNoticeError
-              || 'An agent suggestion from before your last edit is still open.'}
-          </span>
+          <span>An agent suggestion from before your last edit is still open.</span>
           <button
             type="button"
             disabled={repairBusy}
@@ -832,17 +866,7 @@ export function ArtifactViewer({
           <button
             type="button"
             disabled={repairBusy}
-            onClick={async () => {
-              setRepairNoticeError('');
-              setRepairBusy(true);
-              try {
-                await workspace.cancelRepair(workspace.repair.id, { discardReady: true });
-              } catch (noticeError) {
-                setRepairNoticeError(noticeError?.message || 'Could not discard that suggestion.');
-              } finally {
-                setRepairBusy(false);
-              }
-            }}
+            onClick={() => setPendingDiscard({ repairId: workspace.repair.id })}
           >
             Discard
           </button>
@@ -856,12 +880,63 @@ export function ArtifactViewer({
           </button>
         </div>
       )}
+      {/* The create guard names its blocker, so the refusal carries the way
+          out rather than describing a state the user cannot change. */}
+      {blockedBy && (
+        <div className="artifact-repair-notice" role="status">
+          <span>
+            {blockedComment
+              ? `An agent suggestion for “${blockedComment}” is still waiting on a decision.`
+              : 'An agent suggestion on this file is still waiting on a decision.'}
+          </span>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={() => setPendingDiscard({ repairId: blockedBy.repairId, clearBlocker: true })}
+          >
+            Discard the pending suggestion
+          </button>
+          <button
+            type="button"
+            className="artifact-repair-notice-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setBlockedBy(null)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
+      )}
 
       <ArtifactViewerBody
         workspace={{ ...workspace, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+      />
+
+      <ConfirmModal
+        open={!!pendingDiscard}
+        title="Discard this suggestion?"
+        message={'The agent\'s change stays in this artifact\'s history, but the '
+          + 'suggestion is closed and will not be applied.'}
+        confirmLabel="Discard"
+        destructive
+        busy={repairBusy}
+        error={repairNoticeError}
+        onClose={() => setPendingDiscard(null)}
+        onConfirm={async () => {
+          setRepairNoticeError('');
+          setRepairBusy(true);
+          try {
+            await workspace.cancelRepair(pendingDiscard.repairId, { discardReady: true });
+            if (pendingDiscard.clearBlocker) setBlockedBy(null);
+            setPendingDiscard(null);
+          } catch (discardError) {
+            setRepairNoticeError(discardError?.message || 'Could not discard that suggestion.');
+          } finally {
+            setRepairBusy(false);
+          }
+        }}
       />
 
       {/* Delete confirmation */}

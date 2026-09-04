@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./workspace/ArtifactSourceEditor', () => ({
   ArtifactSourceEditor: () => <div data-testid="source-editor">Editor</div>,
 }));
+const comparison = vi.hoisted(() => ({ props: null }));
 vi.mock('./workspace/ArtifactComparison', () => ({
-  ArtifactComparison: () => null,
+  ArtifactComparison: (props) => { comparison.props = props; return null; },
 }));
 vi.mock('./comments', () => ({
   CommentsPanel: () => null,
@@ -77,7 +78,7 @@ function renderBody(mode, previewOverrides = {}) {
     onToggle: vi.fn(),
     userDir: '',
     reportId: '',
-    controller: { threads: [] },
+    controller: { threads: [], setStatus: vi.fn().mockResolvedValue(true) },
     onAddressWithAgent: vi.fn(),
     onCreate: vi.fn(),
     textSelection: null,
@@ -122,5 +123,50 @@ describe('ArtifactViewerBody HTML mode retention', () => {
     expect(screen.getByTitle('Deck preview')).toBe(previewFrame);
     expect(editor.parentElement.hidden).toBe(false);
     expect(previewFrame.parentElement.hidden).toBe(true);
+  });
+});
+
+describe('ArtifactViewerBody agent repair decisions', () => {
+  const setup = (decideRepair) => {
+    const tree = renderBody('preview');
+    const workspace = tree.props.workspace;
+    workspace.decideRepair = decideRepair;
+    workspace.repair = { id: 'repair-1', commentThreadId: 'thread-1' };
+    workspace.currentRevision = { id: 'rev-9' };
+    return tree;
+  };
+
+  it('does not resolve the comment when the decision was ignored', async () => {
+    // The whole of ENG-2327: both call sites read a null return as success, so
+    // accept closed the review comment for a decision that never happened.
+    const tree = setup(vi.fn().mockResolvedValue({ decided: false, reason: 'missing-repair' }));
+    render(tree);
+
+    await act(async () => { await comparison.props.onAccept(); });
+
+    expect(tree.props.review.controller.setStatus).not.toHaveBeenCalled();
+  });
+
+  it('resolves the comment once the decision has landed', async () => {
+    const tree = setup(vi.fn().mockResolvedValue({ decided: true, repair: {} }));
+    render(tree);
+
+    await act(async () => { await comparison.props.onAccept(); });
+
+    expect(tree.props.review.controller.setStatus)
+      .toHaveBeenCalledWith('thread-1', 'resolved');
+  });
+
+  it('asks before restoring over work written after the agent edit', async () => {
+    const conflict = Object.assign(new Error('Artifact changed'), { status: 409 });
+    const decideRepair = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ decided: true });
+    const tree = setup(decideRepair);
+    render(tree);
+
+    await act(async () => { await comparison.props.onReject(); });
+
+    // The first attempt carries no confirmed head, so the server refuses it.
+    expect(decideRepair).toHaveBeenCalledWith('rejected');
+    expect(await screen.findByText(/discard everything written since/i)).toBeTruthy();
   });
 });
