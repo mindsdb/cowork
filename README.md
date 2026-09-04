@@ -402,6 +402,15 @@ Four consequences worth knowing:
 - **Signing out takes the credential away**, and an install upgrading from a
   build that minted a per-device key is signed out once so that key can be
   revoked while the session still names the organization it belongs to.
+- **Sign-out answers as soon as the credentials are gone.** It also restarts the
+  sidecar, to flush provider objects that might still hold the previous user's
+  credential in memory, and that restart runs in the background rather than
+  holding the reply: the stop and start together are capped near 190 seconds,
+  and longer behind a start already in flight, which is far past what anyone
+  waits in front of a confirm dialog. `src/main/sign-out-restart.ts` owns it and
+  is single-flight. Signing the next user in waits for it, so their credential
+  is not handed to a sidecar the restart is about to take down, and boot routing
+  answers "not configured" until it settles.
 
 A sidecar you start by hand, outside the app, therefore has no MindsHub
 credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
