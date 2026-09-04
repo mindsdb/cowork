@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as path from 'path';
 import { BUILD_KINDS } from './channels';
-import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, authReturnUrl, claimSingleInstance } from './deep-link';
+import { schemeForKind, protocolClientArgs, authReturnUrl, wireSingleInstance } from './deep-link';
 
 // A scheme is a machine-wide claim. QA runs a staging build beside prod, so a
 // shared name would send a staging sign-in to whichever build installed last.
@@ -20,37 +20,6 @@ describe('schemeForKind', () => {
   });
 });
 
-describe('isAuthCallbackUrl', () => {
-  it('matches its own channel callback URL', () => {
-    expect(isAuthCallbackUrl('mindshub-cowork://auth-done', 'prod')).toBe(true);
-    expect(isAuthCallbackUrl('mindshub-cowork-staging://auth-done', 'stable')).toBe(true);
-  });
-
-  it('does not answer for a sibling channel', () => {
-    expect(isAuthCallbackUrl('mindshub-cowork://auth-done', 'stable')).toBe(false);
-    expect(isAuthCallbackUrl('mindshub-cowork-staging://auth-done', 'prod')).toBe(false);
-  });
-
-  it('tolerates the trailing slash a browser may add', () => {
-    expect(isAuthCallbackUrl('mindshub-cowork://auth-done/', 'prod')).toBe(true);
-  });
-
-  it('rejects a look-alike host rather than prefix-matching it', () => {
-    expect(isAuthCallbackUrl('mindshub-cowork://auth-done.example.com', 'prod')).toBe(false);
-    expect(isAuthCallbackUrl('mindshub-cowork://auth-done-evil', 'prod')).toBe(false);
-  });
-
-  it('rejects a foreign scheme carrying our host', () => {
-    expect(isAuthCallbackUrl('other-app://auth-done', 'prod')).toBe(false);
-    expect(isAuthCallbackUrl('https://auth-done', 'prod')).toBe(false);
-  });
-
-  it('returns false for input that is not a URL at all', () => {
-    expect(isAuthCallbackUrl('', 'prod')).toBe(false);
-    expect(isAuthCallbackUrl('not a url', 'prod')).toBe(false);
-  });
-});
-
 describe('protocolClientArgs', () => {
   it('registers the script path when unpackaged, so Windows relaunches the app and not bare electron', () => {
     expect(protocolClientArgs('/usr/bin/electron', ['/usr/bin/electron', 'out/main.js'], false)).toEqual({
@@ -63,8 +32,18 @@ describe('protocolClientArgs', () => {
     expect(protocolClientArgs('/Applications/App.app/Contents/MacOS/App', ['/Applications/App.app/Contents/MacOS/App'], true)).toEqual({});
   });
 
+  it('skips switches the dev launcher puts ahead of the script', () => {
+    // package.json's dev:electron passes --ozone-platform=x11 on Linux.
+    expect(protocolClientArgs(
+      '/usr/bin/electron',
+      ['/usr/bin/electron', '--ozone-platform=x11', 'dist/main/main/index.js'],
+      false,
+    )).toEqual({ execPath: '/usr/bin/electron', args: [path.resolve('dist/main/main/index.js')] });
+  });
+
   it('degrades to no override when argv carries no script', () => {
     expect(protocolClientArgs('/usr/bin/electron', ['/usr/bin/electron'], false)).toEqual({});
+    expect(protocolClientArgs('/usr/bin/electron', ['/usr/bin/electron', '--only-a-switch'], false)).toEqual({});
   });
 });
 
@@ -84,37 +63,48 @@ describe('authReturnUrl', () => {
     expect(authReturnUrl('prod', 'linux')).toBeNull();
   });
 
-  it('round-trips through the matcher the app checks incoming URLs with', () => {
-    const url = authReturnUrl('preview', 'win32');
-    expect(url).not.toBeNull();
-    expect(isAuthCallbackUrl(url as string, 'preview')).toBe(true);
-    expect(isAuthCallbackUrl(url as string, 'prod')).toBe(false);
-  });
 });
 
 // The loser must never reach before-quit: that drain ends in
 // killProcessOnPort, which matches on the port and would reap the running
 // instance's sidecar rather than anything this process owns.
-describe('claimSingleInstance', () => {
+describe('wireSingleInstance', () => {
   function fakeApp(gotLock: boolean) {
+    const listeners: Array<() => void> = [];
     return {
+      listeners,
       requestSingleInstanceLock: vi.fn(() => gotLock),
       exit: vi.fn(),
       quit: vi.fn(),
+      on: vi.fn((_event: 'second-instance', listener: () => void) => {
+        listeners.push(listener);
+        return undefined;
+      }),
     };
   }
 
-  it('carries on and touches neither exit nor quit when it owns the lock', () => {
+  it('wires the activation handler when it owns the lock', () => {
     const app = fakeApp(true);
-    expect(claimSingleInstance(app)).toBe(true);
+    const onActivate = vi.fn();
+    expect(wireSingleInstance(app, onActivate)).toBe(true);
     expect(app.exit).not.toHaveBeenCalled();
     expect(app.quit).not.toHaveBeenCalled();
+    expect(app.listeners).toHaveLength(1);
+
+    app.listeners[0]();
+    expect(onActivate).toHaveBeenCalledOnce();
   });
 
   it('stands down through exit, never quit, when another instance holds it', () => {
     const app = fakeApp(false);
-    expect(claimSingleInstance(app)).toBe(false);
+    expect(wireSingleInstance(app, vi.fn())).toBe(false);
     expect(app.exit).toHaveBeenCalledWith(0);
     expect(app.quit).not.toHaveBeenCalled();
+  });
+
+  it('registers nothing it is about to abandon', () => {
+    const app = fakeApp(false);
+    wireSingleInstance(app, vi.fn());
+    expect(app.on).not.toHaveBeenCalled();
   });
 });

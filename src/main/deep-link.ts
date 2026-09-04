@@ -29,33 +29,30 @@ export function schemeForKind(kind: BuildKind): string {
   return `${SCHEME_BASE}${SCHEME_SUFFIX[kind]}`;
 }
 
-/** True only for this build's own scheme and the auth-callback host. Host is
- *  compared exactly, so `…://auth-done.example.com` does not match, and a
- *  sibling channel's scheme does not match either. */
-export function isAuthCallbackUrl(url: string, kind: BuildKind): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  return parsed.protocol === `${schemeForKind(kind)}:` && parsed.host === AUTH_CALLBACK_HOST;
+/** Electron's `app`, narrowed to what the handoff touches. Declared rather than
+ *  imported so this module stays electron-free; `quit` is here only so a test
+ *  can prove the losing instance never reaches it. */
+export interface HandoffApp {
+  requestSingleInstanceLock(): boolean;
+  exit(code: number): void;
+  quit(): void;
+  on(event: 'second-instance', listener: () => void): unknown;
 }
 
-/** Take the process singleton, or stand down. Returns whether this instance
- *  owns the app and should carry on booting.
+/** Take the process singleton and wire the handoff, or stand down. Returns
+ *  whether this instance owns the app and should carry on booting.
  *
  *  The losing instance leaves through `exit`, never `quit`: `before-quit`
  *  drains the sidecar via `stopServer`, which ends in `killProcessOnPort` —
  *  that matches on the port rather than a pid it owns, so a second instance
  *  quitting politely would reap the FIRST instance's python. */
-export function claimSingleInstance(app: {
-  requestSingleInstanceLock(): boolean;
-  exit(code: number): void;
-}): boolean {
-  if (app.requestSingleInstanceLock()) return true;
-  app.exit(0);
-  return false;
+export function wireSingleInstance(app: HandoffApp, onActivate: () => void): boolean {
+  if (!app.requestSingleInstanceLock()) {
+    app.exit(0);
+    return false;
+  }
+  app.on('second-instance', onActivate);
+  return true;
 }
 
 /** URL the OAuth callback page sends the browser to, or null when this
@@ -77,7 +74,9 @@ export function protocolClientArgs(
   isPackaged: boolean,
 ): { execPath?: string; args?: string[] } {
   if (isPackaged) return {};
-  const script = argv[1];
+  // Not argv[1]: the dev launcher passes switches ahead of the script, e.g.
+  // `electron --ozone-platform=x11 dist/main/main/index.js` on Linux.
+  const script = argv.slice(1).find((arg) => !arg.startsWith('-'));
   if (!script) return {};
   return { execPath, args: [path.resolve(script)] };
 }

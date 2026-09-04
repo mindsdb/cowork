@@ -109,7 +109,9 @@ describe('oauthConnect', () => {
     try {
       setPlatform('win32');
       const onWindows = await succeed();
-      expect(onWindows).toContain('://auth-done');
+      // Unpackaged under this file's `app` stub, so the channel resolves to dev.
+      // Asserting the whole URL pins the per-channel scheme, not just the host.
+      expect(onWindows).toContain('mindshub-cowork-dev://auth-done');
       expect(onWindows).toMatch(/Return to MindsHub Cowork/);
 
       setPlatform('darwin');

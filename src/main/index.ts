@@ -8,7 +8,7 @@ import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
-import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, claimSingleInstance } from './deep-link';
+import { schemeForKind, protocolClientArgs, wireSingleInstance } from './deep-link';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
@@ -328,6 +328,8 @@ function focusMainWindow() {
       mainWindow.show();
       mainWindow.focus();
       app.focus({ steal: true }); // macOS: steal focus from the browser
+    } else {
+      console.warn('[focus] activation arrived with no window to raise');
     }
   } catch (err) {
     console.warn('[focus] could not bring the window forward', err);
@@ -339,21 +341,7 @@ function focusMainWindow() {
 // it does grant foreground rights to the instance its process singleton
 // notifies. Scoped per userData directory, which app-identity varies by channel,
 // so build kinds still run side by side.
-const gotSingleInstanceLock = claimSingleInstance(app);
-
-if (gotSingleInstanceLock) {
-  app.on('second-instance', () => {
-    focusMainWindow();
-  });
-
-  // macOS delivers the scheme as an event; Windows passes it on the second
-  // instance's argv, which the handler above already covers.
-  app.on('open-url', (event, url) => {
-    if (!isAuthCallbackUrl(url, buildKind())) return;
-    event.preventDefault();
-    focusMainWindow();
-  });
-}
+const gotSingleInstanceLock = wireSingleInstance(app, focusMainWindow);
 
 // One-shot self-heal for the boot OTA load: if the activated bundle's main
 // frame fails to load (missing/corrupt assets), roll it back and fall to the
@@ -1448,8 +1436,13 @@ app.whenReady().then(async () => {
   // Register the scheme that brings the app forward after a browser handoff.
   const scheme = schemeForKind(buildKind());
   const { execPath, args } = protocolClientArgs(process.execPath, process.argv, app.isPackaged);
-  if (execPath) app.setAsDefaultProtocolClient(scheme, execPath, args);
-  else app.setAsDefaultProtocolClient(scheme);
+  // The whole handoff hangs on this one call, and it is exercised on machines
+  // we cannot reach, so its outcome has to be readable from a log alone.
+  const registered = execPath
+    ? app.setAsDefaultProtocolClient(scheme, execPath, args)
+    : app.setAsDefaultProtocolClient(scheme);
+  if (registered) console.log(`[handoff] registered ${scheme}:// for this build`);
+  else console.warn(`[handoff] could not register ${scheme}:// — the sign-in return link will not reach the app`);
 
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
