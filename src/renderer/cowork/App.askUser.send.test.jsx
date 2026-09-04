@@ -1290,18 +1290,19 @@ describe('a tail displaced by opening another running conversation', () => {
     expect(tailB.kind).toBe('tail');
     expect(tailA.abort).not.toHaveBeenCalled();
 
-    // Back on Alpha. Re-opening it must not spin up a duplicate tail, and Stop
-    // must tear down the tail that conv-a actually holds — a tail left attached
-    // keeps replaying into a dead turn and can cancel it on its own idle timer.
+    // Back on Alpha, which re-attaches. The tail conv-a held before must be
+    // torn down rather than left attached with nothing able to abort it: a
+    // leaked tail keeps replaying into the turn and its own idle timer can
+    // cancel it later with no UI trace.
     await openByTitle(user, 'Alpha task');
-    await emitOn(tailA, { type: 'response.output_text.delta', delta: 'working' });
-    expect(streams.filter((h) => h.kind === 'tail')).toHaveLength(2);
-    expect(tailA.abort).not.toHaveBeenCalled();
+    const tailA2 = await waitForStream(tailB);
+    expect(tailA2.kind).toBe('tail');
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
 
+    // Stopping conv-a leaves the other conversation streaming.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
-
-    expect(tailA.abort).toHaveBeenCalled();
     expect(tailB.abort).not.toHaveBeenCalled();
   });
 

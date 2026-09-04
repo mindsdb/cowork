@@ -1129,8 +1129,12 @@ function AppCore() {
     }
 
     const ctrl = activeStreamCtrlRef.current;
+    const ctrlOwnedElsewhere = ctrl
+      && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
     if (ctrl && (!stopped || ctrl === stopped.ctrl)) {
-      if (!stopped) { try { ctrl.abort(); } catch { /* already closed */ } }
+      if (!stopped && !ctrlOwnedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
     }
 
@@ -1215,7 +1219,6 @@ function AppCore() {
       code: event?.code,
       isConfigError: isAntonConfigError(message, event),
     }));
-    ids.forEach((streamId) => releaseStream(streamId));
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
@@ -1923,11 +1926,12 @@ function AppCore() {
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
-    // Already streaming locally, as a tail or as a send. A second tail would
-    // replay the whole buffer from seq 0 and abort the first for nothing.
-    // Re-point the foreground ref so Stop targets the conversation on screen.
-    if (liveStreamsRef.current.has(taskId)) {
-      activeStreamingTaskIdRef.current = taskId;
+    // Already tailing locally — second-mount of the same task should
+    // not double up. Deliberately still the shared refs and not the registry:
+    // a record stays while its stream is silenced by a Stop on another
+    // conversation, and re-attaching is the only thing that recovers that
+    // conversation's UI while the generation counter is global.
+    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
       return true;
     }
     let status;
@@ -1981,8 +1985,8 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseStream(taskId, ctrl);
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -2031,13 +2035,13 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
+        releaseStream(taskId, ctrl);
         // Order matters twice over. The generation guard comes first: a
         // superseded stream's late abort must not clear liveStepsRef for a
         // NEWER run on the same conversation. The release then comes before
         // the `cancelled` bail-out, because an aborted run's question is dead
         // too and leaving it behind would hijack the composer.
         if (streamGen !== activeStreamGenerationRef.current) return;
-        releaseStream(taskId, ctrl);
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3074,8 +3078,8 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseStream(sid || resolvedId, sessionCtrl);
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -3142,6 +3146,7 @@ function AppCore() {
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
+        releaseStream(resolvedId || taskId, sessionCtrl);
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
@@ -3519,8 +3524,8 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseStream(resolvedId || id, ctrl);
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -3574,6 +3579,7 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
+        releaseStream(resolvedId || id, ctrl);
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
@@ -3837,9 +3843,9 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        releaseStream(resolvedId || id, vaultCtrl);
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
-        releaseStream(sid || resolvedId || id, vaultCtrl);
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
@@ -3883,8 +3889,8 @@ function AppCore() {
       // generation guard above already swallows it, because the only thing
       // that aborts this stream is handleStopStream, which bumps first.
       onError(message) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseStream(resolvedId || id, vaultCtrl);
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
@@ -3900,6 +3906,9 @@ function AppCore() {
       },
     });
     activeStreamCtrlRef.current = vaultCtrl;
+    // No setStreamPad: this transport never opens a scratchpad, so its record
+    // keeps a null pad and Stop cancels nothing. That is the point — it used to
+    // fall through to the shared ref and cancel another conversation's cell.
     registerStream(resolvedId || id, vaultCtrl);
   };
 
