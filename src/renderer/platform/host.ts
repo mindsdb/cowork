@@ -59,14 +59,19 @@ export function isMac(): boolean {
 // ---- API origin / OAuth redirect ---------------------------------------
 
 // Where the cowork SPA addresses its FastAPI backend.
-//   Electron (file:// or app://) → loopback at the port main resolved for
-//     THIS OS user and handed us via preload (ENG-439). Falls back to the
-//     legacy fixed port only if the bridge didn't supply one.
+//   Electron (file:// or app://) → a custom server's full origin, when one is
+//     configured (see custom-server.ts) — otherwise loopback at the port
+//     main resolved for THIS OS user and handed us via preload (ENG-439),
+//     falling back to the legacy fixed port only if the bridge didn't
+//     supply one.
 //   Web (http(s)://...)          → same origin (FastAPI serves the SPA).
 export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   if (protocol === 'file:' || protocol === 'app:') {
+    if (isElectron && typeof bridge.customServerUrl === 'string' && bridge.customServerUrl) {
+      return bridge.customServerUrl.replace(/\/+$/, '');
+    }
     const port = isElectron && typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
     return `http://127.0.0.1:${port}`;
   }
@@ -563,9 +568,11 @@ export interface InstallStep {
   status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
 }
 
-export async function startInstall(): Promise<void> {
+// installBackend defaults to true (main-process side) when omitted — pass
+// false for the setup wizard's "Install backend server" checkbox unchecked.
+export async function startInstall(installBackend?: boolean): Promise<void> {
   if (isElectron && typeof bridge.startInstall === 'function') {
-    await bridge.startInstall();
+    await bridge.startInstall(installBackend);
   }
 }
 
@@ -1420,6 +1427,61 @@ export async function setKeychainPref(enabled: boolean): Promise<boolean> {
   return false;
 }
 
+// A cowork-server this app didn't spawn (Settings → Backend). Electron-only —
+// the web shell always talks same-origin, so both wrappers no-op to "nothing
+// configured" / failure. The saved API key never reaches the renderer: GET
+// reports only whether one exists, and the edit form sends a new value or
+// asks main to keep/clear the saved one.
+export interface CustomServerSummary { url: string | null; hasToken: boolean }
+export interface CustomServerUpdate { url: string | null; token: string | null; keepExistingToken?: boolean }
+export type CustomServerSetResult = { ok: true } | { ok: false; error?: string };
+
+export async function getCustomServer(): Promise<CustomServerSummary> {
+  if (isElectron && typeof bridge.getCustomServer === 'function') {
+    return bridge.getCustomServer();
+  }
+  return { url: null, hasToken: false };
+}
+
+export async function setCustomServer(update: CustomServerUpdate): Promise<CustomServerSetResult> {
+  if (isElectron && typeof bridge.setCustomServer === 'function') {
+    return bridge.setCustomServer(update);
+  }
+  return { ok: false, error: 'Not available in this build.' };
+}
+
+// Applying a custom-server change (or reverting to the local one) needs a
+// full restart — the origin is fixed at window-creation time (ENG-439-style
+// additionalArguments), not hot-reloadable. No-op on web.
+export async function restartApp(): Promise<void> {
+  if (isElectron && typeof bridge.restartApp === 'function') {
+    await bridge.restartApp();
+  }
+}
+
+// Local server auth toggle (Settings → Backend). Unlike the custom-server
+// restart above, toggling only restarts the sidecar — main does that itself
+// as part of the same IPC call, so there's nothing further for the caller to
+// do besides re-reading diagnostics. Like the custom key, the local token
+// stays in main; the renderer only learns whether one is set. No-op on web
+// (server-side auth there is whatever the hosting deployment configured, not
+// this app's concern).
+export interface LocalAuthSummary { enabled: boolean; hasToken: boolean }
+
+export async function getLocalAuth(): Promise<LocalAuthSummary> {
+  if (isElectron && typeof bridge.getLocalAuth === 'function') {
+    return bridge.getLocalAuth();
+  }
+  return { enabled: false, hasToken: false };
+}
+
+export async function setLocalAuth(enabled: boolean): Promise<LocalAuthSummary & { ok: boolean; error?: string }> {
+  if (isElectron && typeof bridge.setLocalAuth === 'function') {
+    return bridge.setLocalAuth(enabled);
+  }
+  return { ok: false, enabled: false, hasToken: false };
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -1510,6 +1572,11 @@ export const host = {
   onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
+  getCustomServer,
+  setCustomServer,
+  restartApp,
+  getLocalAuth,
+  setLocalAuth,
   getAccessToken,
   logout,
   keychainRevoke,

@@ -480,6 +480,70 @@ describe('startServer failure diagnostics', () => {
   });
 });
 
+// ENG: killProcessOnPort used to send SIGTERM and return immediately — a
+// process doing a graceful shutdown (uvicorn, or our own prior instance mid-
+// stop) can keep the port open for a beat, so a caller that immediately
+// re-probes/respawns (the pre-spawn reap below, or resolveServerPort after an
+// explicit stopServer()) could find it still transiently alive and wrongly
+// treat that as healthy — exactly the race that let a toggled-off, still-
+// dying "adopted" server get re-adopted instead of the fresh process the
+// caller actually needed (surfaced by the local-auth toggle in practice).
+describe('pre-spawn port reap', () => {
+  it('waits for the port to actually clear before spawning, rather than racing the still-dying holder', async () => {
+    let lsofCalls = 0;
+    execHandler = (cmd) => {
+      if (cmd !== 'lsof') return { err: new Error('nothing found'), stdout: '' };
+      lsofCalls += 1;
+      // Still there for the first two checks (initial + one poll), gone by
+      // the third — a graceful shutdown that takes one beat, not instant.
+      return lsofCalls <= 2 ? { err: null, stdout: '4321\n' } : { err: new Error('gone'), stdout: '' };
+    };
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      // Also reports exited so the follow-up stopServer() below (module
+      // cleanup for the next test) hits the fast "no proc" path instead of
+      // waiting out a real kill cycle on a child that never emits 'exit'.
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(true);
+    expect(lsofCalls).toBeGreaterThanOrEqual(3);
+    expect(signals).toContainEqual([4321, 'SIGTERM']);
+    expect(signals).not.toContainEqual([4321, 'SIGKILL']); // cleared on its own — no need to escalate
+    await stopServer(); // leave the module's state clean for the next test
+  });
+
+  it('escalates to SIGKILL if the port is still held after the SIGTERM grace period', async () => {
+    let sigkilled = false;
+    execHandler = (cmd) => {
+      if (cmd !== 'lsof') return { err: new Error('nothing found'), stdout: '' };
+      return sigkilled ? { err: new Error('gone'), stdout: '' } : { err: null, stdout: '4321\n' };
+    };
+    vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      if (signal === 'SIGKILL') sigkilled = true;
+      return true;
+    }) as never);
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(true);
+    expect(signals).toContainEqual([4321, 'SIGTERM']);
+    expect(signals).toContainEqual([4321, 'SIGKILL']);
+    await stopServer(); // leave the module's state clean for the next test
+  }, 10_000);
+});
+
 describe('Windows reap', () => {
   it('kills the whole tree with taskkill so no python survives a failed start', async () => {
     // proc.kill() reaches the launcher only; the python grandchild kept

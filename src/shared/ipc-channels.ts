@@ -105,6 +105,26 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+  // Relaunches the whole app (app.relaunch + app.exit) — used after saving a
+  // custom server URL/token, since that's read once at window-creation time
+  // via additionalArguments, not hot-reloadable.
+  APP_RESTART: 'app:restart',
+
+  // Custom (remote) server — points the app at a cowork-server instance this
+  // app didn't spawn, instead of the local loopback one. Stored in the same
+  // ~/.cowork*/.env file as everything else main-process-local, under its
+  // own keys (COWORK_CUSTOM_SERVER_URL / COWORK_CUSTOM_SERVER_TOKEN) —
+  // deliberately separate from COWORK_AUTH_TOKEN, which the LOCAL server
+  // generates/owns for itself.
+  BACKEND_CUSTOM_SERVER_GET: 'backend:custom-server-get',
+  BACKEND_CUSTOM_SERVER_SET: 'backend:custom-server-set',
+
+  // Local server auth — toggles COWORK_REQUIRE_AUTH/COWORK_AUTH_TOKEN for the
+  // sidecar THIS app spawns (see local-auth.ts). Off by default; enabling
+  // generates a token, restarts the sidecar, and the client picks the token
+  // up on its very next request (onBeforeSendHeaders reads it live).
+  BACKEND_LOCAL_AUTH_GET: 'backend:local-auth-get',
+  BACKEND_LOCAL_AUTH_SET: 'backend:local-auth-set',
   // Pushed main → renderer when the main window hides/minimizes (false) or
   // shows/restores/focuses (true). Electron 39 starts the renderer with
   // MacWebContentsOcclusion disabled, so on macOS `document.visibilityState`

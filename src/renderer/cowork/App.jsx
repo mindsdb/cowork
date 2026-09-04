@@ -518,15 +518,15 @@ export function makeProjectDetailToken() {
   };
 }
 
-export default function App() {
+export default function App({ autoOpenSettingsSection } = {}) {
   return (
     <ToastProvider>
-      <AppCore />
+      <AppCore autoOpenSettingsSection={autoOpenSettingsSection} />
     </ToastProvider>
   );
 }
 
-function AppCore() {
+function AppCore({ autoOpenSettingsSection } = {}) {
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
   // and returns every field's resolved default, so the boot fetch (below) fills
@@ -605,6 +605,19 @@ function AppCore() {
   // null = no section selected: the mobile master-detail shows its section
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
+
+  // Setup finished with the "Install backend server" checkbox unchecked
+  // (see App.tsx's skippedBackendRef) — land straight in Backend settings
+  // so the user can immediately point the app at a server it didn't spawn,
+  // instead of leaving them on a chat UI whose local server never started.
+  useEffect(() => {
+    if (autoOpenSettingsSection) {
+      setSettingsSection(autoOpenSettingsSection);
+      setSettingsOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user

@@ -11,9 +11,19 @@ function parseServerPort(): number | null {
   return Number.isInteger(port) && port > 0 ? port : null;
 }
 
+// A custom server (see custom-server.ts) hands over its full origin instead
+// of just a port — mutually exclusive with parseServerPort() above; main
+// only ever passes one or the other (see createWindow's additionalArguments).
+function parseCustomServerUrl(): string | null {
+  const arg = process.argv.find((a) => a.startsWith('--cowork-custom-server-url='));
+  return arg ? arg.slice('--cowork-custom-server-url='.length) : null;
+}
+
 contextBridge.exposeInMainWorld('antontron', {
   // Resolved loopback server port (ENG-439); null if main didn't pass one.
   serverPort: parseServerPort(),
+  // Full origin of a custom (non-local) server, if one is configured.
+  customServerUrl: parseCustomServerUrl(),
   // Optional reachable control-plane origin for connecting another physical
   // computer. The renderer validates this before placing it in setup commands.
   codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
@@ -24,7 +34,7 @@ contextBridge.exposeInMainWorld('antontron', {
   codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
-  startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
+  startInstall: (installBackend?: boolean) => ipcRenderer.invoke(IPC.INSTALL_START, installBackend),
   cancelInstall: () => ipcRenderer.invoke(IPC.INSTALL_CANCEL),
 
   // Anton python server lifecycle
@@ -151,6 +161,17 @@ contextBridge.exposeInMainWorld('antontron', {
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
   setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
+
+  // Custom (remote) server config — see custom-server.ts
+  // GET answers { url, hasToken } — the token itself never crosses the bridge.
+  getCustomServer: () => ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_GET),
+  setCustomServer: (update: { url: string | null; token: string | null; keepExistingToken?: boolean }) =>
+    ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_SET, update),
+  restartApp: () => ipcRenderer.invoke(IPC.APP_RESTART),
+
+  // Local server auth toggle — see local-auth.ts
+  getLocalAuth: () => ipcRenderer.invoke(IPC.BACKEND_LOCAL_AUTH_GET),
+  setLocalAuth: (enabled: boolean) => ipcRenderer.invoke(IPC.BACKEND_LOCAL_AUTH_SET, enabled),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),

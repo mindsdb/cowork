@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws://localhost:* http://127.0.0.1:* http://localhost:* https://us.i.posthog.com https://mindsdb.github.io; frame-src http://127.0.0.1:* http://localhost:*; child-src http://127.0.0.1:* http://localhost:*" />
+    <!-- No <meta> Content-Security-Policy here: main emits it as a response
+         header on this document (src/main/renderer-csp.ts), so a configured
+         custom server origin can be allowlisted at runtime. -->
     <title>MindsHub Cowork</title>
     <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
     <!-- Boot veil: a solid-black layer painted on the very first frame

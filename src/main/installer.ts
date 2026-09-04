@@ -7,6 +7,7 @@ import { sendEvent } from './analytics';
 import { getChannel, getInstallSpec, getMinServerVersion } from './server-source';
 import { installerStepPlan, meetsMinVersion } from './update-logic';
 import { withServerMaintenance } from './server-process';
+import { skipBackendInstallRequested, persistSkipBackendInstall } from './backend-install-pref';
 import {
   PYTHON_RANGE,
   getLocalBin,
@@ -26,6 +27,10 @@ interface InstallStep {
 
 interface InstallerOptions {
   shouldAbort?: () => boolean;
+  // Setup wizard's "Install backend server" checkbox (default true). false
+  // skips every step below entirely — the user intends to point this app at
+  // a server it didn't spawn (Settings > Backend), configured after setup.
+  installBackend?: boolean;
 }
 
 function getSteps(): InstallStep[] {
@@ -264,6 +269,16 @@ export async function checkInstallStatus(): Promise<{
   antonInstalled: boolean;
   serverDepsReady: boolean;
 }> {
+  // The user deliberately chose not to install cowork-server (setup
+  // wizard's checkbox) — report "installed" for routing purposes so
+  // resolveBootTarget/handleAuthComplete treat setup as done and don't loop
+  // back into the installer on every future boot. The binary genuinely
+  // isn't there; startServer() already degrades gracefully when it can't
+  // find one (logged, no crash), and Settings > Backend is where this user
+  // is headed anyway to point the app at a server it didn't spawn.
+  if (skipBackendInstallRequested()) {
+    return { antonInstalled: true, serverDepsReady: true };
+  }
   const installed = await checkCoworkServerInstalled();
   // Both fields report the same value — cowork-server is a single
   // package that includes all server dependencies. The two-field
@@ -271,7 +286,25 @@ export async function checkInstallStatus(): Promise<{
   return { antonInstalled: installed, serverDepsReady: installed };
 }
 
+// Fast path for the setup wizard's "Install backend server" checkbox
+// unchecked — no Xcode CLT, git, uv, or cowork-server to install/start, so
+// none of the usual steps ever run. Persists the choice so future boots
+// don't re-enter the installer (see checkInstallStatus above).
+async function skipBackendInstall(win: BrowserWindow): Promise<boolean> {
+  await persistSkipBackendInstall();
+  sendLog(win, 'Skipping local backend install — you chose to connect to a server elsewhere.\n');
+  sendLog(win, 'Point the app at it from Settings → Backend once setup finishes.\n');
+  sendEvent('ANTONAPP_INSTALLATION_SKIPPED_NO_BACKEND');
+  if (canSend(win)) {
+    win.webContents.send(IPC.INSTALL_DONE);
+  }
+  return true;
+}
+
 export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions): Promise<boolean> {
+  if (opts?.installBackend === false) {
+    return skipBackendInstall(win);
+  }
   const steps = getSteps();
   const shouldAbort = opts?.shouldAbort ?? (() => false);
 

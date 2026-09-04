@@ -223,6 +223,19 @@ describe('web mode (no bridge)', () => {
     expect(host.getPathForFile(new File([], 'x.txt'))).toBeNull();
   });
 
+  it('getCustomServer/setCustomServer/restartApp no-op safely on web (no bridge)', async () => {
+    const host = await importHost();
+    await expect(host.getCustomServer()).resolves.toEqual({ url: null, hasToken: false });
+    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toMatchObject({ ok: false });
+    await expect(host.restartApp()).resolves.toBeUndefined();
+  });
+
+  it('getLocalAuth/setLocalAuth no-op safely on web (no bridge)', async () => {
+    const host = await importHost();
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: false, hasToken: false });
+    await expect(host.setLocalAuth(true)).resolves.toEqual({ ok: false, enabled: false, hasToken: false });
+  });
+
   it('serverInfo reports the live origin as running (web host IS the server)', async () => {
     const host = await importHost();
     await expect(host.serverInfo()).resolves.toEqual({
@@ -292,6 +305,24 @@ describe('electron mode (bridge present)', () => {
     expect(host.isLocalApiOrigin()).toBe(true); // loopback → shell-openable
   });
 
+  it('getApiOrigin prefers a configured custom server over the loopback port', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      customServerUrl: 'http://192.168.1.5:26866',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getApiOrigin()).toBe('http://192.168.1.5:26866');
+    expect(host.isLocalApiOrigin()).toBe(false); // a real remote host, not shell-openable
+
+    // A trailing slash on the configured URL doesn't leak into the origin.
+    (window as unknown as Record<string, unknown>).antontron = {
+      customServerUrl: 'http://192.168.1.5:26866/',
+    };
+    const host2 = await importHost();
+    expect(host2.getApiOrigin()).toBe('http://192.168.1.5:26866');
+  });
+
   it('uses a validated reachable control-plane origin for outbound Code runtimes', async () => {
     (window as unknown as Record<string, unknown>).antontron = {
       serverPort: 12345,
@@ -346,6 +377,33 @@ describe('electron mode (bridge present)', () => {
     await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
+  });
+
+  it('getCustomServer/setCustomServer/restartApp delegate to the bridge when present', async () => {
+    const getCustomServer = vi.fn(async () => ({ url: 'http://192.168.1.5:26866', hasToken: true }));
+    const setCustomServer = vi.fn(async () => ({ ok: false, error: 'nope' }));
+    const restartApp = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { getCustomServer, setCustomServer, restartApp };
+    const host = await importHost();
+
+    // The saved key never crosses the bridge — only whether one exists.
+    await expect(host.getCustomServer()).resolves.toEqual({ url: 'http://192.168.1.5:26866', hasToken: true });
+    // Main's validation result (ok/error) is passed through untouched.
+    await expect(host.setCustomServer({ url: 'x', token: null, keepExistingToken: true })).resolves.toEqual({ ok: false, error: 'nope' });
+    expect(setCustomServer).toHaveBeenCalledWith({ url: 'x', token: null, keepExistingToken: true });
+    await host.restartApp();
+    expect(restartApp).toHaveBeenCalledOnce();
+  });
+
+  it('getLocalAuth/setLocalAuth delegate to the bridge when present', async () => {
+    const getLocalAuth = vi.fn(async () => ({ enabled: true, hasToken: true }));
+    const setLocalAuth = vi.fn(async () => ({ ok: true, enabled: false, hasToken: false }));
+    (window as unknown as Record<string, unknown>).antontron = { getLocalAuth, setLocalAuth };
+    const host = await importHost();
+
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: true, hasToken: true });
+    await expect(host.setLocalAuth(false)).resolves.toEqual({ ok: true, enabled: false, hasToken: false });
+    expect(setLocalAuth).toHaveBeenCalledWith(false);
   });
 
   it('awaitBootReady delegates to the bridge and resolves (ENG-749)', async () => {
