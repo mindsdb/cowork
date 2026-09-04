@@ -50,6 +50,8 @@ describe('CodeSetupModal', () => {
     render(<CodeSetupModal open onClose={vi.fn()} onComplete={onComplete} />);
 
     expect(hostMock.startCodeSetup).toHaveBeenCalledOnce();
+    act(() => hostMock.emit('progress', [{ id: 'git', label: 'Install Git', status: 'running', hint: 'Windows will ask to allow Git for Windows to make changes. Choose Yes.' }, ...steps('pending')]));
+    expect(screen.getByRole('list', { name: 'Setup steps' })).toHaveTextContent('Windows will ask to allow Git for Windows to make changes. Choose Yes.');
     act(() => hostMock.emit('progress', steps('running')));
     expect(screen.getByRole('list', { name: 'Setup steps' })).toHaveTextContent('Download Code Mode components');
     expect(screen.getByText('In progress')).toBeInTheDocument();

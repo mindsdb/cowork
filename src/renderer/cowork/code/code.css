@@ -1003,6 +1003,8 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 /* Code Mode setup (first switch-on: coding agent components, Git) */
 .code-setup-steps { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .code-setup-step { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; color: var(--ink-2); }
+.code-setup-step__text { display: grid; gap: 2px; min-width: 0; }
+.code-setup-step__hint { font-size: 12px; color: var(--ink-3); }
 .code-setup-step[data-status="done"] { color: var(--ink); }
 .code-setup-step[data-status="done"] .code-setup-step__glyph { color: var(--ok); }
 .code-setup-step[data-status="running"] { border-color: var(--accent); color: var(--ink); }

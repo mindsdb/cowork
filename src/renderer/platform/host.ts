@@ -561,6 +561,8 @@ export interface InstallStep {
   id: string;
   label: string;
   status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
+  /** Optional line under the label, e.g. the system prompt the step will raise. */
+  hint?: string;
 }
 
 export async function startInstall(): Promise<void> {

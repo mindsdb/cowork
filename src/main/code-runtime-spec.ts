@@ -51,18 +51,37 @@ export interface CodeSetupStep {
   id: CodeSetupStepId;
   label: string;
   status: CodeSetupStatus;
+  /** One line shown under the label: what the user will be asked to do. */
+  hint?: string;
+}
+
+/** What installing Git asks of the user on this platform, if anything. */
+export function gitStepHint(platform: NodeJS.Platform): string | undefined {
+  if (platform === 'darwin') return 'macOS will offer to install the Command Line Tools. Choose Install.';
+  if (platform === 'win32') return 'Windows will ask to allow Git for Windows to make changes. Choose Yes.';
+  return undefined;
 }
 
 /** The steps Code Mode setup shows. Git is only a step where it is missing. */
-export function codeSetupSteps(needsGit: boolean): CodeSetupStep[] {
+export function codeSetupSteps(needsGit: boolean, platform: NodeJS.Platform = process.platform): CodeSetupStep[] {
   const steps: CodeSetupStep[] = [];
-  if (needsGit) steps.push({ id: 'git', label: 'Install Git', status: 'pending' });
+  if (needsGit) steps.push({ id: 'git', label: 'Install Git', status: 'pending', hint: gitStepHint(platform) });
   steps.push(
     { id: 'components', label: 'Download Code Mode components', status: 'pending' },
     { id: 'restart', label: 'Restart the Code service', status: 'pending' },
     { id: 'verify', label: 'Check the coding agent', status: 'pending' },
   );
   return steps;
+}
+
+/**
+ * Whether the components install itself needs Git. uv clones git+ sources
+ * (the git channel, and the anton override that comes with it) and needs Git
+ * on PATH for that; a wheel or a PyPI version does not, so on the release
+ * channel Git and the components can install at the same time.
+ */
+export function installNeedsGit(spec: { args: string[]; env: NodeJS.ProcessEnv }): boolean {
+  return spec.args.some((arg) => /\bgit\+/.test(arg)) || 'UV_OVERRIDE' in spec.env;
 }
 
 /**

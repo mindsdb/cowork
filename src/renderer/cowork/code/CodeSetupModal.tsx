@@ -101,7 +101,10 @@ export function CodeSetupModal({ open, onClose, onComplete }: {
           {steps.map((step) => (
             <li key={step.id} className="code-setup-step" data-status={step.status}>
               <span className="code-setup-step__glyph" aria-hidden="true"><StepGlyph status={step.status} /></span>
-              <span>{step.label}</span>
+              <span className="code-setup-step__text">
+                <span>{step.label}</span>
+                {step.hint && <span className="code-setup-step__hint">{step.hint}</span>}
+              </span>
               <span className="code-setup-step__state">{step.status === 'running' ? 'In progress' : step.status === 'done' ? 'Done' : step.status === 'error' ? 'Failed' : step.status === 'warning' ? 'Check' : step.status === 'skipped' ? 'Skipped' : ''}</span>
             </li>
           ))}

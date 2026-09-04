@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { codeRuntimeInstalledIn, codeSetupSteps, gitInstallRoute, withCodeExtra } from './code-runtime-spec';
+import { codeRuntimeInstalledIn, codeSetupSteps, gitInstallRoute, gitStepHint, installNeedsGit, withCodeExtra } from './code-runtime-spec';
 
 
 describe('withCodeExtra', () => {
@@ -63,5 +63,22 @@ describe('setup plan', () => {
     expect(gitInstallRoute('darwin')).toBe('xcode');
     expect(gitInstallRoute('win32')).toBe('winget');
     expect(gitInstallRoute('linux')).toBe('manual');
+  });
+
+  it('tells the user which system prompt the Git step will raise', () => {
+    expect(gitStepHint('win32')).toMatch(/Windows will ask.*Git for Windows.*Choose Yes/);
+    expect(gitStepHint('darwin')).toMatch(/Command Line Tools.*Choose Install/);
+    expect(gitStepHint('linux')).toBeUndefined();
+    expect(codeSetupSteps(true, 'win32')[0].hint).toBe(gitStepHint('win32'));
+    expect(codeSetupSteps(false, 'win32').every((step) => step.hint === undefined)).toBe(true);
+  });
+});
+
+describe('installNeedsGit', () => {
+  it('only needs Git for git+ sources and the overrides that come with them', () => {
+    expect(installNeedsGit({ args: ['cowork-server[code]==0.26.9.4.1', '--with', 'anton-agent==2.26.9.1'], env: {} })).toBe(false);
+    expect(installNeedsGit({ args: ['cowork-server[code] @ file:///C:/QA/cowork_server-0.26.9.3.99-py3-none-any.whl'], env: {} })).toBe(false);
+    expect(installNeedsGit({ args: ['cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@staging'], env: {} })).toBe(true);
+    expect(installNeedsGit({ args: ['cowork-server[code]==0.26.9.4.1'], env: { UV_OVERRIDE: '/tmp/overrides.txt' } })).toBe(true);
   });
 });

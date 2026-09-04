@@ -4,9 +4,11 @@
 // runtime and its native binary, over 100 MB per platform) are not part of
 // the first install. This installs them into the existing cowork-server tool
 // environment, restarts the sidecar and confirms the engine reports itself
-// available. Where the computer has no working Git, that is installed first:
+// available. Where the computer has no working Git, that is installed too:
 // Code Mode cannot clone, make worktrees or commit without it, and a stock
-// Mac's /usr/bin/git only works once the Xcode Command Line Tools exist.
+// Mac's /usr/bin/git only works once the Xcode Command Line Tools exist. The
+// two installs are independent when the server comes as a wheel (the release
+// channel), so they run side by side; a git+ source has to wait for Git.
 //
 // Progress streams to the renderer on the CODE_SETUP_* channels, mirroring
 // the first-run installer's shape (steps + log lines + done/error/cancelled).
@@ -22,6 +24,7 @@ import {
   codeRuntimeInstalledIn,
   codeSetupSteps,
   gitInstallRoute,
+  installNeedsGit,
   withCodeExtra,
   type CodeSetupStep,
   type CodeSetupStatus,
@@ -46,6 +49,26 @@ export interface CodeSetupOptions {
   shouldAbort?: () => boolean;
 }
 
+
+/**
+ * Tags each complete line of a chunked stream so two installers writing to
+ * the same log at once stay readable. Chunks end mid-line and winget redraws
+ * progress with bare carriage returns, so lines are cut on \r\n, \n and \r.
+ */
+export function linePrefixer(prefix: string, sink: (text: string) => void): { write: (chunk: string) => void; flush: () => void } {
+  let partial = '';
+  return {
+    write(chunk: string) {
+      const pieces = (partial + chunk).split(/\r\n|\n|\r/);
+      partial = pieces.pop() ?? '';
+      for (const line of pieces) if (line.trim()) sink(`${prefix} ${line}\n`);
+    },
+    flush() {
+      if (partial.trim()) sink(`${prefix} ${partial}\n`);
+      partial = '';
+    },
+  };
+}
 
 function canSend(win: BrowserWindow): boolean {
   return !win.isDestroyed() && !win.webContents.isDestroyed();
@@ -151,63 +174,101 @@ export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOpt
   };
   progress();
 
-  // Git, only when it is missing.
-  if (steps.some((step) => step.id === 'git')) {
-    setStep('git', 'running');
-    const route = gitInstallRoute(process.platform);
-    if (route === 'xcode') {
-      log('--- Git ---\nGit needs the Xcode Command Line Tools on this Mac.\n');
-      if (!(await xcodeCliInstalled())) {
-        log('Asking macOS to install them; please click Install in the system dialog.\n');
-        const triggered = await triggerXcodeInstall(win);
-        if (!triggered) return fail('git', 'Could not start the Xcode Command Line Tools installer. Run "xcode-select --install" in Terminal, then try again.');
-        log('Waiting for the install to finish (this can take several minutes)…\n');
-        const installed = await waitForXcodeInstall(win, GIT_WAIT_MS, shouldAbort);
-        if (cancelled()) return false;
-        if (!installed) return fail('git', 'The Xcode Command Line Tools did not finish installing. Complete that install, then try again.');
-      }
-      if (!(await gitWorks())) return fail('git', 'Git is still not working after the Command Line Tools install. Open Terminal, run "git --version", then try again.');
-    } else if (route === 'winget') {
-      log('--- Git ---\nInstalling Git with winget…\n');
-      const result = await runCommand('winget', [
-        'install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements',
-      ], win, { shell: true, shouldAbort, log });
-      if (cancelled()) return false;
-      if (result.code !== 0) return fail('git', 'Git could not be installed with winget. Install it from https://git-scm.com/downloads/win, then try again.');
-      for (const candidate of ['C:\\Program Files\\Git\\cmd', path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd')]) {
-        if (fs.existsSync(path.join(candidate, 'git.exe')) && !process.env.PATH?.includes(candidate)) {
-          process.env.PATH = `${candidate}${path.delimiter}${process.env.PATH ?? ''}`;
-        }
-      }
-      if (!(await findOnPath('git')) || !(await gitWorks())) return fail('git', 'Git was installed but is not available yet. Restart the app, then try again.');
-    } else {
-      return fail('git', 'Git is not installed. Install it with your package manager (for example "sudo apt install git"), then try again.');
-    }
-    log('Git is ready.\n');
-    setStep('git', 'done');
-  }
-  if (cancelled()) return false;
-
-  // The coding agent's components.
-  setStep('components', 'running');
-  log('--- Code Mode components ---\n');
+  // Work out what the components step will run before anything starts: a
+  // missing uv fails fast, and the Git step needs to know whether the install
+  // itself will clone from git (then Git has to come first) or install a
+  // wheel (then both can run at the same time).
   const uv = await resolveUv();
   if (!uv) return fail('components', 'uv was not found. Run the app installer again from Settings › Backend, then try again.');
   const toolsDir = await uvToolsDir(uv);
   const spec = await codeInstallSpec(uv, toolsDir);
-  log(`Installing ${spec.args[0]}\n`);
-  const install = await withServerMaintenance(async () => {
-    const wasRunning = isServerRunning();
-    if (wasRunning) {
-      log('Stopping the Code service while its components install…\n');
-      await stopServer();
+  const needsGit = steps.some((step) => step.id === 'git');
+  const route = gitInstallRoute(process.platform);
+  if (needsGit && route === 'manual') {
+    return fail('git', 'Git is not installed. Install it with your package manager (for example "sudo apt install git"), then try again.');
+  }
+  const sideBySide = needsGit && !installNeedsGit(spec);
+  const gitOut = sideBySide ? linePrefixer('[Git]', log) : { write: log, flush: () => undefined };
+  const componentsOut = sideBySide ? linePrefixer('[Components]', log) : { write: log, flush: () => undefined };
+
+  // Git, only when it is missing. Resolves to null on success, otherwise to
+  // the message for the user; the caller decides when to report it.
+  const installGit = async (): Promise<string | null> => {
+    setStep('git', 'running');
+    let failure: string | null = null;
+    if (route === 'xcode') {
+      gitOut.write('--- Git ---\nGit needs the Xcode Command Line Tools on this Mac.\n');
+      if (!(await xcodeCliInstalled())) {
+        gitOut.write('Asking macOS to install them; please click Install in the system dialog.\n');
+        const triggered = await triggerXcodeInstall(win);
+        if (!triggered) failure = 'Could not start the Xcode Command Line Tools installer. Run "xcode-select --install" in Terminal, then try again.';
+        else {
+          gitOut.write('Waiting for the install to finish (this can take several minutes)…\n');
+          const installed = await waitForXcodeInstall(win, GIT_WAIT_MS, shouldAbort);
+          if (!installed && !shouldAbort()) failure = 'The Xcode Command Line Tools did not finish installing. Complete that install, then try again.';
+        }
+      }
+      if (!failure && !shouldAbort() && !(await gitWorks())) failure = 'Git is still not working after the Command Line Tools install. Open Terminal, run "git --version", then try again.';
+    } else {
+      gitOut.write('--- Git ---\nInstalling Git with winget. Windows will ask you to allow Git for Windows to make changes; choose Yes.\n');
+      const result = await runCommand('winget', [
+        'install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements',
+      ], win, { shell: true, shouldAbort, log: gitOut.write });
+      if (shouldAbort()) failure = null;
+      else if (result.code !== 0) failure = 'Git could not be installed with winget. Install it from https://git-scm.com/downloads/win, then try again.';
+      else {
+        for (const candidate of ['C:\\Program Files\\Git\\cmd', path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd')]) {
+          if (fs.existsSync(path.join(candidate, 'git.exe')) && !process.env.PATH?.includes(candidate)) {
+            process.env.PATH = `${candidate}${path.delimiter}${process.env.PATH ?? ''}`;
+          }
+        }
+        if (!(await findOnPath('git')) || !(await gitWorks())) failure = 'Git was installed but is not available yet. Restart the app, then try again.';
+      }
     }
-    return runCommand(uv, ['tool', 'install', ...spec.args, '--force', '--reinstall', '--python', PYTHON_RANGE], win, {
-      shouldAbort,
-      log,
-      env: { UV_PYTHON_PREFERENCE: 'only-managed', ...spec.env },
+    if (!failure && !shouldAbort()) {
+      gitOut.write('Git is ready.\n');
+      setStep('git', 'done');
+    }
+    gitOut.flush();
+    return failure;
+  };
+
+  // The coding agent's components, into the existing server environment.
+  const installComponents = async () => {
+    setStep('components', 'running');
+    componentsOut.write('--- Code Mode components ---\n');
+    componentsOut.write(`Installing ${spec.args[0]}\n`);
+    const result = await withServerMaintenance(async () => {
+      const wasRunning = isServerRunning();
+      if (wasRunning) {
+        componentsOut.write('Stopping the Code service while its components install…\n');
+        await stopServer();
+      }
+      return runCommand(uv, ['tool', 'install', ...spec.args, '--force', '--reinstall', '--python', PYTHON_RANGE], win, {
+        shouldAbort,
+        log: componentsOut.write,
+        env: { UV_PYTHON_PREFERENCE: 'only-managed', ...spec.env },
+      });
     });
-  });
+    componentsOut.flush();
+    return result;
+  };
+
+  let gitFailure: string | null = null;
+  let install: { code: number };
+  if (sideBySide) {
+    log('Installing Git and downloading the coding agent at the same time.\n');
+    const componentsPromise = installComponents();
+    gitFailure = await installGit();
+    install = await componentsPromise;
+  } else {
+    if (needsGit) {
+      gitFailure = await installGit();
+      if (cancelled()) return false;
+      if (gitFailure) return fail('git', gitFailure);
+    }
+    install = await installComponents();
+  }
   if (cancelled()) {
     // The service was stopped for the install; bring it back so the app keeps working.
     await startServer().catch(() => undefined);
@@ -222,6 +283,12 @@ export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOpt
     return fail('components', 'The install finished but the coding agent is missing from it. Try again; if this keeps happening, report it with the details below.');
   }
   setStep('components', 'done');
+  if (gitFailure) {
+    // The components are in place and stay; only Git is still missing.
+    await startServer().catch(() => undefined);
+    log('\nThe Code service is running again on the new components. Git still needs installing.\n');
+    return fail('git', gitFailure);
+  }
 
   // Restart the sidecar on the new environment.
   setStep('restart', 'running');
