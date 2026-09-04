@@ -150,7 +150,40 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   );
 });
 
-export default function ConnectorPicker({ open, onPick, onClose }) {
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]';
+const SECTION_HEADING =
+  'font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] '
+  + 'uppercase text-ink-3 pt-1 px-0.5 pb-2';
+
+// One titled grid of tiles. `count` is rendered beside the title when given
+// (the Featured section deliberately omits it).
+function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[18px]' }) {
+  if (!connectors.length) return null;
+  return (
+    <div className={className}>
+      <div className={SECTION_HEADING}>
+        {title}
+        {count != null && (
+          <span className="ml-2 font-medium text-ink-4 text-xs tracking-[0] normal-case">
+            {count}
+          </span>
+        )}
+      </div>
+      <div className={GRID}>
+        {connectors.map((c) => (
+          <ConnectorTile key={c.id} connector={c} onPick={onPick} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Cloud only. These connectors come back flagged `cloud_available: false`;
+// they're listed rather than hidden so the directory shows the real catalogue,
+// and picking one opens the download-the-desktop-app modal instead of a form.
+const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
+
+export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
@@ -172,11 +205,13 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
     setQuery('');
     setCategory('all');
     setSortBy('default');
-    fetchConnectors()
+    // Cloud: also pull what only the desktop app can run, so the directory
+    // can list it under DESKTOP_ONLY_TITLE. Desktop already gets everything.
+    fetchConnectors({ includeUnavailable: orgMode })
       .then((list) => setConnectors(Array.isArray(list) ? list : []))
       .catch((e) => setError(e?.message || 'Failed to load connectors'))
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, orgMode]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -218,6 +253,17 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
     });
   }, [connectors, query, category]);
 
+  // Desktop-only connectors are flagged by the server (cloud mode only).
+  // A server that doesn't send the flag leaves `available` as the whole list,
+  // so desktop and older cloud deployments render exactly as before.
+  const { available, desktopOnly } = useMemo(() => {
+    const a = [];
+    const d = [];
+    for (const c of filtered) (c.cloud_available === false ? d : a).push(c);
+    d.sort((x, y) => (x.label || x.id).localeCompare(y.label || y.id));
+    return { available: a, desktopOnly: d };
+  }, [filtered]);
+
   return (
     <Modal
       open={open}
@@ -256,7 +302,11 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              className="flex-1 min-w-0 border-0 outline-0 bg-transparent font-[family-name:var(--font-body)] text-[13.5px] text-ink"
+              // outline-none, not outline-0: `outline-0` just zeroes the
+              // width, and the UA focus ring uses outline-style:auto whose
+              // width the browser controls — so it kept painting a second,
+              // inner ring inside the wrapper's .focus-within-ring.
+              className="flex-1 min-w-0 border-0 outline-none bg-transparent font-[family-name:var(--font-body)] text-[13.5px] text-ink"
             />
           </label>
         </div>
@@ -351,49 +401,50 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               The search/category filter shrinks `filtered` first, so
               both modes operate on the same already-narrowed list. */}
           {sortBy === 'name' ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
-              {[...filtered]
+            <div className={GRID}>
+              {[...available]
                 .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id))
                 .map((c) => (
                   <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                 ))}
             </div>
-          ) : (
-            <>
-              {/* Featured section — only when showing all categories and not searching */}
-              {category === 'all' && !query.trim() && (() => {
-                const featured = filtered.filter((c) => c.featured);
-                if (!featured.length) return null;
-                return (
-                  <div className="mb-6">
-                    <div className="font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] uppercase text-ink-3 pt-1 px-0.5 pb-2">
-                      Featured
-                    </div>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
-                      {featured.map((c) => (
-                        <ConnectorTile key={c.id} connector={c} onPick={onPick} />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-              {groupByCategory(filtered).map(([cat, list]) => (
-                <div key={cat} className="mb-[18px]">
-                  <div className="font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] uppercase text-ink-3 pt-1 px-0.5 pb-2">
-                    {categoryLabel(cat)}
-                    <span className="ml-2 font-medium text-ink-4 text-xs tracking-[0] normal-case">
-                      {list.length}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
-                    {list.map((c) => (
-                      <ConnectorTile key={c.id} connector={c} onPick={onPick} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
+          ) : (() => {
+            // Featured shows only when browsing everything; when it does, its
+            // members are held back from the category sections below so the
+            // same connector isn't listed twice (very visible in cloud, where
+            // the whole available list is a handful of tiles).
+            const showFeatured = category === 'all' && !query.trim();
+            const featured = showFeatured ? available.filter((c) => c.featured) : [];
+            const featuredIds = new Set(featured.map((c) => c.id));
+            const rest = featured.length
+              ? available.filter((c) => !featuredIds.has(c.id))
+              : available;
+            return (
+              <>
+                <ConnectorSection
+                  title="Featured"
+                  connectors={featured}
+                  onPick={onPick}
+                  className="mb-6"
+                />
+                {groupByCategory(rest).map(([cat, list]) => (
+                  <ConnectorSection
+                    key={cat}
+                    title={categoryLabel(cat)}
+                    count={list.length}
+                    connectors={list}
+                    onPick={onPick}
+                  />
+                ))}
+              </>
+            );
+          })()}
+          <ConnectorSection
+            title={DESKTOP_ONLY_TITLE}
+            count={desktopOnly.length}
+            connectors={desktopOnly}
+            onPick={onDesktopOnly}
+          />
         </div>
     </Modal>
   );
