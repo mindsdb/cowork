@@ -13,6 +13,7 @@
 // operations (openPath) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
+import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
@@ -32,13 +33,12 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
-// unset/anything else defaults false) while the feature is parked. A plain
-// module-level const, not a function — it's a static per-process value read
-// once from the environment, same as isElectron/isWeb above. Web has no
-// bridge at all, so it's always false there too.
-export const codingModeOptionsEnabled: boolean =
-  isElectron && bridge.codingModeOptionsEnabled === true;
+// Static deployment capability. The user's opt-in is intentionally owned by
+// the renderer and stored per device; this flag only answers whether this
+// shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
+// remains unavailable until a future cloud capability is deliberately added.
+export const codeModeAvailable: boolean =
+  isElectron && bridge.codeModeAvailable === true;
 
 // ---- Platform identity --------------------------------------------------
 
@@ -71,6 +71,36 @@ export function getApiOrigin(): string {
     return `http://127.0.0.1:${port}`;
   }
   return window.location.origin;
+}
+
+// Endpoint an outbound Code runtime connects to. In packaged Electron this
+// matches getApiOrigin(); in Vite development the renderer itself lives on
+// :5173, so use the actual sidecar port instead of handing a runtime the UI
+// dev-server address. Hosted Code uses the current HTTPS origin.
+export function getCodeControlPlaneOrigin(): string {
+  if (isElectron) {
+    if (typeof bridge.codeControlPlaneOrigin === 'string') {
+      try {
+        const configured = new URL(bridge.codeControlPlaneOrigin);
+        if (
+          (configured.protocol === 'http:' || configured.protocol === 'https:')
+          && !configured.username
+          && !configured.password
+          && (configured.pathname === '/' || configured.pathname === '')
+          && !configured.search
+          && !configured.hash
+        ) {
+          return configured.origin;
+        }
+      } catch {
+        // Fall through to the private local sidecar. The connection UI will
+        // explain that loopback cannot be reached by another computer.
+      }
+    }
+    const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return getApiOrigin();
 }
 
 // True when the FastAPI backend the SPA talks to lives on THIS machine
@@ -117,6 +147,12 @@ export interface ServerInfo {
   origin: string;
 }
 
+export interface ServerControlResult {
+  running: boolean;
+  port?: number | null;
+  error?: string;
+}
+
 export async function serverInfo(): Promise<ServerInfo> {
   if (isElectron && typeof bridge.serverInfo === 'function') {
     const info = await bridge.serverInfo();
@@ -135,18 +171,18 @@ export async function serverInfo(): Promise<ServerInfo> {
   };
 }
 
-export async function serverStart(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStart(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStart === 'function') {
     return bridge.serverStart();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
-export async function serverStop(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStop(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStop === 'function') {
     return bridge.serverStop();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
 export interface ServerDiagnostics {
@@ -205,6 +241,18 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
     return bridge.showItemInFolder(path);
   }
   return { ok: false, reason: 'unsupported' };
+}
+
+export async function pickCodeFolder(): Promise<{
+  ok: boolean;
+  path?: string;
+  cancelled?: boolean;
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.pickCodeFolder === 'function') {
+    return bridge.pickCodeFolder();
+  }
+  return { ok: false, reason: 'Folder selection is available in the desktop app.' };
 }
 
 // ---- Coding mode (MVP) ---------------------------------------------------
@@ -272,6 +320,15 @@ export function onCodingTerminalData(cb: (taskId: string, data: string) => void)
 export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
   if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
     return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
+}
+
+// Main-window hide/minimize (false) and show/restore/focus (true). The web
+// build has no window to hide, so it never fires and stays visible.
+export function onWindowVisibility(cb: (visible: boolean) => void): () => void {
+  if (isElectron && typeof bridge.onWindowVisibility === 'function') {
+    return bridge.onWindowVisibility(cb);
   }
   return () => {};
 }
@@ -358,12 +415,22 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   // injects the loopback token in main, so nothing is added there.
   if (isWeb) {
     const token = await getAccessToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      const { expectedOrganizationHeaders } = await import('../cowork/lib/organizationRequestBoundary');
+      headers.Authorization = `Bearer ${token}`;
+      Object.assign(headers, expectedOrganizationHeaders(token));
+    }
   }
   const res = await fetch(`${getApiOrigin()}${path}`, {
     ...init,
     headers,
   });
+  if (isWeb) {
+    const { handleOrganizationBoundaryResponse } = await import('../cowork/lib/organizationRequestBoundary');
+    if (handleOrganizationBoundaryResponse(res)) {
+      throw new Error('The active organization changed; reload required');
+    }
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
@@ -759,7 +826,10 @@ export type OAuthConnectOpts =
 
 export interface OAuthConnectResult {
   ok: boolean;
+  code?: 'oauth_credentials_missing';
   reason?: string;
+  name?: string;
+  account_email?: string;
   refresh_token?: string;
   access_token?: string;
   expires_in?: number;
@@ -824,62 +894,272 @@ export interface DrivePickerResult {
 // newly-picked files as belonging to that project (see DrivePickerFile);
 // omit it for connection-details' "Pick files" button, which has no
 // project context.
-// Web: the popup this session opened, tracked so cancelDrivePicker() (and a
-// second pickDriveFiles call) can close a stale one rather than leaking it.
-let webPickerPopup: Window | null = null;
-// Cancels the in-flight call's message listener and close-poll interval — a
+// Web: cancels the in-flight pick (hides its widget and resolves it) — a
 // settled call's finish() already no-ops, so calling this is always safe.
 let webPickerCancelPrevious: (() => void) | null = null;
 
-// Web equivalent of the Electron flow above. cowork-server serves the SPA
-// and its API from the same origin (getApiOrigin()), but web auth is a
-// per-request Bearer header (see fetchJson), never a cookie — a plain
-// window.open() navigation can't carry that header. So this mints a
-// short-lived, single-use picker session server-side over an authenticated
-// POST first (identical shape to launchConnectorAuth's authUrl handoff
-// elsewhere in this codebase), then opens the URL that POST returns. The
-// live Google access token itself is minted only when that URL is opened,
-// and is embedded server-side into the picker page's own inline script —
-// it never transits this POST, the URL, or postMessage.
-async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
-  let session: { url: string };
+const GOOGLE_API_SRC = 'https://apis.google.com/js/api.js';
+
+// How long a picker may sit without reporting anything before it is treated
+// as stuck. Deliberately far above any real pick: it can only ever be a
+// backstop, never a deadline (see its use below).
+const PICKER_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Same shape check Electron runs before its own pick
+// (drive-picker-service.ts's DRIVE_FILE_ID_RE) — kept in step so one public
+// pickDriveFiles() does not validate on one shell and not the other.
+const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function validDriveFileIds(fileIds: string[] | undefined): boolean {
+  if (fileIds === undefined) return true;
+  return Array.isArray(fileIds) && fileIds.every((id) => typeof id === 'string' && DRIVE_FILE_ID_RE.test(id));
+}
+
+// Narrow shapes for the parts of Google's Picker SDK this file touches. The
+// SDK ships no types of its own and is reached through `window`, so without
+// these every call below would be `any` — and this module's one sanctioned
+// `any` is the platform-bridge cast at the top of the file.
+interface GooglePickerDoc {
+  id: string;
+  name: string;
+  mimeType?: string;
+  iconUrl?: string;
+  url?: string;
+  resourceKey?: string | null;
+}
+interface GooglePickerCallbackData {
+  action: string;
+  docs?: GooglePickerDoc[];
+}
+interface GooglePickerDocsView {
+  setFileIds(ids: string[]): GooglePickerDocsView;
+  setOwnedByMe(owned: boolean): GooglePickerDocsView;
+  setEnableDrives(enabled: boolean): GooglePickerDocsView;
+}
+interface GooglePickerBuilder {
+  setOAuthToken(token: string): GooglePickerBuilder;
+  setDeveloperKey(key: string): GooglePickerBuilder;
+  setAppId(appId: string): GooglePickerBuilder;
+  setTitle(title: string): GooglePickerBuilder;
+  enableFeature(feature: unknown): GooglePickerBuilder;
+  addView(view: GooglePickerDocsView): GooglePickerBuilder;
+  setCallback(cb: (data: GooglePickerCallbackData) => void): GooglePickerBuilder;
+  build(): { setVisible(visible: boolean): void };
+}
+interface GooglePickerApi {
+  PickerBuilder: new () => GooglePickerBuilder;
+  DocsView: new (viewId: unknown) => GooglePickerDocsView;
+  ViewId: { DOCS: unknown };
+  Feature: { MULTISELECT_ENABLED: unknown; SUPPORT_DRIVES: unknown };
+  Action: { PICKED: string; CANCEL: string; ERROR: string };
+}
+interface GoogleApiWindow {
+  gapi?: { load(module: string, opts: { callback: () => void; onerror?: () => void }): void };
+  google?: { picker: GooglePickerApi };
+}
+
+function googleApiWindow(): GoogleApiWindow {
+  return window as unknown as GoogleApiWindow;
+}
+
+// Google's Picker SDK, loaded once into the SPA's own page. Cached per page
+// load; a REJECTED load is deliberately NOT cached, so a transient network
+// failure can be retried by picking again instead of poisoning the picker for
+// the rest of the session.
+let googlePickerSdk: Promise<void> | null = null;
+
+function loadGooglePickerSdk(): Promise<void> {
+  if (googlePickerSdk) return googlePickerSdk;
+  googlePickerSdk = new Promise<void>((resolve, reject) => {
+    const unreachable = () => reject(new Error('Could not reach Google to load the file picker.'));
+    const loadPickerModule = () => {
+      const gapi = googleApiWindow().gapi;
+      if (!gapi) { unreachable(); return; }
+      // api.js only bootstraps the loader — the picker module itself is a
+      // second, separate fetch that can fail on its own.
+      gapi.load('picker', {
+        callback: () => resolve(),
+        onerror: () => reject(new Error('Google Picker could not be loaded.')),
+      });
+    };
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GOOGLE_API_SRC}"]`);
+    if (existing) {
+      if (googleApiWindow().gapi) loadPickerModule();
+      else {
+        existing.addEventListener('load', loadPickerModule, { once: true });
+        existing.addEventListener('error', unreachable, { once: true });
+      }
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GOOGLE_API_SRC;
+    script.async = true;
+    script.addEventListener('load', loadPickerModule, { once: true });
+    script.addEventListener('error', unreachable, { once: true });
+    document.head.appendChild(script);
+  }).catch((err) => {
+    googlePickerSdk = null;
+    throw err;
+  });
+  return googlePickerSdk;
+}
+
+// Persist the grant. The drive.file scope only covers files this app created
+// itself, so a connection's `_picked_files` list is the record of what else
+// the user explicitly granted — and it is what the agent's own prompt is
+// built from (cowork-server's picked_files_by_project). Mirrors Electron's
+// savePickedFiles (main/picked-files.ts), including its rule: a failure here
+// means NOTHING was persisted, so the caller must not report the pick as
+// successful or the UI shows files as granted that the server never recorded.
+async function persistPickedFiles(
+  engine: string, name: string, files: DrivePickerFile[], projectName?: string,
+): Promise<DrivePickerFile[]> {
+  const body = files.map((f) => ({
+    id: f.id,
+    name: f.name,
+    mimeType: f.mimeType,
+    iconUrl: f.iconUrl,
+    url: f.url,
+    resourceKey: f.resourceKey ?? null,
+    projects: projectName ? [projectName] : [],
+  }));
+  const merged = await fetchJson(
+    `/api/v1/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`,
+    { method: 'PATCH', body: JSON.stringify({ files: body }) },
+  );
+  return (merged?.files as DrivePickerFile[]) || files;
+}
+
+// Web equivalent of the Electron flow above. The Picker renders as an in-page
+// overlay in this same, already-authenticated document — it is never a
+// top-level navigation to a Google domain — so everything here is a normal
+// fetch() carrying the caller's own Bearer header. That removes every failure
+// mode the previous popup handoff had: a browser-blocked popup, a click
+// activation that expired during an await, and a header-less navigation whose
+// token had to be smuggled through an opaque server-side ticket.
+async function pickDriveFilesWeb(
+  engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string,
+): Promise<DrivePickerResult> {
+  if (!validDriveFileIds(fileIds)) {
+    return { ok: false, reason: 'Invalid Google Drive file id.' };
+  }
+  let creds: { access_token: string; api_key: string; app_id: string; account_email?: string };
   try {
-    session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
+    creds = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/token`, {
       method: 'POST',
-      body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
+      body: JSON.stringify({ name }),
     });
   } catch (err) {
     return { ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' };
   }
 
-  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
-  webPickerCancelPrevious?.();
-  const popup = window.open(session.url, '_blank', 'noopener,noreferrer');
-  webPickerPopup = popup;
-  if (!popup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+  try {
+    await loadGooglePickerSdk();
+  } catch (err) {
+    // Deliberately ok:false, where Electron and the replaced picker page both
+    // reported a load failure as ok:true with no files. That is not a change
+    // of intent — both of those rendered a visible "Could not load Google
+    // Picker" card of their own first, so the user still saw the failure and
+    // the ok:true only avoided reporting it twice. This flow has no page of
+    // its own to show anything on, so ok:true here would mean the user clicks
+    // "add files" and silently nothing happens. Returning the reason is what
+    // preserves the old behaviour the user actually experienced.
+    return { ok: false, reason: (err as Error)?.message || 'Could not load the file picker.' };
+  }
 
-  return new Promise<DrivePickerResult>((resolve) => {
+  const picker = googleApiWindow().google!.picker;
+  const account = creds.account_email || accountEmail;
+  const picked = await new Promise<DrivePickerResult>((resolve) => {
     let settled = false;
     const finish = (result: DrivePickerResult) => {
       if (settled) return;
       settled = true;
-      clearInterval(closeCheck);
-      window.removeEventListener('message', onMessage);
+      clearTimeout(stuckTimer);
       resolve(result);
     };
-    webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (!event.data || event.data.type !== 'drive-picker-result') return;
-      finish(event.data.result as DrivePickerResult);
+
+    // Backstop for the one failure the callback below cannot see. When the
+    // widget's iframe renders a static Google 403 (usually an active-account
+    // mismatch) there is no picker JS inside it, so PICKED/CANCEL/ERROR never
+    // fire and this promise would otherwise never settle. The popup flow this
+    // replaces survived that only because the user could close the window;
+    // in-page there is nothing to close, so the wait has to be bounded here.
+    // There is no Action.LOADED, so a widget the user is simply still
+    // browsing is indistinguishable from a stuck one — hence a bound far
+    // longer than any real pick rather than a tight one.
+    const stuckTimer = setTimeout(() => {
+      try { widget?.setVisible(false); } catch { /* already disposed */ }
+      finish({
+        ok: false,
+        reason: `Google Picker did not respond — the browser’s active Google account may not match ${account}.`,
+      });
+    }, PICKER_STUCK_TIMEOUT_MS);
+    // A newer pick supersedes one still on screen — same intent the popup
+    // flow had, without the window bookkeeping.
+    webPickerCancelPrevious?.();
+    let widget: { setVisible(visible: boolean): void } | undefined;
+    webPickerCancelPrevious = () => {
+      try { widget?.setVisible(false); } catch { /* already disposed */ }
+      finish({ ok: false, reason: 'cancelled' });
     };
-    // Cancellation case: the user closed the popup without picking — same
-    // intent as the Electron flow's own cancel handling.
-    const closeCheck = window.setInterval(() => {
-      if (popup.closed) finish({ ok: false, reason: 'cancelled' });
-    }, 500);
-    window.addEventListener('message', onMessage);
+
+    const builder = new picker.PickerBuilder()
+      .setOAuthToken(creds.access_token)
+      .setDeveloperKey(creds.api_key)
+      .setAppId(creds.app_id)
+      .setTitle(`Choose files from ${account}`)
+      .enableFeature(picker.Feature.MULTISELECT_ENABLED)
+      .enableFeature(picker.Feature.SUPPORT_DRIVES)
+      .setCallback((data) => {
+        if (data.action === picker.Action.PICKED) {
+          const files: DrivePickerFile[] = (data.docs || []).map((doc) => ({
+            id: doc.id,
+            name: doc.name,
+            mimeType: doc.mimeType,
+            iconUrl: doc.iconUrl,
+            url: doc.url,
+            resourceKey: doc.resourceKey || null,
+          }));
+          finish({ ok: true, files, newFiles: files });
+        } else if (data.action === picker.Action.CANCEL) {
+          // Matches Electron's own /result handler: a Cancel click is a
+          // successful pick of nothing, never an error.
+          finish({ ok: true, files: [], newFiles: [] });
+        } else if (data.action === picker.Action.ERROR) {
+          // Without this branch an in-widget error settles nothing and the
+          // pick hangs forever. Overwhelmingly this is an active-account
+          // mismatch: the widget renders under whichever Google account is
+          // ambient in the browser, not the one this token is scoped to, and
+          // 403s. Same diagnosis the replaced picker page reported.
+          finish({
+            ok: false,
+            reason: `Google Picker could not open — the browser’s active Google account may not match ${account}.`,
+          });
+        }
+      });
+
+    // Pre-navigate to specific files when the caller already knows them (e.g.
+    // a pasted Drive link) — the caller's own value, no server round trip.
+    if (fileIds && fileIds.length > 0) {
+      builder.addView(new picker.DocsView(picker.ViewId.DOCS).setFileIds(fileIds));
+    }
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS));
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS).setOwnedByMe(false));
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS).setEnableDrives(true));
+
+    widget = builder.build();
+    widget.setVisible(true);
   });
+
+  if (!picked.ok || !picked.newFiles?.length) return picked;
+
+  // Persisted BEFORE success is reported — see persistPickedFiles.
+  try {
+    const merged = await persistPickedFiles(engine, name, picked.newFiles, projectName);
+    return { ok: true, files: merged, newFiles: picked.newFiles };
+  } catch (err) {
+    return { ok: false, reason: (err as Error)?.message || 'Could not save the picked files.' };
+  }
 }
 
 export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
@@ -896,10 +1176,7 @@ export async function cancelDrivePicker(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
     await bridge.oauthCancelPicker();
   }
-  if (webPickerPopup && !webPickerPopup.closed) {
-    webPickerPopup.close();
-    webPickerPopup = null;
-  }
+  webPickerCancelPrevious?.();
 }
 
 export function onOAuthRefreshError(
@@ -957,11 +1234,182 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
-export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }> {
+/**
+ * Commit MindsHub as the provider.
+ *
+ * `chosenByUser` says a person answered the organization question, as opposed
+ * to an id coming from anywhere else; main refuses to move the session off an
+ * organization carrying that flag. It is a second argument rather than an
+ * inference from `organizationId` on purpose — see selectEntitledOrg (ENG-2199).
+ */
+export async function mindshubFinalize(
+  organizationId?: string,
+  chosenByUser?: boolean,
+): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
+  // An explicit pick goes through the method whose presence proves the shell
+  // can carry it. Falling back to `mindshubFinalize(id, true)` would look like
+  // it worked and silently drop the flag on an older main process.
+  if (isElectron && organizationId && chosenByUser && canPickOrganization()) {
+    return bridge.mindshubFinalizeChosen!(organizationId);
+  }
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize();
+    return bridge.mindshubFinalize(organizationId, chosenByUser);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+/**
+ * Whether this shell can be told that a person chose the organization.
+ *
+ * Renderer bundles update over the air while `src/main/**` only arrives in a
+ * new installer, so a newer renderer runs against an older main process as a
+ * matter of course. That shell drops the `chosenByUser` argument, and its
+ * entitlement fallback then overrides the pick — the exact defect ENG-2199
+ * fixes. Asking the question beats making a promise the shell cannot keep, so
+ * the onboarding picker is not offered when this is false.
+ */
+export function canPickOrganization(): boolean {
+  return isElectron && typeof bridge.mindshubFinalizeChosen === 'function';
+}
+
+/**
+ * Hand a user-supplied MindsHub key to the main process, or clear it with ''.
+ *
+ * Electron only, and the caller has to know that: main is where the OS keychain
+ * and the sidecar hand-over live, so there is nothing on web to route it to.
+ * `supported: false` is how a web caller learns to fall back to writing the key
+ * as an ordinary setting, which is still what the web deployment does.
+ */
+export async function mindshubSetUserKey(
+  key: string,
+): Promise<{ ok: boolean; supported: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.mindshubSetUserKey === 'function') {
+    const result = await bridge.mindshubSetUserKey(key);
+    return { ok: Boolean(result?.ok), supported: true, reason: result?.reason };
+  }
+  return { ok: false, supported: false };
+}
+
+// ---- MindsHub organizations ---------------------------------------------
+//
+/**
+ * Which MindsHub organization this session presents. Electron delegates to the
+ * installed main process; web uses the existing Keycloak browser session. An
+ * Electron renderer must never fall through to the web implementation because
+ * renderer bundles update over the air while `src/main/**` only arrives in a
+ * new installer.
+ */
+
+export type { MindsOrg } from '../../shared/minds-orgs';
+
+export interface MindsOrgList {
+  orgs: MindsOrg[];
+  activeOrgId: string | null;
+  /** False only when a web network read did not settle and is worth retrying. */
+  reachable?: boolean;
+}
+
+type SettledMindsOrgSwitch = {
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  reloadRequired?: false;
+  clearTenantState?: false;
+};
+
+type ReloadingMindsOrgSwitch = {
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  /** The tenant may have changed, so the old renderer must not remain usable. */
+  reloadRequired: true;
+  /** False only for a pre-dispatch adapter-healing reload. */
+  clearTenantState: boolean;
+};
+
+export type SwitchMindsOrgResult =
+  | (SettledMindsOrgSwitch & { ok: true })
+  | (SettledMindsOrgSwitch & { ok: false; error: string })
+  | (ReloadingMindsOrgSwitch & { ok: true })
+  | (ReloadingMindsOrgSwitch & { ok: false; error: string });
+
+const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
+
+export async function mindshubListOrgs(): Promise<MindsOrgList> {
+  if (isElectron) {
+    if (typeof bridge.mindshubListOrgs === 'function') {
+      try {
+        const result = await bridge.mindshubListOrgs();
+        return {
+          orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+          activeOrgId: result?.activeOrgId ?? null,
+        };
+      } catch (error) {
+        /**
+         * The resting shape, not a throw. Every caller treats "no organizations"
+         * as the state before the read lands, and the one on the onboarding path
+         * has no error branch to fall into — a rejection there strands sign-in on
+         * the validating screen with nothing on it.
+         */
+        console.warn('[host] could not read the MindsHub organizations', error);
+      }
+    }
+    return NO_ORGS;
+  }
+
+  const { listWebOrganizations } = await import('../lib/keycloak');
+  const result = await listWebOrganizations();
+  if (!result.ok) {
+    console.warn('[host] could not read the MindsHub organizations', result.reason);
+    return { ...NO_ORGS, reachable: false };
+  }
+  return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
+}
+
+export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
+  if (isElectron) {
+    if (typeof bridge.mindshubSwitchOrg === 'function') {
+      try {
+        return await bridge.mindshubSwitchOrg(organizationId);
+      } catch (error) {
+        /**
+         * A refusal is something the menu renders, so it has to arrive as a
+         * value. Throwing past the toast leaves the row looking untouched.
+         */
+        console.warn('[host] could not change the MindsHub organization', error);
+        return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+      }
+    }
+    return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs a newer desktop app.' };
+  }
+
+  const { switchWebOrganization } = await import('../lib/keycloak');
+  const result = await switchWebOrganization(organizationId);
+  if (result.ok) {
+    return {
+      ok: true,
+      activeOrgId: result.activeOrgId,
+      orgs: [],
+      reloadRequired: result.reloadRequired,
+      clearTenantState: result.clearTenantState,
+    };
+  }
+  if (result.reloadRequired) {
+    return {
+      ok: false,
+      activeOrgId: null,
+      orgs: [],
+      error: result.reason,
+      reloadRequired: true,
+      clearTenantState: result.clearTenantState,
+    };
+  }
+  return {
+    ok: false,
+    activeOrgId: null,
+    orgs: [],
+    error: result.reason,
+    reloadRequired: false,
+    clearTenantState: false,
+  };
 }
 
 export async function mindshubGetCachedToken(): Promise<string | null> {
@@ -1028,7 +1476,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
-  codingModeOptionsEnabled,
+  codeModeAvailable,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1041,6 +1489,7 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  pickCodeFolder,
   detectClaudeCode,
   startCodingTerminal,
   sendCodingTerminalInput,
@@ -1050,6 +1499,7 @@ export const host = {
   removeCodingTask,
   onCodingTerminalData,
   onCodingTerminalExit,
+  onWindowVisibility,
   getPathForFile,
   getUIVersion,
   getVersionInfo,
@@ -1082,6 +1532,10 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  canPickOrganization,
+  mindshubSetUserKey,
+  mindshubListOrgs,
+  mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
   getKeychainPref,

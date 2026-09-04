@@ -13,6 +13,9 @@ import { EventEmitter } from 'events';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as net from 'net';
+import * as os from 'os';
+import * as path from 'path';
 
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
@@ -20,6 +23,7 @@ vi.mock('electron', () => ({
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
   buildKind: () => 'prod',
+  readEnvFile: () => ({}),
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -39,11 +43,22 @@ vi.mock('./credential-provisioning', () => ({
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
+vi.mock('net');
 
 import { app } from 'electron';
-import { startServer, getServerDiagnostics, isServerRunning, stopServer } from './server-process';
+import {
+  startServer,
+  getServerDiagnostics,
+  isServerRunning,
+  resolveServerPort,
+  stopServer,
+  setServerStartedHook,
+} from './server-process';
 
 const PORT = 27903;
+/** What the OS hands back when resolveServerPort asks for a free port. Outside
+ *  the per-user band so a test can tell a relocation from the preferred port. */
+const FREE_PORT = 41999;
 
 /** A stand-in for the spawned sidecar. Nothing is emitted until a test says
  *  so, so each test drives its own failure mode. */
@@ -69,6 +84,9 @@ function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void
 
 /** Owner token /health answers with, or null to make every probe fail. */
 let healthOwner: string | null = null;
+/** Capabilities advertised by /health. Code Mode must not adopt a sidecar
+ *  merely because it is healthy when the coding routes are absent. */
+let healthCapabilities: string[] = ['coding'];
 
 /** Records every execFile call and lets a test decide what each one returns. */
 let execCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -87,6 +105,7 @@ beforeEach(() => {
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
   // process.kill is the real global — killTree calls it directly, so without
   // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
@@ -109,6 +128,16 @@ beforeEach(() => {
     return makeLogStream() as never;
   }) as never);
 
+  vi.mocked(net.createServer).mockImplementation((() => {
+    const srv = {
+      once: () => srv,
+      listen: (_port: number, _host: string, cb: () => void) => { cb(); return srv; },
+      address: () => ({ port: FREE_PORT }),
+      close: (cb: () => void) => { cb(); return srv; },
+    };
+    return srv as never;
+  }) as never);
+
   vi.mocked(cp.execFile).mockImplementation(((cmd: string, args: string[], _opts: unknown, cb: unknown) => {
     execCalls.push({ cmd, args });
     const { err, stdout } = execHandler(cmd, args);
@@ -119,6 +148,7 @@ beforeEach(() => {
   // Health probes fail by default: most of these tests are about failed
   // starts. A test opts into a healthy backend by flipping `healthOwner`.
   healthOwner = null;
+  healthCapabilities = ['coding'];
   vi.mocked(http.get).mockImplementation(((_opts: unknown, cb: unknown) => {
     const owner = healthOwner;
     if (owner !== null && typeof cb === 'function') {
@@ -127,7 +157,7 @@ beforeEach(() => {
       res.resume = () => {};
       setTimeout(() => {
         (cb as (r: unknown) => void)(res);
-        res.emit('data', JSON.stringify({ owner }));
+        res.emit('data', JSON.stringify({ owner, capabilities: healthCapabilities }));
         res.emit('end');
       }, 0);
     }
@@ -144,6 +174,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setPlatform(originalPlatform);
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -198,6 +229,63 @@ describe('startServer failure diagnostics', () => {
     await stopServer(); // leave the module's state clean for the next test
   });
 
+  it('keeps the previous run\'s log as cowork-server.log.1 across a relaunch', async () => {
+    const files = new Map<string, string>();
+    vi.mocked(fs.createWriteStream).mockImplementation(((p: string) => {
+      files.set(String(p), '');
+      const s = makeLogStream();
+      s.write = ((chunk: string) => { files.set(String(p), files.get(String(p)) + chunk); return true; }) as never;
+      return s as never;
+    }) as never);
+    vi.mocked(fs.renameSync).mockImplementation(((from: string, to: string) => {
+      if (!files.has(String(from))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      files.set(String(to), files.get(String(from))!);
+      files.delete(String(from));
+    }) as never);
+    const spawnRun = (line: string) => {
+      const child = makeChild();
+      vi.mocked(cp.spawn).mockImplementation((() => {
+        setTimeout(() => {
+          child.stderr.emit('data', Buffer.from(line));
+          healthOwner = 'owner-token';
+          child.exitCode = 0;
+          child.emit('exit', 0);
+        }, 0);
+        return child as never;
+      }) as never);
+    };
+    const logPath = path.join('/tmp/cowork-test-logs', 'cowork-server.log');
+
+    spawnRun('first run: inference 404\n');
+    expect((await startServer({ port: PORT, readyTimeoutMs: 60_000 })).ok).toBe(true);
+    await stopServer();
+    healthOwner = null;
+    spawnRun('second run: booted\n');
+    expect((await startServer({ port: PORT, readyTimeoutMs: 60_000 })).ok).toBe(true);
+
+    expect(files.get(`${logPath}.1`)).toContain('first run: inference 404');
+    expect(files.get(logPath)).toContain('second run: booted');
+    expect(files.get(logPath)).not.toContain('first run');
+    await stopServer();
+  });
+
+  it('still spawns when the previous log cannot be rotated', async () => {
+    vi.mocked(fs.renameSync).mockImplementation((() => {
+      throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    }) as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(fs.createWriteStream)).toHaveBeenCalledWith(expect.stringContaining('cowork-server.log'), { flags: 'w' });
+    await stopServer();
+  });
+
   it('fails as soon as the child dies rather than waiting out the budget', async () => {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
@@ -215,7 +303,7 @@ describe('startServer failure diagnostics', () => {
     expect(diag.lastError).toContain('code 1');
   });
 
-  it('counts a healthy backend as started even when the launcher we spawned has exited', async () => {
+  it('tracks a handed-off backend and replaces it if it later disappears', async () => {
     // On Windows the thing we spawn can hand off to a python child and exit.
     // Health is the authority: the server is up, so this is a start, not a
     // death — and it has to keep reading as running afterwards.
@@ -234,7 +322,127 @@ describe('startServer failure diagnostics', () => {
     expect(result.ok).toBe(true);
     expect(isServerRunning()).toBe(true);
     expect(getServerDiagnostics().lastError).toBeNull();
+
+    // The handed-off python has no ChildProcess handle. Once its health
+    // endpoint disappears, a later ensure must spawn a replacement instead of
+    // trusting the stale `serverStarted` flag forever.
+    healthOwner = null;
+    const replacement = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return replacement as never;
+    }) as never);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      replacement.exitCode = 0;
+      setTimeout(() => replacement.emit('exit', 0), 0);
+      return true;
+    }) as never);
+    const spawnCount = vi.mocked(cp.spawn).mock.calls.length;
+
+    const recovered = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(recovered.ok).toBe(true);
+    expect(vi.mocked(cp.spawn).mock.calls).toHaveLength(spawnCount + 1);
     await stopServer(); // leave the module's state clean for the next test
+  });
+
+  it('replaces an owned but incompatible sidecar instead of adopting its healthy port', async () => {
+    healthOwner = 'owner-token';
+    healthCapabilities = [];
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthCapabilities = ['coding']; }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(cp.spawn)).toHaveBeenCalledTimes(1);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+    await stopServer();
+  });
+
+  it('reports a freshly spawned incompatible backend immediately', async () => {
+    healthOwner = 'owner-token';
+    healthCapabilities = [];
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
+
+    const startedAt = Date.now();
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    // Includes the bounded child reaping window, but never the 60 s startup
+    // cap that an incompatible health response used to consume.
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(getServerDiagnostics().lastErrorKind).toBe('incompatible');
+    expect(getServerDiagnostics().lastError).toContain('too old');
+  });
+
+  it('checkpoints active coding tasks before terminating the sidecar tree', async () => {
+    const child = makeChild();
+    healthOwner = 'owner-token';
+    vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    await stopServer();
+
+    const checkpoint = vi.mocked(fetch);
+    expect(checkpoint).toHaveBeenCalledWith(
+      `http://127.0.0.1:${PORT}/api/v1/coding/runtime/prepare-shutdown`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(checkpoint.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(process.kill).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('checkpoints coding tasks on an adopted sidecar before reaping it by port', async () => {
+    // Adoption leaves no ChildProcess handle, and that branch of stopServer
+    // used to go straight to the port kill — the one stop path with no
+    // checkpoint, on exactly the sidecar most likely to hold live tasks.
+    // The owner token is minted at random on first use, so learn it from the
+    // env a real spawn is handed and answer /health with it from then on.
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const env = (vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions).env ?? {};
+    await stopServer();
+    vi.mocked(fetch).mockClear();
+    vi.mocked(cp.execFile).mockClear();
+    execCalls = [];
+
+    healthOwner = env.COWORK_SERVER_OWNER ?? null;
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(cp.spawn).toHaveBeenCalledTimes(1); // adopted, not respawned
+    await stopServer();
+
+    const checkpoint = vi.mocked(fetch);
+    expect(checkpoint).toHaveBeenCalledWith(
+      `http://127.0.0.1:${PORT}/api/v1/coding/runtime/prepare-shutdown`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const reapIndex = execCalls.findIndex((c) => c.cmd === 'lsof' && c.args.includes(`tcp:${PORT}`));
+    expect(reapIndex).toBeGreaterThanOrEqual(0);
+    expect(checkpoint.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(cp.execFile).mock.invocationCallOrder[reapIndex],
+    );
   });
 
   it('says the backend was still starting when the cap runs out on a live child', async () => {
@@ -390,6 +598,24 @@ describe('dev-mode uv resolution', () => {
     expect(spawnCall?.[1]).toEqual(['run', 'cowork-server']);
   });
 
+  it('passes only the fixed development OAuth file location to a local server', async () => {
+    enterDevMode();
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => child.emit('error', new Error('stop after env capture')), 0);
+      return child as never;
+    }) as never);
+
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    const options = vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions;
+    expect(options.env).toMatchObject({
+      COWORK_DEV_OAUTH_ENV_FILE: path.join(os.homedir(), '.cowork-dev', '.env'),
+    });
+    expect(options.env).not.toHaveProperty('GITHUB_CLIENT_SECRET');
+    expect(options.env).not.toHaveProperty('LINEAR_CLIENT_SECRET');
+  });
+
   it('reports a useful reason and never spawns when uv is unresolvable', async () => {
     enterDevMode();
     uvState.resolveUv = null;
@@ -399,5 +625,133 @@ describe('dev-mode uv resolution', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('uv not found');
     expect(cp.spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveServerPort', () => {
+  // stopServer clears the resolved-port memo so each case probes afresh.
+  afterEach(async () => { await stopServer(); });
+
+  it('moves off a port held by another install even when that server is too old to be compatible', async () => {
+    // An owned server predating the coding capability probed as incompatible,
+    // fell through to reap-and-respawn, and failed with EPERM then EADDRINUSE.
+    healthOwner = 'someone-elses-token';
+    healthCapabilities = [];
+
+    const port = await resolveServerPort();
+
+    expect(net.createServer).toHaveBeenCalled();
+    expect(port).toBe(FREE_PORT);
+  });
+
+  it('keeps the preferred port for an owner-less legacy server so startServer can reap it', async () => {
+    healthOwner = '';
+
+    const port = await resolveServerPort();
+
+    expect(net.createServer).not.toHaveBeenCalled();
+    expect(port).not.toBe(FREE_PORT);
+  });
+});
+
+describe('post-start credential hook', () => {
+  // The sidecar holds the MindsHub credential in memory, so every start comes
+  // up holding nothing. Before this hook existed only the app-launch path
+  // re-pushed, which is how a signed-in user landed on the "Connect a provider
+  // to start chatting" card after onboarding restarted the sidecar, after the
+  // sidebar's stop/start, and after every over-the-air sidecar update.
+  afterEach(async () => {
+    setServerStartedHook(null);
+    // Unconditional, not a trailing call in each test: the module keeps
+    // `serverStarted` across tests, so one failed assertion would leave the
+    // next test's start short-circuiting on an already-running server.
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawn a child that comes up healthy, the way a real start does. */
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('re-establishes the credential on the start half of a stop/start', async () => {
+    const hook = vi.fn().mockResolvedValue(true);
+    setServerStartedHook(hook);
+
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(hook).toHaveBeenCalledTimes(1);
+
+    await stopServer();
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    // The second start is the one that matters: the sidecar that went down took
+    // the credential with it.
+    expect(hook).toHaveBeenCalledTimes(2);
+  });
+
+  it('awaits the hook, so a caller reading /health sees a configured install', async () => {
+    /* A caller that reads config_ready as soon as `startServer` resolves sees a
+     * push still in flight as unconfigured, which is the bug from the caller's
+     * side.
+     *
+     * The gate is what pins it. Asserting a flag the hook sets would pass
+     * against a fire-and-forget call too, because the hook body runs to its
+     * first await either way — so that version of this test would go green on
+     * the refactor that reintroduces the bug. Entering the hook proves the
+     * start itself is done, which leaves the gate as the only thing holding
+     * `startServer` open. */
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    setServerStartedHook(async () => { entered = true; await gate; });
+
+    spawnHealthy();
+    const started = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    let resolved = false;
+    void started.then(() => { resolved = true; });
+
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(resolved).toBe(false);
+    } finally {
+      release();
+    }
+
+    await started;
+    expect(resolved).toBe(true);
+  });
+
+  it('does not hand a credential to a start that failed', async () => {
+    const hook = vi.fn();
+    setServerStartedHook(hook);
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('still reports a successful start when the hand-over throws', async () => {
+    // A sidecar that is up is up. The hook reports its own failures; losing the
+    // start result would turn a recoverable push failure into a dead backend.
+    setServerStartedHook(async () => { throw new Error('loopback refused'); });
+
+    spawnHealthy();
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(isServerRunning()).toBe(true);
   });
 });

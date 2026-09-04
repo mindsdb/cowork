@@ -5,6 +5,8 @@ import { RailCard } from './RailCard';
 import { ContextCard } from './ContextCard';
 
 export function ContextBox({
+  /** For resolving a stored project slug to its label (ENG-1676). */
+  projects = [],
   project,
   /** Conversation / task id — with `project`, lists uploads (GET /v1/attachments/{project}/{session}). */
   conversationId,
@@ -22,6 +24,7 @@ export function ContextBox({
   return (
     <RailCard title="Context" defaultOpen={defaultOpen} slim={slim} maxBodyHeight={maxBodyHeight}>
       <ContextCard
+        projects={projects}
         project={project}
         conversationId={conversationId}
         refreshKey={refreshKey}

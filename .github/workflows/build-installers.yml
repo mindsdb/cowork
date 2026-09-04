@@ -41,9 +41,21 @@ on:
         required: true
       server_ref:
         description: >-
-          cowork-server branch for machines that already carry a GIT install (the
-          updater is source-aware). Fresh installs follow the PyPI stream that
-          build_kind implies, so this is a no-op for them.
+          cowork-server branch to install for this build. A non-empty ref selects
+          the git channel for fresh installs as well as updates, keeping feature
+          UI and backend routes on the same revision line.
+        type: string
+        default: ""
+      anton_ref:
+        description: >-
+          Optional anton branch/tag. Leave empty to use the dependency pinned by
+          cowork-server; set it only when that agent branch actually exists.
+        type: string
+        default: ""
+      server_channel:
+        description: >-
+          Optional explicit git or pypi override. Empty lets server_ref select
+          git; release callers set pypi when their ref is updater metadata only.
         type: string
         default: ""
       app_version:
@@ -88,6 +100,8 @@ jobs:
       build_kind: ${{ inputs.build_kind }}
       minds_api_url: ${{ inputs.minds_api_url }}
       server_ref: ${{ inputs.server_ref }}
+      anton_ref: ${{ inputs.anton_ref }}
+      server_channel: ${{ inputs.server_channel }}
       app_version: ${{ inputs.app_version }}
     secrets: inherit
 
@@ -107,6 +121,8 @@ jobs:
       build_kind: ${{ inputs.build_kind }}
       minds_api_url: ${{ inputs.minds_api_url }}
       server_ref: ${{ inputs.server_ref }}
+      anton_ref: ${{ inputs.anton_ref }}
+      server_channel: ${{ inputs.server_channel }}
       app_version: ${{ inputs.app_version }}
     secrets: inherit
 
@@ -127,6 +143,8 @@ jobs:
       build_kind: ${{ inputs.build_kind }}
       minds_api_url: ${{ inputs.minds_api_url }}
       server_ref: ${{ inputs.server_ref }}
+      anton_ref: ${{ inputs.anton_ref }}
+      server_channel: ${{ inputs.server_channel }}
       app_version: ${{ inputs.app_version }}
     secrets: inherit
 
@@ -147,6 +165,8 @@ jobs:
       build_kind: ${{ inputs.build_kind }}
       minds_api_url: ${{ inputs.minds_api_url }}
       server_ref: ${{ inputs.server_ref }}
+      anton_ref: ${{ inputs.anton_ref }}
+      server_channel: ${{ inputs.server_channel }}
       app_version: ${{ inputs.app_version }}
     secrets: inherit
 

@@ -9,8 +9,11 @@
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import ArtifactRepairCard from '../components/ArtifactRepairCard';
+import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { Alert, Badge, Card, Tooltip } from '../components/ui';
@@ -31,8 +34,9 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { isImageArtifact } from '../lib/artifactKinds';
+import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
+import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
@@ -297,10 +301,14 @@ function userTurnAttachmentLabel(a) {
 // pasted prompt doesn't dominate the viewport before the answer starts.
 const USER_CLAMP_MAX_PX = 176;
 
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false }) {
   const contentRef = useRef(null);
   const [collapsed, setCollapsed] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
+  // An "Address with agent" handoff is a machine prompt — ids, a base revision
+  // and the raw thread JSON — so it renders as a card rather than as the wall of
+  // identifiers it literally is. Null for every ordinary message.
+  const repair = parseArtifactRepairPrompt(content);
   useLayoutEffect(() => {
     const el = contentRef.current;
     if (!el) return undefined;
@@ -323,6 +331,13 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               charts are gated off so a user typing a special fence in
               the composer can't trigger the side-effect renderers
               reserved for assistant output. */}
+          {repair ? (
+            <ArtifactRepairCard
+              repair={repair}
+              projectId={projectId}
+              streaming={streaming}
+            />
+          ) : (
           <div
             ref={contentRef}
             className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
@@ -335,7 +350,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               enableCharts={false}
             />
           </div>
-          {overflowing && (
+          )}
+          {!repair && overflowing && (
             <button
               type="button"
               className="user-turn-more"
@@ -360,7 +376,9 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
                 key={a.id}
                 url={rawUrl}
                 alt={a.name || 'Image'}
-                onOpen={() => host.openExternal(rawUrl)}
+                onOpen={() => {
+                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+                }}
               />
             );
           }
@@ -428,28 +446,24 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
 // into the shape ArtifactCard expects. Used to render inline cards
 // at the end of an assistant turn — like mdb-ai surfaces results.
-function artifactStepToCard(step, projectPath) {
+export function artifactStepToCard(step, projectPath) {
   const data = step.data || {};
   const path = data.file_path || data.path || '';
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
+    // Preserve the complete server card that the stream adapter stored. In
+    // particular, id + draftUrl + capabilities are what make the
+    // immediately opened viewer editable and reviewable. Keeping the payload
+    // whole also prevents each new artifact field from requiring another
+    // fragile pass-through list here.
+    ...data,
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
-    // Second hand-written field list this card passes through (the adapter's
-    // step.data is the first). Both have to carry identity and publish state or
-    // the card cannot open, address or delete the artifact in org mode, where
-    // there is no path-based fallback to hide the omission.
-    id: data.id || '',
-    slug: data.slug || '',
-    publishedUrl: data.publishedUrl || '',
-    projectId: data.projectId || '',
-    projectName: data.projectName || '',
-    serveUrl: data.serveUrl || '',
     preview: [],
   }, projectPath);
   return {
@@ -587,18 +601,17 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // just leaves the card as it was.
   const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
-  // Match the Working folder card's behavior: HTML and text artifacts
-  // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
-  // text via inline markdown / table / preformatted render. Anything
-  // else falls through to the OS handler via the Electron bridge.
-  const lcExt = (artifact.ext || '').toLowerCase();
-  const lcPath = (path || '').toLowerCase();
-  const isHtml = lcExt === '.html' || lcPath.endsWith('.html');
-  const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
-  const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
-    || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
+  /*
+   * Match the Working folder card's behavior: HTML and text artifacts
+   * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
+   * iframe, text via inline markdown / table / preformatted render, images
+   * from the serve URL. Anything else falls through to the OS handler via the
+   * Electron bridge. In org mode the same question is answered from the
+   * authenticated draft URL instead, which rules images and fullstack apps out.
+   */
   const isImage = isImageArtifact(artifact);
-  const canPreviewInline = isHtml || isInlineText || isImage;
+  const canPreviewInline = canPreviewLocally(artifact);
+  const canPreviewDraft = canPreviewOrgDraft(artifact);
   // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
   // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
   // an image, or before the artifact card carries a serveUrl (org mode, or the
@@ -606,8 +619,37 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
-    orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
+    orgMode,
+    published,
+    canPreviewInline,
+    canPreviewDraft,
+    hasBridge: host.isElectron || !host.isWeb,
+    hasDraft: canDownloadOrgDraft(artifact),
   });
+  /*
+   * Org-mode destinations are addressed by the server card, through the draft
+   * URL or the shared URL, so a path this client could not canonicalize does
+   * not disable them. Desktop still needs the local path it hands to the OS.
+   *
+   * `deleted` stays in both branches. It is the one term of `canAct` that says
+   * nothing about addressing: a deleted artifact has a perfectly good draft URL
+   * and still cannot be opened, so dropping it here would leave a tombstoned
+   * card looking live and hand the whole guard to handleOpen alone.
+   */
+  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
+  const activateLabel = openTarget === 'published'
+    ? 'Open shared artifact'
+    : openTarget === 'download'
+      ? 'Download'
+      : openTarget === 'os' ? 'Open' : 'Open preview';
+  /*
+   * What the card says when it has nowhere to go. Org mode has no local file to
+   * blame, and blaming one is actively wrong there: the card prints its own
+   * server path two lines down. Desktop keeps the path reason it can act on.
+   */
+  const noDestinationReason = orgMode && !openTarget
+    ? 'This artifact cannot be previewed and has no shared link yet.'
+    : (disabledReason || 'No file path');
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
   // artifact beyond a plain markdown report (crashes, dumps raw JS into the
   // .docx), and HTML→HTML export can overwrite the source artifact in place.
@@ -638,34 +680,59 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       setExporting(false);
     }
   };
+  /*
+   * The shared URL stays reachable beside the preview: it is the address a
+   * collaborator gets, and the chat turn is where the artifact was just made.
+   *
+   * `host.openExternal` is async, so the await is what makes the catch reach a
+   * rejected bridge call. Without it the try block returns before the promise
+   * settles: the fallback below never runs on the one failure it exists for,
+   * and the rejection escapes as an unhandled one.
+   */
+  const handleOpenPublished = async () => {
+    try { await host.openExternal(artifact.publishedUrl); }
+    catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+  };
   const handleOpen = async () => {
-    // The org-mode published branch below returns before the `canAct` check, so
-    // it would survive a deletion. Its button is not rendered in that state, but
-    // relying on two conditions in different parts of the file agreeing is not
-    // worth the risk.
+    /*
+     * The branches that need no local file return before the `canAct` check, so
+     * they would survive a deletion. Their buttons are not rendered in that
+     * state, but relying on two conditions in different parts of the file
+     * agreeing is not worth the risk.
+     */
     if (deleted) {
       showStatus('error', 'This artifact was deleted.');
       return;
     }
+    if (openTarget === 'preview' && onOpen) {
+      /*
+       * The viewer reads the draft URL in org mode and the local bytes on
+       * desktop, so it opens on either without a canonical path of its own.
+       */
+      onOpen(artifact);
+      return;
+    }
     if (openTarget === 'published') {
-      // The published URL is the ONLY route to this artifact's bytes on an org
-      // deployment, and it carries the access check.
-      try { host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      await handleOpenPublished();
+      return;
+    }
+    if (openTarget === 'download') {
+      /*
+       * Org mode, an artifact the draft cannot render and nobody shared: the
+       * authenticated draft URL still streams the file, so the click saves it
+       * instead of dead-ending on "no shared link yet" (ENG-2044).
+       */
+      handleDownload();
       return;
     }
     if (openTarget === null) {
       showStatus('error', orgMode
-        ? 'This artifact has no published link yet.'
+        ? noDestinationReason
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    if (openTarget === 'preview' && onOpen) {
-      onOpen(artifact);
       return;
     }
     try {
@@ -707,29 +774,41 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
-  const handleDownload = () => {
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
+  const handleDownload = async () => {
+    /*
+     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
+     * the file by its draft URL and never has such a path, so gating on it
+     * there would refuse the one action that works. `deleted` still applies.
+     */
+    if (orgMode ? deleted : !canAct) {
+      showStatus('error', orgMode
+        ? 'This artifact was deleted.'
+        : (disabledReason || 'No artifact file path is available.'));
       return;
     }
-    if (!downloadArtifactFile(artifact, { actionPath: path })) {
-      showStatus('error', 'This artifact has no serve URL yet.');
+    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
+      showStatus('error', 'This artifact has no downloadable file yet.');
       return;
     }
     showStatus('ok', 'Downloading…');
   };
-  // One primary action button instead of an Open/Show-in-Finder pair: org
-  // mode is unchanged (always the published URL, external — there is no
-  // local file to reveal or download there). Locally, what the button does
-  // follows what the artifact actually supports — Preview for anything the
-  // in-app modal can render, otherwise Download (web, streams the file) or
-  // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
-  // file) — never both, and never a generic "Open" that hides which of the
-  // two it's about to do.
+  /*
+   * One primary action button instead of an Open/Show-in-Finder pair: what it
+   * does follows what the artifact actually supports — Preview for anything the
+   * in-app modal can render, otherwise Download (web, streams the file) or
+   * Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
+   * file) — never both, and never a generic "Open" that hides which of the
+   * two it's about to do. Org mode reads the same rule off the draft URL, and
+   * an artifact it cannot render keeps the shared page as its one destination.
+   */
   const primaryAction = orgMode
-    ? (openTarget === 'published'
-      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the published artifact' }
-      : null)
+    ? (openTarget === 'preview'
+      ? { label: 'Preview', onClick: handleOpen, tooltip: 'Preview this artifact in Cowork' }
+      : openTarget === 'published'
+        ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
+        : openTarget === 'download'
+          ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+          : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
       : host.isWeb
@@ -739,21 +818,28 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
         : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
+  /*
+   * Only when the primary button is the preview: otherwise "Open" already is
+   * the shared page and a second button would point at the same place.
+   */
+  const showSharedLink = orgMode && published && openTarget === 'preview';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  // Whole-card click → preview. The inner buttons (the primary action,
-  // Title) all stopPropagation so their own handlers run instead of
-  // bubbling up to this. Disabled paths fall through to a status toast
-  // instead of opening, mirroring the prior button behaviour. Cursor +
-  // hover lift mark the entire surface as interactive at a glance.
+  /*
+   * Whole-card click → preview. The inner buttons (the primary action,
+   * Title) all stopPropagation so their own handlers run instead of
+   * bubbling up to this. Disabled paths fall through to a status toast
+   * instead of opening, mirroring the prior button behaviour. Cursor +
+   * hover lift mark the entire surface as interactive at a glance.
+   */
   return (
     <Card
       as="div"
-      interactive={canAct}
+      interactive={canActivate}
       padding="cozy"
-      onActivate={canAct ? handleOpen : undefined}
+      onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
-        : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
+        : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
       <div
@@ -774,25 +860,27 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             path to open. */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
-          disabled={!canAct}
-          title={deleted ? 'This artifact was deleted' : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
-          // kept inline: `all: unset` writes an inline declaration for every
-          // longhand (incl. color/background), which always beats a Tailwind
-          // utility class of equal-or-lower specificity — so every property
-          // touched by the reset has to stay co-located here, and the hover
-          // recolor below has to keep mutating .style directly for the same reason.
+          onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
+          disabled={!canActivate}
+          title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
+          /*
+           * kept inline: `all: unset` writes an inline declaration for every
+           * longhand (incl. color/background), which always beats a Tailwind
+           * utility class of equal-or-lower specificity — so every property
+           * touched by the reset has to stay co-located here, and the hover
+           * recolor below has to keep mutating .style directly for the same reason.
+           */
           style={{
             all: 'unset',
-            cursor: canAct ? 'pointer' : 'not-allowed',
+            cursor: canActivate ? 'pointer' : 'not-allowed',
             fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
             letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
-            opacity: canAct ? 1 : 0.7,
+            opacity: canActivate ? 1 : 0.7,
           }}
-          onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
+          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
           onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
         >{artifact.title}</button>
         <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
@@ -858,6 +946,20 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             )}
           </div>
         )}
+        {!deleted && showSharedLink && (
+          <Tooltip content="Open the shared artifact in a new tab">
+            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
+          </Tooltip>
+        )}
+        {/* Org mode: every artifact with a primary file can be saved through
+            its draft URL, previewable ones included — offered beside Preview /
+            Open, and omitted only when Download already IS the primary
+            action (ENG-2044). */}
+        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
+          <Tooltip content="Save this artifact's file">
+            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
+          </Tooltip>
+        )}
         {!deleted && primaryAction && (
           <Tooltip content={primaryAction.tooltip}>
             <SmallBtn
@@ -910,8 +1012,9 @@ function StreamCursor() {
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
 
-// Wait for the sidecar to come back after mindshubFinalize restarts it, so we
-// don't tell the user to resend into a cold server (any 200 from /health = up).
+// Wait for the sidecar to be answering before telling the user to resend, so
+// the resend doesn't hit a cold server (any 200 from /health = up). Signing in
+// used to restart it; it no longer does, but it still starts one that died.
 async function waitForServerReady(timeoutMs = 8000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -1127,9 +1230,9 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         // No usable session to re-provision from → full sign-in.
         res = await host.mindshubLogin();
       }
-      if (res?.ok || res?.apiKey) {
-        // finalize restarts the sidecar — wait until it's back so the resend
-        // doesn't hit a cold server.
+      if (res?.ok) {
+        // finalize no longer restarts the sidecar, but it does start one that
+        // died, so wait for health before telling the user to resend.
         await waitForServerReady();
         setDone(true);
       } else {
@@ -1740,9 +1843,9 @@ export default function ChatView({
                     <>
                       <CrumbSep />
                       <CrumbButton
-                        label={project.name}
+                        label={projectLabel(project)}
                         onClick={() => onOpenProject?.(project)}
-                        title={`Open project: ${project.name}`}
+                        title={`Open project: ${projectLabel(project)}`}
                         maxWidth={200}
                       />
                     </>
@@ -1951,7 +2054,11 @@ export default function ChatView({
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
+                    projectId={project?.id}
                     conversationId={task?.id}
+                    // Only the last turn can still be the one being worked on,
+                    // and only then does "Making changes" describe the present.
+                    streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                     isLast={i === lastTurnIdx}
@@ -2208,6 +2315,29 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The turn never reached the agent (`worker_unresponsive`):
+                 * the worker stopped answering before anything ran. Kept apart
+                 * from anton_error, which means the agent DID run and raised
+                 * something we don't recognise. The difference is what the user
+                 * should do: retry works here, and reporting an agent bug does
+                 * not. Copy lives in the renderer rather than echoing m.content
+                 * so it can be improved OTA, same as the other retryable cards
+                 * (ENG-2126). */
+                if (m.code === 'worker_unresponsive') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="The agent didn't start"
+                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}
@@ -2589,8 +2719,11 @@ export default function ChatView({
         <WorkingFolderBox
           project={project}
           isStreaming={isStreaming}
+          conversationId={task?.id || null}
+          onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
+          projects={projects}
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
@@ -2623,6 +2756,8 @@ export default function ChatView({
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
+        conversationId={task?.id || null}
+        onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
       {/* Data-vault connection form — rendered as a centered modal

@@ -23,6 +23,12 @@ import {
   activateArtifactVersion,
 } from '../../../api';
 import { trackArtifactPublished } from '../../../lib/analytics';
+import { useOrgMode } from '../../../../lib/orgMode';
+import {
+  canUseArtifactWorkspace,
+  loadArtifactAccess,
+  setArtifactAccess,
+} from '../../../lib/artifactWorkspaceApi';
 
 // Map the most common publish failure (missing Minds API key) to a clear
 // next step; everything else surfaces verbatim.
@@ -48,11 +54,13 @@ function hasServerAccess(a) {
 }
 
 export function usePublish(artifact, { onChange, enabled = false } = {}) {
+  const orgMode = useOrgMode();
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [accessMode, setAccessMode] = useState(modeFromArtifact(artifact));
   const [accessPassword, setAccessPassword] = useState(artifact?.accessPassword || '');
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [ownerOnly, setOwnerOnly] = useState(!!artifact?.ownerOnly);
   // Have we synced the *real* access list from the server (or a publish
   // response) for this artifact yet? Seeded from the prop's own knowledge:
   // grid/rail objects carry `accessMode` from the listing (so the list they
@@ -80,6 +88,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessPassword(artifact?.accessPassword || '');
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
+    setOwnerOnly(!!artifact?.ownerOnly);
     setArtifactKey(artifact?.artifactKey || '');
     setModified(!!artifact?.modified);
     setError('');
@@ -87,15 +96,30 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   }, [artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
 
   const targetPath = publishTargetPath(artifact);
+  // Desktop addresses an artifact by absolute path; org mode by
+  // project + artifact id, because there is no path the client can name. Every
+  // guard below asks `canAct` rather than `targetPath` so the org path isn't
+  // refused by a check that only desktop can satisfy.
+  const canAct = orgMode ? canUseArtifactWorkspace(artifact) : !!targetPath;
+  // Update / stop-sharing / version history all live on `/publish`, which is
+  // local-only server-side. Offering them on Cloud would mean buttons that
+  // answer 4xx, so the menu hides them instead. Content stays in sync there
+  // anyway: autopublish re-publishes on the turn that changes the artifact.
+  const supportsPublishRoutes = !orgMode;
   const busy = phase !== 'idle';
 
   const publish = useCallback(async (access) => {
-    if (phase !== 'idle' || !targetPath) return false;
+    if (phase !== 'idle' || !canAct) return false;
     const wasPublished = !!publishedUrl;
     setPhase('publishing');
     setError('');
     try {
-      const r = await publishArtifact(targetPath, access);
+      // Same state machine, different transport. Both land on the server's
+      // `publish_artifact`, so the response shape is identical — org mode just
+      // addresses the artifact by identity instead of by path.
+      const r = orgMode
+        ? await setArtifactAccess(artifact, access)
+        : await publishArtifact(targetPath, access);
       if (!r?.url) throw new Error('Sharing returned no URL.');
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
@@ -107,6 +131,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessPassword: m === 'password' ? (access?.password || '') : '',
         accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
         orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+        ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
@@ -115,6 +140,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessPassword(next.accessPassword);
       setAccessEmails(next.accessEmails);
       setOrgAllowed(next.orgAllowed);
+      setOwnerOnly(next.ownerOnly);
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
@@ -129,10 +155,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
 
   const update = useCallback(async () => {
-    if (phase !== 'idle' || !targetPath) return false;
+    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
     setPhase('updating');
     setError('');
     try {
@@ -148,10 +174,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, supportsPublishRoutes, targetPath, publishedUrl, artifact, onChange]);
 
   const unpublish = useCallback(async () => {
-    if (phase !== 'idle' || !targetPath) return false;
+    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
     setPhase('unpublishing');
     setError('');
     try {
@@ -165,14 +191,46 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, targetPath, artifact, onChange]);
+  }, [phase, supportsPublishRoutes, targetPath, artifact, onChange]);
 
   // Cheap re-check of the server's published/modified status — lights up
   // "Update" when the artifact changes underneath an open preview, without a
   // reopen. No-op while an action is in flight (never clobbers it) and a
   // no-op when nothing actually changed (no needless parent re-render).
   const refresh = useCallback(async () => {
-    if (phase !== 'idle' || !targetPath) return;
+    if (phase !== 'idle' || !canAct) return;
+    // Org mode reads the owner-only access route instead of the path-addressed
+    // status endpoint. It is the ONLY way the real email list reaches this
+    // client: the artifact card withholds `accessEmails`/`accessPassword` on a
+    // deployment whose artifacts root is shared by the whole organization,
+    // because a card cannot tell owner from co-member. `publishedUrl` and
+    // `modified` are not this route's to answer — autopublish owns both — so
+    // they are left as the parent supplied them.
+    if (orgMode) {
+      let a = null;
+      try { a = await loadArtifactAccess(artifact); } catch { /* leave state as-is */ }
+      if (!a) return;
+      const nextMode = a.accessMode || 'public';
+      const nextEmails = Array.isArray(a.accessEmails) ? a.accessEmails : [];
+      const nextOrg = !!a.orgAllowed;
+      setAccessMode(nextMode);
+      setAccessEmails(nextEmails);
+      setOrgAllowed(nextOrg);
+      setOwnerOnly(!!a.ownerOnly);
+      setAccessPassword(a.accessPassword || '');
+      if (a.artifactKey) setArtifactKey(a.artifactKey);
+      setAccessLoaded(true);
+      // Same self-clobber hazard as the desktop branch below: the broad re-sync
+      // effect re-seeds from the prop, so the loaded list has to go back into it.
+      onChange?.({
+        ...artifact,
+        accessMode: nextMode,
+        accessEmails: nextEmails,
+        orgAllowed: nextOrg,
+        ownerOnly: !!a.ownerOnly,
+      });
+      return;
+    }
     const s = await fetchArtifactStatus(targetPath);
     if (!s) return;
     const nextModified = !!s.modified;
@@ -183,6 +241,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const nextMode = s.accessMode || 'public';
     const nextEmails = Array.isArray(s.accessEmails) ? s.accessEmails : [];
     const nextOrg = !!s.orgAllowed;
+    // NOT part of the accessSame comparison below: the server derives ownerOnly
+    // from emails + org_allowed, so if those two match, this one matches too.
+    const nextOwnerOnly = !!s.ownerOnly;
     if (s.artifactKey) setArtifactKey(s.artifactKey);
     const accessSame = nextMode === accessMode && nextOrg === orgAllowed
       && nextEmails.join(',') === accessEmails.join(',');
@@ -193,6 +254,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessMode(nextMode);
       setAccessEmails(nextEmails);
       setOrgAllowed(nextOrg);
+      setOwnerOnly(nextOwnerOnly);
     }
     setAccessLoaded(true);
     // Nothing the parent cares about changed → skip the parent onChange (and
@@ -212,14 +274,15 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       accessMode: nextMode,
       accessEmails: nextEmails,
       orgAllowed: nextOrg,
+      ownerOnly: nextOwnerOnly,
     });
-  }, [phase, targetPath, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
 
   // Fetch the publish history for the rollback UI. Lazy: the panel calls this
   // when it opens, not on every render. Any error (404 / older server / not
   // published) clears the list so the UI hides the version section.
   const loadVersions = useCallback(async () => {
-    if (!targetPath || !publishedUrl) { setVersions([]); return; }
+    if (!supportsPublishRoutes || !targetPath || !publishedUrl) { setVersions([]); return; }
     setVersionsLoading(true);
     try {
       const r = await listArtifactVersions(targetPath);
@@ -229,13 +292,13 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setVersionsLoading(false);
     }
-  }, [targetPath, publishedUrl]);
+  }, [supportsPublishRoutes, targetPath, publishedUrl]);
 
   // Roll the live URL back to an older version. The public URL is stable, so
   // afterwards we just re-sync status (the `modified` badge lights up — the
   // on-disk workspace now differs from the older live version) and the list.
   const activate = useCallback(async (md5) => {
-    if (phase !== 'idle' || !targetPath || !md5) return false;
+    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath || !md5) return false;
     setPhase('activating');
     setError('');
     try {
@@ -267,21 +330,21 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // onChange-driven prop churn from refresh() itself doesn't re-fire it, and so
   // the accessLoaded reset is per-artifact-identity (never stuck — ENG-931).
   useEffect(() => {
-    if (!enabled || !targetPath) return;
+    if (!enabled || !canAct) return;
     // Reset readiness from the prop's own knowledge first, then confirm via the
     // fetch: grid/rail (carry accessMode) stay usable immediately, chat-bubble
     // (no accessMode) is guarded until the fetch lands.
     setAccessLoaded(hasServerAccess(artifact));
     refreshRef.current?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, targetPath]);
+  }, [enabled, canAct, targetPath]);
 
   // Refresh when the user returns to the window / tab — catches external
   // edits (files changed on disk) that don't flow through the parent's
   // refetch. `enabled` is the modal's open flag, so it only listens while
   // a preview is actually on screen.
   useEffect(() => {
-    if (!enabled || !targetPath) return undefined;
+    if (!enabled || !canAct) return undefined;
     const onWake = () => { if (document.visibilityState !== 'hidden') refreshRef.current?.(); };
     window.addEventListener('focus', onWake);
     document.addEventListener('visibilitychange', onWake);
@@ -289,13 +352,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       window.removeEventListener('focus', onWake);
       document.removeEventListener('visibilitychange', onWake);
     };
-  }, [enabled, targetPath]);
+  }, [enabled, canAct, targetPath]);
 
   return {
-    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, artifactKey, modified,
+    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
     accessLoaded,
     phase, busy, error, setError,
     versions, versionsLoading,
+    supportsPublishRoutes,
     publish, update, unpublish, refresh, loadVersions, activate,
   };
 }

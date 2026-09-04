@@ -27,6 +27,8 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
+import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -64,7 +66,7 @@ function iconForRow(row) {
 }
 
 
-export function WorkingFolderLive({ project, isStreaming }) {
+export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
   const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
@@ -257,6 +259,14 @@ export function WorkingFolderLive({ project, isStreaming }) {
         try { await host.openExternal(url); } catch {}
         return;
       }
+      // Org mode, non-HTML artifact: nothing above exists — no serve URL by
+      // design, no published page because autopublish skips binaries — but the
+      // authenticated draft URL still carries the bytes, so save the file
+      // rather than dead-end (ENG-2044). Awaited: the download now runs an
+      // authFetch (a navigation cannot attach the Authorization header), so
+      // the result is a promise. Not for a fullstack app: its primary is a
+      // shell index.html, not the app — the message below is the honest answer.
+      if (canDownloadOrgDraft(a) && await downloadArtifactFile(a)) return;
       setRowError('This artifact has no servable file yet.');
       return;
     }
@@ -271,7 +281,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
   };
 
   const onDeleteArtifact = async (a) => {
-    if (!a?.path) return;
+    if (!a?.path || a?.capabilities?.canEdit === false) return;
     setBusyPath(a.path);
     setRowError('');
     // Optimistic remove — mirrors the Project Files / Task Uploads
@@ -303,26 +313,34 @@ export function WorkingFolderLive({ project, isStreaming }) {
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
-  const _INLINE_PREVIEW_EXTS = ['.html', '.md', '.txt', '.csv'];
-  const onOpenArtifact = (artifact) => {
-    const ext = (artifact.ext || '').toLowerCase();
-    const path = (artifact.path || '').toLowerCase();
-    const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
-      || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    // Same gate the panel and the inline chat card apply: in org mode neither
-    // the local preview nor the OS handoff has anything behind it, and the
-    // published URL is the only route to the content.
+  const onOpenArtifact = async (artifact) => {
+    /*
+     * In org mode the viewer renders the authenticated draft instead of local
+     * bytes, and an artifact whose draft it cannot render keeps the published
+     * URL. Local OS handoff remains a desktop-only capability.
+     */
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
-      canPreviewInline,
+      canPreviewInline: isInlinePreviewable(artifact),
+      canPreviewDraft: canPreviewOrgDraft(artifact),
       hasBridge: host.isElectron,
+      hasDraft: canDownloadOrgDraft(artifact),
     });
     if (target === 'published') {
-      try { host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      /*
+       * Awaited so the catch can see a rejected bridge call — the same reason
+       * `openArtifactExternal` above awaits it. A synchronous try around an
+       * async call leaves the fallback unreachable and the rejection loose.
+       */
+      try { await host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
     } else if (target === 'preview') {
       setPreviewArt(artifact);
+    } else if (target === 'download') {
+      // The draft the viewer cannot render, nobody shared: its bytes are still
+      // one authenticated request away (ENG-2044).
+      if (!(await downloadArtifactFile(artifact))) setRowError('This artifact has no servable file yet.');
     } else if (target === 'os') {
       onOpen(artifact.path);
     }
@@ -442,7 +460,26 @@ export function WorkingFolderLive({ project, isStreaming }) {
         (() => {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
-          const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
+          // Where the Open item goes: the OS on desktop; a tab when there is a
+          // serve or shared URL; otherwise (org mode, non-HTML) it saves the
+          // file, since `openArtifactExternal` falls through to the download.
+          // A separate Download item is only worth a row when Open goes
+          // somewhere else, so the two never say the same thing (ENG-2044).
+          const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
+          // The fullstack-app exclusion applies to BOTH routes:
+          // canDownloadOrgDraft checks it, but on a non-org web deployment a
+          // fullstack app has a serveUrl too, and the `a.serveUrl ||`
+          // short-circuit was saving its shell index.html (review pass 2).
+          const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
+            && !!(a.serveUrl || canDownloadOrgDraft(a));
+          const openLabel = canOpenLocalFile
+            ? 'Open in OS'
+            // 'Download' only when the click can actually deliver one: an
+            // unshared fullstack app or a card with no primary file falls
+            // through to the dead-end message, and labelling THAT 'Download'
+            // promises a save that cannot happen (review finding on #764).
+            : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
+          const canDelete = a.capabilities?.canEdit !== false;
           return (
             <div
               ref={menuRef}
@@ -468,28 +505,47 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 }}
               >
                 <span className="inline-flex text-[var(--frost-700)]">
-                  {(Ico.externalLink || Ico.upload)(13)}
+                  {(openLabel === 'Download' ? Ico.download : (Ico.externalLink || Ico.upload))(13)}
                 </span>
                 <span>{openLabel}</span>
               </button>
-              <div className="h-px bg-[var(--border-0)] my-1" />
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  // Open the confirm modal rather than deleting
-                  // immediately — matches the project files / task
-                  // uploads / task / project delete flows.
-                  setPendingDeleteArtifact(a);
-                }}
-                style={{ color: 'var(--danger)' }}
-              >
-                <span className="inline-flex text-danger">{Ico.trash(13)}</span>
-                <span>Delete</span>
-              </button>
+              {canDownload && canOpenRemote && (
+                <button
+                  type="button"
+                  className="menu-item"
+                  disabled={busyPath === a.path}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setOpenMenuPath(null);
+                    if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
+                  }}
+                >
+                  <span className="inline-flex text-[var(--frost-700)]">{Ico.download(13)}</span>
+                  <span>Download</span>
+                </button>
+              )}
+              {canDelete && (
+                <>
+                  <div className="h-px bg-[var(--border-0)] my-1" />
+                  <button
+                    type="button"
+                    className="menu-item"
+                    disabled={busyPath === a.path}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuPath(null);
+                      // Open the confirm modal rather than deleting
+                      // immediately — matches the project files / task
+                      // uploads / task / project delete flows.
+                      setPendingDeleteArtifact(a);
+                    }}
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    <span className="inline-flex text-danger">{Ico.trash(13)}</span>
+                    <span>Delete</span>
+                  </button>
+                </>
+              )}
             </div>
           );
         })(),
@@ -522,6 +578,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
         onDelete={(path) => {
           setRows((prev) => prev.filter((a) => a.path !== path));
         }}
+        conversationId={conversationId}
+        onAddressWithAgent={onAddressWithAgent}
       />
     </div>
   );

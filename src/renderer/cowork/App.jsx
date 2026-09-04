@@ -26,6 +26,11 @@ import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CodeView from './code/CodeView';
+import { useCodeModeAccess } from './code/codeModeAccess';
+import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
+import { useCodeWorkspace } from './code/useCodeWorkspace';
+import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
@@ -36,18 +41,20 @@ import { host } from '../platform/host';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
+import { canUseSharedResource } from './lib/sharedResourceAccess';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useAccountUser } from './hooks/useAccountUser';
+import { skillScopeKey } from './lib/accountUser';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
-import { useAccountUser } from './hooks/useAccountUser';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
@@ -55,7 +62,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -79,6 +86,7 @@ import {
   mergeConvTurns,
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
@@ -533,7 +541,18 @@ function AppCore() {
   const agentLabel = getAgentLabel(settings);
 
   const [tasks, setTasks] = useState([]);
+  // 'loading' until the first list response lands, then 'ready' or 'failed'.
+  // Without this an in-flight load and a genuinely empty account render the
+  // same, and so does a failed one — a returning user reads that as lost
+  // work rather than as a wait (ENG-2246).
+  const [tasksStatus, setTasksStatus] = useState('loading');
   const tasksRef = useRef(tasks);
+  // The transcript warm-up is worth doing once a session, not once per
+  // refreshData: refreshData re-fires the moment serverOnline flips false->true
+  // — a flip its own fetchHealth causes on every desktop cold start — and again
+  // on Retry, manual server start, and run-schedule-now. Each repeat is 50
+  // requests whose results the `local.length > 0` guard then discards.
+  const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   // IDs of tasks deleted this session. Used to filter them out of
   // subsequent fetchSessions responses so zombies can't reappear.
@@ -596,6 +615,13 @@ function AppCore() {
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
+  /* Keys (id, else name) of the projects whose DELETE is on the wire. The
+     server cascades every conversation in the project, so the round trip runs
+     long enough that a card left untouched reads as "nothing happened" and
+     invites a second delete. The confirm modal still closes on confirm — the
+     user has to stay free to navigate while the server works — so the waiting
+     state is shown on the project itself instead. */
+  const [deletingProjectKeys, setDeletingProjectKeys] = useState([]);
 
   // Live stream control — refs to the active fetch's AbortController
   // and the latest scratchpad name so we can fire a Stop that aborts
@@ -1204,11 +1230,16 @@ function AppCore() {
   // cowork-server) — names come from MindsHub's own label for the model where
   // it publishes one, else derived from the id, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
+  const mindsModels = useMemo(() => (
+    recommendedModelOptions(settings.recommendedModels, 'minds-cloud', settings.modelLabels)
+      .map((o) => ({ id: o.id, name: o.label }))
+  ), [settings.recommendedModels, settings.modelLabels]);
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
+    if (providerType === 'minds-cloud') return mindsModels;
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }));
-  }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  }, [mindsModels, settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -1225,7 +1256,8 @@ function AppCore() {
   // available — so this can never lock the picker.
   const refreshModelAvailability = useCallback(async () => {
     const data = await fetchRecommendedModels({ refresh: true });
-    const merged = mergeRecommendedModels(settings, data);
+    // keepOrder: the menu is already open on the list we hold when this lands.
+    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
     if (merged) setSettings((prev) => ({ ...prev, ...merged }));
   }, [settings]);
 
@@ -1250,22 +1282,13 @@ function AppCore() {
   // text-input focus so mobile browsers don't leave the app magnified.
   useViewportZoomLock(isMobile);
 
-  // Coding Mode gets the same off-canvas popout treatment as the narrow/
-  // tablet band (640-900): the docked sidebar is hidden entirely and
-  // replaced by the floating hamburger, sliding in over the content instead
-  // of pushing it — even on a full-width desktop viewport, since the
-  // composer needs the room for its harness-picker chrome. Desktop-only
-  // (Coding Mode doesn't exist on web) and never applies on true mobile
-  // (<640) — MobileShell already owns that layout outright.
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
-  // defaults false when unset) while it's unfinished: this forces every
-  // consumer of the user's own codingModeEnabled preference to read as off
-  // when the build-level flag is off, even if a stale `true` is already
-  // sitting in someone's local settings from earlier testing — there'd be no
-  // UI left to turn it back off otherwise, since the toggle and its Settings
-  // section are hidden the same way (see navItemsForHost / the floating
-  // corner toggle below).
-  const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
+  // Code availability (release policy) and the user's opt-in (device-local)
+  // are deliberately independent. A development fixture may override the UI
+  // gate, but production web never can: it has no desktop capability bridge.
+  const codeModeAccess = useCodeModeAccess();
+  const codeFixtureActive = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('codeFixture');
+  const codeModeEnabled = codeFixtureActive || codeModeAccess.enabled;
   // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
   // routes, and the derived popout flag) lives in useSidebarNav.
   const {
@@ -1273,7 +1296,7 @@ function AppCore() {
     navPopoutOpen, setNavPopoutOpen,
     sidebarCollapsibleRoutes,
     sidebarPopout,
-  } = useSidebarNav({ isNarrow, isMobile, codingModeActive });
+  } = useSidebarNav({ isNarrow });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -1291,17 +1314,17 @@ function AppCore() {
   // a ref so the keydown listener (mounted once) sees the live route
   // without needing to rebind on every navigation.
   const routeRef = useRef('home');
-  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar (chat
-  // only), Cmd/Ctrl+K opens search, Cmd/Ctrl+N starts a new task.
+  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar in a Cowork
+  // task or anywhere in Code; Cmd/Ctrl+K opens search; Cmd/Ctrl+N starts a
+  // new task.
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
-        // Sidebar collapse is a chat-view affordance. Outside of
-        // task view we keep it expanded so the user can always see
-        // the navigation rail; swallow the shortcut quietly there.
+        // Cowork mirrors Main's task-only affordance; Code treats the whole
+        // workspace as one collapsible navigation scope.
         if (!sidebarCollapsibleRoutes.has(routeRef.current)) return;
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
@@ -1356,9 +1379,79 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-dots-off', settings.showDots === false);
+    const visible = settings.showDots !== false;
+    document.body.classList.toggle('gf-dots-off', !visible);
+    window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
+  // Cowork and Code are peer workspaces, not routes within one another.
+  // Keeping this separate from the Cowork route means each surface remains
+  // mounted while the other is visible: drafts, scroll position, selected
+  // tasks, and live streams survive an instant workspace switch.
+  const [workspaceMode, setWorkspaceMode] = useState(() => (
+    codeFixtureActive
+      ? 'code'
+      : 'cowork'
+  ));
+  // Rendering and keyboard routing use the effective mode, so turning the
+  // preference off cannot leave a single-frame Code remnant while React runs
+  // the transition effect below.
+  const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
+    ? 'code'
+    : 'cowork';
+  // Do not boot the coding workspace, its data requests, and its hidden
+  // composer during an ordinary Cowork session. Mount it on first use, then
+  // keep it alive so later Cowork/Code switches preserve in-progress state.
+  const [codeWorkspaceMounted, setCodeWorkspaceMounted] = useState(() => codeFixtureActive);
+  const changeWorkspace = useCallback((next) => {
+    if (next !== 'cowork' && next !== 'code') return;
+    if (next === 'code' && !codeModeEnabled) return;
+    if (sidebarPopout) setNavPopoutOpen(false);
+    if (next === 'code') setCodeWorkspaceMounted(true);
+    setWorkspaceMode(next);
+  }, [codeModeEnabled, sidebarPopout]);
+  const openCode = useCallback(() => changeWorkspace('code'), [changeWorkspace]);
+  // Code owns a separate task history, but its route-specific navigation is
+  // rendered by the canonical Cowork sidebar instead of a second nested rail.
+  const {
+    sessions: codingSessions,
+    selectedId: activeCodingSessionId,
+    newTask: codeNewTask,
+    projectsOpen: codeProjectsOpen,
+    connectorsOpen: codeConnectorsOpen,
+    skillsOpen: codeSkillsOpen,
+    setSessions: setCodingSessions,
+    openNewTask: openNewCodingTask,
+    openProjects: openCodingProjects,
+    openConnectors: openCodingConnectors,
+    openSkills: openCodingSkills,
+    selectSession: selectCodingSession,
+    changeSelection: changeCodingSelection,
+    setSessionPinned: setCodingSessionPinned,
+  } = useCodeWorkspace(openCode);
+  const disableCodeWorkspace = useCallback(() => {
+    setWorkspaceMode('cowork');
+    setCodeWorkspaceMounted(false);
+  }, []);
+  const reportCodeStopIssue = useCallback(({ discoveryFailed, cancelFailures }) => {
+    const title = discoveryFailed
+      ? 'Code Mode is hidden, but running tasks could not be fully checked.'
+      : cancelFailures === 1
+        ? 'Code Mode is hidden, but one task could not be stopped.'
+        : `Code Mode is hidden, but ${cancelFailures} tasks could not be stopped.`;
+    toastManagerRef.current?.add({
+      type: 'warning',
+      title,
+    });
+  }, []);
+  useCodeModeLifecycle({
+    enabled: codeModeEnabled,
+    fixtureActive: codeFixtureActive,
+    sessions: codingSessions,
+    onDisable: disableCodeWorkspace,
+    onSessionsChange: setCodingSessions,
+    onStopIssue: reportCodeStopIssue,
+  });
   // Seed nav state from the address bar so a web deep-link / refresh paints the
   // right view instead of flashing Home. Electron's memory router starts at `/`.
   const initialNav = useRef(initialNavState()).current;
@@ -1369,24 +1462,33 @@ function AppCore() {
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
-  routeRef.current = route;
+  routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-quiet', route !== 'home');
+    const denseWorkspace = effectiveWorkspaceMode === 'code' || route !== 'home';
+    document.body.classList.toggle('gf-quiet', denseWorkspace);
+    // The field is decorative, so dense work surfaces update it at a much
+    // lower frequency. Its slow drift remains visible without competing with
+    // typing, streaming output, or approval interactions on busy machines.
+    window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
-  }, [route]);
-  // Effective collapse state: only honor the user's preference while
-  // the route allows it (chat task). Everywhere else the sidebar
-  // stays expanded — gives the user permanent access to the nav. Never
-  // applies in popout mode (narrow band or Coding Mode) — there the
-  // sidebar is either fully hidden or slid in as an overlay, not docked
-  // at a collapsed width.
-  const sidebarCollapsedEffective =
-    !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
+  }, [effectiveWorkspaceMode, route]);
+  // Cowork preserves Main's focused task-only collapse behavior. Code's
+  // project, connector, skill, new-task, and task surfaces all share one
+  // stable desktop navigation pane, so collapse is available throughout the
+  // workspace. Narrow/tablet layouts continue to use the overlay drawer.
+  const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
+  const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
+  const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Long-running destructive requests must reconcile against wherever the
+  // user navigated while they were in flight, not the render that launched
+  // them. Keep the active task alongside routeRef for that success boundary.
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
   // Set when the `/c/:id` loader hit an operational failure (not a 404): the
   // view offers a retry instead of losing the URL.
   const [conversationError, setConversationError] = useState(null);
@@ -1486,12 +1588,46 @@ function AppCore() {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
-    fetchSessions().then((data) => {
-      if (!Array.isArray(data)) return;
-      // One-time freshness decision for the onboarding checklist, taken on
-      // the session's first successful fetch (refreshData also polls, hence
-      // the ref guard): an account that already has tasks is not a first
-      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+    // A retry after a failure must look like it did something; without this
+    // the error copy sits there until the request resolves.
+    setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
+    // Merges a warmed transcript in without disturbing a live conversation:
+    // anything mid-stream, or already filled, keeps what it has.
+    const warmTranscript = (id, msgs) => setTasks((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      const local = Array.isArray(t.messages) ? t.messages : [];
+      if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
+      return { ...t, messages: msgs };
+    }));
+    // Claimed synchronously, not on resolve: refreshData re-enters on the
+    // serverOnline false->true flip that its own fetchHealth above causes, and
+    // /health beats a 200-conversation list every time — so latching in the
+    // .then() below left the second entry still unwarmed and fired the fan-out
+    // twice, the exact 100 requests this gate exists to prevent.
+    const warming = !warmedRef.current;
+    if (warming) warmedRef.current = true;
+    fetchSessions(warming ? { onItems: warmTranscript } : {}).then((data) => {
+      // Released again whenever nothing was actually warmed: fetchSessions
+      // returns before firing a single /items both on an empty account and on
+      // a failed list. Holding the claim through a failure would mean the
+      // Retry that fixes it never warms anything for the rest of the session.
+      if (warming && !(Array.isArray(data) && data.length > 0)) warmedRef.current = false;
+      if (!Array.isArray(data)) {
+        // A failed list request must not read as "no tasks". Keyed on having rows
+        // on screen, not on having succeeded once: an empty
+        // account's first fetch succeeds with [] -> 'ready', and every later
+        // failure would then be swallowed, leaving "No tasks yet" and no Retry
+        // while the server is unreachable — the exact confusion this PR fixes.
+        setTasksStatus(tasksRef.current.length > 0 ? 'ready' : 'failed');
+        return;
+      }
+      setTasksStatus('ready');
+      // One-time freshness decision for the onboarding checklist, taken on the
+      // session's first successful fetch: an account that already has tasks is
+      // not a first run, and would otherwise sit on a permanent, undismissable
+      // 0/4 card. Hence the ref guard — refreshData re-fires on the
+      // serverOnline flip, Retry, SSO, manual start and run-schedule-now.
+      // No timer drives it; the only setInterval here is refreshInFlightSet.
       if (!onboardingFreshnessResolvedRef.current) {
         onboardingFreshnessResolvedRef.current = true;
         if (data.length > 0) dismissIfUntouched();
@@ -1525,7 +1661,7 @@ function AppCore() {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, []);
+  }, [refreshSchedules]);
 
   useEffect(() => {
     refreshData();
@@ -1845,6 +1981,7 @@ function AppCore() {
   // path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    setWorkspaceMode('cowork');
     // Clear the composer here (the sync nav intent), not in openConversation:
     // that runs after the async loader and would wipe a queued-message redirect
     // ChatView stages for the conversation. Matches staging's ordering.
@@ -1915,6 +2052,7 @@ function AppCore() {
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    setWorkspaceMode('cowork');
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -1922,6 +2060,7 @@ function AppCore() {
   };
 
   const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setWorkspaceMode('cowork');
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill({ text, bump: Date.now() });
@@ -2362,9 +2501,11 @@ function AppCore() {
     setRoute,
   });
 
-  // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
-  // the latest newTask closure (which captures fresh setRoute/setTasks).
-  useEffect(() => { newTaskRef.current = newTask; });
+  // Cmd/Ctrl+N follows the workspace on screen while preserving the latest
+  // Cowork new-task closure (which captures fresh setRoute/setTasks).
+  useEffect(() => {
+    newTaskRef.current = effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask;
+  }, [effectiveWorkspaceMode, newTask, openNewCodingTask]);
 
   const clearActive = useCallback(() => {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
@@ -2378,13 +2519,14 @@ function AppCore() {
     setSettingsOpen,
     refreshData,
   });
+  const codeAccountUser = useAccountUser(ssoConnected);
+  const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
   // and Settings → Usage read it through HubUsageContext. Re-read when a turn
   // finishes too, so a task that just spent the last free tokens flips the
   // notice without waiting for the next tick.
-  const accountUser = useAccountUser(ssoConnected);
-  const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(accountUser);
+  const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
   const hubUsageCtx = useMemo(() => ({
     usage: hubUsage,
     providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
@@ -2420,12 +2562,6 @@ function AppCore() {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
-    // Channels lives inside Settings, not behind its own route, so it needs
-    // its own org-mode intercept here rather than reusing navigate()'s.
-    if (orgMode && section === 'channels') {
-      setComingSoonFeature('Channels');
-      return;
-    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
@@ -2433,6 +2569,12 @@ function AppCore() {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    // Compatibility for any stale internal entry point while the dedicated
+    // workspace switch replaces Code as an ordinary navigation row.
+    if (key === 'code') {
+      openCode();
+      return;
+    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2447,19 +2589,12 @@ function AppCore() {
       // unaffected.
       setSelectedProject(null);
     }
+    setWorkspaceMode('cowork');
     // Flip route state; the URL bridge mirrors it and the route element's
     // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
 
-  // Same safety net for Channels: the in-Settings nav calls onSectionChange
-  // (= setSettingsSection) directly, bypassing openSettings entirely.
-  useEffect(() => {
-    if (orgMode && settingsSection === 'channels') {
-      setComingSoonFeature('Channels');
-      setSettingsSection('agent');
-    }
-  }, [orgMode, settingsSection]);
 
   // URL → state sync for the route elements. enterRoute is the single place a
   // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
@@ -2678,9 +2813,10 @@ function AppCore() {
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
       const generalFallback = projects.find((p) => p.name === 'general');
-      const effectiveProjectName = selectedProject?.name || 'general';
-      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
-      const effectiveProjectPath = selectedProject?.path
+      const requestedProject = meta?.project || selectedProject;
+      const effectiveProjectName = requestedProject?.name || 'general';
+      const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
+      const effectiveProjectPath = requestedProject?.path
         || generalFallback?.path
         || null;
       setTasks((prev) => [{
@@ -2704,7 +2840,7 @@ function AppCore() {
       setActiveTaskId(taskId);
       setRoute('task');
       setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // Orphan fallback: if the user hasn't picked a project, route the
@@ -2712,18 +2848,21 @@ function AppCore() {
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
-    if (!selectedProject && !generalProject) {
+    const requestedProject = meta?.project || selectedProject;
+    if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
-    const effectiveProjectName = selectedProject?.name || 'general';
-    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
-    const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+    const effectiveProjectName = requestedProject?.name || 'general';
+    const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
+    const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
-    const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    const suppliedConversationId = meta?.conversationId || null;
+    const taskId = suppliedConversationId
+      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
     // state instead of 404ing home.
     markOptimisticConversation(taskId);
@@ -2851,7 +2990,7 @@ function AppCore() {
     trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: hasPendingFiles ? taskId : undefined,
+      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
@@ -2969,15 +3108,24 @@ function AppCore() {
     // we add the user message + thinking placeholder and start the
     // SSE stream — same shape as handleSendInTask from that point on.
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
+    return true;
   };
 
   // Send inside an existing task
+  //
+  // Answers `true` when the text is on its way — a stream started, or it was
+  // queued behind the turn already running — and `false` when nothing was sent.
+  // Same contract as handleSendFromHome, and the artifact viewer depends on it:
+  // addressing a comment with the agent mints the repair record BEFORE sending
+  // and cancels it on `false`. Without that answer a repair whose prompt never
+  // left the composer sits `queued` forever, polling, showing "Agent is
+  // thinking…" for a turn that will never run.
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
-    if (!targetTask) return;
+    if (!targetTask) return false;
     const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
@@ -3000,7 +3148,7 @@ function AppCore() {
       // Only a fresh send owns the live composer's attachments; a drained
       // queued item must not clear the composer of whatever task is on screen.
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // A pending question owns the composer: typed text is the answer, not a
@@ -3036,7 +3184,9 @@ function AppCore() {
             : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
         });
       }
-      return;
+      // The text became the answer to the agent's question, so it did not start
+      // a turn of its own — a caller waiting on this prompt gets `false`.
+      return false;
     }
     if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
       // Two mechanisms, both already used in this file: a toast so the user
@@ -3093,7 +3243,9 @@ function AppCore() {
         opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      // Queued counts as sent: the drain runs it when the slot frees, so a
+      // repair waiting on this prompt will get its turn.
+      return true;
     }
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
@@ -3376,6 +3528,9 @@ function AppCore() {
         })();
       },
     });
+    // The stream is running; whatever happens to it now is reported through the
+    // callbacks above, not through this return value.
+    return true;
   };
 
   // Drain the next queued message once the single stream slot is free.
@@ -3412,6 +3567,57 @@ function AppCore() {
   // Keep the mount-frozen reconnect closure pointed at the current drain (and
   // thus the current handleSendInTask). See the ref declaration above.
   drainNextQueuedMessageRef.current = drainNextQueuedMessage;
+
+  // ── Addressing an artifact comment with the agent ──────────────────────
+  // Two callbacks, one decision. The viewer asks which chat a repair belongs to
+  // BEFORE minting the repair record (cowork-server only finishes a handoff in
+  // the turn whose conversation matches the id on it), then hands the prompt
+  // back to be sent. The resolution is carried between the two here so the send
+  // can't pick a different chat than the repair is bound to.
+  const artifactRepairTargetRef = useRef(null);
+
+  const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    artifactRepairTargetRef.current = target.id ? target : null;
+    // Adopt the record now: an origin chat older than the capped recents fetch
+    // is unknown to `tasks`, and the send below appends the turn through it.
+    if (target.id) {
+      setTasks((prev) => (
+        prev.some((t) => String(t.id || '') === target.id) ? prev : [target.task, ...prev]
+      ));
+    }
+    return target.id;
+  }, []);
+
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+    const project = projects.find((item) =>
+      String(item.id || '') === String(artifact?.projectId || ''))
+      || projects.find((item) => item.name === artifact?.projectName)
+      || null;
+    const target = artifactRepairTargetRef.current;
+    artifactRepairTargetRef.current = null;
+    // Only resume a chat the repair was actually minted against; anything else
+    // (no origin, unreachable chat, a stale resolution) starts a new one.
+    if (!target || !conversationId || target.id !== String(conversationId)) {
+      return handleSendFromHome(prompt, { project, conversationId });
+    }
+    // Preflight before touching the chat: returning false makes the viewer
+    // cancel the repair, which beats leaving a handoff queued against a turn
+    // that never starts.
+    if (!(await ensureProviderReady())) return false;
+    const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
+    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
+    // while the turn is in flight; the flag drops when the turn completes.
+    markOptimisticConversation(target.id);
+    selectTask(target.id);
+    // handleSendInTask queues the prompt itself if that chat is already busy.
+    await handleSendInTask(prompt, [], { targetTask });
+    return true;
+  };
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
@@ -3687,7 +3893,11 @@ function AppCore() {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      // Merge, never replace: since ENG-2246 these rows carry `messages: []`,
+      // so a wholesale replace blanks the open transcript (ChatView renders
+      // currentTask, and nothing refetches on a `tasks` change), drops
+      // `_streaming` placeholders, and wipes the client-only model pin.
+      if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
 
@@ -3764,16 +3974,24 @@ function AppCore() {
       const fresh = await fetchSessions().catch(() => null);
       setTasks((prev) => {
         /*
-          fetchSessions resolves [] when the server is unreachable, so treat
-          an empty answer as no answer — replacing the list with it would
-          blank every chat in the sidebar. mergeTasksFromServer, same as
+          fetchSessions resolves `{ error: true }` on a failed list and `[]`
+          for an empty account — treat either as no answer, because
+          replacing the list with one would blank every chat in the
+          sidebar. mergeTasksFromServer, same as
           every other consumer, keeps streaming messages, model pins and
           tmp- rows that a wholesale replace would clobber. prev already
           lost this row to the optimistic filter above, so when the refetch
           brought nothing back, re-seat the captured task — the toast says
           the chat is back in the list, and it has to be true.
         */
-        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        // Shape-checked rather than truthiness-checked, to say what is meant:
+        // fetchSessions can resolve a non-array error object, and this line
+        // previously excluded it only because `{ error: true }?.length` is
+        // undefined. mergeTasksFromServer shape-guards too (`if
+        // (!Array.isArray(serverTasks)) return local`), so neither form can
+        // blank the sidebar — verified by mutation. This is about intent, not
+        // a latent bug.
+        const merged = mergeTasksFromServer(Array.isArray(fresh) && fresh.length ? fresh : null, prev);
         if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
         return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
       });
@@ -3864,10 +4082,41 @@ function AppCore() {
 
   const handleDeleteProject = (project) => {
     if (!project?.name) return;
+    if (!canUseSharedResource(project, 'canDelete')) return;
+    // Re-confirming a delete that is already on the wire would fire a duplicate
+    // DELETE; the project shows its waiting state until the server answers.
+    if (deletingProjectKeys.includes(project.id || project.name)) return;
     setPendingDeleteProject(project);
   };
   const performDeleteProject = async (project) => {
     if (!project?.name) return;
+    const deletingKey = project.id || project.name;
+    setDeletingProjectKeys((prev) => (
+      prev.includes(deletingKey) ? prev : [...prev, deletingKey]
+    ));
+    try {
+      await runDeleteProject(project);
+    } finally {
+      setDeletingProjectKeys((prev) => prev.filter((key) => key !== deletingKey));
+    }
+  };
+  const runDeleteProject = async (project) => {
+    // Authorization is server-owned. Do not remove the project, its tasks, or
+    // their drafts until DELETE succeeds: a member's 403 must leave the UI in
+    // the exact pre-confirmation state instead of briefly looking successful.
+    try {
+      await deleteProject(project);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteProject] failed', e);
+      toastManager.add({
+        type: 'danger',
+        timeout: 0,
+        title: "Couldn't delete this project. Nothing was removed; try again.",
+        description: e?.message || String(e),
+      });
+      return;
+    }
     // The server cascades a project delete to its conversations (ENG-701),
     // so tombstone their ids the same way performDeleteTask does for a single
     // delete. Without this, an in-flight fetchSessions that started before the
@@ -3884,24 +4133,28 @@ function AppCore() {
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
     doomedTaskIds.forEach((id) => clearDraft(id));
-    // Optimistic — drop locally before the round-trip.
+    // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
       t.projectName !== project.name && t.projectPath !== project.path
     ));
-    if (selectedProject?.name === project.name) setSelectedProject(null);
+    setSelectedProject((current) => {
+      const isDeletedProject = current && (
+        (project.id && current.id && current.id === project.id)
+        || current.name === project.name
+      );
+      return isDeletedProject ? null : current;
+    });
     // If the conversation currently open belonged to this project, clear it —
     // otherwise currentTask silently falls back to tasks[0] (an unrelated
     // conversation from another project). Only leave the chat view when we're
     // actually on it; from the projects view (where deletes usually happen)
     // the user should stay put — same policy as performDeleteTask.
-    if (activeTaskId && doomedTaskIds.includes(activeTaskId)) {
+    const liveActiveTaskId = activeTaskIdRef.current;
+    if (liveActiveTaskId && doomedTaskIds.includes(liveActiveTaskId)) {
+      activeTaskIdRef.current = null;
       setActiveTaskId(null);
-      if (route === 'task') setRoute('home');
-    }
-    try { await deleteProject(project); } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteProject] failed', e);
+      if (routeRef.current === 'task') setRoute('home');
     }
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
@@ -3946,7 +4199,10 @@ function AppCore() {
     }
     // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    // Merge, never replace — same reason as handleRenameTask above. Repro for
+    // the replace: open chat A, then Move to project on any task; the open
+    // transcript went blank with nothing to bring it back.
+    if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     const freshProjects = await fetchProjects();
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
@@ -4018,6 +4274,7 @@ function AppCore() {
   };
 
   const handleSearchSelect = (result) => {
+    setWorkspaceMode('cowork');
     if (result.type === 'task' || (result.type === 'pin' && result.route === 'task')) {
       selectTask(result.id);
     } else if (result.type === 'project') {
@@ -4170,79 +4427,28 @@ function AppCore() {
         />
       )}
 
-      {/* Floating corner row — back to its original bottom-right placement,
-          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
-          which never moved). Same corner on every route, task view
-          included — one consistent location, not a bespoke per-view
-          control.
-            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
-              picker) — the sidebar's old "Display settings" button (now
-              removed) folded into this.
-            - Coding Mode (desktop only): a bare "</>" glyph beside it,
-              deliberately un-boxed so it reads as a status indicator, not
-              a second button of the same weight — lit accent when on,
-              greyed out when off. Toggles the setting directly on click;
-              no modal, since there's nothing else to configure here.
-            - Hidden entirely on mobile — MobileShell renders its own theme
-              toggle in the top bar (opposite the hamburger) instead, and
-              the coding-mode toggle is dropped there rather than given a
-              second spot.
-            - Narrow/tablet band (popout sidebar, not yet phone-width): the
-              bottom-right corner overlaps task rows and the composer's
-              send button there, so the row moves to the top-right instead
-              — just left of the per-view expand/collapse-right-panel
-              button (see .floating-toggle-row--top-right). This is keyed
-              on the true viewport band (`isNarrow`), not `sidebarPopout` —
-              Coding Mode's popout sidebar is desktop-width, so this row
-              stays put in its usual bottom-right corner there. */}
-      {!isMobile && (() => {
-        const showCodingToggle = !host.isWeb && host.codingModeOptionsEnabled && settings.showCodingModeToggle !== false;
-        const codingModeOn = showCodingToggle && codingModeActive;
-        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
-        if (!showCodingToggle && !showThemeToggle) return null;
-        return (
-          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-            {showCodingToggle && (
-              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !settings.codingModeEnabled;
-                    setSetting('codingModeEnabled', next);
-                    saveSettings({ codingModeEnabled: next }).catch(() => {});
-                  }}
-                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
-                  aria-pressed={codingModeOn}
-                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
-                >
-                  {Ico.code(15)}
-                </button>
-              </Tooltip>
-            )}
-            {showThemeToggle && (
-              // With the 8-bit skin toggle hidden there's nothing else to
-              // pick in the modal — just flip dark/light directly. The
-              // modal only earns the extra click when it actually offers
-              // something beyond that.
-              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
-                <button
-                  onClick={() => {
-                    if (settings.show8bitToggle === false) {
-                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                    } else {
-                      setThemeModalOpen(true);
-                    }
-                  }}
-                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
-                  className="floating-toggle"
-                >
-                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-                </button>
-              </Tooltip>
-            )}
-          </div>
-        );
-      })()}
+      {/* Code has one deliberate entry point while it is opt-in: Settings.
+          Keeping this corner control exclusively about appearance prevents a
+          hidden product from leaking into ordinary Cowork. */}
+      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+        <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
+          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+            <button
+              onClick={() => {
+                if (settings.show8bitToggle === false) {
+                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                } else {
+                  setThemeModalOpen(true);
+                }
+              }}
+              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              className="floating-toggle"
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {!isMobile && (
       <div
@@ -4259,32 +4465,48 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          tasksStatus={tasksStatus}
+          onRetryTasks={refreshData}
           pins={pins}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
-          activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
+          activeRoute={effectiveWorkspaceMode === 'code'
+            ? null
+            : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
+          activeWorkspace={effectiveWorkspaceMode}
+          showWorkspaceSwitch={codeModeEnabled}
+          activeCodeRoute={effectiveWorkspaceMode === 'code'
+            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
           // activeTaskId persists across navigation, so passing it unconditionally
           // left the last-opened task highlighted on Projects/Settings/etc.
-          activeTaskId={route === 'task' ? activeTaskId : null}
+          activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
+          codingSessions={codingSessions}
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+            ? activeCodingSessionId
+            : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
           isSsoConnected={ssoConnected}
           onNavigate={navigate}
+          onWorkspaceChange={changeWorkspace}
           onSelectTask={selectTask}
           onNewTask={newTask}
+          onSelectCodingSession={selectCodingSession}
+          onSetCodingSessionPinned={setCodingSessionPinned}
+          onNewCodingTask={openNewCodingTask}
+          onOpenCodingProjects={openCodingProjects}
+          onOpenCodingConnectors={openCodingConnectors}
+          onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
-          onToggleCollapsed={
-            sidebarPopout
-              ? () => setNavPopoutOpen(false)
-              : (sidebarCollapsibleRoutes.has(route)
-                  ? () => setSidebarCollapsed((c) => !c)
-                  : undefined)
-          }
+          onToggleCollapsed={sidebarPopout
+            ? () => setNavPopoutOpen(false)
+            : (sidebarCanCollapse ? () => setSidebarCollapsed((c) => !c) : undefined)}
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}
@@ -4362,10 +4584,14 @@ function AppCore() {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
-        {/* Mounts the matched child route element, which syncs `route` /
-            `activeTaskId` to the URL. It renders no visible output — the
-            active view is still chosen by the `route`-keyed switch below. */}
+        {/* Sync the active Cowork route to the address bar even while its
+            workspace panel is temporarily hidden behind Code Mode. */}
         <Outlet />
+        <div
+          className="workspace-mode-panel"
+          hidden={effectiveWorkspaceMode !== 'cowork'}
+          aria-hidden={effectiveWorkspaceMode !== 'cowork'}
+        >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -4405,7 +4631,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
           />
         )}
 
@@ -4565,11 +4791,12 @@ function AppCore() {
               // the new task lands in the right workspace.
               handleSendFromHome(text, meta);
             }}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
+            deletingProjectKeys={deletingProjectKeys}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -4665,6 +4892,8 @@ function AppCore() {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
+            onAddressWithAgent={addressArtifactWithAgent}
+            resolveRepairConversation={resolveArtifactRepairConversation}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -4706,6 +4935,50 @@ function AppCore() {
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
           />
+        )}
+
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
+          <UtilitiesView
+            projects={projects}
+            kind={route}
+            project={selectedProject}
+            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
+            agentLabel={agentLabel}
+          />
+        )}
+        </div>
+
+        {codeModeEnabled && codeWorkspaceMounted && (
+          <div
+            className="workspace-mode-panel"
+            hidden={effectiveWorkspaceMode !== 'code'}
+            aria-hidden={effectiveWorkspaceMode !== 'code'}
+          >
+            <CodeView
+              active={effectiveWorkspaceMode === 'code'}
+              account={codeAccountUser}
+              sessions={codingSessions}
+              selectedId={activeCodingSessionId}
+              newTask={codeNewTask}
+              projectsOpen={codeProjectsOpen}
+              connectorsOpen={codeConnectorsOpen}
+              skillsOpen={codeSkillsOpen}
+              defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
+              defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
+              models={mindsModels}
+              modelMeta={modelMeta}
+              skillScopeKey={codeSkillScopeKey}
+              connections={connectors}
+              onConnectionsChange={setConnectors}
+              onOpenConnectors={openCodingConnectors}
+              onOpenProjects={openCodingProjects}
+              onOpenSkills={openCodingSkills}
+              onOpenNewTask={openNewCodingTask}
+              onSessionsChange={setCodingSessions}
+              onSelectionChange={changeCodingSelection}
+            />
+          </div>
         )}
 
         {/* Settings modal — rendered over whatever route is active */}
@@ -4807,15 +5080,6 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
-        {['memory', 'publish'].includes(route) && (
-          <UtilitiesView
-            kind={route}
-            project={selectedProject}
-            onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
-            agentLabel={agentLabel}
-          />
-        )}
       </AppShell>
       <SearchModal
         open={searchOpen}
@@ -4828,6 +5092,13 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
+        // Cloud: the directory also lists connectors only the desktop app can
+        // run. Picking one closes the directory and offers the download rather
+        // than opening a connect form that couldn't work here.
+        onDesktopOnly={(c) => {
+          setConnectorPickerOpen(false);
+          setComingSoonFeature(c?.label || 'This connector');
+        }}
       />
 
       <ThemeModal

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -144,6 +144,8 @@ import {
   fetchProjects,
   createProject,
   uploadAttachments,
+  renameConversation,
+  moveTaskToProject,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -1183,5 +1185,88 @@ describe('a requested conversation id not present locally (ENG-1233 Major 4)', (
     await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
 
     clearOptimisticConversation('conv-ghost');
+  });
+});
+
+// ─── ENG-2246: a server refresh must not blank the open transcript ──────────
+//
+// fetchSessions now resolves on the conversation LIST alone, so every row it
+// returns carries `messages: []`. Two call sites still replaced `tasks`
+// wholesale with that, which wiped the transcript of whatever chat was open —
+// ChatView renders the task, and nothing refetches on a `tasks` change, so
+// there was no way back short of a reload. Both now merge.
+describe('a background refresh must not blank the open transcript (ENG-2246)', () => {
+  const LINE = 'remember this line';
+  const rows = (messages) => ([
+    { id: 'conv-a', title: 'Alpha task', messages, status: 'idle', projectName: 'general' },
+    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+  ]);
+
+  // Flipped to false once the chat is open, so the refresh under test returns
+  // the real post-ENG-2246 shape while the local task still holds the messages.
+  let listCarriesTranscript = true;
+
+  beforeEach(() => {
+    listCarriesTranscript = true;
+    fetchSessions.mockImplementation(async () => rows(listCarriesTranscript ? [{ role: 'user', content: LINE }] : []));
+  });
+  afterEach(() => {
+    fetchSessions.mockImplementation(async () => rows([]));
+    renameConversation.mockReset();
+    renameConversation.mockImplementation(async () => ({}));
+    moveTaskToProject.mockClear();
+  });
+
+  /** Opens the sidebar row's kebab menu. The kebab carries pointer-events:none
+   *  until the row is hovered, which userEvent's pointer model refuses to
+   *  traverse — hence fireEvent for the hover. */
+  async function openRowMenu(user) {
+    // Scoped to the sidebar: the chat header carries the same accessible name.
+    const sidebar = within(document.querySelector('aside'));
+    const row = sidebar.getByRole('button', { name: 'Alpha task' });
+    fireEvent.mouseEnter(row.parentElement);
+    // fireEvent, not user.click: opening the chat above already moved
+    // userEvent's virtual pointer, so its move onto the kebab fires the
+    // hoverProps mouseleave first — which re-hides the kebab (pointer-events:
+    // none) a moment before userEvent asserts it is clickable.
+    fireEvent.click(within(row.parentElement).getByRole('button', { name: 'Task menu' }));
+  }
+
+  it('survives the rollback refetch when a rename fails', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(LINE)).toBeInTheDocument();
+
+    listCarriesTranscript = false;
+    renameConversation.mockRejectedValueOnce(new Error('server said no'));
+
+    await openRowMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const input = await screen.findByLabelText('Rename task');
+    await user.clear(input);
+    await user.keyboard('Renamed{Enter}');
+
+    await waitFor(() => expect(renameConversation).toHaveBeenCalled());
+    // The rollback reloads from the server to recover the canonical title. It
+    // must not take the empty transcript along with it.
+    await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
+  });
+
+  it('survives the refresh after a move to another project', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openByTitle(user, 'Alpha task');
+    expect(await screen.findByText(LINE)).toBeInTheDocument();
+
+    listCarriesTranscript = false;
+
+    await openRowMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Move to project…' }));
+    await user.type(await screen.findByPlaceholderText(/Search projects/i), 'Archive');
+    await user.click(await screen.findByRole('button', { name: /Move to Archive/i }));
+
+    await waitFor(() => expect(moveTaskToProject).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
   });
 });

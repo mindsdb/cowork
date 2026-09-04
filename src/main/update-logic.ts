@@ -675,12 +675,14 @@ export type StartWaitStep =
  *  up is never called dead over a technicality about who its parent was. */
 export function decideStartWait(input: {
   healthy: boolean;
+  incompatible?: boolean;
   spawnError: string | null;
   exited: boolean;
   elapsedMs: number;
   capMs: number;
 }): StartWaitStep {
   if (input.healthy) return { action: 'ready' };
+  if (input.incompatible) return { action: 'fail', kind: 'incompatible' };
   if (input.spawnError) return { action: 'fail', kind: 'spawn-error' };
   if (input.exited) return { action: 'fail', kind: 'exited' };
   if (input.elapsedMs >= input.capMs) return { action: 'fail', kind: 'timeout' };
@@ -715,6 +717,8 @@ export function startFailureMessage(input: {
     }
     case 'timeout':
       return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;
+    case 'incompatible':
+      return 'The backend is running, but it is too old for this version of MindsHub Cowork.';
   }
 }
 

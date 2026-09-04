@@ -15,6 +15,8 @@ async function importHost() {
 const keycloakMock = vi.hoisted(() => ({
   logout: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => null),
+  listWebOrganizations: vi.fn(),
+  switchWebOrganization: vi.fn(),
 }));
 vi.mock('../lib/keycloak', () => keycloakMock);
 
@@ -24,6 +26,13 @@ function setUrl(url: string) {
 
 beforeEach(() => {
   delete (window as unknown as Record<string, unknown>).antontron;
+  keycloakMock.listWebOrganizations.mockReset();
+  keycloakMock.switchWebOrganization.mockReset();
+  keycloakMock.listWebOrganizations.mockResolvedValue({
+    ok: true,
+    orgs: [],
+    activeOrgId: null,
+  });
 });
 
 afterEach(() => {
@@ -50,6 +59,173 @@ describe('logout()', () => {
   });
 });
 
+describe('MindsHub organizations', () => {
+  const ORGS = [
+    { id: 'org-acme', name: 'acme', displayName: 'Acme', isPersonal: false },
+    { id: 'org-personal', name: 'personal_user-1', displayName: "user@example.com's organization", isPersonal: true },
+  ];
+
+  it('lists organizations through the browser Keycloak session on web', async () => {
+    keycloakMock.listWebOrganizations.mockResolvedValue({
+      ok: true,
+      orgs: ORGS,
+      activeOrgId: 'org-acme',
+    });
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({
+      orgs: ORGS,
+      activeOrgId: 'org-acme',
+      reachable: true,
+    });
+    expect(keycloakMock.listWebOrganizations).toHaveBeenCalledOnce();
+  });
+
+  it('marks an unsettled web listing as unreachable so the hook can retry it', async () => {
+    keycloakMock.listWebOrganizations.mockResolvedValue({ ok: false, reason: 'network down' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({
+      orgs: [],
+      activeOrgId: null,
+      reachable: false,
+    });
+  });
+
+  it('switches on web and requires a reload after the tenant commits', async () => {
+    keycloakMock.switchWebOrganization.mockResolvedValue({
+      ok: true,
+      activeOrgId: 'org-personal',
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+    const host = await importHost();
+
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toEqual({
+      ok: true,
+      activeOrgId: 'org-personal',
+      orgs: [],
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+    expect(keycloakMock.switchWebOrganization).toHaveBeenCalledWith('org-personal');
+  });
+
+  it('keeps a definitive web refusal in place but reloads an indeterminate result', async () => {
+    keycloakMock.switchWebOrganization
+      .mockResolvedValueOnce({
+        ok: false,
+        reason: 'Not a member.',
+        reloadRequired: false,
+        clearTenantState: false,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        reason: 'Refresh failed.',
+        reloadRequired: true,
+        clearTenantState: true,
+      });
+    const host = await importHost();
+
+    await expect(host.mindshubSwitchOrg('org-nope')).resolves.toMatchObject({
+      ok: false,
+      error: 'Not a member.',
+      reloadRequired: false,
+      clearTenantState: false,
+    });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: false,
+      error: 'Refresh failed.',
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+  });
+
+  it('uses the Electron bridge and never imports the web behavior', async () => {
+    const mindshubListOrgs = vi.fn(async () => ({ orgs: ORGS, activeOrgId: 'org-acme' }));
+    const mindshubSwitchOrg = vi.fn(async () => ({
+      ok: true,
+      orgs: ORGS,
+      activeOrgId: 'org-personal',
+    }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubListOrgs,
+      mindshubSwitchOrg,
+    };
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({ orgs: ORGS, activeOrgId: 'org-acme' });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: true,
+      activeOrgId: 'org-personal',
+    });
+    expect(keycloakMock.listWebOrganizations).not.toHaveBeenCalled();
+    expect(keycloakMock.switchWebOrganization).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on an older Electron bridge instead of falling through to web', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({ orgs: [], activeOrgId: null });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: false,
+      error: 'Changing organization needs a newer desktop app.',
+    });
+    expect(keycloakMock.listWebOrganizations).not.toHaveBeenCalled();
+    expect(keycloakMock.switchWebOrganization).not.toHaveBeenCalled();
+  });
+});
+
+describe('mindshubFinalize() across shell versions', () => {
+  // Renderer bundles update over the air while `src/main/**` only arrives in a
+  // new installer, so a newer renderer against an older shell is routine. An
+  // older shell's `mindshubFinalize` takes only `organizationId` and silently
+  // drops a second argument, which is how an explicit pick would reach main
+  // without the flag that protects it (ENG-2199).
+
+  it('routes an explicit pick through the method that proves the shell carries it', async () => {
+    const finalize = vi.fn(async () => ({ ok: true }));
+    const finalizeChosen = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubFinalize: finalize,
+      mindshubFinalizeChosen: finalizeChosen,
+    };
+    const host = await importHost();
+
+    await host.mindshubFinalize('org-beta', true);
+
+    expect(finalizeChosen).toHaveBeenCalledWith('org-beta');
+    expect(finalize).not.toHaveBeenCalled();
+    expect(host.canPickOrganization()).toBe(true);
+  });
+
+  it('reports an older shell as unable to take a pick', async () => {
+    // The old bridge: `mindshubFinalize` present, the newer method absent.
+    const finalize = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = { mindshubFinalize: finalize };
+    const host = await importHost();
+
+    expect(host.canPickOrganization()).toBe(false);
+  });
+
+  it('still sends a no-pick finalize through the original method', async () => {
+    const finalize = vi.fn(async () => ({ ok: true }));
+    const finalizeChosen = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubFinalize: finalize,
+      mindshubFinalizeChosen: finalizeChosen,
+    };
+    const host = await importHost();
+
+    await host.mindshubFinalize();
+
+    expect(finalize).toHaveBeenCalledWith(undefined, undefined);
+    expect(finalizeChosen).not.toHaveBeenCalled();
+  });
+});
+
 describe('web mode (no bridge)', () => {
   it('reports isWeb, platform "web", ui version "web"', async () => {
     const host = await importHost();
@@ -60,9 +236,9 @@ describe('web mode (no bridge)', () => {
     await expect(host.getUIVersion()).resolves.toBe('web');
   });
 
-  it('codingModeOptionsEnabled is always false on web — no bridge to read the flag from', async () => {
+  it('codeModeAvailable is always false on web — no desktop capability bridge exists', async () => {
     const host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
   });
 
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
@@ -88,8 +264,8 @@ describe('web mode (no bridge)', () => {
 
   it('OS-level affordances return the documented unsupported shape', async () => {
     const host = await importHost();
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
-    await expect(host.serverStop()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
+    await expect(host.serverStop()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.openPath('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.showItemInFolder('/tmp/x')).resolves.toEqual({ ok: false, reason: 'unsupported' });
     expect(host.getPathForFile(new File([], 'x.txt'))).toBeNull();
@@ -136,19 +312,19 @@ describe('electron mode (bridge present)', () => {
     expect(host.isMac()).toBe(true);
   });
 
-  it('codingModeOptionsEnabled mirrors the bridge value exactly — only literal true counts', async () => {
-    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: true };
+  it('codeModeAvailable mirrors the bridge value exactly — only literal true counts', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { codeModeAvailable: true };
     let host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(true);
+    expect(host.codeModeAvailable).toBe(true);
 
-    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: false };
+    (window as unknown as Record<string, unknown>).antontron = { codeModeAvailable: false };
     host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
 
     // Missing field (older/partial bridge) defaults to off, same as web.
     (window as unknown as Record<string, unknown>).antontron = {};
     host = await importHost();
-    expect(host.codingModeOptionsEnabled).toBe(false);
+    expect(host.codeModeAvailable).toBe(false);
   });
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
@@ -156,6 +332,7 @@ describe('electron mode (bridge present)', () => {
     setUrl('file:///Applications/app/index.html');
     let host = await importHost();
     expect(host.getApiOrigin()).toBe('http://127.0.0.1:12345');
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
 
     (window as unknown as Record<string, unknown>).antontron = {}; // bridge without serverPort
     host = await importHost();
@@ -163,17 +340,49 @@ describe('electron mode (bridge present)', () => {
     expect(host.isLocalApiOrigin()).toBe(true); // loopback → shell-openable
   });
 
+  it('uses a validated reachable control-plane origin for outbound Code runtimes', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://code.example.test',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('https://code.example.test');
+  });
+
+  it('rejects control-plane URLs with credentials or non-origin paths', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      codeControlPlaneOrigin: 'https://user:secret@code.example.test/runtime',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
+  });
+
   it('IPC flows are used: getOAuthRedirectUri is null, calls delegate to the bridge', async () => {
-    const serverStart = vi.fn(async () => ({ ok: true }));
+    const serverStart = vi.fn(async () => ({ running: true }));
     const oauthConnect = vi.fn(async () => ({ ok: true, access_token: 't' }));
     (window as unknown as Record<string, unknown>).antontron = { serverStart, oauthConnect };
     const host = await importHost();
 
     expect(host.getOAuthRedirectUri('gmail')).toBeNull();
-    await expect(host.serverStart()).resolves.toEqual({ ok: true });
+    await expect(host.serverStart()).resolves.toEqual({ running: true });
     expect(serverStart).toHaveBeenCalledOnce();
     await expect(host.oauthConnect({ authUrl: 'a' } as never)).resolves.toMatchObject({ ok: true });
     expect(oauthConnect).toHaveBeenCalledWith({ authUrl: 'a' });
+  });
+
+  it('pickCodeFolder delegates to the desktop bridge and partial shells fail closed', async () => {
+    const pickCodeFolder = vi.fn(async () => ({ ok: true, path: 'C:\\work\\repo' }));
+    (window as unknown as Record<string, unknown>).antontron = { pickCodeFolder };
+    let host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toEqual({ ok: true, path: 'C:\\work\\repo' });
+    expect(pickCodeFolder).toHaveBeenCalledOnce();
+
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toMatchObject({ ok: false });
   });
 
   it('a partial bridge (method missing) falls back to the web stub, never throws', async () => {
@@ -182,7 +391,7 @@ describe('electron mode (bridge present)', () => {
     (window as unknown as Record<string, unknown>).antontron = {};
     const host = await importHost();
     expect(host.getPlatform()).toBe('web');
-    await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
+    await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
   });
@@ -245,100 +454,6 @@ describe('electron mode (bridge present)', () => {
     expect(result).toEqual({ ok: true, files: [], newFiles: [] });
   });
 
-  it('pickDriveFiles and cancelDrivePicker fall back to unsupported/no-op on web or a partial bridge', async () => {
-    let host = await importHost(); // no bridge at all → web mode
-    // Web mode mints a picker session over an authenticated POST first (see
-    // pickDriveFilesWeb) — with no fetch mock, that call is denied by the
-    // test environment's network guard, which the function surfaces as a
-    // failure result rather than throwing.
-    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toMatchObject({ ok: false });
-    await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
-
-    (window as unknown as Record<string, unknown>).antontron = {}; // bridge present, method missing
-    host = await importHost();
-    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toMatchObject({ ok: false });
-    await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
-  });
-
-  it('pickDriveFiles on web mints a session, opens the popup, and resolves on same-origin postMessage', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ url: 'http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1' }),
-    })));
-    const fakePopup = { closed: false, close: vi.fn() } as unknown as Window;
-    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
-    open.mockClear(); // the spy instance is shared across tests in this file
-    const host = await importHost();
-
-    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    // The session mint is a real (mocked) fetch + a dynamic keycloak import,
-    // several microtask hops deep — poll rather than guess a tick count.
-    await vi.waitFor(() => expect(open).toHaveBeenCalled());
-    expect(open).toHaveBeenCalledWith(
-      'http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1',
-      '_blank',
-      'noopener,noreferrer',
-    );
-    const pickResult = { ok: true, files: [{ id: 'f1', name: 'doc.pdf' }], newFiles: [{ id: 'f1', name: 'doc.pdf' }] };
-    window.dispatchEvent(new MessageEvent('message', {
-      origin: window.location.origin,
-      data: { type: 'drive-picker-result', result: pickResult },
-    }));
-    await expect(result).resolves.toEqual(pickResult);
-  });
-
-  it('pickDriveFiles on web ignores a cross-origin postMessage and still resolves on cancel (popup closed)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ url: 'http://localhost:3000/picker' }),
-    })));
-    const fakePopup = { closed: false, close: vi.fn() } as unknown as Window;
-    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
-    open.mockClear();
-    const host = await importHost();
-
-    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    await vi.waitFor(() => expect(open).toHaveBeenCalled());
-
-    window.dispatchEvent(new MessageEvent('message', {
-      origin: 'https://evil.example.com',
-      data: { type: 'drive-picker-result', result: { ok: true, files: [] } },
-    }));
-
-    (fakePopup as unknown as { closed: boolean }).closed = true;
-    await expect(result).resolves.toEqual({ ok: false, reason: 'cancelled' });
-  });
-
-  it('pickDriveFiles on web cancels a still-pending previous call when triggered again, so a later message only resolves the latest call', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=1' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=2' }) });
-    vi.stubGlobal('fetch', fetchMock);
-    const popup1 = { closed: false, close: vi.fn() } as unknown as Window;
-    const popup2 = { closed: false, close: vi.fn() } as unknown as Window;
-    const open = vi.spyOn(window, 'open')
-      .mockReturnValueOnce(popup1)
-      .mockReturnValueOnce(popup2);
-    open.mockClear();
-    const host = await importHost();
-
-    const firstCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-
-    const secondCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
-
-    // Before the fix, the first call's listener was never torn down, so this
-    // single message would have resolved both calls with the same result.
-    window.dispatchEvent(new MessageEvent('message', {
-      origin: window.location.origin,
-      data: { type: 'drive-picker-result', result: { ok: true, files: [{ id: 'f2' }] } },
-    }));
-
-    await expect(firstCall).resolves.toEqual({ ok: false, reason: 'cancelled' });
-    await expect(secondCall).resolves.toEqual({ ok: true, files: [{ id: 'f2' }] });
-  });
-
   it('cancelDrivePicker calls the bridge when present', async () => {
     const oauthCancelPicker = vi.fn(async () => {});
     (window as unknown as Record<string, unknown>).antontron = { oauthCancelPicker };
@@ -346,6 +461,232 @@ describe('electron mode (bridge present)', () => {
 
     await host.cancelDrivePicker();
     expect(oauthCancelPicker).toHaveBeenCalledOnce();
+  });
+
+  // ---- web Drive Picker (in-page overlay) --------------------------------
+  //
+  // The web flow renders Google's Picker inside the SPA's own already-
+  // authenticated document. There is no second window anywhere in it, which
+  // is what removed the whole class of popup-blocked / expired-click-
+  // activation / header-less-navigation failures the previous design had.
+
+  /** Installs a fake Google Picker SDK the way a real page load leaves it:
+   *  the api.js <script> already in the document and `window.gapi` present,
+   *  so host.ts takes its "already loaded" branch synchronously. Returns the
+   *  hooks a test needs to drive the widget. */
+  function installFakeGooglePicker() {
+    const script = document.createElement('script');
+    // Non-JS type so happy-dom's script loader ignores the src (it refuses
+    // real network loads and would log a DOMException per test); host.ts
+    // finds it by the src attribute either way.
+    script.type = 'text/plain';
+    script.setAttribute('src', 'https://apis.google.com/js/api.js');
+    document.head.appendChild(script);
+
+    const built: { callback?: (data: unknown) => void; visible: boolean[] } = { visible: [] };
+    const builder: Record<string, unknown> = {};
+    for (const method of ['setOAuthToken', 'setDeveloperKey', 'setAppId', 'setTitle', 'enableFeature', 'addView']) {
+      builder[method] = vi.fn(() => builder);
+    }
+    builder.setCallback = vi.fn((cb: (data: unknown) => void) => { built.callback = cb; return builder; });
+    builder.build = vi.fn(() => ({ setVisible: (v: boolean) => built.visible.push(v) }));
+
+    class FakeDocsView {
+      setFileIds() { return this; }
+      setOwnedByMe() { return this; }
+      setEnableDrives() { return this; }
+    }
+
+    (window as unknown as Record<string, unknown>).gapi = {
+      load: (_name: string, opts: { callback: () => void }) => opts.callback(),
+    };
+    (window as unknown as Record<string, unknown>).google = {
+      picker: {
+        PickerBuilder: function PickerBuilder() { return builder; },
+        DocsView: FakeDocsView,
+        ViewId: { DOCS: 'docs' },
+        Feature: { MULTISELECT_ENABLED: 'multi', SUPPORT_DRIVES: 'drives' },
+        Action: { PICKED: 'picked', CANCEL: 'cancel', ERROR: 'error' },
+      },
+    };
+    return { built, builder, cleanup: () => script.remove() };
+  }
+
+  /** fetch double: the token mint, then the picked-files PATCH. */
+  function stubPickerFetch(patchImpl?: () => unknown) {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes('/picker/token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'live-token', api_key: 'picker-key',
+            app_id: 'app-1', account_email: 'me@example.com',
+          }),
+        };
+      }
+      if (url.includes('/picked-files')) {
+        if (patchImpl) return patchImpl();
+        return { ok: true, json: async () => ({ ok: true, files: [{ id: 'f1', name: 'doc.pdf' }] }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+    return calls;
+  }
+
+  it('pickDriveFiles on web renders the picker in-page and never opens a window', async () => {
+    const { built, builder, cleanup } = installFakeGooglePicker();
+    stubPickerFetch();
+    const open = vi.spyOn(window, 'open');
+    open.mockClear();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com', undefined, 'proj-1');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+
+    // The whole point of this design: no popup, ever.
+    expect(open).not.toHaveBeenCalled();
+    expect(built.visible).toEqual([true]);
+    expect(builder.setOAuthToken).toHaveBeenCalledWith('live-token');
+    expect(builder.setDeveloperKey).toHaveBeenCalledWith('picker-key');
+    expect(builder.setAppId).toHaveBeenCalledWith('app-1');
+
+    built.callback!({ action: 'picked', docs: [{ id: 'f1', name: 'doc.pdf', mimeType: 'application/pdf' }] });
+    await expect(result).resolves.toMatchObject({
+      ok: true,
+      newFiles: [expect.objectContaining({ id: 'f1', name: 'doc.pdf' })],
+    });
+    cleanup();
+  });
+
+  it('a picked file is persisted to the connection before the pick reports success', async () => {
+    const { built, cleanup } = installFakeGooglePicker();
+    const calls = stubPickerFetch();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com', undefined, 'proj-1');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+    built.callback!({ action: 'picked', docs: [{ id: 'f1', name: 'doc.pdf' }] });
+    await result;
+
+    // drive.file only covers files this app created, so the grant has to be
+    // recorded server-side or the agent never learns the file exists.
+    const patch = calls.find((c) => c.url.includes('/picked-files'));
+    expect(patch?.init?.method).toBe('PATCH');
+    expect(JSON.parse(patch!.init!.body as string)).toEqual({
+      files: [expect.objectContaining({ id: 'f1', projects: ['proj-1'] })],
+    });
+  });
+
+  it('a failed persist fails the whole pick — the UI must not show ungranted files as granted', async () => {
+    const { built, cleanup } = installFakeGooglePicker();
+    stubPickerFetch(() => ({ ok: false, status: 500, json: async () => ({ detail: 'nope' }) }));
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+    built.callback!({ action: 'picked', docs: [{ id: 'f1', name: 'doc.pdf' }] });
+
+    await expect(result).resolves.toMatchObject({ ok: false });
+    cleanup();
+  });
+
+  it('a Cancel click resolves as a successful empty pick (matching Electron), and persists nothing', async () => {
+    const { built, cleanup } = installFakeGooglePicker();
+    const calls = stubPickerFetch();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+    built.callback!({ action: 'cancel' });
+
+    await expect(result).resolves.toEqual({ ok: true, files: [], newFiles: [] });
+    expect(calls.some((c) => c.url.includes('/picked-files'))).toBe(false);
+    cleanup();
+  });
+
+  it('an in-widget ERROR resolves the pick instead of hanging it forever', async () => {
+    // Without an Action.ERROR branch nothing settles the promise and the
+    // caller waits forever. The common trigger is an active-account
+    // mismatch: the widget renders under whichever Google account is
+    // ambient in the browser, not the one the token is scoped to.
+    const { built, cleanup } = installFakeGooglePicker();
+    stubPickerFetch();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+    built.callback!({ action: 'error' });
+
+    await expect(result).resolves.toMatchObject({ ok: false });
+    expect((await result).reason).toMatch(/active Google account/);
+    cleanup();
+  });
+
+  it('a picker that never reports anything is settled by the stuck backstop, not left hanging', async () => {
+    // The failure the callback cannot see: a static Google 403 inside the
+    // widget's iframe runs no picker JS, so PICKED/CANCEL/ERROR never fire.
+    // The popup flow this replaced survived it because the user could close
+    // the window; in-page there is nothing to close.
+    vi.useFakeTimers();
+    try {
+      const { built, cleanup } = installFakeGooglePicker();
+      stubPickerFetch();
+      const host = await importHost();
+
+      const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+      await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+      // Nothing is ever reported by the widget.
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+
+      await expect(result).resolves.toMatchObject({ ok: false });
+      expect((await result).reason).toMatch(/active Google account/);
+      // The stuck widget is dismissed rather than left on screen.
+      expect(built.visible).toEqual([true, false]);
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects malformed drive file ids before minting a token, matching Electron', async () => {
+    const { cleanup } = installFakeGooglePicker();
+    const calls = stubPickerFetch();
+    const host = await importHost();
+
+    await expect(
+      host.pickDriveFiles('google_drive', 'conn', 'me@example.com', ['../etc/passwd']),
+    ).resolves.toMatchObject({ ok: false });
+    // Rejected before any network call — same gate drive-picker-service.ts runs.
+    expect(calls).toHaveLength(0);
+    cleanup();
+  });
+
+  it('a failed token mint reports the failure and never loads the picker', async () => {
+    const { built, cleanup } = installFakeGooglePicker();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 503, json: async () => ({ detail: 'Picker is not configured.' }),
+    })));
+    const host = await importHost();
+
+    await expect(host.pickDriveFiles('google_drive', 'conn', 'me@example.com'))
+      .resolves.toMatchObject({ ok: false, reason: 'Picker is not configured.' });
+    expect(built.callback).toBeUndefined();
+    cleanup();
+  });
+
+  it('cancelDrivePicker resolves an open in-page pick as cancelled', async () => {
+    const { built, cleanup } = installFakeGooglePicker();
+    stubPickerFetch();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+    await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+
+    await host.cancelDrivePicker();
+    await expect(result).resolves.toEqual({ ok: false, reason: 'cancelled' });
+    cleanup();
   });
 
   it('getVersionInfo reports app/ui/source distinctly (OTA never masks the shell)', async () => {

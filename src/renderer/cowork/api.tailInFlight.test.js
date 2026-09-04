@@ -1,4 +1,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+// Keep this suite independent of test-file execution order. Without a host
+// stub, the happy-dom environment takes the web-auth path and can spend the
+// entire five-second test budget dynamically loading Keycloak before the
+// deliberately tiny idle timer is even armed.
+const hostMock = vi.hoisted(() => ({
+  isWeb: true,
+  isElectron: false,
+  getApiOrigin: () => 'http://127.0.0.1:26866',
+  getAccessToken: vi.fn(async () => null),
+}));
+vi.mock('../platform/host', async (importOriginal) => ({
+  ...(await importOriginal()),
+  host: hostMock,
+}));
+
 import { tailInFlight } from './api';
 
 // A reconnect tail reserves the shared stream slot; if the producer is wedged
@@ -12,11 +28,21 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const silentBody = (getSignal) => ({
   getReader: () => ({
     read: () => new Promise((_resolve, reject) => {
-      getSignal().addEventListener('abort', () => {
+      const signal = getSignal();
+      const abort = () => {
         const err = new Error('aborted');
         err.name = 'AbortError';
         reject(err);
-      });
+      };
+      // Check `aborted` before subscribing, the way a real reader does — this
+      // was a CI flake. `tailInFlight` arms the idle timer BEFORE awaiting the
+      // fetch, so on a loaded machine the (20ms, in these tests) window can
+      // elapse before the first read() ever runs. Subscribing after the only
+      // abort event left the read pending forever: the tail hung and the test
+      // died on vitest's 5s timeout instead of finishing in ~20ms. The
+      // keepalive test below already guarded for this.
+      if (signal.aborted) return abort();
+      signal.addEventListener('abort', abort, { once: true });
     }),
   }),
 });
@@ -64,15 +90,16 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
             // read rejects on abort, mirroring a real body reader once the idle
             // timer trips ctrl.abort().
             read: () => new Promise((resolve, reject) => {
+              const readSignal = signal;
               const abort = () => {
                 const err = new Error('aborted');
                 err.name = 'AbortError';
                 reject(err);
               };
-              if (signal.aborted) return abort();
-              signal.addEventListener('abort', abort, { once: true });
+              if (readSignal.aborted) return abort();
+              readSignal.addEventListener('abort', abort, { once: true });
               setTimeout(() => {
-                signal.removeEventListener('abort', abort);
+                readSignal.removeEventListener('abort', abort);
                 resolve({ done: false, value: enc.encode(': keepalive\n\n') });
               }, 5);
             }),

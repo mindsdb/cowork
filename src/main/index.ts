@@ -1,7 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store).
 import './app-identity';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -9,7 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
+import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -21,9 +21,24 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
+import { refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
+import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
+import {
+  gateMindsResponseCreationRequest,
+  mindsRuntimeCredentialRequirementFromHealth,
+} from './minds-response-request-gate';
 import { scrubEnvCredentials } from './logout-env';
+import {
+  beginSignOutRouting,
+  endSignOutRouting,
+  isSignOutRoutingActive,
+  performSignOutCleanup,
+  type SignOutDeps,
+} from './sign-out';
+import { awaitSignOutSidecarFlush, startSignOutSidecarFlush } from './sign-out-restart';
+import { SERVER_START_CAP_MS } from '../shared/server-status';
 import { MINDS_API_HOST } from './minds-urls';
 import {
   validateAnthropic,
@@ -42,6 +57,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { normalizeExternalBrowserUrl } from './external-url';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -51,6 +67,18 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+
+/* Re-hand the MindsHub credential to every sidecar that comes up.
+ *
+ * The sidecar holds it in memory only, so a process that just started holds
+ * nothing: an auto-update, the sidebar's stop/start, and the installer's first
+ * start all leave a signed-in user with `config_ready: false` until something
+ * pushes again. Registered at module scope so the hook is in place before the
+ * first start, whichever path gets there first.
+ *
+ * It settles the resume barrier too: a sidecar restarting mid-handoff is
+ * exactly when a turn is parked waiting for one. */
+setServerStartedHook(handOffMindsCredentialToStartedSidecar);
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -131,7 +159,11 @@ let bootUpdateSettled: Promise<void> = Promise.resolve();
 // routing and the chat gate read one identical value and cannot disagree.
 // Returns null when the server can't be reached/answered, so the caller falls
 // back to the .env heuristic.
-async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+async function serverConfigured(): Promise<{
+  configured: boolean;
+  provider: string;
+  mindsRuntimeCredentialRequired: boolean | null;
+} | null> {
   try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
   try {
@@ -142,12 +174,20 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
       console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
       return null;
     }
-    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    const data = await res.json() as {
+      config_ready?: boolean;
+      provider?: string;
+      minds_runtime_credential_required?: boolean;
+    };
     if (typeof data.config_ready !== 'boolean') {
       console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
       return null;
     }
-    return { configured: data.config_ready, provider: data.provider ?? '' };
+    return {
+      configured: data.config_ready,
+      provider: data.provider ?? '',
+      mindsRuntimeCredentialRequired: mindsRuntimeCredentialRequirementFromHealth(data),
+    };
   } catch (err) {
     console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
     return null;
@@ -157,6 +197,14 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
 async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
+  /*
+   * A sign-out in flight is a definite answer, and it comes before both reads
+   * below. Sign-out now replies and reloads while its sidecar restart is still
+   * running, so the reloaded page can reach a sidecar that has not stopped yet
+   * and hear `config_ready: true` from it — which would route the person who
+   * just signed out straight back into the app.
+   */
+  if (isSignOutRoutingActive()) return { configured: false, provider: '' };
   // config_ready from /health is authoritative and is the SAME signal the
   // in-app chat gate uses — defer to it so routing and the chat gate can't
   // disagree. (The old .env any-key check could pass here while config_ready
@@ -171,6 +219,13 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
+  const configured = await serverConfigured();
+  // A missing field identifies an older or unreachable sidecar. The request
+  // gate treats that as unknown and preserves the conservative wait.
+  return configured?.mindsRuntimeCredentialRequired ?? null;
 }
 
 // Map a server-updater notification onto the UI update-status shape the renderer
@@ -367,17 +422,36 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
-      const token = getServerAuthToken();
-      if (token) {
-        try {
-          if (new URL(details.url).port === String(getServerPort())) {
-            details.requestHeaders['Authorization'] = `Bearer ${token}`;
+      const forward = () => {
+        const token = getServerAuthToken();
+        if (token) {
+          try {
+            if (new URL(details.url).port === String(getServerPort())) {
+              details.requestHeaders['Authorization'] = `Bearer ${token}`;
+            }
+          } catch {
+            // Malformed URL — leave the headers untouched.
           }
-        } catch {
-          // Malformed URL — leave the headers untouched.
         }
-      }
-      callback({ requestHeaders: details.requestHeaders });
+        callback({ requestHeaders: details.requestHeaders });
+      };
+
+      const gated = gateMindsResponseCreationRequest(
+        details,
+        getServerPort(),
+        isMindsResumeCredentialGateActive(),
+        runtimeMindsCredentialRequirement,
+        waitForMindsResumeCredential,
+        (ready) => {
+          if (!ready) {
+            console.warn('[minds-auth] response creation aborted while the resumed credential remained unavailable');
+            callback({ cancel: true });
+            return;
+          }
+          forward();
+        },
+      );
+      if (!gated) forward();
     },
   );
 
@@ -453,9 +527,8 @@ function createWindow() {
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
     return { action: 'deny' };
   });
 
@@ -464,9 +537,8 @@ function createWindow() {
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
     // Block navigation and open in OS browser
     event.preventDefault();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) void shell.openExternal(browserUrl);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -486,13 +558,121 @@ function createWindow() {
     }, 140);
   });
 
+  const sendWindowVisibility = (visible: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.APP_WINDOW_VISIBILITY, visible);
+  };
+  mainWindow.on('hide', () => sendWindowVisibility(false));
+  mainWindow.on('minimize', () => sendWindowVisibility(false));
+  mainWindow.on('show', () => sendWindowVisibility(true));
+  mainWindow.on('restore', () => sendWindowVisibility(true));
+  mainWindow.on('focus', () => sendWindowVisibility(true));
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     killAllCodingTerminals();
   });
 }
 
+// How long boot routing waits for the sidecar to be handed its credential.
+// Routing is held across this (see the boot sequence), so it is sized to cover
+// a Keycloak refresh plus a loopback PUT and no more; overrunning it costs a
+// misrouted launch, not a broken one, and the refresh timer pushes again.
+const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
+
+// How long signing in waits for a previous sign-out's sidecar restart before
+// pressing on. Long enough to cover an ordinary restart, short enough that a
+// pathological start does not read as a hung sign-in; overrunning it costs a
+// slower sign-in, not a broken one (see the finalize handler).
+const SIGN_OUT_FLUSH_SIGN_IN_WAIT_MS = 30_000;
+
 // IPC handlers
+// The full MindsHub sign-out, as a named function because two callers run
+// it: the AUTH_LOGOUT handler below, and the one-time migration off a
+// minted device key at boot. The sequence lives in `sign-out.ts`, which can
+// be tested; the ordering inside it is load-bearing and is explained there
+// step by step.
+async function performMindsSignOut() {
+  beginMindsCredentialSignOut();
+  beginSignOutRouting();
+  try {
+    await performSignOutCleanup(mindsSignOutDeps());
+  } finally {
+    endMindsCredentialSignOut();
+    /*
+     * The routing latch outlives the awaited half deliberately. This resolves
+     * as soon as the credentials are gone, while the sidecar restart is still
+     * running, and it is the reload from that moment that must not read
+     * `config_ready` off a sidecar on its way down. Bounded by the start cap
+     * so a wedged start cannot latch the app into "unconfigured" for good, and
+     * 'idle' comes back immediately when there was no restart to wait for.
+     */
+    void awaitSignOutSidecarFlush(SERVER_START_CAP_MS).finally(endSignOutRouting);
+  }
+}
+
+/*
+ * Everything the sign-out sequence needs, wired once. The sequence itself and
+ * the ordering rationale live in `sign-out.ts`, which can be tested; these are
+ * the real implementations it drives.
+ */
+function mindsSignOutDeps(): SignOutDeps {
+  return {
+    getRevokeToken,
+    getRefreshToken,
+    revokeDeviceKeyAndEndSession,
+    cancelScheduledRefresh,
+    cancelCurrentOAuth,
+    clearTokens,
+    settleMindsResumeCredentialGate,
+    resetMindsResumeCredentialGate,
+    forgetMindsCredential,
+    isServerRunning,
+    isServerStarting,
+    getServerPort,
+    httpRequest,
+    scrubEnvCredentials,
+    getAntonEnvPath,
+    clearStoredProviderState,
+    startSidecarFlush: () => {
+      void startSignOutSidecarFlush({
+        isServerRunning,
+        isServerStarting,
+        stopServer,
+        startServer,
+        probeConfigReady,
+      });
+    },
+    reloadRenderer: () => {
+      setImmediate(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.reload();
+        }
+      });
+    },
+  };
+}
+
+/*
+ * Reads `config_ready` back off the restarted sidecar for the flush's
+ * diagnostic. Bounded twice over, the way the inline version was: the fetch
+ * aborts at 3s and the race gives up at 3.5s, so a sidecar that is still
+ * starting cannot hold the flush open.
+ */
+async function probeConfigReady(): Promise<boolean | null> {
+  const healthPort = getServerPort();
+  const healthRes = await Promise.race([
+    fetch(`http://127.0.0.1:${healthPort}/api/v1/health/`, {
+      signal: AbortSignal.timeout(3000),
+    }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('health check timed out')), 3500),
+    ),
+  ]);
+  if (!healthRes.ok) return null;
+  const health = await healthRes.json() as Record<string, unknown>;
+  return Boolean(health.config_ready);
+}
+
 function setupIPC() {
   ipcMain.handle(IPC.INSTALL_CHECK, async () => {
     return checkInstallStatus();
@@ -534,8 +714,10 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
-    if (isServerRunning()) return { running: true, port: getServerPort() };
-    // If a start is already in progress, await it rather than spawn again.
+    // startServer is also the health-aware ensure path. Do not short-circuit on
+    // isServerRunning(): an adopted sidecar can disappear without an exit
+    // event, leaving that synchronous flag stale until startServer re-probes
+    // it. If a start is already in progress, startServer awaits it.
     const result = await startServer();
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
@@ -570,7 +752,11 @@ function setupIPC() {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
       if (!OAUTH_CREDENTIALS[engine]) {
-        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+        return {
+          ok: false,
+          code: 'oauth_credentials_missing',
+          reason: `No OAuth credentials configured for "${engine}".`,
+        };
       }
       let clientId: string;
       let clientSecret: string;
@@ -581,7 +767,11 @@ function setupIPC() {
         );
         if (!credsRes.ok) {
           const err = await credsRes.json().catch(() => ({})) as { detail?: string };
-          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+          return {
+            ok: false,
+            code: credsRes.status === 422 ? 'oauth_credentials_missing' : undefined,
+            reason: err.detail || `OAuth credentials not configured for "${engine}".`,
+          };
         }
         const credsData = await credsRes.json() as { client_id: string; client_secret: string };
         clientId = credsData.client_id;
@@ -658,6 +848,7 @@ function setupIPC() {
             connector_id: engine,
             method: 'browser_oauth_builtin',
             name: labelName,
+            replace_existing: Boolean(labelName),
             values: {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
@@ -856,7 +1047,12 @@ function setupIPC() {
   // can re-decode roles and confirm the user is now paid.
   ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
     const result = await refreshTokensOnly();
-    if (result.status === 'ok') return { ok: true, access_token: result.token };
+    // This bridge returns the refreshed JWT so the renderer can re-decode
+    // roles after checkout. A pending sidecar handoff does not make that JWT
+    // unusable for the caller; the handoff keeps its own bounded retry.
+    if (result.status === 'ok' || result.status === 'handoff_pending') {
+      return { ok: true, access_token: result.token };
+    }
     // Superseded means a newer login/logout won the race while this
     // refresh was in flight — the store, not this exchange, holds the
     // truth. Report the current session instead of a false failure.
@@ -867,39 +1063,77 @@ function setupIPC() {
     return { ok: false, reason: `Token refresh failed (${result.status}).` };
   });
 
-  // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
-  // NOT a valid LLM credential — the gateway only accepts an `mdb_*`
-  // API key minted through the auth-service. We exchange the JWT for
-  // a key here, write that key to env, and restart the python server
-  // so it talks to the gateway with a credential the gateway will
-  // actually accept (otherwise every chat call comes back 401).
+  // Commit MindsHub as the LLM provider. The gateway takes the user's own
+  // access token: auth's `/v1/authenticate/` picks its branch from the token's
+  // shape and accepts a Keycloak JWT as readily as an `mdb_` key, provided the
+  // JWT carries an active-organization claim. selectEntitledOrg is what
+  // guarantees that claim, and picks an organization that can actually run
+  // turns when the active one cannot.
+  //
+  // Nothing is minted and nothing is written: the token goes to the sidecar's
+  // runtime holder, and the refresh timer keeps handing over a fresh one.
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
-  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
+  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string, chosenByUser?: boolean) => {
     const token = getAccessToken();
     if (!token) {
       console.error('[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
-    console.log('[mindshub:finalize] provisioning API key…');
-    const result = await provisionAntonApiKey(token);
-    console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
-    if (result.upgradeRequired) {
-      return { ok: false, upgradeRequired: true };
+    // `chosenByUser` travels separately from the id because the id alone does
+    // not say who decided. Today only the onboarding picker sends one, but a
+    // caller that later passes a remembered id must not inherit "a person just
+    // answered this" along with it (ENG-2199).
+    // Compared strictly rather than coerced: this flag's whole job is to
+    // suppress a fallback, so anything but a real `true` off the wire must not
+    // arm it. Today's renderer sends a boolean or nothing, so this is the
+    // contract written down rather than a hole being closed.
+    const selected = await selectEntitledOrg(token, {
+      preferOrgId: organizationId,
+      chosenByUser: chosenByUser === true,
+    });
+    if (!selected.token) {
+      console.error('[mindshub:finalize] could not select an organization:', selected.error);
+      return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
     }
-    if (!result.key) {
-      return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
+    /*
+     * Let a sign-out's sidecar restart land before handing this user's
+     * credential over. Signing a second user in right after the first signed
+     * out is the ordinary case (a tester, a shared machine), and since the
+     * sign-out reply no longer waits for the restart, that restart can still
+     * be running here. Its `stopServer` would take down the sidecar this
+     * credential was just pushed to, and `commitMindsSignIn` reports nothing
+     * when it bails, so sign-in would look fine and no turn would work.
+     *
+     * Bounded and non-fatal: `commitMindsSignIn` ensures a live sidecar itself
+     * and queues on the same lifecycle tail, so a start that runs to its cap
+     * costs a slower sign-in rather than a broken one.
+     */
+    const flushWait = await awaitSignOutSidecarFlush(SIGN_OUT_FLUSH_SIGN_IN_WAIT_MS);
+    if (flushWait === 'timeout') {
+      console.warn('[mindshub:finalize] sign-out sidecar restart still running; continuing');
     }
     try {
-      await writeMindsKeyToEnvAndRestart(result.key);
+      await commitMindsSignIn();
     } catch (err: any) {
-      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
-      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
+      console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
+      return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
     }
-    // ENG-498: (re)arm the key lifecycle watch for this fresh sign-in —
-    // logout cancels it, and boot only starts it when already signed in.
-    startKeyLifecycleChecks();
-    return { ok: true, apiKey: result.key };
+    // The organization the presented token names. The ranking asks for one and
+    // the entitlement hunt can still move it — but never past an explicit
+    // pick — so onboarding names this rather than what it requested.
+    return { ok: true, organization: selected.organization };
   });
+
+  // The organizations this person belongs to, company ones first, and which
+  // one their token names. Read here rather than in the renderer because the
+  // renderer cannot reach Keycloak: auth's ingress names console origins in
+  // its CORS allowlist and no Cowork host is among them.
+  ipcMain.handle(IPC.MINDSHUB_LIST_ORGS, () => listMindsOrgs());
+
+  // Move this install to another organization: switch the session, mint and
+  // commit a key there, remember the pick, and retire the key left behind.
+  ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
+    switchMindsOrg(String(organizationId || '')));
 
   // Returns the in-memory access token if one is cached (e.g. boot-
   // time silent refresh already succeeded). Lets the Onboarding page
@@ -908,179 +1142,38 @@ function setupIPC() {
     return { access_token: getAccessToken() };
   });
 
+  // Store (or clear) a MindsHub key the user supplied by hand and hand it to
+  // the sidecar. The renderer sends it here rather than writing it as a
+  // setting, so BYOK does not put a long-lived bearer back on disk.
+  ipcMain.handle(IPC.MINDSHUB_SET_USER_KEY, async (_evt, rawKey: unknown) => {
+    const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+    try {
+      // Both helpers report whether the sidecar actually took the value. Say so
+      // rather than reporting a bare success: the renderer diverts the key out
+      // of the settings write on the strength of this answer, so a silent
+      // `ok: true` on a failed hand-over is how the key ends up stored nowhere.
+      const handedOver = key
+        ? await setUserSuppliedMindsKey(key)
+        : await clearUserSuppliedMindsKey();
+      if (!handedOver) {
+        return { ok: false, reason: 'Saved the key, but the local server did not take it. Try again in a moment.' };
+      }
+      return { ok: true };
+    } catch (err: any) {
+      console.error('[mindshub:set-user-key] failed:', err);
+      return { ok: false, reason: err?.message || 'Could not save the MindsHub key.' };
+    }
+  });
+
   // Authoritative "am I signed in?" read. The in-memory token is
   // process-lifetime only, so right after a launch (or after a missed
   // refresh window — laptop slept past the timer) it can be empty while
   // a perfectly valid refresh token sits on disk. Refresh on miss so the
   // Settings account card reflects the real session instead of showing
   // an authenticated user as signed out (ENG-761).
-  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, async () => {
-    const cached = getAccessToken();
-    if (cached && !isAccessTokenExpired()) return cached;
-    if (!getRefreshToken()) return cached;
-    const result = await refreshTokensOnly();
-    return result.status === 'ok' ? result.token : getAccessToken();
-  });
-  ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
-    // Full sign-out: clear every credential + LLM-config key so the
-    // next launch's checkConfigured() returns false and the user is
-    // routed straight to onboarding. We deliberately keep
-    // ANTON_TERMS_CONSENT (the user already agreed) and non-credential
-    // preferences (memory mode, theme, etc.).
-    //
-    // We must NOT await the chain below: when the dev Keycloak hangs
-    // (which has happened), a synchronous await freezes the whole
-    // logout, leaving the confirm modal stuck on "Signing out…"
-    // because the renderer is waiting on this IPC.
-    //
-    // ENG-498: revoke THIS device's key while the session is still valid,
-    // then end the Keycloak session — one detached chain (see
-    // revokeDeviceKeyAndEndSession for the ordering rationale). Tokens are
-    // snapshotted here because clearTokens() below wipes them; the token
-    // fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
-    // case the key simply falls to the server-side TTL.
-    const revokeAccessToken = await getRevokeToken();
-    // Read the refresh token only AFTER the exchange above settles: a
-    // refresh inside getRevokeToken may ROTATE the persisted refresh token
-    // (see its NOTE), and reading earlier would hand end-session a
-    // superseded token.
-    const logoutRefreshToken = getRefreshToken();
-    void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
-    cancelScheduledRefresh();
-    cancelKeyLifecycleChecks();
-    // Tear down any sign-in still waiting on its browser tab. Without
-    // this, the loopback server stays armed for up to 3 minutes and
-    // completing that stale tab silently signs the user back in after
-    // an explicit logout.
-    cancelCurrentOAuth();
-    clearTokens();
+  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => freshAccessToken());
 
-    // Clear credentials from the server's SQLite DB (the authoritative
-    // source for config_ready). A single POST /settings/logout atomically
-    // clears all credential keys and provider state in one transaction.
-    // If the endpoint isn't available (404/405 — older server version),
-    // fall back to individual DELETE requests for each credential key.
-    let dbCleared = false;
-    if (isServerRunning() || isServerStarting()) {
-      const port = getServerPort();
-      try {
-        const res = await Promise.race([
-          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('logout request timed out')), 5000),
-          ),
-        ]);
-        dbCleared = res.status >= 200 && res.status < 300;
-        if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
-      } catch (err) {
-        console.warn('[logout] POST /settings/logout failed:', err);
-      }
-
-      // Fallback: if POST /settings/logout isn't available (404/405 on
-      // older server versions that don't have the endpoint yet), clear
-      // each credential key individually via DELETE. Without this, the
-      // DB retains credentials and config_ready stays true after logout.
-      if (!dbCleared) {
-        console.log('[logout] falling back to individual DELETE requests');
-        const DB_CREDENTIAL_KEYS = [
-          'minds_api_key', 'anthropic_api_key', 'openai_api_key',
-          'gemini_api_key', 'openai_compatible_api_key',
-          'minds_url', 'openai_base_url',
-          'providers_json', 'provider_status', 'provider_status_details',
-        ];
-        const deletes = DB_CREDENTIAL_KEYS.map((key) =>
-          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-          }).catch(() => { /* best effort */ }),
-        );
-        await Promise.race([
-          Promise.allSettled(deletes),
-          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-        ]);
-        dbCleared = true;
-      }
-    }
-
-    // Scrub credential keys from the shared .env (see logout-env.ts). Since the
-    // ENG-941 settings refactor the DB — not the .env — is authoritative for
-    // credentials and config_ready: the .env→DB seed is one-time and
-    // sentinel-guarded, so a restart never re-reads the .env, and the DB clear
-    // above (POST /settings/logout) is what actually signs the user out. This
-    // scrub is therefore best-effort hygiene: it keeps stale keys from the
-    // standalone anton CLI, but a failure does NOT mean the user is still
-    // signed in. scrubEnvCredentials retries transient Windows share-mode locks
-    // (ENG-1209) and always clears process.env; if the write still can't land we
-    // log and press on rather than fail an otherwise-complete sign-out or trap
-    // the renderer's "Signing out…" spinner (the original ENG-1206 hang). The
-    // renderer keeps its own recovery path for a genuinely rejected logout.
-    try {
-      await scrubEnvCredentials(getAntonEnvPath());
-    } catch (err) {
-      console.warn('[logout] failed to scrub credential keys from .env (best-effort):', err);
-    }
-    clearStoredProviderState();
-
-    // Restart the server so in-memory caches (settings, provider objects) are
-    // flushed. The DB clear above already dropped the credential rows and
-    // invalidated the settings cache, so config_ready is false without this —
-    // the restart is belt-and-suspenders against any provider object still held
-    // in memory reporting config_ready: true after the UI says "signed out".
-    if (isServerRunning() || isServerStarting()) {
-      try {
-        await stopServer();
-        await startServer();
-
-        // Verify the restart actually cleared config_ready. If it didn't,
-        // credentials survived in the DB — log loudly so we can diagnose.
-        const healthPort = getServerPort();
-        try {
-          const healthRes = await Promise.race([
-            fetch(`http://127.0.0.1:${healthPort}/api/v1/health/`, {
-              signal: AbortSignal.timeout(3000),
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('health check timed out')), 3500),
-            ),
-          ]);
-          if (healthRes.ok) {
-            const health = await healthRes.json() as Record<string, unknown>;
-            if (health.config_ready) {
-              console.error('[logout] BUG: config_ready is still true after logout — credentials survived in DB');
-            } else {
-              console.log('[logout] verified: config_ready is false after restart');
-            }
-          }
-        } catch {
-          // Health check failed — server may still be starting, not fatal
-        }
-      } catch (err) {
-        console.warn('[logout] server restart failed:', err);
-      }
-    }
-
-    // Force-reload the renderer from main. The renderer's own
-    // `window.location.reload()` was unreliable here (page stayed on
-    // the stuck confirm modal); driving the reload from the main
-    // process via webContents.reload() always navigates and reboots
-    // App.tsx's init() → checkConfigured() → onboarding redirect.
-    //
-    // Defer to the next tick so this handler's promise resolves and the
-    // IPC reply is delivered to the renderer BEFORE we tear the page
-    // down. Reloading synchronously here races the reply: sometimes the
-    // renderer got it and also reloaded (double reload → stuck modal),
-    // sometimes the page died before the reply landed. The single
-    // deferred reload makes it deterministic. The renderer no longer
-    // reloads on Electron (see SettingsView.handleLogout).
-    setImmediate(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.reload();
-      }
-    });
-  });
+  ipcMain.handle(IPC.AUTH_LOGOUT, performMindsSignOut);
 
   ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
     if (!activeInstall) return false;
@@ -1093,7 +1186,7 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
-    console.log('[server] restart requested (post-onboarding)');
+    console.log('[server] restart requested');
     await stopServer();
     // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
     // the cache so the webRequest hook re-reads it on the next request.
@@ -1198,9 +1291,8 @@ function setupIPC() {
   );
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      await shell.openExternal(url);
-    }
+    const browserUrl = normalizeExternalBrowserUrl(url);
+    if (browserUrl) await shell.openExternal(browserUrl);
   });
 
   // Open a local file/folder in the OS default app (Finder, browser,
@@ -1229,6 +1321,22 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  // Native directory selection for the first-class Code workspace. The
+  // renderer receives only the user-selected path; filesystem access and Git
+  // orchestration remain in the local sidecar.
+  ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder',
+      // `createDirectory` exposes New Folder in the macOS panel;
+      // `promptToCreate` provides the equivalent typed-path flow on Windows.
+      // The native default confirmation label (Open) matches both platforms.
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    return { ok: true, path: path.resolve(result.filePaths[0]) };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
@@ -1319,7 +1427,7 @@ app.whenReady().then(async () => {
   // (ENG-761 — the Windows-sleep flavour of "signed in but shows
   // signed out"). powerMonitor is only usable after app ready.
   powerMonitor.on('resume', () => {
-    if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
+    void refreshMindsCredentialAfterResume();
   });
 
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
@@ -1539,6 +1647,9 @@ app.whenReady().then(async () => {
         }
       } else if (outcome.status === 'transient') {
         console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
+      } else if (outcome.status === 'handoff_pending') {
+        // Expected at boot: the sidecar starts below, and its start hook pushes.
+        console.log('[auth] boot token refreshed — sidecar gets it when it starts');
       } else if (outcome.status !== 'ok') {
         console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
@@ -1574,7 +1685,6 @@ app.whenReady().then(async () => {
         result = await startServer();
       }
     }
-    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (result.ok) {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
       // Resume refresh loops for Google OAuth connections already in the
@@ -1583,12 +1693,74 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
-    // ENG-498: watch this device's MindsHub key and renew it ahead of its
-    // TTL deadline. Armed even when the boot start failed: the check itself
-    // no-ops until the server is running/starting, so a sidecar the user
-    // starts manually later still gets its daily renewal ticks instead of
-    // staying disarmed until the next app launch.
-    startKeyLifecycleChecks();
+    /* One-time migration off a minted device key.
+     *
+     * Every build that minted one wrote it to `~/.cowork/.env`, so that line is
+     * the marker for an install that has not made this transition. Signing out
+     * IS the migration: it revokes this device's minted keys while the session
+     * still names the organization they were minted in, clears every stored
+     * copy, and routes the user to sign in again on their session credential.
+     *
+     * The marker has to be that `.env` line and not anything the sidecar
+     * reports. A credential has already been handed over by the time this runs:
+     * the post-start hook pushes after every successful start, including the
+     * `startServer()` above. Once it has, the sidecar answers `minds_api_key` as
+     * set whether or not a row exists, so a marker read from there would find
+     * the live credential rather than the leftover it is looking for. */
+    const migrating = Boolean(readEnvFile()['ANTON_MINDS_API_KEY']);
+    if (migrating) {
+      console.log('[minds-auth] this install still holds a minted device key — signing out to migrate');
+      try {
+        await performMindsSignOut();
+        /*
+         * Boot keeps waiting for the restart, unlike the IPC path. Only the
+         * IPC path has a dialog on screen to release; here the next steps
+         * hand the sidecar its credential and release boot routing, and both
+         * need the sidecar this restart is bringing up rather than the one it
+         * is taking down.
+         */
+        await awaitSignOutSidecarFlush(SERVER_START_CAP_MS);
+      } catch (err) {
+        console.warn('[minds-auth] migration sign-out failed; will retry next launch', err);
+      }
+      // The marker is the `.env` line, and `performMindsSignOut` scrubs it
+      // best-effort — it logs a failed write and presses on. So confirm the
+      // line is actually gone rather than assuming the sign-out removed it: if
+      // it survived, this runs again on the next launch, and every launch after
+      // that, signing the user out each time with nothing saying why.
+      if (readEnvFile()['ANTON_MINDS_API_KEY']) {
+        console.error('[minds-auth] migration ran but ANTON_MINDS_API_KEY is still in .env — it will retry next launch');
+      }
+    }
+
+    // Hand the sidecar its MindsHub credential BEFORE releasing boot routing.
+    //
+    // It holds that value in memory and nothing persists it, so every start
+    // needs this — a launch, an auto-update, a crash restart. Without it the
+    // sidecar comes up with no credential and `config_ready` reads false.
+    //
+    // The ordering is the load-bearing part. `serverConfigured()` awaits
+    // `bootServerSettled` and then reads `config_ready` straight away, and
+    // `resolveBootTarget` consults it BEFORE it ever reaches `awaitBootReady()`
+    // — so releasing the gate first means the renderer reads "unconfigured" and
+    // routes a perfectly signed-in user into onboarding while this push is
+    // still in flight.
+    //
+    // Gated on there being a credential to hand over, NOT on a refresh token: a
+    // user running on a key they supplied by hand has one in the keychain and no
+    // Keycloak session at all, and gating on the session left those installs
+    // unconfigured after every restart.
+    //
+    // Bounded, because routing now waits on it: a Keycloak that hangs must cost
+    // a few seconds of boot, not the app. `pushMindsCredential` carries its own
+    // 10s timeout, and both halves report failure rather than throwing.
+    if (!migrating) {
+      await Promise.race([
+        establishMindsCredential(refreshTokensOnly),
+        new Promise<void>((resolve) => setTimeout(resolve, BOOT_CREDENTIAL_TIMEOUT_MS)),
+      ]);
+    }
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     // A constrained OTA cache that booted bundled (fail-closed) is re-verified
     // and, if compatible, swapped in by the updater's boot check after the
     // server-update pass — see settleConstrainedCache in updater.ts.

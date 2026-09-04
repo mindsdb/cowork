@@ -1,12 +1,11 @@
 // One inbox card — 1:1 with the published-viewer inbox (Figma 515-2287).
 // A SUMMARY of the thread, not the conversation: avatar + name + relative
 // time (+ edited), the text clamped to 4 lines, and a footer with the reply
-// count and the "unanchored" chip. The full thread (replies, editing) lives
+// count and its location context. The full thread (replies, editing) lives
 // in the on-artifact popover, reached by clicking the card (onFocus).
 //
-// Hover: highlights the anchored element in the iframe (onHover/onLeave) and
-// reveals the action cluster — resolve/reopen + a "…" menu (Delete, own
-// comments only; the server re-checks authorship anyway).
+// Hover highlights the anchored element in the iframe (onHover/onLeave).
+// Owner actions remain visible so they are usable from touch and keyboard.
 
 import Ico from '../../Icons';
 import { threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch }
@@ -60,23 +59,23 @@ function inboxTimeAgo(epochSeconds) {
   try { return new Date(ts * 1000).toLocaleDateString(); } catch { return ''; }
 }
 
-// Exact chip tooltip copy from the reference.
-const UNANCHORED_TIP =
-  'This comment isn’t attached to a visible element — the page may have changed '
-  + 'since it was left, or it renders differently on your device.';
+const UNATTACHED_TIP =
+  'The part of the artifact this comment referred to is no longer available.';
 
 const GENERAL_TIP =
-  'General comment — not attached to any element on the page.';
+  'General feedback about the whole artifact.';
 
 const HIDDEN_TIP =
-  'This comment is on a part of the page that isn’t shown right now (e.g. another '
-  + 'slide or tab) — it’ll reappear when you navigate there.';
+  'This feedback refers to another slide, tab, or currently hidden section.';
 
 export function InboxCard({
   thread,
   state,      // layer anchor state: 'hidden' | 'orphan' | undefined
   viewer,
+  canResolve = false,
+  canAddressWithAgent = false,
   onStatus,
+  onAddressWithAgent,
   onRequestDelete, // ({ threadId }) → panel confirms + dispatches
   onHover,
   onLeave,
@@ -84,11 +83,8 @@ export function InboxCard({
 }) {
   const resolved = thread.status === 'resolved';
   const done = resolved || thread.status === 'dismissed';
-  // Selector-less threads are unanchored here; the injected layer detects
-  // selectors that no longer resolve (version drift) and shows its own orphan
-  // notice inside the on-artifact popover.
-  // 'orphan' (selector no longer resolves) folds into the "unanchored" chip;
-  // 'hidden' (resolves but off-screen — e.g. another slide) gets its own chip.
+  // The injected layer detects selectors that no longer resolve after edits.
+  // Hidden selectors still resolve but point to another slide or tab.
   const hidden = state === 'hidden';
   const unanchored = !thread.selector || state === 'orphan';
   // No selector at all = an INTENTIONAL general comment (composer path);
@@ -102,7 +98,7 @@ export function InboxCard({
   return (
     <div
       className={[
-        'group relative flex flex-col gap-[8px] p-[8px] rounded-card-row cursor-pointer shrink-0',
+        'group relative flex flex-col gap-2 p-2 rounded-card-row cursor-pointer shrink-0',
         'transition-colors hover:bg-surface-2 [&:has([data-popup-open])]:bg-surface-2',
         done ? 'opacity-55' : '',
       ].join(' ')}
@@ -112,83 +108,89 @@ export function InboxCard({
     >
       {/* Head: avatar · name · time (+edited) */}
       <div className="flex items-center gap-[6px] min-w-0">
-        <span className="flex items-center gap-[4px] min-w-0">
+        <span className="flex items-center gap-1 min-w-0">
           <Avatar email={email} />
-          <span className="text-[14px] font-medium leading-[20px] text-ink truncate">
+          <span className="text-base font-medium leading-[20px] text-ink truncate">
             {displayName(email)}
           </span>
         </span>
-        <span className="text-[14px] leading-[20px] text-ink-3 whitespace-nowrap">
+        <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
           {inboxTimeAgo(thread.created_at || thread.updated_at)}
           {thread.payload?.edited_at && (
-            <span className="text-[11px] text-ink-4"> (edited)</span>
+            <span className="text-xs text-ink-4"> (edited)</span>
           )}
         </span>
       </div>
 
       {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
-      <div
-        className="text-[14px] leading-[20px] text-ink whitespace-pre-wrap break-words"
-        style={{
-          display: '-webkit-box',
-          WebkitLineClamp: 4,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}
-      >
+      <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
         {threadText(thread)}
       </div>
 
-      {/* Foot: reply count · unanchored chip (only when there's something to say). */}
+      {/* Foot: reply count and plain-language location context. */}
       {(repliesTxt || unanchored || hidden) && (
         <div className="flex items-center justify-between min-h-[16px]">
           <span className="text-[12px] leading-[16px] text-ink-4">{repliesTxt}</span>
           {hidden ? (
             <Tooltip content={HIDDEN_TIP}>
-              <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
+              <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
-                <span>hidden</span>
+                <span>not visible</span>
               </span>
             </Tooltip>
           ) : unanchored ? (
-            <Tooltip content={general ? GENERAL_TIP : UNANCHORED_TIP}>
-              <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
+            <Tooltip content={general ? GENERAL_TIP : UNATTACHED_TIP}>
+              <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
-                <span>unanchored</span>
+                <span>{general ? 'general' : 'not attached'}</span>
               </span>
             </Tooltip>
           ) : null}
         </div>
       )}
 
-      {/* Hover actions, top-right (kept while the "…" menu is open). */}
-      <div
-        className="absolute top-[8px] right-[8px] hidden items-center gap-[4px]
-          group-hover:flex [&:has([data-popup-open])]:flex"
-        onClick={(e) => e.stopPropagation()}
+      {/* Owner decisions stay visible: they are the point of this inbox, and
+          must remain reachable without hover on touch and keyboard.
+
+          Deleting your own comment is not an owner decision — the comments
+          service authorizes it by authorship (403 "not author") — so `mine`
+          keeps the cluster alive on its own. Gating the whole thing on
+          `canResolve` also took Delete away from the owner whenever the service
+          answers without `capabilities` at all (an inference deployment
+          predating #465), and the client has no business being stricter. */}
+      {(canResolve || mine) && <div
+        className="artifact-comment-actions"
+        onClick={(event) => event.stopPropagation()}
       >
-        <Tooltip content={resolved ? 'Reopen' : 'Mark as resolved'}>
+        {!done && canAddressWithAgent && onAddressWithAgent && (
           <button
             type="button"
-            aria-label={resolved ? 'Reopen' : 'Mark as resolved'}
-            className={[
-              'w-[20px] h-[20px] flex items-center justify-center bg-transparent border-0',
-              'cursor-pointer p-0 transition-colors',
-              resolved ? 'text-[#146573]' : 'text-ink-4 hover:text-ink',
-            ].join(' ')}
-            onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
+            className="artifact-comment-agent-action"
+            onClick={() => onAddressWithAgent(thread)}
           >
-            <CheckCircleIcon />
+            {Ico.sparkle(13)} Address with agent
           </button>
-        </Tooltip>
+        )}
+        {canResolve && (
+          <Tooltip content={resolved ? 'Reopen comment' : 'Resolve comment'}>
+            <button
+              type="button"
+              aria-label={resolved ? 'Reopen' : 'Mark as resolved'}
+              className="artifact-comment-secondary-action"
+              onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
+            >
+              <CheckCircleIcon /> <span>{resolved ? 'Reopen' : 'Resolve'}</span>
+            </button>
+          </Tooltip>
+        )}
         {mine && (
           <OverflowMenu
             label="More"
             width={145}
             icon={<DotsIcon />}
-            triggerClassName="w-[20px] h-[20px] justify-center rounded-[4px]
+            triggerClassName="w-[32px] h-[32px] justify-center rounded-[7px]
               bg-[rgba(32,32,33,0.06)] hover:bg-[rgba(32,32,33,0.14)] text-ink"
             items={[{
               label: 'Delete',
@@ -198,7 +200,7 @@ export function InboxCard({
             }]}
           />
         )}
-      </div>
+      </div>}
     </div>
   );
 }

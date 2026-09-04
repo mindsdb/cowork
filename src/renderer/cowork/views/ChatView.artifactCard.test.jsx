@@ -18,7 +18,8 @@ const openExternal = vi.fn();
 const openPath = vi.fn();
 const showItemInFolder = vi.fn();
 const revealArtifact = vi.fn(() => Promise.resolve());
-const downloadArtifactFile = vi.fn(() => true);
+// Async on purpose — handleDownload awaits it; see the failure-path test.
+const downloadArtifactFile = vi.fn(async () => true);
 // A getter (not a plain property) so tests can flip web-vs-desktop per case
 // without needing a whole new mock module.
 let hostIsWeb = false;
@@ -50,6 +51,14 @@ vi.mock('../../platform/host', () => ({
   isElectron: false,
 }));
 
+// The viewer's workspace/network behaviour is covered by its own tests. Here
+// we only need to prove the inline card hands the complete artifact to it.
+vi.mock('../components/artifact', () => ({
+  ArtifactViewer: ({ open, artifact }) => open
+    ? <div data-testid="artifact-viewer">{artifact?.id}</div>
+    : null,
+}));
+
 // Partial mock: '../api' has many more exports than these tests touch
 // (publishTargetPath etc., pulled in transitively by ArtifactViewer). Only
 // revealArtifact — the reveal fallback when there's no working bridge —
@@ -63,10 +72,11 @@ vi.mock('../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
 
-import ChatView from './ChatView';
+import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
+const ARTIFACT_ID = '11111111111141118111111111111111';
 
 // The shape the SSE adapter produces for `response.artifact_created`.
 const artifactStep = (overrides = {}) => ({
@@ -81,13 +91,27 @@ const artifactStep = (overrides = {}) => ({
     path: '/proj/.anton/artifacts/clock/index.html',
     ext: '.html',
     action: 'html-app',
-    id: '7db94eb8',
+    id: ARTIFACT_ID,
     slug: 'clock',
+    artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+    draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/index.html`,
+    capabilities: { role: 'owner', canEdit: true, canComment: true },
     publishedUrl: PUBLISHED_URL,
     projectId: 'proj-1',
     projectName: 'general',
     ...overrides,
   },
+});
+
+describe('inline artifact workspace payload', () => {
+  it('reaches the viewer card without dropping identity or permissions', () => {
+    expect(artifactStepToCard(artifactStep(), '/proj')).toMatchObject({
+      id: ARTIFACT_ID,
+      artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+      draftUrl: expect.stringContaining('/artifacts/drafts/'),
+      capabilities: { role: 'owner', canEdit: true, canComment: true },
+    });
+  });
 });
 
 const taskWithArtifact = (step) => ({
@@ -115,23 +139,291 @@ beforeEach(() => {
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
-  it('opens the published URL', async () => {
+  it('previews in the app instead of opening a browser tab', async () => {
+    /*
+     * What was reported: the click opened the shared page, which for an HTML
+     * artifact that happens to read like an announcement looks like the app
+     * refusing to show the artifact. Every click added another tab.
+     */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(ARTIFACT_ID);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('keeps the shared page one click away beside the preview', async () => {
+    /*
+     * The published URL is the address a collaborator gets, and the chat turn
+     * is where the artifact was just made.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Shared link' }));
 
     expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
   });
 
-  it('offers no Open button while the artifact has no published URL', async () => {
-    // Autopublish is off, or the turn's publish failed. Better to offer nothing
-    // than a button that reports an error the user cannot act on.
+  it('previews before the artifact is shared at all', async () => {
+    /*
+     * The draft URL carries its own access check, so the preview does not wait
+     * on a publish. There is no shared page to offer yet.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
+  });
+
+  it('opens the shared page for a draft it cannot render', async () => {
+    /*
+     * A fullstack app needs the loopback proxy only Desktop runs, so nothing
+     * here can render it and the published page is the only destination left.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('offers no button when it can neither preview nor share', () => {
+    /*
+     * Nothing this card can open, and a button that only reports an error is
+     * worse than none.
+     */
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      type: 'fullstack-stateless-app', publishedUrl: '',
+    }))} />);
+
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
+  });
+
+  it('falls back to window.open when the bridge rejects', async () => {
+    /*
+     * `host.openExternal` is async. A synchronous try around it returns before
+     * the promise settles, so the fallback never ran on the one failure it was
+     * written for and the rejection escaped unhandled.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+      await user.click(screen.getByRole('button', { name: 'Shared link' }));
+
+      expect(opened).toHaveBeenCalledWith(PUBLISHED_URL, '_blank', 'noopener,noreferrer');
+    } finally {
+      opened.mockRestore();
+    }
+  });
+
+  it('offers Download for an image the draft cannot render but does hold (ENG-2044)', async () => {
+    /*
+     * The draft preview excludes images, and a .png is not publishable, so
+     * before ENG-2044 this card had nowhere to go — while the server card
+     * carried a perfectly good draft URL for the file. The bytes were one
+     * authenticated request away the whole time; now the click saves them.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.png',
+      action: 'image',
+      file_path: '/proj/.anton/artifacts/chart/chart.png',
+      path: '/proj/.anton/artifacts/chart/chart.png',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/chart.png`,
+    }))} />);
+
+    expect(screen.getByLabelText('Download: Current time')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('says why it has nowhere to go when there is no primary file at all', () => {
+    /*
+     * The only remaining dead end: no preview, nothing shared, and no draft URL
+     * because the artifact has no primary file yet. "No file path" was both the
+     * wrong reason and the only one the user could see; the card has a fine
+     * server path and prints it.
+     */
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.png',
+      action: 'image',
+      file_path: '/proj/.anton/artifacts/chart/chart.png',
+      path: '/proj/.anton/artifacts/chart/chart.png',
+      publishedUrl: '',
+      draftUrl: '',
+    }))} />);
+
+    const reason = 'This artifact cannot be previewed and has no shared link yet.';
+    expect(screen.getByLabelText(reason)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Current time' })).toHaveAttribute('title', reason);
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+  });
+
+  it('saves a spreadsheet nobody shared, the case ENG-2044 was filed on', async () => {
+    /*
+     * The shipped defect, end to end: an .xlsx on web. Not previewable, not
+     * publishable (autopublish is HTML/MD-only), no serve URL (org mode serves
+     * no content). Six users hit "no servable file yet" on finished work in a
+     * single week.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'file',
+      file_path: '/proj/.anton/artifacts/model/model.xlsx',
+      path: '/proj/.anton/artifacts/model/model.xlsx',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+    }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(downloadArtifactFile).toHaveBeenCalledWith(
+      expect.objectContaining({ draftUrl: expect.stringContaining('model.xlsx') }),
+      { actionPath: '/proj/.anton/artifacts/model/model.xlsx' },
+    );
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+  });
+
+  it('reports the failure when the authenticated download fails', async () => {
+    /*
+     * Review pass 2: `downloadArtifactFile` resolves false on an expired
+     * bearer / 403 / network drop. The async mock is load-bearing here —
+     * with a sync mock, a dropped `await` leaves `!(Promise)` false and
+     * this card would swallow the failure without a word.
+     */
+    setOrgMode(true);
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'file',
+      file_path: '/proj/.anton/artifacts/model/model.xlsx',
+      path: '/proj/.anton/artifacts/model/model.xlsx',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+    }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(await screen.findByText('This artifact has no downloadable file yet.')).toBeInTheDocument();
+  });
+
+  it('does not offer Download for an unshared fullstack app — its draft is only a shell', () => {
+    // Self-review finding on ENG-2044. The card keeps the honest reason instead.
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      action: 'fullstack-stateless-app',
+      type: 'fullstack-stateless-app',
+      file_path: '/proj/.anton/artifacts/ops/static/index.html',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/static/index.html`,
+      publishedUrl: '',
+    }))} />);
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    expect(screen.getByLabelText('This artifact cannot be previewed and has no shared link yet.')).toBeInTheDocument();
+  });
+
+  it('offers Download beside Preview for a draft the viewer can render', () => {
+    // Decision on ENG-2044: every org artifact with a primary file is saveable,
+    // previewable ones included — the shared page and the preview are not
+    // the file.
     setOrgMode(true);
     render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
 
-    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+
+  it('previews a markdown artifact, not only HTML', () => {
+    /*
+     * Every other org case here is HTML, so nothing covered the text branch of
+     * the shared predicate through a real card — artifactKinds.test.js feeds it
+     * hand-built objects instead. This is also the surface where the shared
+     * link has to sit beside the preview rather than replace it, and only a
+     * publishable type (.html or .md) ever has both at once.
+     */
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '',
+      action: 'report',
+      file_path: '/proj/.anton/artifacts/weekly/report.md',
+      path: '/proj/.anton/artifacts/weekly/report.md',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`,
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shared link' })).toBeInTheDocument();
+  });
+
+  it('stays clickable when the client could not canonicalize the path', async () => {
+    /*
+     * Org-mode destinations are addressed by the server card, so a relative
+     * path with no project folder to resolve it against must not disable the
+     * preview. This is the whole reason the card asks `canActivate` rather
+     * than `canAct`, and every other fixture here has an absolute path.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={{
+      id: 'conv-a',
+      title: 'Alpha task',
+      status: 'active',
+      messages: [
+        { role: 'user', content: 'build me a clock' },
+        {
+          role: 'assistant',
+          content: 'Done.',
+          steps: [artifactStep({
+            file_path: '.anton/artifacts/clock/index.html',
+            path: '.anton/artifacts/clock/index.html',
+          })],
+        },
+      ],
+    }} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+  });
+
+  it('does not offer a deleted artifact as openable', () => {
+    /*
+     * ENG-1673 again, on the deployment its test never covered. The draft URL
+     * outlives the artifact, because the card is rendered from the turn's
+     * persisted stream events, so the destination alone cannot answer this.
+     */
+    setOrgMode(true);
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' })).toBeDisabled();
+    expect(screen.getByText('Deleted')).toBeInTheDocument();
   });
 });
 
@@ -157,6 +449,28 @@ describe('inline artifact banner on desktop', () => {
 // the card never offered an in-app preview the way it already did for
 // HTML/md/txt/csv. Now that images are previewable, the ENG-1988 single-
 // button model reads "Preview" for them too, same as HTML.
+describe('inline artifact banner label on desktop', () => {
+  /*
+   * The card's accessible name follows the destination, and the third
+   * destination is the OS handoff. Calling that one "Open preview" told a
+   * screen reader the app was about to render the file when it was about to
+   * hand it to Excel.
+   */
+  it('does not call the OS handoff a preview', () => {
+    setOrgMode(false);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'spreadsheet',
+      file_path: '/proj/.anton/artifacts/sales/sales.xlsx',
+      path: '/proj/.anton/artifacts/sales/sales.xlsx',
+      publishedUrl: '',
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' }))
+      .toHaveAttribute('title', 'Open: Current time');
+  });
+});
+
 describe('inline artifact banner for an image artifact', () => {
   const imageStep = () => artifactStep({
     ext: '.png',

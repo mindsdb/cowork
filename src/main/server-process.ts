@@ -18,6 +18,7 @@ import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
+import { authHeader } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
@@ -28,6 +29,7 @@ import {
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
+const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
 // ENG-439: the sidecar binds a loopback port, which is machine-global, not
 // per-OS-user. With fast user switching, whichever user launches first owns
@@ -169,7 +171,9 @@ function appendStderr(chunk: string) {
    dies with the app; the log file gives the user (and the Help > Reveal
    Logs menu item) the full server output for the current session,
    surviving until the next start. Opened fresh on each spawn so the file
-   reflects the live session rather than growing unbounded across runs. */
+   reflects the live session rather than growing unbounded across runs; the
+   previous run is kept as cowork-server.log.1, because users relaunch
+   precisely when something went wrong and that log is the evidence. */
 let logStream: fs.WriteStream | null = null;
 
 export function getServerLogPath(): string {
@@ -193,6 +197,12 @@ function openLogStream(): void {
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    try {
+      fs.renameSync(logPath, `${logPath}.1`);
+    } catch {
+      /* First launch, or a locked file — rotation is best-effort and must
+         never keep the fresh log (or the spawn) from happening. */
+    }
     const stream = fs.createWriteStream(logPath, { flags: 'w' });
     /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
        throw from createWriteStream — so the try/catch alone never sees it. With
@@ -368,25 +378,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Single-shot /health probe that also reads the `owner` token, so the
-// adoption decision can check the running server is ours (ENG-439).
-function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean; owner: string | null }> {
+// Single-shot /health probe that also reads the `owner` token and runtime
+// capabilities. HTTP health alone is not compatibility: an older published
+// sidecar can answer this endpoint while returning 404 for every Code Mode
+// route. Requiring the capability here prevents both adopting that process and
+// declaring an incompatible freshly-spawned binary ready.
+type HealthProbe = { state: 'unreachable' | 'compatible' | 'incompatible'; owner: string | null };
+
+function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
   return new Promise((resolve) => {
     const req = http.get(
       { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs },
       (res) => {
-        if (res.statusCode !== 200) { res.resume(); resolve({ ok: false, owner: null }); return; }
+        if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null }); return; }
         let body = '';
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
           let owner: string | null = null;
-          try { owner = (JSON.parse(body) as { owner?: string } | null)?.owner ?? null; } catch { /* non-JSON */ }
-          resolve({ ok: true, owner });
+          let supportsCoding = false;
+          try {
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown } | null;
+            owner = payload?.owner ?? null;
+            supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
+          } catch { /* non-JSON */ }
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner });
         });
       },
     );
-    req.on('error', () => resolve({ ok: false, owner: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, owner: null }); });
+    req.on('error', () => resolve({ state: 'unreachable', owner: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ state: 'unreachable', owner: null }); });
   });
 }
 
@@ -444,20 +464,22 @@ export async function resolveServerPort(): Promise<number> {
     serverPort = preferred;
 
     const probe = await probeHealthOnce(preferred, 700);
-    if (probe.ok && probe.owner && probe.owner === serverOwnerToken()) {
-      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
-    } else if (probe.ok && probe.owner) {
-      // Healthy AND owned by a DIFFERENT install (another OS user) — never adopt
-      // or touch it. Move to a free port we can own.
+    if (probe.owner && probe.owner !== serverOwnerToken()) {
+      // Owned by a DIFFERENT install (another OS user) — never adopt or touch
+      // it, compatible or not: reaping it would fail with EPERM and the spawn
+      // with EADDRINUSE. Move to a free port we can own.
       const free = await findFreePort();
       if (free) serverPort = free;
       console.log(`[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
+    } else if (probe.state === 'compatible' && probe.owner) {
+      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
     }
-    // else: not healthy, OR healthy but owner-less (a pre-ENG-439 server — on a
-    // per-user port that's almost certainly our own from before this change).
-    // Keep the preferred port; startServer reaps whatever's there and respawns.
-    // A cross-user kill can't succeed (different OS user → EPERM), so the worst
-    // case there is a safe bind failure, never adopting a foreign server.
+    // else: not healthy, healthy but owner-less (a pre-ENG-439 server — on a
+    // per-user port that's almost certainly our own from before this change),
+    // or our own but too old. Keep the preferred port; startServer reaps
+    // whatever's there and respawns. A cross-user kill can't succeed (different
+    // OS user → EPERM), so the worst case there is a safe bind failure, never
+    // adopting a foreign server.
   } catch (err) {
     console.warn('[server] resolveServerPort failed; falling back to preferred port', err);
   } finally {
@@ -472,12 +494,66 @@ export interface StartServerResult {
   port?: number;
 }
 
+/**
+ * Run after every successful start, before `startServer` resolves.
+ *
+ * The sidecar holds the MindsHub credential in memory and nothing persists it,
+ * so a process that comes up holds nothing until something hands it over again.
+ * Wiring that to the individual start call sites does not hold: there are the
+ * two IPC handlers, the installer, three update paths and their rollbacks, and
+ * every one added later. `startServer` is the single funnel all of them go
+ * through, so the re-push belongs here.
+ *
+ * Registered from `index.ts` rather than imported, because `minds-credential`
+ * imports this module to find the port and importing it back would be a cycle.
+ */
+let _startedHook: (() => Promise<unknown>) | null = null;
+
+export function setServerStartedHook(hook: (() => Promise<unknown>) | null): void {
+  _startedHook = hook;
+}
+
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
-  return withServerLifecycle(() => startServerUnlocked(opts));
+  const result = await withServerLifecycle(() => startServerUnlocked(opts));
+  /* Awaited, not fired off. Callers read `/health` as soon as this resolves, so
+   * a push still in flight at that point reads as an unconfigured install.
+   *
+   * It runs after the lifecycle scope is released rather than inside it, because
+   * the hand-over waits on a loopback request for up to 10 seconds and holding
+   * the lifecycle lock for that long would block a concurrent stop or an app
+   * quit. That reasoning covers a top-level start only. `withServerLifecycle` is
+   * re-entrant, so a start nested inside a `withServerMaintenance` transaction
+   * (the update paths and the installer) runs this while the outer scope still
+   * holds the lock. It costs little there, because that transaction already
+   * holds the lock for far longer than the push takes.
+   *
+   * A stop that interleaves costs nothing: `pushMindsCredential` checks that the
+   * sidecar is up before it sends, and the next start pushes again. */
+  if (result.ok && _startedHook) {
+    try {
+      await _startedHook();
+    } catch (error) {
+      // A start that worked is still a start. The hook reports its own failures.
+      console.warn('[server] post-start hook failed', error);
+    }
+  }
+  return result;
 }
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
-  if (serverStarted) return { ok: true, port: serverPort };
+  if (serverStarted) {
+    // An adopted server has no ChildProcess handle whose exit event can
+    // invalidate our state. Re-probe it when the renderer asks us to ensure
+    // the backend is running; otherwise a dead adopted process leaves every
+    // recovery attempt as a no-op.
+    if (!_adoptedExternal) return { ok: true, port: serverPort };
+    const probe = await probeHealthOnce(serverPort, 700);
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken()) {
+      return { ok: true, port: serverPort };
+    }
+    console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
+    await stopServerUnlocked();
+  }
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
   if (pendingStart) return pendingStart;
@@ -498,7 +574,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // adopting (a foreign server was already routed around in resolveServerPort).
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.ok && probe.owner && probe.owner === serverOwnerToken()) {
+    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken()) {
       serverStarted = true;
       _adoptedExternal = true;
       lastStartError = null;
@@ -594,6 +670,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const env = {
       ...process.env,
       ...(await loadBundledServerCredentials()),
+      // An unpackaged checkout may use the developer-owned GitHub and Linear
+      // OAuth clients in ~/.cowork-dev/.env. Pass only its fixed location to
+      // the sidecar: cowork-server owns dotenv parsing and admits only the
+      // OAuthSettings fields, so client secrets never traverse Electron's
+      // child-process environment or logs.
+      ...(!app.isPackaged ? { COWORK_DEV_OAUTH_ENV_FILE: DEV_OAUTH_ENV_FILE } : {}),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       // Both port names: COWORK_SERVER_PORT for every shipped server and
@@ -711,7 +793,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       await sleep(HEALTH_POLL_INTERVAL_MS);
       const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
       step = decideStartWait({
-        healthy: probe.ok,
+        healthy: probe.state === 'compatible',
+        incompatible: probe.state === 'incompatible',
         spawnError,
         exited: childExited,
         elapsedMs: Date.now() - waitStartedAt,
@@ -808,12 +891,31 @@ export async function stopServer(): Promise<void> {
   return withServerLifecycle(stopServerUnlocked);
 }
 
+async function prepareCodingTasksForShutdown(): Promise<void> {
+  if (!serverStarted) return;
+  try {
+    const response = await fetch(`${getServerOrigin()}/api/v1/coding/runtime/prepare-shutdown`, {
+      method: 'POST',
+      headers: authHeader(),
+      signal: AbortSignal.timeout(1_000),
+    });
+    if (!response.ok) {
+      console.warn(`[coding] shutdown checkpoint returned HTTP ${response.status}`);
+    }
+  } catch (error) {
+    // The sidecar may already be unhealthy. Continue with the bounded process
+    // teardown; its startup reconciliation remains the crash-safety fallback.
+    console.warn('[coding] could not checkpoint active tasks before shutdown', error);
+  }
+}
+
 async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;
   const proc = serverProcess;
   if (!proc) {
+    if (_adoptedExternal) await prepareCodingTasksForShutdown();
     serverStarted = false;
     lastStopIntentional = true;
     // If we adopted an external server (no child handle), try to kill
@@ -835,6 +937,7 @@ async function stopServerUnlocked(): Promise<void> {
   // Mark not-running immediately so the renderer's `isServerRunning`
   // check reflects intent. We keep `serverProcess` non-null until we
   // actually verify exit so a racing startServer can't double-spawn.
+  await prepareCodingTasksForShutdown();
   serverStarted = false;
 
   const exited = new Promise<void>((resolve) => {

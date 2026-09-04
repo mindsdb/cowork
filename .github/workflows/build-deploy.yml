@@ -7,9 +7,12 @@
 #
 # The SPA is env-agnostic: it derives every MindsHub service URL from the page
 # origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every dev
-# namespace and every PR env with no VITE build args for service URLs — the one
-# exception is the PostHog token below, gated to production so staging and
-# PR-env builds ship analytics-disabled. `-f Dockerfile.frontend` selects the
+# namespace and every PR env with no VITE build args for service URLs — the two
+# exceptions below are build identity, not per-env config: the PostHog token,
+# gated to production so staging and PR-env builds ship analytics-disabled, and
+# VITE_APP_VERSION, the deployed commit stamped onto every analytics event as
+# app_version (the in-container build drops .git, so without it app_version falls
+# back to a stale package.json version). `-f Dockerfile.frontend` selects the
 # SPA build rather than the all-in-one ./Dockerfile.
 #
 # ON PERMISSIONS. A called workflow can never exceed its caller's grant, and that
@@ -79,9 +82,14 @@ jobs:
           # chat_turn_failed series with no way to filter it back out. Non-prod
           # builds fall back to Dockerfile.frontend's empty ARG default, which
           # degrades to today's silent no-op rather than failing the build.
+          # VITE_APP_VERSION stamps the deployed commit (env.SLUG, the same value
+          # as the image tag) as analytics app_version. The in-container build
+          # drops .git, so vite.config.ts's git-describe step falls back to a
+          # stale package.json version without it.
           extra-build-args: >-
             -f Dockerfile.frontend
             --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ inputs.build-environment == 'production' && secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || '' }}
+            --build-arg VITE_APP_VERSION=${{ env.SLUG }}
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
@@ -94,6 +102,9 @@ jobs:
         with:
           image: ${{ needs.build.outputs.image }}
           snyk-token: ${{ secrets.SNYK_TOKEN }}
+          # This workflow builds Dockerfile.frontend, not the action's default
+          # ./Dockerfile — otherwise Snyk attributes findings to the wrong image.
+          dockerfile: Dockerfile.frontend
           # Advisory on a PR, blocking on a deploy branch: an upstream CVE should
           # not stop someone iterating, and should stop a release.
           allow-vulns: ${{ inputs.pr-environment && 'true' || '' }}

@@ -16,6 +16,16 @@ const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
   getVersionInfo: vi.fn(async () => ({ app: '1.2.3', ui: null, source: 'bundled' })),
 }));
+const codingSpies = vi.hoisted(() => ({
+  engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
+  terminalShells: vi.fn(async () => ({
+    platform: 'darwin', resolved: 'bash', items: [
+      { id: 'auto', label: 'Automatic — Bash' },
+      { id: 'bash', label: 'Bash' },
+    ],
+  })),
+}));
+const deployment = vi.hoisted(() => ({ isWeb: false, orgMode: false }));
 
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({ server_version: '0.1.0', anton_version: '0.1.0' })),
@@ -27,28 +37,55 @@ vi.mock('../../api', () => ({
 vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
-    isWeb: false,
-    // Coding Mode's own tests below need its nav section reachable; the
-    // parked-by-default behavior (flag off) is covered separately in
-    // SettingsView.hostGating.test.js.
-    codingModeOptionsEnabled: true,
+    get isWeb() { return deployment.isWeb; },
+    codeModeAvailable: true,
     isMac: () => false,
     openExternal: vi.fn(),
     serverDiagnostics: spies.serverDiagnostics,
     checkForUpdates: spies.checkForUpdates,
     applyUpdate: spies.applyUpdate,
+    onWindowVisibility: () => () => {},
   },
   getVersionInfo: spies.getVersionInfo,
+  getCodeControlPlaneOrigin: () => 'https://code.example.test',
   isElectron: true,
   getAccessToken: spies.getAccessToken,
+}));
+vi.mock('../../../lib/orgMode', () => ({
+  useOrgMode: () => deployment.orgMode,
 }));
 vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../../code/api', () => ({
+  codingApi: {
+    engines: codingSpies.engines,
+    terminalShells: codingSpies.terminalShells,
+    models: vi.fn(async () => ({ items: ['fable'] })),
+    computers: vi.fn(async () => ({ items: [{
+      schema_version: 1,
+      id: 'local',
+      name: 'This computer',
+      is_local: true,
+      status: 'online',
+      active_run_count: 0,
+      last_seen_at: new Date().toISOString(),
+      capabilities: { platform: 'darwin', architecture: 'arm64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['bash'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
+    }] })),
+    computerRegistrationToken: vi.fn(async () => ({ registration_token: 'test-token', expires_in_seconds: 600 })),
+    renameComputer: vi.fn(),
+    revokeComputer: vi.fn(),
+  },
+}));
 
 import SettingsView from './SettingsView';
+
+beforeEach(() => {
+  window.localStorage.setItem('mindshub.code.enabled.v1', 'true');
+  Object.values(codingSpies).forEach((spy) => spy.mockClear());
+});
 
 const baseSettings = () => ({
   modelMode: 'default',
@@ -87,6 +124,11 @@ function Harness({ section }) {
   );
 }
 
+beforeEach(() => {
+  deployment.isWeb = false;
+  deployment.orgMode = false;
+});
+
 describe('SettingsView — every section mounts (behavior lock)', () => {
   beforeEach(() => {
     Object.values(spies).forEach((s) => s.mockClear());
@@ -97,11 +139,29 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     expect(await screen.findByText('LLM Providers')).toBeInTheDocument();
   });
 
-  it('renders the Coding Mode section', async () => {
-    // Desktop (host.isWeb: false, mocked above) shows the "Coding Mode" nav
-    // section — its own top-level entry, not part of Agent.
-    render(<Harness section="codingMode" />);
-    expect(await screen.findByText('Coding mode')).toBeInTheDocument();
+  it('renders the independent Coding agent section', async () => {
+    render(<Harness section="codingAgent" />);
+    expect(await screen.findByText('The default coding agent for new projects and tasks. You can change it when starting a task.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Coding agent engine' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Coding agent model' })).toBeInTheDocument();
+  });
+
+  it('renders the Computers section with local and managed targets', async () => {
+    render(<Harness section="computers" />);
+    expect(await screen.findByText('Run Code beyond this computer')).toBeInTheDocument();
+    expect(screen.getByText('Managed compute')).toBeInTheDocument();
+    expect(screen.getByText('Coming soon')).toBeInTheDocument();
+  });
+
+  it('creates a short-lived cross-platform computer connection command', async () => {
+    const user = userEvent.setup();
+    render(<Harness section="computers" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Connect computer' }));
+    expect(await screen.findByRole('dialog', { name: 'Connect a computer' })).toBeInTheDocument();
+    expect(await screen.findByText(/cowork-code-runtime --server "https:\/\/code\.example\.test"/)).toHaveTextContent('--code "test-token"');
+    expect(screen.getByRole('combobox', { name: 'Computer type' })).toHaveTextContent('Mac');
+    expect(screen.queryByText(/private local address/)).not.toBeInTheDocument();
   });
 
   it('renders the Appearance section', async () => {
@@ -142,66 +202,54 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
   });
 });
 
-// ─── Coding Mode's per-harness picker ──────────────────────────────────
-//
-// Desktop only (host.isWeb: false throughout this file), and its own
-// top-level nav section (after Agent, before Appearance) rather than part
-// of Agent. The top-level "Coding mode" switch lives in its own "Coding
-// Mode" card; the per-harness enable toggles live in a separate "Available
-// Agents" card below it — not hidden while Coding mode is off, just greyed
-// out (disabled) so it's clear what turning it on unlocks. Anton is still
-// listed there (so it's clear it's part of the picker) but has no Switch —
-// it's the default agent and can't be turned off; Hermes specifically is
-// hidden unless the server actually has it registered (settings.harnessOptions,
-// from available_harness_ids()).
+describe('SettingsView — LLM provider visibility (ENG-2185)', () => {
+  it('hides the entire provider-management card on SaaS Cowork', async () => {
+    deployment.isWeb = true;
+    deployment.orgMode = true;
 
-describe('SettingsView — Coding Mode harness picker', () => {
-  it('shows the harness toggles disabled while Coding mode itself is off', async () => {
-    render(<Harness section="codingMode" />);
-    await screen.findByText('Coding mode');
-    expect(screen.getByText('Available Agents')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /enable claude-code/i })).toHaveAttribute('aria-disabled', 'true');
+    render(<Harness section="agent" />);
+
+    expect(await screen.findByText('Model Router')).toBeInTheDocument();
+    expect(screen.queryByText('LLM Providers')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add provider' })).not.toBeInTheDocument();
   });
 
-  it('enables the Claude-Code toggle once Coding mode is switched on; Anton is listed but has no toggle', async () => {
+  it.each([
+    ['standalone self-hosted web', true],
+    ['desktop', false],
+  ])('keeps provider management on %s', async (_deployment, isWeb) => {
+    deployment.isWeb = isWeb;
+
+    render(<Harness section="agent" />);
+
+    expect(await screen.findByText('LLM Providers')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add provider' })).toBeInTheDocument();
+  });
+});
+
+describe('SettingsView — Code Mode opt-in', () => {
+  it('shows only the local opt-in while disabled and performs no Code service reads', async () => {
+    window.localStorage.setItem('mindshub.code.enabled.v1', 'false');
+    render(<Harness section="codingAgent" />);
+
+    expect(await screen.findByRole('switch', { name: 'Enable Code Mode' })).not.toBeChecked();
+    expect(screen.queryByRole('combobox', { name: 'Coding agent engine' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Coding agent model' })).toBeNull();
+    expect(codingSpies.engines).not.toHaveBeenCalled();
+    expect(codingSpies.terminalShells).not.toHaveBeenCalled();
+  });
+
+  it('reveals the complete settings surface immediately after opting in', async () => {
+    window.localStorage.setItem('mindshub.code.enabled.v1', 'false');
     const user = userEvent.setup();
-    render(<Harness section="codingMode" />);
-    await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
+    render(<Harness section="codingAgent" />);
 
-    expect(screen.getByRole('switch', { name: /enable claude-code/i })).not.toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText('Anton')).toBeInTheDocument();
-    expect(screen.getByText('Always on')).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: /enable anton/i })).not.toBeInTheDocument();
-  });
+    await user.click(await screen.findByRole('switch', { name: 'Enable Code Mode' }));
 
-  it('hides Hermes when the server does not report it as available', async () => {
-    render(<Harness section="codingMode" />);
-    await screen.findByText('Coding mode');
-
-    // baseSettings() carries no harnessOptions — server never reported
-    // hermes-agent as installed.
-    expect(screen.queryByRole('switch', { name: /enable hermes/i })).not.toBeInTheDocument();
-  });
-
-  it('shows Hermes when the server reports it as available', async () => {
-    const user = userEvent.setup();
-    function HermesHarness() {
-      const [settings, setSettings] = useState({ ...baseSettings(), harnessOptions: ['anton', 'hermes'] });
-      const setSetting = (key, value) => setSettings((s) => ({ ...s, [key]: value }));
-      return (
-        <SettingsView
-          settings={settings} setSetting={setSetting} onSave={vi.fn(async () => {})}
-          theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
-          customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
-          serverOnline serverBusy={false} onStartServer={vi.fn()} onStopServer={vi.fn()}
-          section="codingMode" onSectionChange={vi.fn()} isSsoConnected={false} onSsoSignIn={vi.fn()}
-          shellUpdate={null} onDownloadShellUpdate={vi.fn()}
-        />
-      );
-    }
-    render(<HermesHarness />);
-    await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
-
-    expect(screen.getByRole('switch', { name: /enable hermes/i })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Coding agent engine' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Coding agent model' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Default terminal shell' })).toBeInTheDocument();
+    expect(codingSpies.engines).toHaveBeenCalledOnce();
+    expect(codingSpies.terminalShells).toHaveBeenCalledOnce();
   });
 });

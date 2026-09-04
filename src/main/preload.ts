@@ -14,10 +14,14 @@ function parseServerPort(): number | null {
 contextBridge.exposeInMainWorld('antontron', {
   // Resolved loopback server port (ENG-439); null if main didn't pass one.
   serverPort: parseServerPort(),
-  // Coding Mode kill switch: the feature (its Settings section, the toggle,
-  // the floating corner button) is parked behind this while unfinished.
-  // Unset/anything other than 'true' defaults to off.
-  codingModeOptionsEnabled: process.env.CODING_MODE_OPTIONS_ENABLED === 'true',
+  // Optional reachable control-plane origin for connecting another physical
+  // computer. The renderer validates this before placing it in setup commands.
+  codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
+  // Deployment capability, deliberately separate from the user's local
+  // opt-in. Desktop builds expose Code unless an emergency rollout kill
+  // switch explicitly disables it; hosted web receives no Electron bridge
+  // and therefore cannot expose the feature.
+  codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
@@ -62,8 +66,21 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
-  mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
+  mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
+    ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
+  // Deliberately a separate method rather than the second argument above.
+  // Renderer bundles update over the air while `src/main/**` only arrives in a
+  // new installer, so a new renderer routinely runs against an older shell —
+  // and an older shell's `mindshubFinalize` silently drops a second argument.
+  // A method the old preload does not have is something the renderer can
+  // actually test for, which the established `typeof bridge.x === 'function'`
+  // checks in host.ts already rely on (ENG-2199).
+  mindshubFinalizeChosen: (organizationId: string) =>
+    ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, true),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
+  mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
+  mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
+  mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
   // Fires whenever the MindsHub session state changes in the main
   // process (login, silent refresh, logout, session death). Returns an
   // unsubscribe function.
@@ -76,6 +93,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+  pickCodeFolder: () => ipcRenderer.invoke(IPC.CODE_PICK_FOLDER),
 
   // Coding mode (MVP): detect a local `claude` CLI, run it in an embedded PTY.
   detectClaudeCode: () => ipcRenderer.invoke(IPC.CODING_DETECT_CLI),
@@ -104,6 +122,11 @@ contextBridge.exposeInMainWorld('antontron', {
     const listener = (_: any, taskId: string, exitCode: number) => cb(taskId, exitCode);
     ipcRenderer.on(IPC.CODING_TERMINAL_EXIT, listener);
     return () => ipcRenderer.removeListener(IPC.CODING_TERMINAL_EXIT, listener);
+  },
+  onWindowVisibility: (cb: (visible: boolean) => void) => {
+    const listener = (_: any, visible: boolean) => cb(visible);
+    ipcRenderer.on(IPC.APP_WINDOW_VISIBILITY, listener);
+    return () => ipcRenderer.removeListener(IPC.APP_WINDOW_VISIBILITY, listener);
   },
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);

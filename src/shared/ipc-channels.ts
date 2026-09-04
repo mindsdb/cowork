@@ -76,6 +76,21 @@ export const IPC = {
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+  // A MindsHub API key the user pasted in, instead of running on their
+  // session credential. It goes to main rather than into the settings write
+  // the rest of the form makes, because main is what stores it in the OS
+  // keychain and hands it to the sidecar at runtime — keeping it out of
+  // `.env`, out of `minds_api_key` and out of `providers_json`. An empty
+  // value clears it and falls the app back to the session credential.
+  MINDSHUB_SET_USER_KEY: 'mindshub:set-user-key',
+  // Which MindsHub organization the credential this install presents names.
+  // The read and the switch both live in main because the credential does:
+  // the token store and the Keycloak switch are main-process, and the
+  // renderer has no way to reach Keycloak (auth's CORS allowlist names
+  // console origins only). Switching re-rolls the active-organization claim,
+  // which is what the gateway reads to decide whose credits a turn spends.
+  MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
+  MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of
@@ -90,6 +105,14 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+  // Pushed main → renderer when the main window hides/minimizes (false) or
+  // shows/restores/focuses (true). Electron 39 starts the renderer with
+  // MacWebContentsOcclusion disabled, so on macOS `document.visibilityState`
+  // never reports a hidden or minimized window; polling gates combine both.
+  APP_WINDOW_VISIBILITY: 'app:window-visibility',
+
+  // First-class Code workspace (independent from the parked Coding Mode MVP).
+  CODE_PICK_FOLDER: 'code:pick-folder',
 
   // Coding mode (MVP) — detect a local `claude` CLI install, then run it in
   // a real PTY embedded in the app (a task view's ChatView, for a

@@ -285,3 +285,19 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     expect(style).not.toContain('cc0000');
   });
 });
+
+describe('MarkdownContent streaming performance', () => {
+  it('can render an incomplete coding-agent message without per-word DOM wrappers', () => {
+    const { container } = render(
+      <MarkdownContent
+        text="The agent is still working on this change."
+        complete={false}
+        animateStreamingWords={false}
+      />,
+    );
+
+    expect(container.querySelector('.stream-word')).toBeNull();
+    expect(container.querySelector('.is-streaming')).toBeNull();
+    expect(container).toHaveTextContent('The agent is still working on this change.');
+  });
+});

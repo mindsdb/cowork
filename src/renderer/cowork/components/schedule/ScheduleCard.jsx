@@ -6,6 +6,7 @@
 // stops propagation so its controls don't also navigate.
 
 import Ico from '../Icons';
+import { projectLabel } from '../../lib/projectLabel';
 import { Alert, Card, Button, Spinner, Tooltip } from '../ui';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
@@ -44,7 +45,11 @@ export default function ScheduleCard({
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  const projectName = projectMatch?.name || '';
+  // One variable, and it holds the label. TasksView keeps a second, slug-valued
+  // local because its rows match a project by name; this card resolves by
+  // `task.projectId` above, so it needs the slug for nothing -- not the lookup,
+  // not the truthiness guard below (ENG-1676).
+  const projectDisplay = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
@@ -102,26 +107,26 @@ export default function ScheduleCard({
       {/* border-x-0/border-b-0 zero the other sides: preflight is disabled, so
           border-solid would otherwise reveal their default (medium) width. */}
       <div className="mt-auto flex min-w-0 items-center gap-2 border-x-0 border-b-0 border-t border-solid border-line pt-[11px]">
-        {projectName && (
+        {projectDisplay && (
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
-              <Tooltip content={`Open ${projectMatch.name}`}>
+              <Tooltip content={`Open ${projectDisplay}`}>
                 <button
                   type="button"
                   onMouseDown={stop}
                   onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
                   className="m-0 min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-left font-body text-[12px] text-ink-3 transition-colors hover:text-accent hover:underline hover:underline-offset-2"
-                >{projectName}</button>
+                >{projectDisplay}</button>
               </Tooltip>
             ) : (
-              <span title={projectName} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectName}</span>
+              <span title={projectDisplay} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectDisplay}</span>
             )}
           </span>
         )}
 
-        <span className={`flex shrink-0 items-center gap-2 ${projectName ? 'ml-auto' : ''}`}>
+        <span className={`flex shrink-0 items-center gap-2 ${projectDisplay ? 'ml-auto' : ''}`}>
           <ScheduleStatusBadge task={task} size="sm" />
           <span
             title={task.enabled ? absoluteTime(task.nextRunAt) : undefined}

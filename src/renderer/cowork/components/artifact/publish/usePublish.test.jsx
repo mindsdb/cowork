@@ -120,3 +120,49 @@ describe('usePublish — server is the source of truth for the access list (ENG-
     expect(result.current.accessLoaded).toBe(true);
   });
 });
+
+describe('usePublish — ownerOnly (ENG-1769)', () => {
+  it('seeds ownerOnly from the artifact prop', () => {
+    const artifact = {
+      path: '/p/a.html', publishedUrl: 'https://share/abc',
+      accessMode: 'restricted', accessEmails: [], ownerOnly: true,
+    };
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    expect(result.current.ownerOnly).toBe(true);
+  });
+
+  it('defaults ownerOnly to false when the prop says nothing', () => {
+    const artifact = { path: '/p/a.html' };
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    expect(result.current.ownerOnly).toBe(false);
+  });
+
+  it('takes ownerOnly from the publish response', async () => {
+    apiMock.publishArtifact.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'restricted',
+      accessEmails: [], orgAllowed: false, ownerOnly: true, artifactKey: 'user/report',
+    });
+    const { result } = renderHook(() => usePublish({ path: '/p/a.html' }, { enabled: false }));
+    await act(async () => {
+      await result.current.publish({
+        mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
+      });
+    });
+    expect(result.current.ownerOnly).toBe(true);
+  });
+
+  it('clears ownerOnly when re-publishing as public', async () => {
+    apiMock.publishArtifact.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'public', artifactKey: 'user/report',
+    });
+    const artifact = {
+      path: '/p/a.html', publishedUrl: 'https://share/abc',
+      accessMode: 'restricted', accessEmails: [], ownerOnly: true,
+    };
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    await act(async () => {
+      await result.current.publish({ mode: 'public' });
+    });
+    expect(result.current.ownerOnly).toBe(false);
+  });
+});

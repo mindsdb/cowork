@@ -12,6 +12,7 @@ function makeController(overrides = {}) {
     accessPassword: '',
     accessEmails: [],
     orgAllowed: false,
+    ownerOnly: false,
     accessLoaded: true,
     versions: [],
     modified: false,
@@ -95,5 +96,65 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     })} />);
     expect(screen.getByPlaceholderText('alice@acme.com, bob@acme.com').value)
       .toBe('alice@x.com, bob@x.com');
+  });
+});
+
+describe('PublishMenu — owner-only summary (ENG-1769)', () => {
+  const PUBLISHED_RESTRICTED = {
+    publishedUrl: 'https://share/abc',
+    accessMode: 'restricted',
+    accessLoaded: true,
+  };
+
+  it('summarises an owner-only publish as "Only you"', () => {
+    render(<PublishMenu controller={makeController({
+      ...PUBLISHED_RESTRICTED, accessEmails: [], orgAllowed: false, ownerOnly: true,
+    })} />);
+    // Published, but nobody else can open it — so the trigger still offers to
+    // share rather than claiming the artifact already is shared.
+    fireEvent.click(screen.getByText('Share'));
+
+    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.getByText('Nobody else can open this')).toBeInTheDocument();
+  });
+
+  it('summarises a restricted publish with recipients as the list variant', () => {
+    render(<PublishMenu controller={makeController({
+      ...PUBLISHED_RESTRICTED, accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false,
+    })} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Specific people')).toBeInTheDocument();
+    expect(screen.queryByText('Only you')).toBeNull();
+  });
+
+  // Published is not the same as shared. On Cloud every artifact is published
+  // from birth, so a trigger keyed on `publishedUrl` alone told every owner their
+  // private artifact was already "Shared".
+  describe('the trigger label', () => {
+    it('reads "Share" for an owner-only artifact, published or not', () => {
+      render(<PublishMenu controller={makeController({
+        ...PUBLISHED_RESTRICTED, accessEmails: [], orgAllowed: false, ownerOnly: true,
+      })} />);
+
+      expect(screen.getByText('Share')).toBeInTheDocument();
+      expect(screen.queryByText('Shared')).toBeNull();
+    });
+
+    it('reads "Shared" once someone else can open it', () => {
+      render(<PublishMenu controller={makeController({
+        ...PUBLISHED_RESTRICTED, accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false,
+      })} />);
+
+      expect(screen.getByText('Shared')).toBeInTheDocument();
+    });
+
+    it('reads "Shared" for an org-wide artifact with no named recipients', () => {
+      render(<PublishMenu controller={makeController({
+        ...PUBLISHED_RESTRICTED, accessEmails: [], orgAllowed: true, ownerOnly: false,
+      })} />);
+
+      expect(screen.getByText('Shared')).toBeInTheDocument();
+    });
   });
 });

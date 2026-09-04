@@ -16,8 +16,31 @@ import {
   toDisplayUnits,
   toNaturalUnits,
   formatCount,
+  modelLabel,
+  transformSettingsRows,
   routerRoleSubtitle,
 } from './settingsTransform';
+
+describe('modelLabel', () => {
+  it('formats named GPT coding models without a version hyphen', () => {
+    expect(modelLabel('gpt-codex')).toBe('GPT Codex');
+    expect(modelLabel('gpt-5.6-sol')).toBe('GPT-5.6 Sol');
+  });
+});
+
+describe('coding-agent settings translation', () => {
+  it('round-trips the independent engine and model settings', () => {
+    const transformed = transformSettingsRows([
+      { key: 'coding_agent_engine', value: 'codex' },
+      { key: 'coding_agent_model', value: 'gpt-codex' },
+    ]);
+    expect(transformed).toMatchObject({ codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' });
+    expect(diffSettingsForWrite(
+      { codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' },
+      { codingAgentEngine: 'other', codingAgentModel: 'old' },
+    )).toEqual({ coding_agent_engine: 'codex', coding_agent_model: 'gpt-codex' });
+  });
+});
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
@@ -357,6 +380,28 @@ describe('mergeRecommendedModels', () => {
     // Buckets the response left empty keep what we already had.
     expect(merged.recommendedPair).toEqual(held.recommendedPair);
     expect(merged.modelEfforts).toEqual(held.modelEfforts);
+  });
+
+  it('keeps the held order on an on-open refresh, appending new ids and dropping gone ones', () => {
+    // ENG-1737: the picker refetches as it opens, so the response lands on a
+    // list that is already on screen. The server's order can differ between
+    // calls (auth served its catalog in two orders); the rows must not move.
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'], anthropic: ['claude-sonnet-5'] },
+      recommendedPair: { 'minds-cloud': ['haiku', 'sonnet', 'kimi'] },
+    }, { keepOrder: true });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet', 'opus']);
+    // A bucket with nothing in common takes the server's list.
+    expect(merged.recommendedModels.anthropic).toEqual(['claude-sonnet-5']);
+    // The pair is positional (planning, coding, router): never reordered.
+    expect(merged.recommendedPair['minds-cloud']).toEqual(['haiku', 'sonnet', 'kimi']);
+  });
+
+  it('takes the server order without keepOrder (the mount-time load)', () => {
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['opus', 'sonnet', 'mindshub_air'] },
+    });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['opus', 'sonnet', 'mindshub_air']);
   });
 
   it('keeps the model list when the MindsHub fetch failed behind a 200', () => {

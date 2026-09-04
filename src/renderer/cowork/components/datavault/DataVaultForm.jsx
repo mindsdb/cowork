@@ -60,28 +60,22 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   const src = logoUrl || (connectorId ? `logos/${connectorId}.svg` : null);
   if (src && src !== failedSrc) {
     return (
-      <span style={{
-        display: 'inline-grid', placeItems: 'center',
-        width: 36, height: 36, borderRadius: 8,
-        background: 'var(--surface-2)',
-      }}>
+      <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row bg-surface-2">
         <img
           src={src}
           alt=""
           onError={() => setFailedSrc(src)}
-          style={{ width: 22, height: 22, objectFit: 'contain' }}
+          className="w-[22px] h-[22px] object-contain"
         />
       </span>
     );
   }
   const fn = (logo && Ico[logo]) || Ico.database;
   return (
-    <span style={{
-      display: 'inline-grid', placeItems: 'center',
-      width: 36, height: 36, borderRadius: 8,
-      background: 'var(--surface-2)',
-      color: color || 'var(--ink-3)',
-    }}>
+    <span
+      className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row bg-surface-2"
+      style={{ color: color || 'var(--ink-3)' }}
+    >
       {fn(20)}
     </span>
   );
@@ -143,6 +137,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
         placeholder={placeholder}
         disabled={disabled}
         rows={4}
+        aria-label={field.label}
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
@@ -153,11 +148,10 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
   }
   if (field.type === 'boolean') {
     return (
-      <label style={{
-        display: 'inline-flex', alignItems: 'center', gap: 8,
-        fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-2)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}>
+      <label
+        className="inline-flex items-center gap-2 font-[family-name:var(--font-body)] text-[13px] text-ink-2"
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
+      >
         <Checkbox
           // Booleans never carry the sentinel — modify-flow only
           // replaces secret string fields. For booleans the saved
@@ -178,6 +172,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
     <Input
       ref={inputRef}
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
+      aria-label={field.label}
       value={displayValue}
       placeholder={placeholder}
       autoComplete={field.type === 'password' ? 'current-password' : 'off'}
@@ -194,6 +189,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
   userLabel, onUserLabelChange,
+  hideHeader = false,
 }) {
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
@@ -337,26 +333,21 @@ export function DataVaultForm({
   // close (×) or the single "Close" action below.
   if (spec._is_success) {
     return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 14,
-        fontFamily: FONT_BODY,
-        padding: '14px 0',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <span style={{
-            display: 'inline-grid', placeItems: 'center',
-            width: 36, height: 36, borderRadius: 8,
-            background: 'color-mix(in srgb, var(--success) 18%, var(--surface))',
-            color: 'var(--success)',
-            border: '1px solid color-mix(in srgb, var(--success) 35%, transparent)',
-            boxShadow: '0 0 12px var(--success-glow)',
-          }}>{Ico.check(20)}</span>
-          <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div className="s-h3" style={{
-              color: 'var(--ink)',
-            }}>{spec.title || 'Connected'}</div>
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <div className="flex items-start gap-3">
+          <span
+            className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row"
+            style={{
+              background: 'color-mix(in srgb, var(--success) 18%, var(--surface))',
+              color: 'var(--success)',
+              border: '1px solid color-mix(in srgb, var(--success) 35%, transparent)',
+              boxShadow: '0 0 12px var(--success-glow)',
+            }}
+          >{Ico.check(20)}</span>
+          <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
+            <div className="s-h3">{spec.title || 'Connected'}</div>
             {spec.subtitle && (
-              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+              <div className="text-sm text-ink-3 leading-[1.5]">
                 {spec.subtitle}
               </div>
             )}
@@ -367,7 +358,7 @@ export function DataVaultForm({
             This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
           </Alert>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div className="flex justify-end gap-2">
           {/* On success we always offer two routes:
                  • secondary "Close" — just dismiss the panel
                  • primary "View connectors" — jump to the Connect
@@ -492,10 +483,7 @@ export function DataVaultForm({
   };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 14,
-      fontFamily: FONT_BODY,
-    }}>
+    <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)]">
       {/* Header — logo + title + subtitle */}
       {/* Header — logo + title only. The subtitle (`spec.subtitle`)
           is intentionally NOT rendered here: the chat above already
@@ -505,13 +493,11 @@ export function DataVaultForm({
           their own context. Hidden while the user is on the method
           picker for multi-method forms (the picker has its own
           "Pick how you want to connect:" caption). */}
-      {!(isMultiMethod && !activeMethod) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {!hideHeader && !(isMultiMethod && !activeMethod) && (
+        <div className="flex items-center gap-3">
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="s-h3" style={{
-              color: 'var(--ink)',
-            }}>{spec.title || 'Connect'}</div>
+          <div className="min-w-0 flex-1">
+            <div className="s-h3">{spec.title || 'Connect'}</div>
           </div>
         </div>
       )}
@@ -522,10 +508,8 @@ export function DataVaultForm({
           (host passes `userLabel={undefined}` in that case) and while the
           user is still on the method picker (nothing to label yet). */}
       {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label htmlFor="connection-user-label" style={{
-            fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
-          }}>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
             Label
           </label>
           <Input
@@ -589,7 +573,7 @@ export function DataVaultForm({
           would otherwise leave the user staring at an empty body
           and a Submit button, exactly the "confirm-and-continue"
           step we don't want). */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="flex flex-col gap-[10px]">
         {fields.map((f) => {
           const isSkipped = skipped.has(f.name);
           // Identity / read-only marker. The modify-flow pins
@@ -602,18 +586,14 @@ export function DataVaultForm({
               key={f.name}
               ref={(node) => { fieldContainerRefs.current[f.name] = node; }}
               tabIndex={-1}
-              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1, outline: 'none' }}
+              className="flex flex-col gap-1 outline-none"
+              style={{ opacity: isSkipped ? 0.55 : 1 }}
             >
-              <div style={{
-                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-                gap: 8,
-              }}>
-                <label style={{
-                  fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
-                }}>
+              <div className="flex items-baseline justify-between gap-2">
+                <label className="text-[12px] text-ink-3 font-medium">
                   {f.label || f.name}
                   {f.required && !isSkipped && (
-                    <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>
+                    <span className="text-danger ml-[3px]">*</span>
                   )}
                 </label>
                 {/* Every field is skippable by default. The user may
@@ -630,12 +610,8 @@ export function DataVaultForm({
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}
                     disabled={busy}
-                    style={{
-                      cursor: busy ? 'not-allowed' : 'pointer',
-                      background: 'transparent', border: 0, padding: 0,
-                      fontFamily: FONT_MONO, fontSize: 10.5,
-                      color: 'var(--ink-4)', letterSpacing: '0.04em',
-                    }}
+                    className="bg-transparent border-0 p-0 font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]"
+                    style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
                   >{isSkipped ? 'unskip' : 'skip'}</button>
                 )}
               </div>
@@ -649,23 +625,16 @@ export function DataVaultForm({
                 />
               )}
               {isSkipped && (
-                <div style={{
-                  padding: '8px 10px', borderRadius: 7,
-                  background: 'var(--surface-2)',
-                  border: '1px dashed var(--line-2)',
-                  color: 'var(--ink-4)', fontSize: 12,
-                  fontFamily: FONT_BODY, fontStyle: 'italic',
-                }}>Skipped — the agent will figure this one out.</div>
+                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">Skipped — the agent will figure this one out.</div>
               )}
               {(requiredErrors[f.name] || f.error) && !isSkipped && (
-                <div style={{
-                  fontSize: 11.5, color: 'var(--danger)',
-                }}>{requiredErrors[f.name] || f.error}</div>
+                <div className="text-[11.5px] text-danger">{requiredErrors[f.name] || f.error}</div>
               )}
               {f.warning && !isSkipped && (
-                <div style={{
-                  fontSize: 11.5, color: 'color-mix(in srgb, var(--accent) 80%, var(--ink-2))',
-                }}>{f.warning}</div>
+                <div
+                  className="text-[11.5px]"
+                  style={{ color: 'color-mix(in srgb, var(--accent) 80%, var(--ink-2))' }}
+                >{f.warning}</div>
               )}
               {/* Transient per-field status (e.g. "Validating…"). The
                   probe sets this via `set_field_status` and clears it
@@ -673,15 +642,11 @@ export function DataVaultForm({
                   but is shown alongside them — they describe different
                   things (status = activity, error = outcome). */}
               {f.status && !isSkipped && (
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: 11.5, color: 'var(--ink-3)',
-                }}>
+                <div className="inline-flex items-center gap-[6px] text-[11.5px] text-ink-3">
                   <span
                     aria-hidden
+                    className="w-[9px] h-[9px] flex-[0_0_9px] rounded-full"
                     style={{
-                      width: 9, height: 9, flex: '0 0 9px',
-                      borderRadius: '50%',
                       border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                       borderTopColor: 'var(--accent)',
                       animation: 'spin 720ms linear infinite',
@@ -691,7 +656,7 @@ export function DataVaultForm({
                 </div>
               )}
               {f.help && !f.error && !f.warning && !f.status && (
-                <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>{f.help}</div>
+                <div className="text-[11.5px] text-ink-4">{f.help}</div>
               )}
             </div>
           );
@@ -703,16 +668,12 @@ export function DataVaultForm({
           form's top-level actions, then a generic Submit button.
           Layout: How-to link on the left (when the active method
           ships docs), action buttons on the right. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 8, flexWrap: 'wrap',
-        paddingTop: 4,
-      }}>
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {(() => {
           const m = activeMethod || spec || {};
           const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
           const hasHelp = hasHowTo || !!m.help_url;
-          if (!hasHelp) return <span aria-hidden style={{ width: 0 }} />;
+          if (!hasHelp) return <span aria-hidden className="w-0" />;
           const onClick = (e) => {
             e?.stopPropagation?.();
             e?.preventDefault?.();
@@ -723,23 +684,12 @@ export function DataVaultForm({
               catch { window.open(m.help_url, '_blank', 'noreferrer'); }
             }
           };
-          const sharedStyle = {
-            padding: '4px 0',
-            fontSize: 12, fontWeight: 500,
-            color: 'var(--accent)',
-            background: 'transparent',
-            border: 0,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            textDecoration: 'none',
-          };
+          const sharedClass = 'py-1 px-0 text-[12px] font-medium text-accent bg-transparent border-0 cursor-pointer font-[inherit] no-underline hover:underline';
           return hasHowTo ? (
             <button
               type="button"
               onClick={onClick}
-              style={sharedStyle}
-              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              className={sharedClass}
             >How to?</button>
           ) : (
             <a
@@ -747,13 +697,11 @@ export function DataVaultForm({
               target="_blank"
               rel="noopener noreferrer"
               onClick={onClick}
-              style={sharedStyle}
-              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              className={sharedClass}
             >How to?</a>
           );
         })()}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex gap-2 flex-wrap">
         {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
           // Modify mode swaps the primary action's label to make
           // the destination explicit — "Save changes" reads as an
@@ -857,21 +805,17 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
       else onPick?.(hero.id);
     };
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="flex flex-col gap-[6px]">
         <button
           type="button"
           disabled={busy}
           onClick={onHeroClick}
+          className="flex items-center gap-3 w-full text-left px-[14px] py-3 rounded-[10px] text-ink font-[family-name:var(--font-body)] min-w-0 outline-none"
           style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            width: '100%', textAlign: 'left',
-            padding: '12px 14px', borderRadius: 10,
             background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
-            color: 'var(--ink)', cursor: busy ? 'not-allowed' : 'pointer',
-            fontFamily: FONT_BODY, minWidth: 0,
+            cursor: busy ? 'not-allowed' : 'pointer',
             transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
-            outline: 'none',
           }}
           onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
           onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -879,15 +823,12 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
         >
           <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
-          <span style={{
-            display: 'flex', flexDirection: 'column', gap: 2,
-            minWidth: 0, flex: '1 1 auto', overflowWrap: 'anywhere', wordBreak: 'break-word',
-          }}>
-            <span style={{ fontWeight: 600, fontSize: 14.5, color: 'var(--ink)' }}>
+          <span className="flex flex-col gap-[2px] min-w-0 flex-[1_1_auto] [overflow-wrap:anywhere] [word-break:break-word]">
+            <span className="font-semibold text-[14.5px] text-ink">
               {busy ? 'Working…' : label}
             </span>
             {helper && !busy && (
-              <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--ink-3)', lineHeight: 1.35 }}>
+              <span className="text-[11.5px] font-normal text-ink-3 leading-[1.35]">
                 {helper}
               </span>
             )}
@@ -898,13 +839,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             <button
               type="button"
               onClick={handleHelp}
-              style={{
-                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
-                background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                fontWeight: 500, fontFamily: 'inherit',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              className="self-start text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
             >How to?</button>
           ) : (
             <a
@@ -912,12 +847,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleHelp}
-              style={{
-                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
-                textDecoration: 'none', fontWeight: 500,
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              className="self-start text-[11.5px] text-accent font-medium no-underline hover:underline"
             >How to?</a>
           )
         )}
@@ -964,31 +894,23 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 onPick?.(m.id);
               }
             }}
+            // `min-w-0`: when the card sits inside a constrained flex
+            // parent (the form panel column), it lets the card shrink
+            // below its intrinsic content width so a long unbreakable
+            // token in the description (e.g. a sample connection URI)
+            // can't push the card past the panel's edge. Suspenders:
+            // `[overflow-wrap:anywhere]` on the description handles the
+            // line-breaking.
+            className="flex flex-col items-stretch text-left gap-[6px] px-[14px] py-3 rounded-[9px] text-ink font-[family-name:var(--font-body)] outline-none min-w-0"
             style={{
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'stretch', textAlign: 'left',
-              gap: 6,
-              padding: '12px 14px',
-              borderRadius: 9,
               background: m.recommended
                 ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))'
                 : 'var(--surface-2)',
               border: m.recommended
                 ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
                 : '1px solid var(--line)',
-              color: 'var(--ink)',
               cursor: busy ? 'not-allowed' : 'pointer',
-              fontFamily: FONT_BODY,
               transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
-              outline: 'none',
-              // Belt: when the card sits inside a constrained flex
-              // parent (the form panel column), `minWidth: 0` lets
-              // it shrink below its intrinsic content width so a
-              // long unbreakable token in the description (e.g.
-              // a sample connection URI) can't push the card past
-              // the panel's edge. Suspenders: `overflowWrap` on
-              // the description below handles the line-breaking.
-              minWidth: 0,
             }}
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
@@ -1001,16 +923,8 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             }}
             onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
           >
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              minWidth: 0,
-            }}>
-              <span style={{
-                fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
-                letterSpacing: '0',
-                minWidth: 0, flex: '1 1 auto',
-                overflowWrap: 'anywhere', wordBreak: 'break-word',
-              }}>{m.label || m.id}</span>
+            <div className="flex items-center justify-between gap-[10px] min-w-0">
+              <span className="font-semibold text-[13.5px] text-ink tracking-[0] min-w-0 flex-[1_1_auto] [overflow-wrap:anywhere] [word-break:break-word]">{m.label || m.id}</span>
               {m.recommended && (
                 <Badge
                   variant="accent"
@@ -1020,19 +934,13 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               )}
             </div>
             {m.description && (
-              <div style={{
-                fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.45,
-                // Spec authors sometimes embed a sample connection
-                // URI in the description (Postgres `connection_string`
-                // method, for example). Without word-break that long
-                // unbreakable token blows out the card's width.
-                // `overflowWrap: anywhere` lets the browser break
-                // mid-token where needed; `minWidth: 0` on the
-                // parent card unlocks shrink below intrinsic width.
-                overflowWrap: 'anywhere',
-                wordBreak: 'break-word',
-                minWidth: 0,
-              }}>{m.description}</div>
+              // Spec authors sometimes embed a sample connection URI in
+              // the description (Postgres `connection_string` method, for
+              // example). Without word-break that long unbreakable token
+              // blows out the card's width. `[overflow-wrap:anywhere]`
+              // lets the browser break mid-token where needed; `min-w-0`
+              // on the parent card unlocks shrink below intrinsic width.
+              <div className="text-sm text-ink-3 leading-[1.45] [overflow-wrap:anywhere] [word-break:break-word] min-w-0">{m.description}</div>
             )}
             {hasHelp && (
               hasHowTo ? (
@@ -1044,20 +952,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                       e.stopPropagation();
                     }
                   }}
-                  style={{
-                    alignSelf: 'flex-start',
-                    marginTop: 2,
-                    fontSize: 11.5,
-                    color: 'var(--accent)',
-                    background: 'transparent',
-                    border: 0,
-                    padding: 0,
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                    fontFamily: 'inherit',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                  className="self-start mt-[2px] text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
                 >
                   How to?
                 </button>
@@ -1072,17 +967,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                       e.stopPropagation();
                     }
                   }}
-                  style={{
-                    alignSelf: 'flex-start',
-                    marginTop: 2,
-                    fontSize: 11.5,
-                    color: 'var(--accent)',
-                    textDecoration: 'none',
-                    fontWeight: 500,
-                    borderRadius: 4,
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                  className="self-start mt-[2px] text-[11.5px] text-accent no-underline font-medium rounded-[4px] hover:underline"
                 >
                   How to?
                 </a>
@@ -1093,7 +978,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="flex flex-col gap-2">
       {hero ? (
         // Lead with the recommended method as a prominent button; the
         // rest fold away under a quiet disclosure (ENG-1534).
@@ -1105,10 +990,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               triggerClassName="justify-center"
               panelClassName="pt-2"
               title={(
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  width: '100%', fontSize: 11.5, color: 'var(--ink-3)',
-                }}>
+                <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
                   See other options to connect {providerName}
                   <span
                     className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
@@ -1119,7 +1001,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 </span>
               )}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {rest.map(renderCard)}
               </div>
             </Collapsible>
@@ -1128,7 +1010,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
       ) : (
         // No recommended method — fall back to today's flat card list.
         <>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 2 }}>
+          <div className="text-sm text-ink-3 mb-[2px]">
             Pick how you want to connect:
           </div>
           {orderedMethods.map(renderCard)}

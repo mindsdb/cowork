@@ -21,10 +21,12 @@
 //
 // Their paths legitimately disagree — a fullstack artifact keeps its entry point
 // in `static/`, one level below the root — so paths are matched against FOLDERS
-// with a prefix test, not compared to each other. And `card_for_folder` falls
-// back to `folder.name` for a missing metadata id, so a card can carry an id of
-// a different sort than its counterpart; a one-sided key would miss and the miss
-// would read as a deletion.
+// with a prefix test, not compared to each other. And a card persisted before
+// ids were widened carries the short eight-character id rather than the full
+// identity, so a card can carry an id of a different sort than its counterpart;
+// a one-sided key would miss and the miss would read as a deletion. The
+// widening kept the short id as the full id's first eight characters, so both
+// spellings are indexed and both are looked up.
 
 function textValue(value) {
   return value == null ? '' : String(value).trim();
@@ -54,15 +56,33 @@ export function emptyArtifactIndex() {
   return { ids: new Set(), projectSlugs: new Set(), folders: [] };
 }
 
+// The `id` prefix that a pre-widening card carries whole. Mirrors anton's
+// ARTIFACT_ID_SLUG_PREFIX_LEN.
+const ID_PREFIX_LEN = 8;
+
+// Ids are hex: 32 characters since the widening, eight before it. Only those
+// shapes get bridged by prefix. Any other `id` a card might carry — a slug, a
+// composite key — shares its first eight characters with every sibling spelled
+// alike (`q3-launch-…` vs `q3-launch-…`), and bridging those would silently
+// match unrelated artifacts, so a card whose artifact really is gone would
+// keep reading as "still there".
+const HEX_ID = /^[0-9a-f]+$/;
+
 /** Every way this card can be recognised. Absent keys are `''`, never null, so
  *  callers can test with a plain truthiness check. */
 export function artifactKeys(card) {
-  const id = textValue(card?.id);
+  const id = textValue(card?.id).toLowerCase();
   const slug = textValue(card?.slug);
   const projectId = textValue(card?.projectId);
   const path = textValue(card?.canonicalPath) || textValue(card?.file_path) || textValue(card?.path);
   return {
     id,
+    // Bridges the two id spellings: a widened server card and the pre-widening
+    // chat card for the same artifact share these eight characters. Indexing
+    // both can only ever produce a false "still there", never a false
+    // "deleted" — the direction this file is built to fail in. Hex only, so
+    // the bridge cannot reach past the widening it exists for.
+    idPrefix: HEX_ID.test(id) && id.length >= ID_PREFIX_LEN ? id.slice(0, ID_PREFIX_LEN) : '',
     // Only a PAIR identifies an artifact: a slug is unique within a project's
     // conversation at best (see ENG-1678), never globally.
     projectSlug: projectId && slug ? `${projectId}/${slug}` : '',
@@ -77,6 +97,7 @@ export function buildArtifactIndex(cards) {
   for (const card of Array.isArray(cards) ? cards : []) {
     const keys = artifactKeys(card);
     if (keys.id) index.ids.add(keys.id);
+    if (keys.idPrefix) index.ids.add(keys.idPrefix);
     if (keys.projectSlug) index.projectSlugs.add(keys.projectSlug);
     const folder = normPath(keys.folder);
     if (folder && !index.folders.includes(folder)) index.folders.push(folder);
@@ -105,6 +126,7 @@ export function matchesIndex(card, index) {
   if (!card || !index) return false;
   const keys = artifactKeys(card);
   if (keys.id && index.ids.has(keys.id)) return true;
+  if (keys.idPrefix && index.ids.has(keys.idPrefix)) return true;
   if (keys.projectSlug && index.projectSlugs.has(keys.projectSlug)) return true;
   if (keys.path && index.folders.some((folder) => isUnder(keys.path, folder))) return true;
   return false;
