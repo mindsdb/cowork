@@ -47,7 +47,7 @@ RUN npm run build:web
 # cowork-server (and its anton-agent dep) are installed from PyPI by default,
 # or from a git ref when COWORK_SERVER_REF is set (staging builds) — the latter
 # needs git, installed below. Only /opt/venv is copied to the runtime image.
-FROM python:3.12-slim AS py-builder
+FROM python:3.15-rc-alpine AS py-builder
 
 # git is needed when COWORK_SERVER_REF is set (install cowork-server from the
 # git repo instead of PyPI). Harmless for the PyPI path.
@@ -93,7 +93,7 @@ RUN if [ -n "$ANTON_REF" ]; then \
     fi
 
 # ── Stage 3: runtime — minimal, no compilers, no git, no source tree ─────
-FROM python:3.12-slim AS runtime
+FROM python:3.15-rc-alpine AS runtime
 
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
