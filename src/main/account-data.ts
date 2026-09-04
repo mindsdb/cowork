@@ -34,8 +34,12 @@ const ACTIVE_FILE = 'active-account.json';
 // Recorded once: did this install hold data before per-account roots existed?
 const PRE_EXISTING_FILE = '.pre-existing-data';
 
-// Remembers "start fresh", so the ownership question is asked once.
-const DECLINED_FILE = '.declined-default-root';
+// Remembers that the ownership question has been answered. Install-level, not
+// per account: the data belongs to one person, so the first answer settles it
+// for everyone. A per-account marker meant that after one account disclaimed the
+// data the NEXT account was offered it, which is a worse position to offer it
+// from, not a better one.
+const SETTLED_FILE = '.ownership-settled';
 
 // What makes a root "already someone's". The database is not enough on its own:
 // an install whose onboarding stored provider keys but whose sidecar never
@@ -148,18 +152,43 @@ function rootHoldsUserData(root: string): boolean {
  * this build can create anything, and never asked again. Call it at boot, ahead
  * of the first server start.
  */
-export function observePreExistingData(home: string): void {
+export function observePreExistingData(home: string, incumbentAccountId: string | null = null): void {
   const marker = path.join(home, PRE_EXISTING_FILE);
   try {
     if (fs.existsSync(marker)) return;
     const hadData = rootHoldsUserData(home);
+    // Only meaningful alongside data. On a fresh install the first account
+    // claims the root through the ordinary path, so recording an identity here
+    // would be state kept for nothing.
+    const incumbent = hadData && incumbentAccountId && isUsableAsPathSegment(incumbentAccountId)
+      ? incumbentAccountId
+      : null;
     fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(marker, JSON.stringify({ hadData }) + '\n', {
+    fs.writeFileSync(marker, JSON.stringify({ hadData, incumbent }) + '\n', {
       encoding: 'utf-8',
       mode: 0o600,
     });
   } catch (err) {
     console.warn('[account-data] could not record whether this install had data', err);
+  }
+}
+
+/**
+ * The account that was signed in on the build that created this install's data.
+ *
+ * Read from the session that survived the upgrade, at the same moment the data
+ * itself was observed, so it says "this account was signed in on the build that
+ * made this" rather than the far weaker "this account is signed in now". An
+ * account arriving later cannot produce that state, which is what makes this
+ * safe to act on without asking anybody.
+ */
+export function recordedIncumbent(home: string): string | null {
+  try {
+    const raw = fs.readFileSync(path.join(home, PRE_EXISTING_FILE), 'utf-8');
+    const value = (JSON.parse(raw) as { incumbent?: unknown }).incumbent;
+    return typeof value === 'string' && isUsableAsPathSegment(value) ? value : null;
+  } catch {
+    return null;
   }
 }
 
@@ -389,6 +418,14 @@ export function resolveAccountRoot(home: string, active: ActiveAccount): string 
         : null;
 
   if (named === null) {
+    // The incumbent's own claim, before the session that names it has been
+    // re-established. An offline upgraded launch is exactly this: the claim is
+    // written at boot, the account record is not written until a refresh
+    // succeeds, and quarantining here would show the install's only user an
+    // empty app. Nobody else reaches this branch — a second account is signed
+    // in, so it names itself — and an incumbent is never asked, so a claim held
+    // by anyone else cannot be theirs.
+    if (claim.kind === 'claimed' && claim.accountId === recordedIncumbent(home)) return null;
     if (claim.kind !== 'unclaimed') return QUARANTINE_ACCOUNT;
     if (!hadPreExistingData(home)) return null;
     return knownAccountRoots(home).some((n) => !n.startsWith(QUARANTINE_PREFIX))
@@ -431,38 +468,74 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
 }
 
 /**
- * Whether the default root holds data nobody has claimed, while an account is
- * signed in. Only the person at the keyboard can say whose it is, so the shell
- * asks once.
+ * Whether to ask this account who owns the data on this machine.
+ *
+ * Asked only when there is nothing better to go on. A recorded incumbent is
+ * better: that account takes the root without being asked, and no OTHER account
+ * is offered it, so the question cannot be answered by the wrong person.
+ *
+ * What remains is an install that has data and whose session did not survive
+ * the upgrade. Nothing on disk names the owner there — desktop rows carry no
+ * `created_by`, which is the whole reason this exists — so the person at the
+ * keyboard is the only source, and they are asked ONCE for the install.
  */
 export function needsOwnershipDecision(home: string, active: ActiveAccount): boolean {
   if (active.kind !== 'signed-in') return false;
   if (!isUsableAsPathSegment(active.accountId)) return false;
-  if (hasDeclinedDefaultRoot(home, active.accountId)) return false;
+  if (isOwnershipSettled(home)) return false;
+  // An incumbent is known, so nobody is asked: they get the root at boot, and
+  // this guard is what keeps a second account from being offered it if that
+  // claim could not be written.
+  if (recordedIncumbent(home) !== null) return false;
   return readAccountClaim(home).kind === 'unclaimed' && hadPreExistingData(home);
 }
 
-function declinedPath(home: string, accountId: string): string {
-  return path.join(home, ACCOUNTS_DIR, accountId, DECLINED_FILE);
+/**
+ * Give the recorded incumbent the root it was already using, once.
+ *
+ * The claim is what every other account's resolution reads, so writing it at
+ * boot means no other code path has to know about incumbency. Returns the
+ * account that ends up owning the root, or null when there is nothing to do.
+ */
+export function claimForRecordedIncumbent(home: string): string | null {
+  const incumbent = recordedIncumbent(home);
+  if (incumbent === null) return null;
+  const claim = readAccountClaim(home);
+  if (claim.kind === 'claimed') return claim.accountId;
+  if (claim.kind === 'unreadable') return null;
+  const settled = adoptDefaultRootAsIncumbent(home, incumbent);
+  if (settled.kind !== 'claimed') {
+    console.warn('[account-data] could not give the default root to its incumbent');
+    return null;
+  }
+  return settled.accountId;
 }
 
-/** existsSync answers false for a missing OR non-traversable path rather than
- *  throwing, so a broken layout reads as "not answered" and the question comes
- *  back. Harmless: asking twice costs a dialog and the account is on its own
- *  root either way. */
-export function hasDeclinedDefaultRoot(home: string, accountId: string): boolean {
-  return fs.existsSync(declinedPath(home, accountId));
+function settledPath(home: string): string {
+  return path.join(home, SETTLED_FILE);
 }
 
-/** Record that this account chose not to take the unclaimed data. */
-export function declineDefaultRoot(home: string, accountId: string): void {
-  assertUsableAsPathSegment(accountId);
-  const target = declinedPath(home, accountId);
+/** Anything present at that path counts as answered, a directory included: a
+ *  layout broken enough to fail the write reads as settled, which strands the
+ *  data behind a support path instead of offering it to whoever signs in. That
+ *  is the direction to fail in. */
+export function isOwnershipSettled(home: string): boolean {
+  return fs.existsSync(settledPath(home));
+}
+
+/**
+ * Record that the question has been answered, whichever way, for the install.
+ *
+ * Adopting also lands a claim, which stops the question on its own; this is what
+ * makes DECLINING final. Otherwise the next account to sign in would be offered
+ * data the previous one had just disclaimed.
+ */
+export function settleOwnership(home: string): void {
   try {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, '', { encoding: 'utf-8', mode: 0o600 });
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(settledPath(home), '', { encoding: 'utf-8', mode: 0o600 });
   } catch (err) {
-    // Worst case the question is asked again; nothing is lost either way.
+    // Worst case the question is asked once more; nothing is lost either way.
     console.warn('[account-data] could not record the ownership choice', err);
   }
 }

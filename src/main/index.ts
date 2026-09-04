@@ -29,7 +29,7 @@ import {
   gateMindsResponseCreationRequest,
   mindsRuntimeCredentialRequirementFromHealth,
 } from './minds-response-request-gate';
-import { accountLabelFromToken } from './jwt';
+import { accountIdFromToken, accountLabelFromToken } from './jwt';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -43,11 +43,12 @@ import type { UpdateCheckResult } from './ui-updater';
 import {
   accountDataHome,
   adoptDefaultRootAsIncumbent,
-  declineDefaultRoot,
+  claimForRecordedIncumbent,
   needsOwnershipDecision,
   observePreExistingData,
   readActiveAccount,
   resolveAccountRoot,
+  settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
@@ -1332,7 +1333,7 @@ function setupIPC() {
       // stays for whoever owns it — but a sidecar started before the record
       // named this account may still be serving the default root, so it has to
       // be moved off the data the person just disclaimed.
-      declineDefaultRoot(home, active.accountId);
+      settleOwnership(home);
       await ensureSidecarOnCurrentAccountRoot();
       return { ok: true, keptExisting: false };
     }
@@ -1345,6 +1346,7 @@ function setupIPC() {
       console.warn('[account] could not take the default root:', claim.kind);
       return { ok: false, reason: 'claim-failed' };
     }
+    settleOwnership(home);
 
     // The stores are process environment, so the sidecar must restart to read
     // the root it now owns. Through the same helper as the decline branch:
@@ -1607,7 +1609,13 @@ app.whenReady().then(async () => {
   // default root or has to be asked, and it can only be observed BEFORE the
   // first server start of a build that has per-account roots — after that,
   // every install looks like it has data. Both calls are idempotent.
-  observePreExistingData(coworkHome());
+  // The account the surviving session names is the one that was signed in on
+  // the build that created this install's data, because this runs before the
+  // boot refresh and before any interactive sign-in. That makes it evidence of
+  // incumbency rather than of a current session, which is what lets the root be
+  // handed over without asking anybody.
+  observePreExistingData(coworkHome(), accountIdFromToken(getRefreshToken()));
+  claimForRecordedIncumbent(coworkHome());
   sweepStaleQuarantineRoots(coworkHome());
 
   // A machine that slept past the refresh timer wakes with an expired

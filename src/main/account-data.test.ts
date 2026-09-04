@@ -14,12 +14,14 @@ import {
   adoptDefaultRootAsIncumbent,
   claimDefaultRoot,
   clearActiveAccountRecord,
-  declineDefaultRoot,
+  claimForRecordedIncumbent,
   hadPreExistingData,
-  hasDeclinedDefaultRoot,
+  isOwnershipSettled,
   knownAccountRoots,
   needsOwnershipDecision,
   observePreExistingData,
+  recordedIncumbent,
+  settleOwnership,
   readAccountClaim,
   readActiveAccount,
   resolveAccountRoot,
@@ -346,18 +348,182 @@ describe('the ownership question', () => {
 
   it('stops being asked after "start fresh", and leaves the data alone', () => {
     upgraded();
-    declineDefaultRoot(home, B);
-    expect(hasDeclinedDefaultRoot(home, B)).toBe(true);
+    settleOwnership(home);
+    expect(isOwnershipSettled(home)).toBe(true);
     expect(needsOwnershipDecision(home, signedIn(B))).toBe(false);
     expect(fs.existsSync(path.join(home, 'cowork.db'))).toBe(true);
   });
 
-  it('remembers that per account, and survives the record being rewritten', async () => {
+  it('is final for EVERY account once anyone has answered', async () => {
+    // The hole this closes: the marker used to be per account, so after B
+    // disclaimed the data A was still offered it — and so was any other account
+    // that signed in afterwards. One person owns the data, so one answer
+    // settles it.
     upgraded();
-    declineDefaultRoot(home, B);
+    settleOwnership(home);
     await writeActiveAccount(home, B);
     expect(needsOwnershipDecision(home, signedIn(B))).toBe(false);
-    expect(needsOwnershipDecision(home, signedIn(A))).toBe(true);
+    expect(needsOwnershipDecision(home, signedIn(A))).toBe(false);
+  });
+
+  it('is not asked at all when the surviving session named an incumbent', () => {
+    // The common upgrade. Nobody is asked, because the account that was signed
+    // in on the build that made the data is known.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+
+    expect(needsOwnershipDecision(home, signedIn(A))).toBe(false);
+    expect(needsOwnershipDecision(home, signedIn(B))).toBe(false);
+  });
+
+  it('is not asked of a SECOND account even if the incumbent claim never landed', () => {
+    // The claim is what everything else reads, so a failed write must not fall
+    // back to offering the data to whoever signs in next.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+
+    expect(needsOwnershipDecision(home, signedIn(B))).toBe(false);
+  });
+});
+
+describe('the recorded incumbent', () => {
+  it('is the account the surviving session named, alongside the data', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    expect(recordedIncumbent(home)).toBe(A);
+  });
+
+  it('is not recorded on a fresh install, which has nothing to attribute', () => {
+    observePreExistingData(home, A);
+    expect(recordedIncumbent(home)).toBeNull();
+    expect(hadPreExistingData(home)).toBe(false);
+  });
+
+  it('is not recorded when no session survived', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, null);
+    expect(recordedIncumbent(home)).toBeNull();
+    expect(hadPreExistingData(home)).toBe(true);
+  });
+
+  it('refuses an account id that is not usable as a path segment', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, '../../etc');
+    expect(recordedIncumbent(home)).toBeNull();
+  });
+
+  it('reads as none when the observation was never made', () => {
+    // No marker at all, so the read throws rather than parsing. None is the
+    // safe answer: it means nobody is handed the root without being asked.
+    expect(recordedIncumbent(home)).toBeNull();
+  });
+
+  it('reads as none when the record is not JSON', () => {
+    fs.writeFileSync(path.join(home, '.pre-existing-data'), 'not json', 'utf-8');
+    expect(recordedIncumbent(home)).toBeNull();
+  });
+
+  it('is observed once, so a later sign-in cannot become the incumbent', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    observePreExistingData(home, B);
+    expect(recordedIncumbent(home)).toBe(A);
+  });
+});
+
+describe('handing the root to its incumbent', () => {
+  it('claims it for them, so every other account resolves to its own root', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+
+    expect(claimForRecordedIncumbent(home)).toBe(A);
+
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: A });
+    expect(resolveAccountRoot(home, signedIn(A))).toBeNull();
+    expect(resolveAccountRoot(home, signedIn(B))).toBe(B);
+  });
+
+  it('takes a root the ordinary sign-in path is forbidden to claim', () => {
+    // claimDefaultRoot refuses data it cannot attribute, on purpose. The
+    // incumbent record is the attribution, which is why this bypasses it.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    expect(claimDefaultRoot(home, A)).toEqual({ kind: 'unclaimed' });
+
+    expect(claimForRecordedIncumbent(home)).toBe(A);
+  });
+
+  it('does nothing when no incumbent was recorded', () => {
+    upgraded();
+    expect(claimForRecordedIncumbent(home)).toBeNull();
+    expect(readAccountClaim(home)).toEqual({ kind: 'unclaimed' });
+  });
+
+  it('never overrides a claim that already exists', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    adoptDefaultRootAsIncumbent(home, B); // the person answered first
+
+    expect(claimForRecordedIncumbent(home)).toBe(B);
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: B });
+  });
+
+  it('serves the incumbent its own data on an OFFLINE launch', () => {
+    // The regression this guards: the claim lands at boot, but the account
+    // record needs a token refresh to succeed. With no network there is no
+    // record, so the session cannot name itself, and quarantining that would
+    // show the install's only user an empty app on every offline launch.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    claimForRecordedIncumbent(home);
+
+    expect(readActiveAccount(home)).toEqual(NEVER);
+    expect(resolveAccountRoot(home, NEVER)).toBeNull();
+    expect(resolveAccountRoot(home, signedOut(null))).toBeNull();
+  });
+
+  it('still quarantines a nameless session when the claim is somebody ELSE\'s', () => {
+    // No incumbent was recorded, so the claim came from the dialog. That
+    // account has to sign in to reach its data; a session that cannot name
+    // itself is not it.
+    upgraded();
+    adoptDefaultRootAsIncumbent(home, B);
+
+    expect(resolveAccountRoot(home, NEVER)).toMatch(/^_unresolved-/);
+  });
+
+  it('reports nothing, and does not throw, when the claim cannot be written', () => {
+    // The guard behind the boot call: a claim that cannot land must leave the
+    // root unowned rather than half-owned, and needsOwnershipDecision then
+    // keeps a SECOND account from being offered it.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    fs.chmodSync(home, 0o500); // readable, not writable
+    try {
+      expect(claimForRecordedIncumbent(home)).toBeNull();
+      expect(needsOwnershipDecision(home, signedIn(B))).toBe(false);
+    } finally {
+      fs.chmodSync(home, 0o700);
+    }
+  });
+
+  it('reports nothing when the claim cannot be read at all', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    // A directory where the claim file goes: readable as neither absent nor a
+    // record, which is the 'unreadable' state.
+    fs.mkdirSync(path.join(home, '.account'), { recursive: true });
+    expect(readAccountClaim(home)).toEqual({ kind: 'unreadable' });
+    expect(claimForRecordedIncumbent(home)).toBeNull();
+  });
+
+  it('is idempotent across boots', () => {
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    expect(claimForRecordedIncumbent(home)).toBe(A);
+    expect(claimForRecordedIncumbent(home)).toBe(A);
+    expect(readAccountClaim(home)).toEqual({ kind: 'claimed', accountId: A });
   });
 });
 
@@ -455,8 +621,12 @@ describe('the fail-safes, when the disk will not cooperate', () => {
   });
 
   it('recording the ownership choice does not throw when it cannot be written', () => {
-    fs.writeFileSync(path.join(home, 'accounts'), 'not a directory', 'utf-8');
-    expect(() => declineDefaultRoot(home, B)).not.toThrow();
+    // A directory where the marker file goes. The write fails, and the path
+    // still reads as settled, so the question stops rather than being offered
+    // to the next account — the data is stranded, which is the safe direction.
+    fs.mkdirSync(path.join(home, '.ownership-settled'), { recursive: true });
+    expect(() => settleOwnership(home)).not.toThrow();
+    expect(isOwnershipSettled(home)).toBe(true);
   });
 
   it('the synchronous record write is the same shape as the async one', () => {
