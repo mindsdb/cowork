@@ -1,32 +1,53 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { APP_SCHEME, AUTH_CALLBACK_URL, isAuthCallbackUrl, protocolClientArgs, findDeepLink } from './deep-link';
+import { BUILD_KINDS } from './channels';
+import { schemeForKind, isAuthCallbackUrl, protocolClientArgs } from './deep-link';
 
-// The callback page hands this URL to the browser, and the second instance
-// hands it back on argv. Both halves have to agree or the handoff silently
-// does nothing and the user is left on the "you're authorized" tab.
+// A scheme is a machine-wide claim. QA runs a staging build beside prod, so a
+// shared name would send a staging sign-in to whichever build installed last.
+describe('schemeForKind', () => {
+  it('keeps the unsuffixed scheme for prod', () => {
+    expect(schemeForKind('prod')).toBe('mindshub-cowork');
+  });
+
+  it('labels stable "staging", matching the deb package name', () => {
+    expect(schemeForKind('stable')).toBe('mindshub-cowork-staging');
+  });
+
+  it('gives every build kind a distinct scheme', () => {
+    const schemes = BUILD_KINDS.map(schemeForKind);
+    expect(new Set(schemes).size).toBe(BUILD_KINDS.length);
+  });
+});
+
 describe('isAuthCallbackUrl', () => {
-  it('matches the URL the callback page actually emits', () => {
-    expect(isAuthCallbackUrl(AUTH_CALLBACK_URL)).toBe(true);
+  it('matches its own channel callback URL', () => {
+    expect(isAuthCallbackUrl('mindshub-cowork://auth-done', 'prod')).toBe(true);
+    expect(isAuthCallbackUrl('mindshub-cowork-staging://auth-done', 'stable')).toBe(true);
+  });
+
+  it('does not answer for a sibling channel', () => {
+    expect(isAuthCallbackUrl('mindshub-cowork://auth-done', 'stable')).toBe(false);
+    expect(isAuthCallbackUrl('mindshub-cowork-staging://auth-done', 'prod')).toBe(false);
   });
 
   it('tolerates the trailing slash a browser may add', () => {
-    expect(isAuthCallbackUrl(`${APP_SCHEME}://auth-done/`)).toBe(true);
+    expect(isAuthCallbackUrl('mindshub-cowork://auth-done/', 'prod')).toBe(true);
   });
 
   it('rejects a look-alike host rather than prefix-matching it', () => {
-    expect(isAuthCallbackUrl(`${APP_SCHEME}://auth-done.example.com`)).toBe(false);
-    expect(isAuthCallbackUrl(`${APP_SCHEME}://auth-done-evil`)).toBe(false);
+    expect(isAuthCallbackUrl('mindshub-cowork://auth-done.example.com', 'prod')).toBe(false);
+    expect(isAuthCallbackUrl('mindshub-cowork://auth-done-evil', 'prod')).toBe(false);
   });
 
-  it('rejects another application scheme carrying our host', () => {
-    expect(isAuthCallbackUrl('other-app://auth-done')).toBe(false);
-    expect(isAuthCallbackUrl('https://auth-done')).toBe(false);
+  it('rejects a foreign scheme carrying our host', () => {
+    expect(isAuthCallbackUrl('other-app://auth-done', 'prod')).toBe(false);
+    expect(isAuthCallbackUrl('https://auth-done', 'prod')).toBe(false);
   });
 
   it('returns false for input that is not a URL at all', () => {
-    expect(isAuthCallbackUrl('')).toBe(false);
-    expect(isAuthCallbackUrl('not a url')).toBe(false);
+    expect(isAuthCallbackUrl('', 'prod')).toBe(false);
+    expect(isAuthCallbackUrl('not a url', 'prod')).toBe(false);
   });
 });
 
@@ -44,19 +65,5 @@ describe('protocolClientArgs', () => {
 
   it('degrades to no override when argv carries no script', () => {
     expect(protocolClientArgs('/usr/bin/electron', ['/usr/bin/electron'], false)).toEqual({});
-  });
-});
-
-describe('findDeepLink', () => {
-  it('finds the deep link among the argv Windows passes to the second instance', () => {
-    expect(findDeepLink(['C:\\app.exe', '--flag', AUTH_CALLBACK_URL])).toBe(AUTH_CALLBACK_URL);
-  });
-
-  it('returns null for an ordinary launch', () => {
-    expect(findDeepLink(['C:\\app.exe', '--flag'])).toBeNull();
-  });
-
-  it('ignores a foreign scheme in argv', () => {
-    expect(findDeepLink(['C:\\app.exe', 'other-app://auth-done'])).toBeNull();
   });
 });

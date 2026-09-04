@@ -2,31 +2,44 @@
 //
 // Windows refuses a foreground request from a process that isn't already
 // frontmost, so show()/focus()/app.focus() are all declined after a browser
-// sign-in and the OS flashes the taskbar button instead. The way back is to
-// let Windows hand the foreground over: a second launch through our scheme
-// notifies the running instance via the process singleton, which does get
-// foreground rights. Pure (no electron import) so it stays unit-testable;
-// index.ts wires in the real app/argv.
+// sign-in and the OS flashes the taskbar button instead. The way back is to let
+// Windows hand the foreground over: a launch through our scheme notifies the
+// running instance via the process singleton, which does get foreground rights.
+// Pure (no electron import) so it stays unit-testable; index.ts wires in the
+// real app/argv and resolves the build kind.
 
 import * as path from 'path';
+import type { BuildKind } from './channels';
 
-export const APP_SCHEME = 'mindshub-cowork';
-
-/** Where the OAuth callback page sends the browser to bring the app forward. */
-export const AUTH_CALLBACK_URL = `${APP_SCHEME}://auth-done`;
-
+const SCHEME_BASE = 'mindshub-cowork';
 const AUTH_CALLBACK_HOST = 'auth-done';
 
-/** True only for our scheme's auth-callback URL. Host is compared exactly, so
- *  a look-alike like `mindshub-cowork://auth-done.example.com` does not match. */
-export function isAuthCallbackUrl(url: string): boolean {
+// Per channel, for the same reason appId, productName, userData and the deb
+// package name already are: a scheme is a machine-wide claim, so a single name
+// would let whichever build installed last answer for all of them.
+const SCHEME_SUFFIX: Record<BuildKind, string> = {
+  prod: '',
+  preview: '-preview',
+  // "staging", not "stable" — mirrors linuxName in scripts/channel-identity.mjs.
+  stable: '-staging',
+  dev: '-dev',
+};
+
+export function schemeForKind(kind: BuildKind): string {
+  return `${SCHEME_BASE}${SCHEME_SUFFIX[kind]}`;
+}
+
+/** True only for this build's own scheme and the auth-callback host. Host is
+ *  compared exactly, so `…://auth-done.example.com` does not match, and a
+ *  sibling channel's scheme does not match either. */
+export function isAuthCallbackUrl(url: string, kind: BuildKind): boolean {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return false;
   }
-  return parsed.protocol === `${APP_SCHEME}:` && parsed.host === AUTH_CALLBACK_HOST;
+  return parsed.protocol === `${schemeForKind(kind)}:` && parsed.host === AUTH_CALLBACK_HOST;
 }
 
 /** Arguments for `app.setAsDefaultProtocolClient`. A packaged app registers its
@@ -42,10 +55,4 @@ export function protocolClientArgs(
   const script = argv[1];
   if (!script) return {};
   return { execPath, args: [path.resolve(script)] };
-}
-
-/** First argument that is one of our scheme URLs. Windows delivers the deep
- *  link as an argv entry on the second instance, not as an event payload. */
-export function findDeepLink(argv: readonly string[]): string | null {
-  return argv.find((arg) => isAuthCallbackUrl(arg)) ?? null;
 }

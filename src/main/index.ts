@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
+import { schemeForKind, isAuthCallbackUrl, protocolClientArgs } from './deep-link';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
@@ -330,6 +331,31 @@ function focusMainWindow() {
     }
   } catch {}
 }
+
+// One running app per install, and the mechanism the browser handoff relies on:
+// Windows refuses a foreground request from a process that isn't frontmost, but
+// it does grant foreground rights to the instance its process singleton
+// notifies. Scoped per userData directory, which app-identity varies by channel,
+// so build kinds still run side by side.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // exit(), never quit(). before-quit drains the sidecar through stopServer's
+  // killProcessOnPort, which matches on the port rather than a pid it owns, so
+  // a quitting second instance would kill the FIRST instance's python.
+  app.exit(0);
+}
+
+app.on('second-instance', () => {
+  focusMainWindow();
+});
+
+// macOS delivers the scheme as an event; Windows passes it on the second
+// instance's argv, which the handler above already covers.
+app.on('open-url', (event, url) => {
+  if (!isAuthCallbackUrl(url, buildKind())) return;
+  event.preventDefault();
+  focusMainWindow();
+});
 
 // One-shot self-heal for the boot OTA load: if the activated bundle's main
 // frame fails to load (missing/corrupt assets), roll it back and fall to the
@@ -1417,6 +1443,16 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  // The losing instance is already exiting; returning here keeps it away from
+  // the server boot below, which reaps whatever holds the port.
+  if (!gotSingleInstanceLock) return;
+
+  // Register the scheme that brings the app forward after a browser handoff.
+  const scheme = schemeForKind(buildKind());
+  const { execPath, args } = protocolClientArgs(process.execPath, process.argv, app.isPackaged);
+  if (execPath) app.setAsDefaultProtocolClient(scheme, execPath, args);
+  else app.setAsDefaultProtocolClient(scheme);
+
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
