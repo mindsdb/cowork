@@ -641,7 +641,69 @@ function AppCore() {
   // reads it to tell a slow-to-register turn from a never-started fast-fail.
   // Reset to false at every new stream reservation below.
   const activeStreamProducedRef = useRef(false);
-  const activeStreamGenerationRef = useRef(0);
+  // Every live stream, keyed by conversation. Concurrent streams are intended
+  // (a background task keeps draining while another is on screen), so the refs
+  // above cannot own teardown: Stop has to reach the controller belonging to
+  // the conversation it stops, not whichever one claimed them last.
+  const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
+
+  // A second stream on the SAME conversation replaces the first, which has to
+  // be aborted: left attached it keeps replaying into a turn nobody reads and
+  // can later cancel it on its own idle timer. A stream on a different
+  // conversation is deliberately untouched.
+  const registerStream = useCallback((cid, ctrl) => {
+    if (!cid || !ctrl) return;
+    const prev = liveStreamsRef.current.get(cid);
+    if (prev?.ctrl && prev.ctrl !== ctrl) {
+      try { prev.ctrl.abort(); } catch { /* already closed */ }
+    }
+    liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
+  }, []);
+
+  // Drop the record only when `ctrl` is still the registered one, so a stream
+  // that ends after being replaced cannot evict its successor.
+  const releaseStream = useCallback((cid, ctrl) => {
+    if (!cid) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec && rec.ctrl === ctrl) liveStreamsRef.current.delete(cid);
+  }, []);
+
+  const abortStream = useCallback((cid) => {
+    if (!cid) return null;
+    const rec = liveStreamsRef.current.get(cid);
+    if (!rec) return null;
+    liveStreamsRef.current.delete(cid);
+    if (rec.ctrl) { try { rec.ctrl.abort(); } catch { /* already closed */ } }
+    return rec;
+  }, []);
+
+  // A tmp- conversation adopts its canonical server id mid-stream, so the
+  // record has to move with it or teardown looks for a key nobody holds.
+  const rekeyStream = useCallback((previousId, cid) => {
+    if (!previousId || !cid || previousId === cid) return;
+    const rec = liveStreamsRef.current.get(previousId);
+    if (!rec) return;
+    const existing = liveStreamsRef.current.get(cid);
+    if (existing?.ctrl && existing.ctrl !== rec.ctrl) {
+      try { existing.ctrl.abort(); } catch { /* already closed */ }
+    }
+    liveStreamsRef.current.delete(previousId);
+    liveStreamsRef.current.set(cid, rec);
+  }, []);
+
+  // Superseded means this stream is no longer the one its conversation holds:
+  // either Stop reaped the record or a replacement took the key. Scoped per
+  // conversation, so stopping one turn cannot silence another that is live.
+  const isCurrentStream = useCallback((cid, ctrl) => (
+    Boolean(cid) && liveStreamsRef.current.get(cid)?.ctrl === ctrl
+  ), []);
+
+  // The pad belongs to the turn that opened it, not to the app.
+  const setStreamPad = useCallback((cid, pad) => {
+    if (!cid || !pad) return;
+    const rec = liveStreamsRef.current.get(cid);
+    if (rec) rec.pad = pad;
+  }, []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -751,8 +813,17 @@ function AppCore() {
       cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
     };
     if (decision.release && streaming) {
+      // Reap the record for the stranded conversation, not just the shared
+      // ref: another conversation may legitimately be streaming behind it.
+      const reaped = abortStream(streaming);
       const ctrl = activeStreamCtrlRef.current;
-      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      // Abort the shared controller only when no conversation owns it; one
+      // owned by a different conversation is legitimately still running.
+      const ownedElsewhere = ctrl
+        && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
+      if (ctrl && !reaped && !ownedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
@@ -799,7 +870,7 @@ function AppCore() {
       }
       return next;
     });
-  }, []);
+  }, [abortStream]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -929,8 +1000,8 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
-    // Every stream's onEvent funnels through here (after dropping stale-generation
-    // events), so reaching this line means the active stream delivered data.
+    // Every stream's onEvent funnels through here (after dropping the events of
+    // a superseded stream), so reaching this line means it delivered data.
     // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
     // Anything the agent just produced is alive by definition, whatever a
@@ -1051,16 +1122,23 @@ function AppCore() {
       }
     }
 
-    activeStreamGenerationRef.current += 1;
+    // Tear down the record for the conversation being stopped, not whichever
+    // one claimed the shared refs last: with concurrent streams those differ,
+    // and cancelling the wrong pad kills a cell inside a still-running turn.
+    const stopped = cidToCancel ? abortStream(cidToCancel) : null;
 
-    const padName = activeScratchpadRef.current;
+    const padName = stopped ? stopped.pad : activeScratchpadRef.current;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
 
     const ctrl = activeStreamCtrlRef.current;
-    if (ctrl) {
-      try { ctrl.abort(); } catch {}
+    const ctrlOwnedElsewhere = ctrl
+      && [...liveStreamsRef.current.values()].some((r) => r.ctrl === ctrl);
+    if (ctrl && (!stopped || ctrl === stopped.ctrl)) {
+      if (!stopped && !ctrlOwnedElsewhere) {
+        try { ctrl.abort(); } catch { /* already closed */ }
+      }
       activeStreamCtrlRef.current = null;
     }
 
@@ -1102,7 +1180,7 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
 
     // Stop frees the shared stream slot with no onDone/onError behind it — the
-    // generation bump above silences the aborted run's cancelled callback — so
+    // reaped record above silences the aborted run's cancelled callback — so
     // a message queued against a *different* task would strand forever at
     // "N queued · waiting for Anton" with no future turn to release it. Sweep
     // the siblings now (the cancelled task's own queue was just deleted). Via
@@ -1129,7 +1207,7 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone, releaseLiveStepsWithAliases]);
+  }, [markInFlightDone, releaseLiveStepsWithAliases, abortStream]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
@@ -1853,7 +1931,9 @@ function AppCore() {
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
     // Already tailing locally — second-mount of the same task should
-    // not double up.
+    // not double up. Deliberately still the shared refs and not the registry:
+    // a record also covers a live send, and re-attaching over one would abort
+    // it in favour of a tail that immediately 404s.
     if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
       return true;
     }
@@ -1890,23 +1970,27 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = tailInFlight(taskId, {
+    const ctrl = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
                   // over text deltas, and from_seq=0 keeps the rebuild
                   // simple. A per-task last-seen-seq optimisation is
                   // possible later if we see network overhead.
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(taskId, ctrl)) return;
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(taskId, ctrl);
+        releaseStream(taskId, ctrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
@@ -1954,12 +2038,18 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
-        // Order matters twice over. The generation guard comes first: a
-        // superseded stream's late abort must not clear liveStepsRef for a
-        // NEWER run on the same conversation. The release then comes before
-        // the `cancelled` bail-out, because an aborted run's question is dead
-        // too and leaving it behind would hijack the composer.
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        // Read first, drop second: the record is what answers "am I still the
+        // live stream here", so releasing before reading would make every
+        // terminal look superseded. Releasing is controller-guarded, so a
+        // superseded stream still cannot evict its successor.
+        const superseded = !isCurrentStream(taskId, ctrl);
+        releaseStream(taskId, ctrl);
+        // The superseded check comes first so a stream that lost its slot cannot
+        // clear liveStepsRef for a NEWER run on the same conversation, and
+        // releaseLiveSteps comes before the `cancelled` bail-out because an
+        // aborted run's question is dead too and leaving it behind would hijack
+        // the composer.
+        if (superseded) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -1969,8 +2059,10 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad]);
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
@@ -2894,6 +2986,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -2923,6 +3016,7 @@ function AppCore() {
     // Append the user message + thinking placeholder, then start the
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
+    let sessionCtrl = null;
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -2942,7 +3036,9 @@ function AppCore() {
             }
           : t,
       ));
-      activeStreamCtrlRef.current = streamNewSessionFn();
+      sessionCtrl = streamNewSessionFn();
+      activeStreamCtrlRef.current = sessionCtrl;
+      registerStream(taskId, sessionCtrl);
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
@@ -2951,7 +3047,6 @@ function AppCore() {
     };
     trackAgentSessionStarted();
     trackFirstQuery();
-    const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
@@ -2963,7 +3058,7 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
@@ -2971,11 +3066,14 @@ function AppCore() {
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || taskId, open._scratchpadTabId);
+        }
         flushSync(() => flushStreamingMessage());
       },
       onProgress(event, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         if (sid) adoptServerId(sid);
         // Intentionally a no-op for messages: every `response.in_progress`
         // event already passed through onEvent → flushStreamingMessage,
@@ -2987,8 +3085,10 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId, sessionCtrl);
+        releaseStream(resolvedId, sessionCtrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
@@ -3054,7 +3154,9 @@ function AppCore() {
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
+        releaseStream(resolvedId || taskId, sessionCtrl);
+        if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3357,6 +3459,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
@@ -3404,8 +3507,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamMessage(id, sendText, {
+    const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
       projectPath: taskProjectPath,
@@ -3414,7 +3516,7 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
         // server's `chat_stream` strips `tmp-` prefixes and mints a
         // fresh id; the new value rides on `response.created`.
@@ -3423,12 +3525,17 @@ function AppCore() {
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
-        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        if (open?._scratchpadTabId) {
+          activeScratchpadRef.current = open._scratchpadTabId;
+          setStreamPad(resolvedId || id, open._scratchpadTabId);
+        }
         flushSync(() => flushStreaming());
       },
       onDone() {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId || id, ctrl);
+        releaseStream(resolvedId || id, ctrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         // Turn done → conversation persisted; drop the optimistic flag (set if
@@ -3481,7 +3588,9 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || id, ctrl);
+        releaseStream(resolvedId || id, ctrl);
+        if (superseded) return;
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
         void (async () => {
@@ -3491,6 +3600,8 @@ function AppCore() {
         })();
       },
     });
+    activeStreamCtrlRef.current = ctrl;
+    registerStream(resolvedId || id, ctrl);
     // The stream is running; whatever happens to it now is reported through the
     // callbacks above, not through this return value.
     return true;
@@ -3618,6 +3729,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      rekeyStream(previousId, sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);
       // Migrate the formStore entry so the DataVaultFormPanel
@@ -3654,8 +3766,8 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
-    // Same generation guard the other three stream sites carry, in the same
-    // order: generation → release → (`cancelled` bail, where the transport
+    // Same superseded guard the other three stream sites carry, in the same
+    // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
     // — that is a claim about today's server, while onEvent below pushes
     // through the same `updateLiveStepsAndDrainQueue` and `reduceStream` as
@@ -3668,14 +3780,7 @@ function AppCore() {
     // Either way the composer stops redirecting, the next send is queued
     // behind a turn that cannot complete, and it sits there until the
     // server's 300 s question timeout.
-    //
-    // The counter is deliberately global rather than per conversation: there
-    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
-    // live, and the sole bump site (handleStopStream) explicitly releases the
-    // conversation it just stopped. Making it per conversation would buy
-    // nothing while one-stream-at-a-time holds.
-    const streamGen = activeStreamGenerationRef.current;
-    activeStreamCtrlRef.current = streamDataVaultSubmission({
+    const vaultCtrl = streamDataVaultSubmission({
       formId,
       // Pass the local id only when it's a real server id — otherwise
       // send null so the server mints a fresh canonical id. (The
@@ -3688,7 +3793,7 @@ function AppCore() {
       name,
       method,
       onEvent(ev) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
@@ -3727,7 +3832,7 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         if (sid) adoptServerId(sid);
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
@@ -3742,9 +3847,11 @@ function AppCore() {
         }
       },
       onDone(sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
+        const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
+        releaseStream(resolvedId || id, vaultCtrl);
+        if (superseded) return;
         if (sid) adoptServerId(sid);
-        activeStreamCtrlRef.current = null;
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         // Turn done → conversation persisted; drop the optimistic flag.
@@ -3783,12 +3890,14 @@ function AppCore() {
       },
       // No `cancelled` bail here, unlike the other three sites: this
       // transport's onError takes a message only, with no event/code to
-      // inspect. An abort therefore lands as a plain error — but the
-      // generation guard above already swallows it, because the only thing
-      // that aborts this stream is handleStopStream, which bumps first.
+      // inspect. An abort therefore lands as a plain error — but the superseded
+      // check swallows it, because the only things that abort this stream reap
+      // its record first.
       onError(message) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        activeStreamCtrlRef.current = null;
+        const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
+        releaseStream(resolvedId || id, vaultCtrl);
+        if (superseded) return;
+        if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
         setTasks((prev) => prev.map((t) => {
@@ -3802,6 +3911,11 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
     });
+    activeStreamCtrlRef.current = vaultCtrl;
+    // No setStreamPad: the probe does emit scratchpad events on this stream,
+    // but this path never tracked the open pad, so Stop cannot cancel a probe
+    // cell. It used to reach the shared ref and cancel someone else's instead.
+    registerStream(resolvedId || id, vaultCtrl);
   };
 
   const setSetting = (key, value) => {
