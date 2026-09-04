@@ -79,11 +79,11 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   // loses it the moment the comparison is opened. This also holds against a
   // server that predates the field.
   const repairPending = repair?.status === 'ready';
-  const repairSuperseded = repairPending
-    && (repair.superseded
-      || (!!repair.revisionId
-        && repair.path === source?.path
-        && repair.revisionId !== currentRevision?.id));
+  // Server-computed, never inferred here. Comparing the repair's revision with
+  // our own copy of head cannot tell "the artifact moved past this" from "our
+  // copy is behind the agent's revision" - both read as not-equal, and the
+  // second wrongly told the owner their edit came first.
+  const repairSuperseded = repairPending && repair.superseded === true;
 
   const refreshHistory = useCallback(async (
     path = source?.path,

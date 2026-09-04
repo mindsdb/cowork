@@ -556,16 +556,31 @@ describe('useArtifactWorkspace agent repair auto-open', () => {
     await waitFor(() => expect(result.current.comparison?.kind).toBe('agent'));
   });
 
-  it('still reports supersession when the detail fetch omits the flag', async () => {
-    // agent_repair_detail returns the stored record, without the server's
-    // computed field, so reading the flag off it alone loses the notice.
+  it('does not call a repair superseded just because our copy of head is behind', async () => {
+    // The agent's revision can be NEWER than the head this client last loaded.
+    // Inferring from a local comparison read that as "the artifact moved past
+    // your suggestion" and told the owner their edit came first, when the
+    // suggestion was in fact current and needed no confirm to reject.
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revision: { id: 'rev-8' },
+      repair: repairAt({ revisionId: 'rev-9', superseded: false }),
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+    expect(result.current.repairPending).toBe(true);
+    expect(result.current.repairSuperseded).toBe(false);
+  });
+
+  it('keeps the flag the server sent across opening the comparison', async () => {
     api.loadArtifactSource.mockResolvedValue({
       ...source,
       revision: { id: 'rev-9' },
       repair: repairAt({ superseded: true }),
     });
     api.loadAgentRepair.mockResolvedValue({
-      repair: repairAt({ superseded: undefined }),
+      repair: repairAt({ superseded: true }),
       compare: null,
     });
     const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
