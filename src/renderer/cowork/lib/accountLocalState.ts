@@ -12,6 +12,7 @@
  */
 
 // Which account the state in this origin belongs to.
+// deepcode ignore HardcodedNonCryptoSecret: 'anton.lastAccount' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
 const LAST_ACCOUNT_KEY = 'anton.lastAccount';
 
 /**
