@@ -78,8 +78,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   // repair without the server's computed flag, so trusting the field alone
   // loses it the moment the comparison is opened. This also holds against a
   // server that predates the field.
-  const repairSuperseded = !!repair
-    && repair.status === 'ready'
+  const repairPending = repair?.status === 'ready';
+  const repairSuperseded = repairPending
     && (repair.superseded
       || (!!repair.revisionId
         && repair.path === source?.path
@@ -206,7 +206,6 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       // unrelated. Per viewer and per session by design - it decides whether to
       // interrupt, so losing it is harmless, and it needs no server round trip.
       if (decidable && !hasAutoOpened(loaded.repair.id)) {
-        markAutoOpened(loaded.repair.id);
         // Its own try: a repair whose base revision aged out of history answers
         // 404, and the source catch below reads 404 as "this artifact predates
         // editing" - which would hide the whole workspace over a stale record.
@@ -215,6 +214,9 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
           if (!isCurrent()) return;
           if (detail.compare) {
             setComparison({ kind: 'agent', ...detail.compare, repair: detail.repair });
+            // Only once it actually opened: marking before the fetch burns the
+            // one auto-open on a request that failed.
+            markAutoOpened(loaded.repair.id);
           }
         } catch (repairError) {
           if (!isCurrent()) return;
@@ -525,6 +527,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     compareRevision,
     restoreRevision,
     repair,
+    repairPending,
     repairSuperseded,
     addressWithAgent,
     refreshRepair,
@@ -534,8 +537,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }), [
     addressWithAgent, cancelRepair, capabilities, changeMode, commentsReady, compareRevision, comparison,
     conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, refreshRepair, releaseRepairsForComment, repair, repairSuperseded,
-    restoreRevision, revisions, save, source, status,
+    mode, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    repairSuperseded, restoreRevision, revisions, save, source, status,
     supported, unsupportedReason,
   ]);
 }

@@ -842,10 +842,19 @@ export function ArtifactViewer({
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather
           than taking over the canvas the way a current one does. */}
-      {workspace.repairSuperseded
+      {/* Any pending suggestion, not only a superseded one: the comparison
+          auto-opens at most once, so without this a decision closed without
+          being made would have no way back and would keep gating the file. */}
+      {workspace.repairPending
+        && !workspace.comparison
         && workspace.repair.id !== dismissedRepairId && (
         <div className="artifact-repair-notice" role="status">
-          <span>An agent suggestion from before your last edit is still open.</span>
+          <span>
+            {workspace.repairSuperseded
+              ? 'An agent suggestion from before your last edit is still open.'
+              : 'An agent suggestion is waiting on your decision.'}
+            {repairNoticeError ? ` ${repairNoticeError}` : ''}
+          </span>
           <button
             type="button"
             disabled={repairBusy}

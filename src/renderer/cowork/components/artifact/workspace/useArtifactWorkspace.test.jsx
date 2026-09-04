@@ -520,6 +520,42 @@ describe('useArtifactWorkspace agent repair auto-open', () => {
     expect(result.current.repair?.id).toBe('repair-1');
   });
 
+  it('leaves a current repair reachable after its one auto-open', async () => {
+    // Auto-open fires once, so a comparison closed without a decision must
+    // still be reported as pending or it silently gates the file all session.
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    const { result, rerender } = renderHook(
+      ({ isOpen }) => useArtifactWorkspace(artifact, { open: isOpen }),
+      { initialProps: { isOpen: true } },
+    );
+    await waitFor(() => expect(result.current.comparison?.kind).toBe('agent'));
+
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    expect(result.current.comparison).toBeNull();
+    expect(result.current.repairPending).toBe(true);
+    expect(result.current.repairSuperseded).toBe(false);
+  });
+
+  it('does not spend the one auto-open on a fetch that failed', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    api.loadAgentRepair.mockRejectedValueOnce(httpError(503, 'Upstream busy'));
+    const { result, rerender } = renderHook(
+      ({ isOpen }) => useArtifactWorkspace(artifact, { open: isOpen }),
+      { initialProps: { isOpen: true } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.comparison).toBeNull();
+
+    api.loadAgentRepair.mockResolvedValue({ repair: repairAt(), compare });
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+
+    await waitFor(() => expect(result.current.comparison?.kind).toBe('agent'));
+  });
+
   it('still reports supersession when the detail fetch omits the flag', async () => {
     // agent_repair_detail returns the stored record, without the server's
     // computed field, so reading the flag off it alone loses the notice.
