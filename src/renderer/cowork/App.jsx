@@ -5124,7 +5124,11 @@ function AppCore() {
       <ConfirmModal
         open={pendingDeleteProject != null}
         title={`Delete project "${pendingDeleteProject?.name}"?`}
-        message="All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+        message={
+          pendingDeleteProject?.capabilities?.directoryIsExternal
+            ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} is left where it is, with its files untouched. This can't be undone.`
+            : "All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+        }
         confirmLabel="Delete project"
         cancelLabel="Keep"
         destructive

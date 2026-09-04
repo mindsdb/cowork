@@ -23,6 +23,8 @@ import {
   writeProjectFile,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
+import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -80,8 +82,15 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [folderPath, setFolderPath] = useState('');
   const nameRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // A chosen folder is a desktop capability: the server has to be on the same
+  // machine as the folder, and it refuses the path in org mode anyway. Hidden
+  // rather than offered and refused.
+  const orgMode = useOrgMode();
+  const canChooseFolder = host.isElectron && !orgMode;
 
   // Reset everything when the modal opens — `open` flipping false→true
   // should always present a clean form.
@@ -93,6 +102,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(false);
     setError('');
     setDragActive(false);
+    setFolderPath('');
     const id = requestAnimationFrame(() => nameRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -133,7 +143,11 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     try {
       // 1) Create the folder. Server sanitises + dedupes — `result.name`
       //    is the canonical name the rest of the steps must use.
-      const result = await createProject(trimmed);
+      // Called with the name alone when no folder was chosen, so the
+      // request body stays exactly what it was before this option existed.
+      const result = folderPath
+        ? await createProject(trimmed, folderPath)
+        : await createProject(trimmed);
       const finalName = result?.name || trimmed;
 
       // 2) Write instructions if the user typed any. Use the final
@@ -170,6 +184,17 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   };
 
   const removeFile = (i) => setFiles((prev) => prev.filter((_, j) => j !== i));
+
+  const chooseFolder = async () => {
+    setError('');
+    const result = await host.pickCodeFolder();
+    if (result?.cancelled) return;
+    if (!result?.ok || !result.path) {
+      setError(result?.reason || 'Could not open the folder picker.');
+      return;
+    }
+    setFolderPath(result.path);
+  };
 
   return (
     <Modal
@@ -245,6 +270,47 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               }}
             />
           </Field>
+
+          {canChooseFolder && (
+            <Field
+              label="Location"
+              optional
+              help={
+                folderPath
+                  ? 'The agent works on the files already in this folder. Deleting the project later leaves the folder untouched.'
+                  : 'By default Cowork creates a new folder for the project.'
+              }
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Button
+                  variant={folderPath ? 'subtle' : 'tinted'}
+                  disabled={busy}
+                  onClick={chooseFolder}
+                >
+                  {folderPath ? 'Change folder' : 'Use an existing folder'}
+                </Button>
+                {folderPath && (
+                  <>
+                    <span
+                      title={folderPath}
+                      style={{
+                        flex: 1, minWidth: 0,
+                        fontFamily: FONT_MONO, fontSize: 12,
+                        color: 'var(--ink-3)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        direction: 'rtl', textAlign: 'left',
+                      }}
+                    >
+                      {folderPath}
+                    </span>
+                    <Button variant="muted" disabled={busy} onClick={() => setFolderPath('')}>
+                      Clear
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Field>
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
