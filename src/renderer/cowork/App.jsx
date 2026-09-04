@@ -803,8 +803,11 @@ function AppCore() {
       cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
     };
     if (decision.release && streaming) {
+      // Reap the record for the stranded conversation, not just the shared
+      // ref: another conversation may legitimately be streaming behind it.
+      const reaped = abortStream(streaming);
       const ctrl = activeStreamCtrlRef.current;
-      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      if (ctrl && ctrl !== reaped?.ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
@@ -851,7 +854,7 @@ function AppCore() {
       }
       return next;
     });
-  }, []);
+  }, [abortStream]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
