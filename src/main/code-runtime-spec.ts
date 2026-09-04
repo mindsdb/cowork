@@ -6,6 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 
 export const CODE_EXTRA = 'code';
 export const CODEX_DIST_NAME = 'openai_codex';
@@ -22,9 +23,11 @@ export function withCodeExtra(spec: string): string {
   // A bare URL or path (the COWORK_SERVER_PACKAGE escape hatch): a wheel, a
   // source dir, or a git+ URL. Name it so the extra can be requested.
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return `cowork-server[${CODE_EXTRA}] @ ${trimmed}`;
-  if (/^(\.|\/|~|[A-Za-z]:[\\/])/.test(trimmed)) {
-    const url = trimmed.startsWith('file://') ? trimmed : `file://${path.resolve(trimmed)}`;
-    return `cowork-server[${CODE_EXTRA}] @ ${url}`;
+  // A filesystem path: POSIX, a Windows drive, or a UNC share. pathToFileURL
+  // gets the Windows forms right (file:///C:/… and file://server/share/…).
+  if (/^(\.|\/|~|[A-Za-z]:[\\/]|\\\\)/.test(trimmed)) {
+    const expanded = trimmed.startsWith('~') ? path.join(process.env.HOME || process.env.USERPROFILE || '', trimmed.slice(1)) : trimmed;
+    return `cowork-server[${CODE_EXTRA}] @ ${pathToFileURL(path.resolve(expanded)).href}`;
   }
   return trimmed;
 }

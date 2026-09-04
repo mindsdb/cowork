@@ -14,9 +14,19 @@ describe('withCodeExtra', () => {
     ['cowork-server @ git+https://github.com/mindsdb/cowork-server.git@staging', 'cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@staging'],
     ['git+https://github.com/mindsdb/cowork-server.git@abc123', 'cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@abc123'],
     ['/tmp/build/cowork_server-1.0-py3-none-any.whl', 'cowork-server[code] @ file:///tmp/build/cowork_server-1.0-py3-none-any.whl'],
+    ['/tmp/build/with space/cowork_server-1.0-py3-none-any.whl', 'cowork-server[code] @ file:///tmp/build/with%20space/cowork_server-1.0-py3-none-any.whl'],
     ['file:///tmp/src/cowork-server', 'cowork-server[code] @ file:///tmp/src/cowork-server'],
   ])('%s → %s', (spec, expected) => {
     expect(withCodeExtra(spec)).toBe(expected);
+  });
+
+  it('turns a Windows path into the file URL uv expects', () => {
+    // Exercised through path.win32-style input; on POSIX resolve() keeps the
+    // drive letter as a path segment, so assert the shape rather than the OS.
+    const spec = withCodeExtra('C:\\CodeModeQA\\cowork_server-1.0-py3-none-any.whl');
+    expect(spec.startsWith('cowork-server[code] @ file://')).toBe(true);
+    expect(spec).toContain('cowork_server-1.0-py3-none-any.whl');
+    expect(spec).not.toContain('\\');
   });
 
   it('leaves a spec that already names extras alone', () => {
