@@ -462,6 +462,13 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
       failRefreshFrom?: number;
       /** Only the Nth refresh fails, so a retry can succeed. */
       failRefreshOnce?: number;
+      /**
+       * Keycloak refuses the switch BACK to where the hunt started, once it has
+       * left. Distinct from `refuse`, which would also block the ranking's own
+       * move on the way in — and it is only the return trip that models a
+       * refused restore.
+       */
+      refuseReturn?: boolean;
     } = {},
   ) {
     let active = startIn;
@@ -489,6 +496,9 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
           // `refuse` is Keycloak saying no to a switch the app asked for — a
           // real answer, distinct from an organization the person is not in.
           if (opts.refuse?.includes(id)) return { status: 403, body: {} };
+          if (opts.refuseReturn && sawFirstAuth && id === startedFrom && active.id !== startedFrom) {
+            return { status: 403, body: {} };
+          }
           const found = memberships.find((o) => o.id === id);
           if (found) active = found;
           return { status: found ? 204 : 403, body: {} };
@@ -729,6 +739,28 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     // The last two switches are both the restore: the thing that failed is the
     // thing being retried. (Counting every switch to this organization would
     // also catch the ranking's own move before the hunt began.)
+    expect(net.switches().slice(-2)).toEqual([net.startedIn(), net.startedIn()]);
+  });
+
+  it('fails when Keycloak refuses to put the session back', async () => {
+    // The other half of the restore failure, and the one that regressed first:
+    // `restoreActiveOrg` used to `return true` on a REFUSED switch, on the
+    // reasoning that the session never moved — but by then the hunt had already
+    // moved it, so the person was left in whichever organization the loop tried
+    // last and it was reported as a successful sign-in.
+    //
+    // Distinct from the refresh-failure case above: there the switch lands and
+    // only the token lags. Here nothing moves back at all, so a guard that
+    // checks the token alone would still pass.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [], { refuseReturn: true });
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(result.token).toBeUndefined();
+    expect(result.error).toMatch(/could not put this computer back/i);
+    expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
+    // It really did leave, and really did not get back.
+    expect(net.activeOrg().id).not.toBe(net.startedIn());
     expect(net.switches().slice(-2)).toEqual([net.startedIn(), net.startedIn()]);
   });
 
