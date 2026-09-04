@@ -5,6 +5,11 @@ import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
+// Fixed-width placeholder for a saved key. The renderer never receives the
+// key itself (main only reports whether one exists), so there is no real
+// length to mirror.
+const MASK = '•'.repeat(12);
+
 // Port / Exit / Started chips in the status card.
 const CHIP_CLASS = 'py-1.5 px-2.5 rounded-md bg-surface-2 border border-solid border-line';
 const CHIP_LABEL_CLASS = 'text-ink-4 uppercase tracking-[0.06em] text-[9.5px] mr-1.5';
@@ -24,19 +29,22 @@ export default function BackendSection({
   const [diag, setDiag] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
 
-  // Custom (remote) server config — see main/custom-server.ts. `saved` is
-  // the persisted config (drives whether the local Status card/footer show
-  // at all); the url/token fields below are the draft being edited.
+  // Custom (remote) server config — see main/custom-server.ts. `customServer`
+  // is the persisted { url, hasToken } summary (drives whether the local
+  // Status card/footer show at all); the url/token fields below are the draft
+  // being edited. The saved key never comes back from main: a blank token
+  // field on save means "keep it" unless the user asked to remove it.
   const [customServer, setCustomServerState] = useState(null);
   const [customUrl, setCustomUrl] = useState('');
   const [customToken, setCustomToken] = useState('');
+  const [clearKey, setClearKey] = useState(false);
   const [customBusy, setCustomBusy] = useState(false);
   const [customError, setCustomError] = useState(null);
   const [needsRestart, setNeedsRestart] = useState(false);
   const [editingServer, setEditingServer] = useState(false);
 
   // Local server auth (see main/local-auth.ts) — off by default. `enabled`
-  // drives the checkbox; `token` is only used to render the masked chip.
+  // drives the checkbox; `hasToken` only whether to render the masked chip.
   const [localAuth, setLocalAuthState] = useState(null);
   const [localAuthBusy, setLocalAuthBusy] = useState(false);
 
@@ -57,9 +65,8 @@ export default function BackendSection({
         if (cancelled) return;
         setCustomServerState(config);
         setCustomUrl(config?.url || '');
-        setCustomToken(config?.token || '');
       } catch {
-        if (!cancelled) setCustomServerState({ url: null, token: null });
+        if (!cancelled) setCustomServerState({ url: null, hasToken: false });
       }
     })();
     (async () => {
@@ -67,7 +74,7 @@ export default function BackendSection({
         const config = await host.getLocalAuth();
         if (!cancelled) setLocalAuthState(config);
       } catch {
-        if (!cancelled) setLocalAuthState({ enabled: false, token: null });
+        if (!cancelled) setLocalAuthState({ enabled: false, hasToken: false });
       }
     })();
     return () => { cancelled = true; };
@@ -78,7 +85,7 @@ export default function BackendSection({
     try {
       const result = await host.setLocalAuth(checked);
       if (result.ok) {
-        setLocalAuthState({ enabled: result.enabled, token: result.token });
+        setLocalAuthState({ enabled: result.enabled, hasToken: result.hasToken });
         await refreshDiag();
       }
     } finally {
@@ -92,13 +99,16 @@ export default function BackendSection({
     try {
       const url = customUrl.trim();
       const token = customToken.trim();
-      const ok = await host.setCustomServer({ url: url || null, token: token || null });
-      if (ok) {
-        setCustomServerState({ url: url || null, token: token || null });
+      const keepExistingToken = !token && !clearKey && !!customServer?.hasToken;
+      const result = await host.setCustomServer({ url: url || null, token: token || null, keepExistingToken });
+      if (result?.ok) {
+        setCustomServerState({ url: url || null, hasToken: !!url && (!!token || keepExistingToken) });
+        setCustomToken('');
+        setClearKey(false);
         setNeedsRestart(true);
         setEditingServer(false);
       } else {
-        setCustomError("Couldn't save — check the app's logs and try again.");
+        setCustomError(result?.error || "Couldn't save — check the app's logs and try again.");
       }
     } finally {
       setCustomBusy(false);
@@ -110,7 +120,8 @@ export default function BackendSection({
   // no separate "use local server" action to maintain.
   const handleCancelEditServer = () => {
     setCustomUrl(customServer?.url || '');
-    setCustomToken(customServer?.token || '');
+    setCustomToken('');
+    setClearKey(false);
     setCustomError(null);
     setEditingServer(false);
   };
@@ -239,8 +250,8 @@ export default function BackendSection({
   // manages", so they're replaced entirely rather than left inert.
   const isCustomServer = !!customServer?.url;
   const displayUrl = customServer?.url || (port ? `http://127.0.0.1:${port}` : null);
-  const maskedKey = customServer?.token ? '•'.repeat(Math.min(Math.max(customServer.token.length, 8), 16)) : null;
-  const localMaskedKey = localAuth?.token ? '•'.repeat(Math.min(Math.max(localAuth.token.length, 8), 16)) : null;
+  const maskedKey = customServer?.hasToken ? MASK : null;
+  const localMaskedKey = localAuth?.hasToken ? MASK : null;
 
   const restartBanner = needsRestart && (
     <Alert variant="warning">
@@ -273,9 +284,21 @@ export default function BackendSection({
           type="password"
           value={customToken}
           onChange={setCustomToken}
-          placeholder="Leave blank if that server has no auth"
+          placeholder={customServer?.hasToken && !clearKey ? 'Saved key kept — type to replace it' : 'Leave blank if that server has no auth'}
           aria-label="API key"
         />
+        {customServer?.hasToken && (
+          <div className="flex items-center gap-2 text-[11.5px] text-ink-3">
+            {clearKey ? (
+              <>
+                <span>The saved key will be removed on save.</span>
+                <Button size="xs" variant="subtle" onClick={() => setClearKey(false)}>Keep it</Button>
+              </>
+            ) : (
+              <Button size="xs" variant="subtle" onClick={() => setClearKey(true)}>Remove saved key</Button>
+            )}
+          </div>
+        )}
       </div>
       {customError && <Alert variant="danger">{customError}</Alert>}
       <div className="flex items-center gap-2 justify-end">
@@ -341,7 +364,9 @@ export default function BackendSection({
           {isCustomServer ? (
             <div className="py-[14px] px-4 text-[12px] text-ink-3 leading-[1.5]">
               This app is pointed at a server it didn't spawn — the local backend's
-              own status, log, and start/stop controls don't apply here.
+              own status, log, and start/stop controls don't apply here. Sign-in
+              credentials and connector authorizations from this app aren't forwarded
+              either: configure providers and connectors on that server.
             </div>
           ) : (
             /* Status summary row */

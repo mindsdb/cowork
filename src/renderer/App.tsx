@@ -306,7 +306,16 @@ export default function App() {
   // no local server exists yet, so CoworkApp needs to auto-open Settings >
   // Backend once it mounts.
   const handleInstallComplete = async (installedBackend: boolean) => {
-    if (!installedBackend) skippedBackendRef.current = true;
+    if (!installedBackend) {
+      // No server exists to hand anything to: the handshake would only retry
+      // against a dead loopback port and, when onboarding deferred a model
+      // (ENG-922), route to setupError instead of the app. Land in the app;
+      // CoworkApp opens Settings > Backend itself (skippedBackendRef) so the
+      // user can point at their server, whose provider config is its own.
+      skippedBackendRef.current = true;
+      setPage('terminal');
+      return;
+    }
     await handlePostAuth();
   };
 

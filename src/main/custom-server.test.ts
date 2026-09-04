@@ -49,7 +49,7 @@ vi.mock('./cowork-home', async (importOriginal) => {
   };
 });
 
-import { getCustomServerConfig, setCustomServerConfig } from './custom-server';
+import { getCustomServerConfig, describeCustomServerConfig, setCustomServerConfig, normalizeCustomServerUrl } from './custom-server';
 import * as coworkHomeMock from './cowork-home';
 const { homeDir, envPath } = (coworkHomeMock as unknown as {
   __testPaths: { homeDir: string; envPath: string };
@@ -77,12 +77,34 @@ describe('getCustomServerConfig', () => {
     fs.writeFileSync(envPath, 'COWORK_CUSTOM_SERVER_URL=http://127.0.0.1:27866\n');
     expect(getCustomServerConfig()).toEqual({ url: 'http://127.0.0.1:27866', token: null });
   });
+
+  it('describeCustomServerConfig reports whether a token exists without exposing it (the renderer-facing shape)', () => {
+    fs.writeFileSync(envPath, 'COWORK_CUSTOM_SERVER_URL=http://127.0.0.1:27866\nCOWORK_CUSTOM_SERVER_TOKEN=abc123\n');
+    const summary = describeCustomServerConfig();
+    expect(summary).toEqual({ url: 'http://127.0.0.1:27866', hasToken: true });
+    expect(JSON.stringify(summary)).not.toContain('abc123');
+  });
+});
+
+describe('normalizeCustomServerUrl', () => {
+  it('accepts http/https origins, keeps a path prefix, strips trailing slashes', () => {
+    expect(normalizeCustomServerUrl('http://192.168.1.5:26866/')).toEqual({ ok: true, url: 'http://192.168.1.5:26866' });
+    expect(normalizeCustomServerUrl('  https://proxy.example.com/cowork/  ')).toEqual({ ok: true, url: 'https://proxy.example.com/cowork' });
+  });
+
+  it('rejects what the network layer could not use, with a message Settings can show', () => {
+    for (const bad of ['192.168.1.5:26866', 'not a url', 'ftp://files.example.com', 'http://user:pw@host:1', 'http://host:1/?x=1', 'http://host:1/#frag']) {
+      const res = normalizeCustomServerUrl(bad);
+      expect(res.ok, bad).toBe(false);
+      if (!res.ok) expect(res.error.length).toBeGreaterThan(10);
+    }
+  });
 });
 
 describe('setCustomServerConfig', () => {
   it('writes a url and token, preserving unrelated existing lines', async () => {
     fs.writeFileSync(envPath, 'COWORK_KEYCHAIN=false\n');
-    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'abc123' });
+    await expect(setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'abc123' })).resolves.toEqual({ ok: true });
 
     const content = fs.readFileSync(envPath, 'utf-8');
     expect(content).toContain('COWORK_KEYCHAIN=false');
@@ -103,6 +125,51 @@ describe('setCustomServerConfig', () => {
     expect(content).not.toContain('COWORK_CUSTOM_SERVER_TOKEN');
     expect(content).toContain('COWORK_KEYCHAIN=false');
     expect(getCustomServerConfig()).toEqual({ url: null, token: null });
+  });
+
+  it('refuses an invalid url and leaves the file untouched', async () => {
+    fs.writeFileSync(envPath, 'COWORK_CUSTOM_SERVER_URL=http://127.0.0.1:27866\nCOWORK_CUSTOM_SERVER_TOKEN=abc123\n');
+    const res = await setCustomServerConfig({ url: '192.168.1.5:26866', token: 'new' });
+    expect(res.ok).toBe(false);
+    expect(getCustomServerConfig()).toEqual({ url: 'http://127.0.0.1:27866', token: 'abc123' });
+  });
+
+  it('stores the normalized url (trailing slash dropped)', async () => {
+    await setCustomServerConfig({ url: 'http://192.168.1.5:26866/', token: null });
+    expect(getCustomServerConfig()).toEqual({ url: 'http://192.168.1.5:26866', token: null });
+  });
+
+  it('keeps the saved token when the field is left blank with keepExistingToken (the edit form never sees the secret)', async () => {
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'abc123' });
+    await setCustomServerConfig({ url: 'http://192.168.1.5:26866', token: null, keepExistingToken: true });
+    expect(getCustomServerConfig()).toEqual({ url: 'http://192.168.1.5:26866', token: 'abc123' });
+  });
+
+  it('clears the saved token when the field is left blank WITHOUT keepExistingToken', async () => {
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'abc123' });
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: null });
+    expect(getCustomServerConfig()).toEqual({ url: 'http://127.0.0.1:27866', token: null });
+  });
+
+  it('a typed token wins over keepExistingToken', async () => {
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'old' });
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: 'new', keepExistingToken: true });
+    expect(getCustomServerConfig().token).toBe('new');
+  });
+
+  it('clearing the url also clears the skip-backend-install choice, so the installer is reachable again', async () => {
+    fs.writeFileSync(envPath, 'COWORK_SKIP_BACKEND_INSTALL=true\nCOWORK_CUSTOM_SERVER_URL=http://127.0.0.1:27866\nCOWORK_KEYCHAIN=false\n');
+    await setCustomServerConfig({ url: null, token: null, keepExistingToken: true });
+    const content = fs.readFileSync(envPath, 'utf-8');
+    expect(content).not.toContain('COWORK_SKIP_BACKEND_INSTALL');
+    expect(content).not.toContain('COWORK_CUSTOM_SERVER');
+    expect(content).toContain('COWORK_KEYCHAIN=false');
+  });
+
+  it('setting a url leaves the skip-backend-install choice alone', async () => {
+    fs.writeFileSync(envPath, 'COWORK_SKIP_BACKEND_INSTALL=true\n');
+    await setCustomServerConfig({ url: 'http://127.0.0.1:27866', token: null });
+    expect(fs.readFileSync(envPath, 'utf-8')).toContain('COWORK_SKIP_BACKEND_INSTALL=true');
   });
 
   it('replaces a previously-configured url/token rather than duplicating lines', async () => {

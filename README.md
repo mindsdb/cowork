@@ -236,7 +236,19 @@ window-creation time, not hot-reloadable.
 
 When a custom server is configured, the local server's own status card,
 log tail, and start/stop/restart controls are hidden — they don't apply to
-a server this app didn't spawn.
+a server this app didn't spawn. The saved API key is never sent back to the
+UI: the edit form shows a blank field that means "keep the saved key", with
+a **Remove saved key** action if you want it gone. URLs are validated on
+save (must be `http://` or `https://`, no credentials, no query string);
+the origin you save is also allowlisted in the renderer's Content Security
+Policy, which is why a restart is needed — the policy is fixed per window.
+
+**What a custom server does *not* get from this app (v1 limitation):** the
+desktop app's MindsHub sign-in credential, OAuth connector authorizations,
+and the other things main pushes into the sidecar it spawns all stay
+local — they are keyed to the loopback port and are deliberately not
+forwarded to a server the app didn't start. A shared server should carry
+its own provider configuration and connector credentials.
 
 ### Require a bearer token for the local server ("Enable auth key")
 
@@ -258,6 +270,9 @@ steps run) and takes you straight into the app with Settings > Backend
 already open, ready to fill in the URL of a server running elsewhere. The
 choice is remembered (`COWORK_SKIP_BACKEND_INSTALL` in `.env`), so later
 launches don't re-prompt for setup just because no local binary exists.
+To go back to a local backend later, clear the Server URL in Settings >
+Backend and save: that also forgets the skip choice, and the next launch
+routes into the installer.
 
 This is a desktop-only concept — see [Web Build](#web-build) above for
 launching the SPA + `cowork-server` as a **web deployment** instead, which

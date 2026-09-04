@@ -225,15 +225,15 @@ describe('web mode (no bridge)', () => {
 
   it('getCustomServer/setCustomServer/restartApp no-op safely on web (no bridge)', async () => {
     const host = await importHost();
-    await expect(host.getCustomServer()).resolves.toEqual({ url: null, token: null });
-    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toBe(false);
+    await expect(host.getCustomServer()).resolves.toEqual({ url: null, hasToken: false });
+    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toMatchObject({ ok: false });
     await expect(host.restartApp()).resolves.toBeUndefined();
   });
 
   it('getLocalAuth/setLocalAuth no-op safely on web (no bridge)', async () => {
     const host = await importHost();
-    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: false, token: null });
-    await expect(host.setLocalAuth(true)).resolves.toEqual({ ok: false, enabled: false, token: null });
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: false, hasToken: false });
+    await expect(host.setLocalAuth(true)).resolves.toEqual({ ok: false, enabled: false, hasToken: false });
   });
 
   it('serverInfo reports the live origin as running (web host IS the server)', async () => {
@@ -380,27 +380,29 @@ describe('electron mode (bridge present)', () => {
   });
 
   it('getCustomServer/setCustomServer/restartApp delegate to the bridge when present', async () => {
-    const getCustomServer = vi.fn(async () => ({ url: 'http://192.168.1.5:26866', token: 'abc123' }));
-    const setCustomServer = vi.fn(async () => ({ ok: true }));
+    const getCustomServer = vi.fn(async () => ({ url: 'http://192.168.1.5:26866', hasToken: true }));
+    const setCustomServer = vi.fn(async () => ({ ok: false, error: 'nope' }));
     const restartApp = vi.fn(async () => {});
     (window as unknown as Record<string, unknown>).antontron = { getCustomServer, setCustomServer, restartApp };
     const host = await importHost();
 
-    await expect(host.getCustomServer()).resolves.toEqual({ url: 'http://192.168.1.5:26866', token: 'abc123' });
-    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toBe(true);
-    expect(setCustomServer).toHaveBeenCalledWith({ url: 'x', token: null });
+    // The saved key never crosses the bridge — only whether one exists.
+    await expect(host.getCustomServer()).resolves.toEqual({ url: 'http://192.168.1.5:26866', hasToken: true });
+    // Main's validation result (ok/error) is passed through untouched.
+    await expect(host.setCustomServer({ url: 'x', token: null, keepExistingToken: true })).resolves.toEqual({ ok: false, error: 'nope' });
+    expect(setCustomServer).toHaveBeenCalledWith({ url: 'x', token: null, keepExistingToken: true });
     await host.restartApp();
     expect(restartApp).toHaveBeenCalledOnce();
   });
 
   it('getLocalAuth/setLocalAuth delegate to the bridge when present', async () => {
-    const getLocalAuth = vi.fn(async () => ({ enabled: true, token: 'abc123' }));
-    const setLocalAuth = vi.fn(async () => ({ ok: true, enabled: false, token: null }));
+    const getLocalAuth = vi.fn(async () => ({ enabled: true, hasToken: true }));
+    const setLocalAuth = vi.fn(async () => ({ ok: true, enabled: false, hasToken: false }));
     (window as unknown as Record<string, unknown>).antontron = { getLocalAuth, setLocalAuth };
     const host = await importHost();
 
-    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: true, token: 'abc123' });
-    await expect(host.setLocalAuth(false)).resolves.toEqual({ ok: true, enabled: false, token: null });
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: true, hasToken: true });
+    await expect(host.setLocalAuth(false)).resolves.toEqual({ ok: true, enabled: false, hasToken: false });
     expect(setLocalAuth).toHaveBeenCalledWith(false);
   });
 

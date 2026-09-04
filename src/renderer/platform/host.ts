@@ -1427,21 +1427,27 @@ export async function setKeychainPref(enabled: boolean): Promise<boolean> {
   return false;
 }
 
-// A cowork-server this app didn't spawn (Settings → Backend → Advanced).
-// Electron-only — the web shell always talks same-origin, so both wrappers
-// no-op to "nothing configured" / failure.
-export async function getCustomServer(): Promise<{ url: string | null; token: string | null }> {
+// A cowork-server this app didn't spawn (Settings → Backend). Electron-only —
+// the web shell always talks same-origin, so both wrappers no-op to "nothing
+// configured" / failure. The saved API key never reaches the renderer: GET
+// reports only whether one exists, and the edit form sends a new value or
+// asks main to keep/clear the saved one.
+export interface CustomServerSummary { url: string | null; hasToken: boolean }
+export interface CustomServerUpdate { url: string | null; token: string | null; keepExistingToken?: boolean }
+export type CustomServerSetResult = { ok: true } | { ok: false; error?: string };
+
+export async function getCustomServer(): Promise<CustomServerSummary> {
   if (isElectron && typeof bridge.getCustomServer === 'function') {
     return bridge.getCustomServer();
   }
-  return { url: null, token: null };
+  return { url: null, hasToken: false };
 }
 
-export async function setCustomServer(config: { url: string | null; token: string | null }): Promise<boolean> {
+export async function setCustomServer(update: CustomServerUpdate): Promise<CustomServerSetResult> {
   if (isElectron && typeof bridge.setCustomServer === 'function') {
-    return (await bridge.setCustomServer(config)).ok;
+    return bridge.setCustomServer(update);
   }
-  return false;
+  return { ok: false, error: 'Not available in this build.' };
 }
 
 // Applying a custom-server change (or reverting to the local one) needs a
@@ -1456,20 +1462,24 @@ export async function restartApp(): Promise<void> {
 // Local server auth toggle (Settings → Backend). Unlike the custom-server
 // restart above, toggling only restarts the sidecar — main does that itself
 // as part of the same IPC call, so there's nothing further for the caller to
-// do besides re-reading diagnostics. No-op on web (server-side auth there is
-// whatever the hosting deployment configured, not this app's concern).
-export async function getLocalAuth(): Promise<{ enabled: boolean; token: string | null }> {
+// do besides re-reading diagnostics. Like the custom key, the local token
+// stays in main; the renderer only learns whether one is set. No-op on web
+// (server-side auth there is whatever the hosting deployment configured, not
+// this app's concern).
+export interface LocalAuthSummary { enabled: boolean; hasToken: boolean }
+
+export async function getLocalAuth(): Promise<LocalAuthSummary> {
   if (isElectron && typeof bridge.getLocalAuth === 'function') {
     return bridge.getLocalAuth();
   }
-  return { enabled: false, token: null };
+  return { enabled: false, hasToken: false };
 }
 
-export async function setLocalAuth(enabled: boolean): Promise<{ ok: boolean; enabled: boolean; token: string | null }> {
+export async function setLocalAuth(enabled: boolean): Promise<LocalAuthSummary & { ok: boolean; error?: string }> {
   if (isElectron && typeof bridge.setLocalAuth === 'function') {
     return bridge.setLocalAuth(enabled);
   }
-  return { ok: false, enabled: false, token: null };
+  return { ok: false, enabled: false, hasToken: false };
 }
 
 export async function getAccessToken(): Promise<string | null> {

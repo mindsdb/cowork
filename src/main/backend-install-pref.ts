@@ -7,7 +7,9 @@ import { writeEnvFileAtomic } from './minds-auth';
 // reads this to report "installed" for routing purposes even though
 // cowork-server was deliberately never installed, so resolveBootTarget /
 // handleAuthComplete don't loop back into the installer on every future boot.
-const SKIP_BACKEND_ENV_KEY = 'COWORK_SKIP_BACKEND_INSTALL';
+// Exported for custom-server.ts: clearing the custom server URL also clears
+// this, so "revert to the local server" can route back into the installer.
+export const SKIP_BACKEND_ENV_KEY = 'COWORK_SKIP_BACKEND_INSTALL';
 
 export function skipBackendInstallRequested(): boolean {
   return (readEnvFile()[SKIP_BACKEND_ENV_KEY] || '').trim().toLowerCase() === 'true';

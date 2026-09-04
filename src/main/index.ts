@@ -9,7 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
+import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, type StartServerResult } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -45,8 +45,9 @@ import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
-import { getCustomServerConfig, setCustomServerConfig } from './custom-server';
-import { getLocalAuthConfig, setLocalAuthEnabled, verifyLocalAuthChange } from './local-auth';
+import { getCustomServerConfig, describeCustomServerConfig, setCustomServerConfig, type CustomServerConfig, type CustomServerUpdate } from './custom-server';
+import { getLocalAuthConfig, describeLocalAuth, setLocalAuthEnabled, verifyLocalAuthChange } from './local-auth';
+import { buildRendererCsp, isRendererDocumentUrl } from './renderer-csp';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
@@ -353,6 +354,61 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   win.webContents.on('did-fail-load', onFail);
 }
 
+// The custom-server config (Settings → Backend) as it stood when this process
+// booted. Read once and shared by createWindow, the sidecar-lifecycle IPC
+// handlers and the boot path, so a URL saved mid-session — which only takes
+// effect after APP_RESTART — can't put those three in disagreement.
+let customServerSnapshot: CustomServerConfig | undefined;
+function customServerAtBoot(): CustomServerConfig {
+  if (customServerSnapshot === undefined) customServerSnapshot = getCustomServerConfig();
+  return customServerSnapshot;
+}
+
+// The renderer's CSP as a response header (see renderer-csp.ts for why it is
+// no longer a <meta> tag). Applied only to documents this app itself loads —
+// the bundled file:// renderer and, in dev, the Vite server — never to other
+// pages that share the default session. One listener per session: this is the
+// only onHeadersReceived registration in main.
+function installRendererCsp(ses: Electron.Session, customServerUrl: string | null): void {
+  const csp = buildRendererCsp(customServerUrl);
+  ses.webRequest.onHeadersReceived((details, callback) => {
+    if (details.resourceType !== 'mainFrame' || !isRendererDocumentUrl(details.url, { isPackaged: app.isPackaged })) {
+      callback({});
+      return;
+    }
+    const headers: Record<string, string | string[]> = { ...(details.responseHeaders || {}) };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-security-policy') delete headers[key];
+    }
+    headers['Content-Security-Policy'] = [csp];
+    callback({ responseHeaders: headers });
+  });
+}
+
+// In custom-server mode the sidecar-lifecycle handlers answer for the
+// configured server instead of touching the local process. Main never spawned
+// one, so `running` would otherwise read false forever and the renderer's boot
+// poll (App.jsx) would paint the app offline for its whole ceiling — the
+// health probe against the real origin is what decides reachability there.
+function customServerInfo(url: string) {
+  return { running: true, starting: false, port: getServerPort(), origin: url, custom: true as const };
+}
+
+async function restartLocalServer(why: string): Promise<StartServerResult> {
+  console.log(`[server] restart requested (${why})`);
+  await stopServer();
+  // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
+  // the cache so the webRequest hook re-reads it on the next request.
+  resetServerAuthTokenCache();
+  const result = await startServer({});
+  if (result.ok) {
+    console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
+  } else {
+    console.error(`[server] restart failed: ${result.reason}`);
+  }
+  return result;
+}
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
@@ -361,7 +417,7 @@ function createWindow() {
   // once here, at window-creation time, since additionalArguments is the only
   // way to hand the renderer a value before it starts making requests, and
   // it isn't re-evaluated without recreating the window (see APP_RESTART).
-  const customServer = getCustomServerConfig();
+  const customServer = customServerAtBoot();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -399,12 +455,14 @@ function createWindow() {
       // (loaded from file://) can fetch the API origin — normally
       // http://127.0.0.1:<antonPort>/v1/*, the loopback python server we
       // spawn ourselves, or (when configured) a custom server elsewhere.
-      // CSP in index.html still allowlists the exact origins for defense
-      // in depth.
+      // The CSP set below (installRendererCsp) still allowlists the exact
+      // origins for defense in depth; webSecurity does not relax CSP.
       // codeql[js/electron-disable-websecurity]
       webSecurity: false,
     },
   });
+
+  installRendererCsp(mainWindow.webContents.session, customServer.url);
 
   // Inject a bearer token into every request the renderer makes to the API —
   // including browser-initiated loads (images, iframes and their relative
@@ -807,17 +865,23 @@ function setupIPC() {
   });
 
   // Renderer can ask main where the server lives.
-  ipcMain.handle('server:get-info', () => ({
-    running: isServerRunning(),
-    starting: isServerStarting(),
-    port: getServerPort(),
-    origin: `http://127.0.0.1:${getServerPort()}`,
-  }));
+  ipcMain.handle('server:get-info', () => {
+    const custom = customServerAtBoot().url;
+    if (custom) return customServerInfo(custom);
+    return {
+      running: isServerRunning(),
+      starting: isServerStarting(),
+      port: getServerPort(),
+      origin: `http://127.0.0.1:${getServerPort()}`,
+    };
+  });
 
   // Toggle the python server up/down. Used by the sidebar footer button.
   // Returns the new state so the renderer can reflect it without polling.
   // "Already starting" counts as up — stop it instead of double-spawning.
   ipcMain.handle('server:toggle', async () => {
+    const custom = customServerAtBoot().url;
+    if (custom) return customServerInfo(custom);
     if (isServerRunning() || isServerStarting()) {
       await stopServer();
       return { running: false, port: getServerPort() };
@@ -826,6 +890,8 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
+    const custom = customServerAtBoot().url;
+    if (custom) return customServerInfo(custom);
     // startServer is also the health-aware ensure path. Do not short-circuit on
     // isServerRunning(): an adopted sidecar can disappear without an exit
     // event, leaving that synchronous flag stale until startServer re-probes
@@ -834,6 +900,8 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:stop', async () => {
+    const custom = customServerAtBoot().url;
+    if (custom) return customServerInfo(custom);
     // Actually await the child's exit before resolving. The renderer
     // typically follows this with a serverStart() — without the wait,
     // the new python races the dying one for port 26866.
@@ -1269,19 +1337,13 @@ function setupIPC() {
     return readEnvFile();
   });
 
-  ipcMain.handle(IPC.SERVER_RESTART, async () => {
-    console.log('[server] restart requested');
-    await stopServer();
-    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
-    // the cache so the webRequest hook re-reads it on the next request.
-    resetServerAuthTokenCache();
-    const result = await startServer({});
-    if (result.ok) {
-      console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
-    } else {
-      console.error(`[server] restart failed: ${result.reason}`);
+  ipcMain.handle(IPC.SERVER_RESTART, async (): Promise<StartServerResult> => {
+    const custom = customServerAtBoot().url;
+    if (custom) {
+      console.log(`[server] restart ignored: pointed at custom server ${custom}, no local sidecar to restart`);
+      return { ok: true, port: getServerPort() };
     }
-    return result;
+    return restartLocalServer('renderer');
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
@@ -1352,20 +1414,16 @@ function setupIPC() {
   // Custom (remote) server — see custom-server.ts. Read/write only; taking
   // effect requires APP_RESTART below, since additionalArguments (how the
   // renderer learns the origin) is fixed at window-creation time.
-  ipcMain.handle(IPC.BACKEND_CUSTOM_SERVER_GET, () => getCustomServerConfig());
+  ipcMain.handle(IPC.BACKEND_CUSTOM_SERVER_GET, () => describeCustomServerConfig());
 
-  ipcMain.handle(
-    IPC.BACKEND_CUSTOM_SERVER_SET,
-    async (_event, config: { url: string | null; token: string | null }) => {
-      try {
-        await setCustomServerConfig(config);
-        return { ok: true };
-      } catch (error) {
-        console.error('[custom-server] failed to save config', error);
-        return { ok: false };
-      }
-    },
-  );
+  ipcMain.handle(IPC.BACKEND_CUSTOM_SERVER_SET, async (_event, update: CustomServerUpdate) => {
+    try {
+      return await setCustomServerConfig(update);
+    } catch (error) {
+      console.error('[custom-server] failed to save config', error);
+      return { ok: false, error: "Couldn't write the config file — check the app's logs and try again." };
+    }
+  });
 
   // Relaunches the whole app — the one way to pick up a freshly-saved custom
   // server config (or revert to the local one), since it's read once at
@@ -1380,27 +1438,30 @@ function setupIPC() {
   // above, this only needs the SIDECAR restarted, not the whole app:
   // onBeforeSendHeaders reads the token live per-request, so resetting the
   // cache after the sidecar comes back up is enough for the client side too.
-  ipcMain.handle(IPC.BACKEND_LOCAL_AUTH_GET, () => getLocalAuthConfig());
+  ipcMain.handle(IPC.BACKEND_LOCAL_AUTH_GET, () => describeLocalAuth());
 
+  // The token itself stays in main: the renderer only learns whether one is
+  // set, same as BACKEND_CUSTOM_SERVER_GET above. onBeforeSendHeaders injects
+  // it at the network layer, so nothing renderer-side ever needs the value.
   ipcMain.handle(IPC.BACKEND_LOCAL_AUTH_SET, async (_event, enabled: boolean) => {
+    if (customServerAtBoot().url) {
+      return { ok: false, ...describeLocalAuth(), error: 'Local auth applies to the sidecar this app spawns, not a custom server.' };
+    }
     console.log(`[local-auth] ${enabled ? 'enabling' : 'disabling'} local server auth`);
     try {
       const config = await setLocalAuthEnabled(enabled);
-      await stopServer();
-      resetServerAuthTokenCache();
-      const result = await startServer({});
+      const result = await restartLocalServer(`local auth ${enabled ? 'enabled' : 'disabled'}`);
       if (!result.ok) {
         console.error(`[local-auth] sidecar failed to restart after toggling auth: ${result.reason}`);
-        return { ok: false, enabled: config.enabled, token: config.token };
+        return { ok: false, enabled: config.enabled, hasToken: !!config.token };
       }
-      console.log(`[local-auth] sidecar restarted on http://127.0.0.1:${result.port}`);
       if (typeof result.port === 'number') {
         await verifyLocalAuthChange(result.port, config);
       }
-      return { ok: true, enabled: config.enabled, token: config.token };
+      return { ok: true, enabled: config.enabled, hasToken: !!config.token };
     } catch (error) {
       console.error('[local-auth] failed to toggle', error);
-      return { ok: false, enabled: getLocalAuthConfig().enabled, token: null };
+      return { ok: false, ...describeLocalAuth() };
     }
   });
 
@@ -1757,10 +1818,11 @@ app.whenReady().then(async () => {
     // Pointed at a server this app didn't spawn — never start (or manage)
     // a local one. The renderer's getApiOrigin() already addresses the
     // custom origin instead (see createWindow's additionalArguments above).
-    const customServerUrl = getCustomServerConfig().url;
+    const customServerUrl = customServerAtBoot().url;
     if (customServerUrl) {
       console.log(`[server] skipped: pointed at custom server ${customServerUrl} instead of the local sidecar.`);
       resolveBootServer();
+      bootUpdateDone();  // no boot poll on this path either — don't strand the gate (ENG-749)
       return;
     }
     if (!antonInstalled) {

@@ -1,7 +1,7 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
-import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, readEnvFile } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -1296,6 +1296,17 @@ export async function commitMindsSignIn(): Promise<void> {
     // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
     console.log('[minds-auth] server not installed yet — setup will sync after install');
+    return;
+  }
+
+  // Pointed at a server this app didn't spawn (Settings → Backend, ENG-1759):
+  // everything below manages the LOCAL sidecar and pushes to the loopback
+  // port, none of which reaches a remote server — its provider configuration
+  // is its own. Stop here rather than spawn a local sidecar nothing talks to.
+  // Read straight from .env: custom-server.ts imports this module for
+  // writeEnvFileAtomic, so importing it back would be a cycle.
+  if ((readEnvFile().COWORK_CUSTOM_SERVER_URL || '').trim()) {
+    console.log('[minds-auth] custom server configured — sign-in is not forwarded to a server this app didn\'t spawn');
     return;
   }
 

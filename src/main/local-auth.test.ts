@@ -36,7 +36,7 @@ vi.mock('./cowork-home', async (importOriginal) => {
   };
 });
 
-import { getLocalAuthConfig, setLocalAuthEnabled, verifyLocalAuthChange } from './local-auth';
+import { getLocalAuthConfig, describeLocalAuth, setLocalAuthEnabled, verifyLocalAuthChange } from './local-auth';
 import * as coworkHomeMock from './cowork-home';
 const { homeDir, envPath } = (coworkHomeMock as unknown as {
   __testPaths: { homeDir: string; envPath: string };
@@ -53,6 +53,14 @@ afterEach(() => {
 describe('getLocalAuthConfig', () => {
   it('is disabled with no token when nothing is configured', () => {
     expect(getLocalAuthConfig()).toEqual({ enabled: false, token: null });
+  });
+
+  it('describeLocalAuth reports whether a token exists without exposing it (the renderer-facing shape)', () => {
+    expect(describeLocalAuth()).toEqual({ enabled: false, hasToken: false });
+    fs.writeFileSync(envPath, 'COWORK_REQUIRE_AUTH=true\nCOWORK_AUTH_TOKEN=abc123\n');
+    const summary = describeLocalAuth();
+    expect(summary).toEqual({ enabled: true, hasToken: true });
+    expect(JSON.stringify(summary)).not.toContain('abc123');
   });
 
   it('reads an enabled config with its token', () => {

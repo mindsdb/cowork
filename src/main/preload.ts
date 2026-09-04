@@ -163,9 +163,10 @@ contextBridge.exposeInMainWorld('antontron', {
   setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
 
   // Custom (remote) server config — see custom-server.ts
+  // GET answers { url, hasToken } — the token itself never crosses the bridge.
   getCustomServer: () => ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_GET),
-  setCustomServer: (config: { url: string | null; token: string | null }) =>
-    ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_SET, config),
+  setCustomServer: (update: { url: string | null; token: string | null; keepExistingToken?: boolean }) =>
+    ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_SET, update),
   restartApp: () => ipcRenderer.invoke(IPC.APP_RESTART),
 
   // Local server auth toggle — see local-auth.ts

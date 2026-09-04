@@ -13,6 +13,18 @@ export interface LocalAuthConfig {
   token: string | null;
 }
 
+// What crosses the IPC bridge: whether auth is on and whether a token exists.
+// The token itself stays in main (onBeforeSendHeaders injects it).
+export interface LocalAuthSummary {
+  enabled: boolean;
+  hasToken: boolean;
+}
+
+export function describeLocalAuth(): LocalAuthSummary {
+  const { enabled, token } = getLocalAuthConfig();
+  return { enabled, hasToken: !!token };
+}
+
 export function getLocalAuthConfig(): LocalAuthConfig {
   const vars = readEnvFile();
   const enabled = (vars.COWORK_REQUIRE_AUTH || '').trim().toLowerCase() === 'true';
