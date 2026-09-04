@@ -24,6 +24,8 @@ import * as net from 'net';
 import * as crypto from 'crypto';
 import { shell, net as electronNet } from 'electron';
 import { describeFetchError } from './fetch-error';
+import { authReturnUrl } from './deep-link';
+import { buildKind } from './cowork-home';
 
 export interface OAuthConnectOpts {
   /** Provider's authorize endpoint, e.g. https://accounts.google.com/o/oauth2/v2/auth */
@@ -227,7 +229,11 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
-        res.end(callbackPage("You're authorized!", 'You can close this tab and return to MindsHub Cowork.'));
+        res.end(callbackPage(
+          "You're authorized!",
+          'You can close this tab and return to MindsHub Cowork.',
+          authReturnUrl(buildKind(), process.platform),
+        ));
         resolve(code);
       } catch (e: any) {
         try { res.statusCode = 500; res.end('Internal callback error'); } catch {}
@@ -443,11 +449,12 @@ async function safeReadText(res: Response): Promise<string> {
   try { return await res.text(); } catch { return ''; }
 }
 
-function callbackPage(title: string, body: string): string {
+function callbackPage(title: string, body: string, returnUrl: string | null = null): string {
   // Minimal styled HTML returned to the browser tab — same theme
   // as Anton's onboarding so it doesn't feel like a default 404.
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+${returnUrl ? `<meta http-equiv="refresh" content="0;url=${escapeHtml(returnUrl)}">` : ''}
 <style>
   :root { color-scheme: light dark; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -465,10 +472,12 @@ function callbackPage(title: string, body: string): string {
   p { font-size: 14px; line-height: 1.5; margin: 0; color: #6B6F73; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
          background: #1F9CB0; margin-right: 8px; vertical-align: middle; }
+  .back { display: inline-block; margin-top: 16px; font-size: 14px; color: #1F9CB0; }
 </style></head>
 <body><div class="card">
   <h1><span class="dot"></span>${escapeHtml(title)}</h1>
   <p>${escapeHtml(body)}</p>
+  ${returnUrl ? `<p><a class="back" href="${escapeHtml(returnUrl)}">Return to MindsHub Cowork</a></p>` : ''}
 </div></body></html>`;
 }
 
