@@ -4934,6 +4934,7 @@ function AppCore() {
               connections={connectors}
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
+              onOpenProjects={openCodingProjects}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}

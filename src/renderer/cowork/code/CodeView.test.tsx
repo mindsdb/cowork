@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
   steerQueued: vi.fn(),
   cancel: vi.fn(),
   runProjectAction: vi.fn(),
+  updateProject: vi.fn(),
+  projectsLoad: vi.fn(async () => {}),
+  projectsReplace: vi.fn(),
+  projectsSetSelectedId: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
 }));
@@ -38,6 +42,7 @@ vi.mock('./api', () => ({
     steerQueued: mocks.steerQueued,
     cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
+    updateProject: mocks.updateProject,
   },
   openCodingEventStream: vi.fn(() => () => {}),
 }));
@@ -70,6 +75,37 @@ vi.mock('./TaskBar', () => ({
   ),
 }));
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./useCodeProjects', () => ({
+  useCodeProjects: () => ({
+    projects: [{
+      schema_version: 1, id: 'project-1', name: 'Web app', resources: [], folders: [], connections: [],
+      environment: { variables: {}, port_names: [] }, default_engine_id: 'codex', default_model: 'gpt',
+      permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
+    }],
+    selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
+  }),
+}));
+vi.mock('./CodeConnectorsView', () => ({
+  CodeConnectorsView: ({ returnProjectName, backLabel, onBack, onConnected }: {
+    returnProjectName?: string; backLabel?: string; onBack?: () => void;
+    onConnected?: (provider: 'github' | 'linear', connection: { engine: string; name: string; display_name: string; status: string }) => Promise<void> | void;
+  }) => (
+    <div>
+      <span>Connectors view for {returnProjectName || 'nobody'}</span>
+      {onBack && <button type="button" onClick={onBack}>{backLabel}</button>}
+      <button type="button" onClick={() => void onConnected?.('github', { engine: 'github', name: 'octo', display_name: 'Octo Cat', status: 'ready' })}>Connect GitHub stub</button>
+    </div>
+  ),
+}));
+vi.mock('./CodeProjectsView', () => ({
+  CodeProjectsView: ({ onEdit }: { onEdit: (id: string) => void }) => <button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button>,
+}));
+vi.mock('./ProjectSettingsModal', () => ({
+  ProjectSettingsModal: ({ open, suspended, onOpenConnectors }: { open: boolean; suspended?: boolean; onOpenConnectors?: () => void }) => (
+    open || suspended ? <div>{open ? 'Project settings modal' : 'Project settings modal (suspended)'}<button type="button" onClick={onOpenConnectors}>Open Connectors from settings</button></div> : null
+  ),
+}));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
 vi.mock('./FilesPanel', () => ({
   FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
@@ -605,3 +641,74 @@ describe('CodeView session-list reconciliation', () => {
     expect(mocks.turn).not.toHaveBeenCalled();
   });
 });
+
+describe('CodeView connector return flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.sessions.mockResolvedValue({ items: [] });
+    mocks.updateProject.mockImplementation(async (id: string, body: { connections: unknown[] }) => ({ id, name: 'Web app', connections: body.connections }));
+    mocks.useCodingSession.mockReturnValue({
+      session: null, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    });
+  });
+
+  it('adds each connected account to the project and only leaves the Connectors view on Back', async () => {
+    const onOpenNewTask = vi.fn();
+    const onOpenConnectors = vi.fn();
+    const onOpenProjects = vi.fn();
+    const { rerender, props } = renderCode({ newTask: true, onOpenNewTask, onOpenConnectors, onOpenProjects });
+    // The New Task panel is stubbed; arm the return flow the way it does.
+    // (CodeView only exposes it through the panel's onOpenConnectors prop.)
+    rerender(<CodeView {...props} newTask={false} projectsOpen />);
+    fireEvent.click(screen.getByText('Edit project stub'));
+    fireEvent.click(screen.getByText('Open Connectors from settings'));
+    expect(onOpenConnectors).toHaveBeenCalledOnce();
+
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Connect GitHub stub'));
+    await waitFor(() => expect(mocks.updateProject).toHaveBeenCalledWith('project-1', {
+      connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
+    }));
+    // The saved project lands in the list before the refresh, so a failed
+    // refresh cannot make the next account replace this one.
+    await waitFor(() => expect(mocks.projectsReplace).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'project-1', connections: [{ provider: 'github', name: 'octo', label: 'Octo Cat' }],
+    })));
+    await waitFor(() => expect(mocks.projectsLoad).toHaveBeenCalled());
+    // Connecting does not throw the user out; they can connect the next account.
+    expect(onOpenNewTask).not.toHaveBeenCalled();
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to project settings' }));
+    expect(mocks.projectsSetSelectedId).toHaveBeenCalledWith('project-1');
+    expect(onOpenProjects).toHaveBeenCalledOnce();
+    expect(onOpenNewTask).not.toHaveBeenCalled();
+    // The parent switches back to the Projects view; the editor resumes there.
+    rerender(<CodeView {...props} newTask={false} projectsOpen connectorsOpen={false} />);
+    expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+  });
+
+  it('forgets the hand-back when Connectors is left by another route', async () => {
+    const onOpenConnectors = vi.fn();
+    const { rerender, props } = renderCode({ newTask: true, onOpenConnectors });
+    rerender(<CodeView {...props} newTask={false} projectsOpen />);
+    fireEvent.click(screen.getByText('Edit project stub'));
+    fireEvent.click(screen.getByText('Open Connectors from settings'));
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+    expect(screen.getByText('Connectors view for Web app')).toBeInTheDocument();
+
+    // The sidebar takes the user elsewhere, then back to the standalone Connectors page.
+    rerender(<CodeView {...props} newTask projectsOpen={false} connectorsOpen={false} />);
+    rerender(<CodeView {...props} newTask={false} projectsOpen={false} connectorsOpen />);
+
+    expect(screen.getByText('Connectors view for nobody')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back to/ })).toBeNull();
+    fireEvent.click(screen.getByText('Connect GitHub stub'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.updateProject).not.toHaveBeenCalled();
+  });
+});
+
