@@ -42,6 +42,22 @@ export function isAuthCallbackUrl(url: string, kind: BuildKind): boolean {
   return parsed.protocol === `${schemeForKind(kind)}:` && parsed.host === AUTH_CALLBACK_HOST;
 }
 
+/** Take the process singleton, or stand down. Returns whether this instance
+ *  owns the app and should carry on booting.
+ *
+ *  The losing instance leaves through `exit`, never `quit`: `before-quit`
+ *  drains the sidecar via `stopServer`, which ends in `killProcessOnPort` —
+ *  that matches on the port rather than a pid it owns, so a second instance
+ *  quitting politely would reap the FIRST instance's python. */
+export function claimSingleInstance(app: {
+  requestSingleInstanceLock(): boolean;
+  exit(code: number): void;
+}): boolean {
+  if (app.requestSingleInstanceLock()) return true;
+  app.exit(0);
+  return false;
+}
+
 /** URL the OAuth callback page sends the browser to, or null when this
  *  platform should not be sent anywhere. Windows only: macOS already regains
  *  focus through `app.focus({ steal: true })`, so a scheme navigation there

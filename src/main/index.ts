@@ -8,7 +8,7 @@ import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
-import { schemeForKind, isAuthCallbackUrl, protocolClientArgs } from './deep-link';
+import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, claimSingleInstance } from './deep-link';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
@@ -329,7 +329,9 @@ function focusMainWindow() {
       mainWindow.focus();
       app.focus({ steal: true }); // macOS: steal focus from the browser
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[focus] could not bring the window forward', err);
+  }
 }
 
 // One running app per install, and the mechanism the browser handoff relies on:
@@ -337,25 +339,21 @@ function focusMainWindow() {
 // it does grant foreground rights to the instance its process singleton
 // notifies. Scoped per userData directory, which app-identity varies by channel,
 // so build kinds still run side by side.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
-  // exit(), never quit(). before-quit drains the sidecar through stopServer's
-  // killProcessOnPort, which matches on the port rather than a pid it owns, so
-  // a quitting second instance would kill the FIRST instance's python.
-  app.exit(0);
+const gotSingleInstanceLock = claimSingleInstance(app);
+
+if (gotSingleInstanceLock) {
+  app.on('second-instance', () => {
+    focusMainWindow();
+  });
+
+  // macOS delivers the scheme as an event; Windows passes it on the second
+  // instance's argv, which the handler above already covers.
+  app.on('open-url', (event, url) => {
+    if (!isAuthCallbackUrl(url, buildKind())) return;
+    event.preventDefault();
+    focusMainWindow();
+  });
 }
-
-app.on('second-instance', () => {
-  focusMainWindow();
-});
-
-// macOS delivers the scheme as an event; Windows passes it on the second
-// instance's argv, which the handler above already covers.
-app.on('open-url', (event, url) => {
-  if (!isAuthCallbackUrl(url, buildKind())) return;
-  event.preventDefault();
-  focusMainWindow();
-});
 
 // One-shot self-heal for the boot OTA load: if the activated bundle's main
 // frame fails to load (missing/corrupt assets), roll it back and fall to the

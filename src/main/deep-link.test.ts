@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as path from 'path';
 import { BUILD_KINDS } from './channels';
-import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, authReturnUrl } from './deep-link';
+import { schemeForKind, isAuthCallbackUrl, protocolClientArgs, authReturnUrl, claimSingleInstance } from './deep-link';
 
 // A scheme is a machine-wide claim. QA runs a staging build beside prod, so a
 // shared name would send a staging sign-in to whichever build installed last.
@@ -89,5 +89,32 @@ describe('authReturnUrl', () => {
     expect(url).not.toBeNull();
     expect(isAuthCallbackUrl(url as string, 'preview')).toBe(true);
     expect(isAuthCallbackUrl(url as string, 'prod')).toBe(false);
+  });
+});
+
+// The loser must never reach before-quit: that drain ends in
+// killProcessOnPort, which matches on the port and would reap the running
+// instance's sidecar rather than anything this process owns.
+describe('claimSingleInstance', () => {
+  function fakeApp(gotLock: boolean) {
+    return {
+      requestSingleInstanceLock: vi.fn(() => gotLock),
+      exit: vi.fn(),
+      quit: vi.fn(),
+    };
+  }
+
+  it('carries on and touches neither exit nor quit when it owns the lock', () => {
+    const app = fakeApp(true);
+    expect(claimSingleInstance(app)).toBe(true);
+    expect(app.exit).not.toHaveBeenCalled();
+    expect(app.quit).not.toHaveBeenCalled();
+  });
+
+  it('stands down through exit, never quit, when another instance holds it', () => {
+    const app = fakeApp(false);
+    expect(claimSingleInstance(app)).toBe(false);
+    expect(app.exit).toHaveBeenCalledWith(0);
+    expect(app.quit).not.toHaveBeenCalled();
   });
 });
