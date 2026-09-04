@@ -408,37 +408,42 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
                   <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                 ))}
             </div>
-          ) : (() => {
-            // Featured shows only when browsing everything; when it does, its
-            // members are held back from the category sections below so the
-            // same connector isn't listed twice (very visible in cloud, where
-            // the whole available list is a handful of tiles).
-            const showFeatured = category === 'all' && !query.trim();
-            const featured = showFeatured ? available.filter((c) => c.featured) : [];
-            const featuredIds = new Set(featured.map((c) => c.id));
-            const rest = featured.length
-              ? available.filter((c) => !featuredIds.has(c.id))
-              : available;
-            return (
-              <>
+          ) : orgMode ? (
+            // Cloud runs only a handful of connectors — too few to be worth
+            // splitting across category sections, where each section would
+            // hold one tile and the same connector would also appear under
+            // Featured. Show all of them as one block instead; the desktop
+            // catalogue below is what gives the directory its body.
+            <ConnectorSection
+              title="Featured"
+              connectors={available}
+              onPick={onPick}
+              className="mb-6"
+            />
+          ) : (
+            // Desktop: Featured on top, then every category. A featured
+            // connector intentionally appears in both — with ~213 connectors
+            // Featured reads as a shortcut, not a duplicate.
+            <>
+              {category === 'all' && !query.trim() && (
                 <ConnectorSection
                   title="Featured"
-                  connectors={featured}
+                  connectors={available.filter((c) => c.featured)}
                   onPick={onPick}
                   className="mb-6"
                 />
-                {groupByCategory(rest).map(([cat, list]) => (
-                  <ConnectorSection
-                    key={cat}
-                    title={categoryLabel(cat)}
-                    count={list.length}
-                    connectors={list}
-                    onPick={onPick}
-                  />
-                ))}
-              </>
-            );
-          })()}
+              )}
+              {groupByCategory(available).map(([cat, list]) => (
+                <ConnectorSection
+                  key={cat}
+                  title={categoryLabel(cat)}
+                  count={list.length}
+                  connectors={list}
+                  onPick={onPick}
+                />
+              ))}
+            </>
+          )}
           <ConnectorSection
             title={DESKTOP_ONLY_TITLE}
             count={desktopOnly.length}

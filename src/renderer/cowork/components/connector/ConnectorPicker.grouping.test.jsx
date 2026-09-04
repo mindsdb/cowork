@@ -1,9 +1,9 @@
-// Directory grouping rules:
-//   • a Featured connector is listed once, not again under its category
-//   • cloud-only: connectors the hosted build can't run are listed under
-//     their own group and hand the pick to the download-the-app path
-// Both were visible in Cowork Cloud, where the available list is a handful
-// of tiles and every duplicate reads as a bug.
+// Directory grouping rules, which differ by build:
+//   • desktop — Featured on top, then every category; a featured connector
+//     appears in both, which reads as a shortcut across ~213 connectors
+//   • cloud — too few connectors to bother with category sections, so the
+//     available ones are one block, followed by the desktop-only catalogue
+//     whose tiles hand the pick to the download-the-app path
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -41,16 +41,39 @@ afterEach(() => {
 });
 
 describe('ConnectorPicker grouping', () => {
-  it('lists a featured connector once, not again under its category', async () => {
+  it('keeps Featured and category sections on desktop, duplicates included', async () => {
     fetchConnectors.mockResolvedValue([GMAIL, DRIVE, SLACK]);
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
-    expect(await screen.findAllByText('Gmail')).toHaveLength(1);
-    expect(screen.getAllByText('Google Drive')).toHaveLength(1);
-    // The non-featured connector still shows under its category.
-    expect(within(section('Communication')).getByText('Slack')).toBeInTheDocument();
-    // …and that category no longer counts the featured Gmail.
-    expect(within(section('Communication')).getByText('1')).toBeInTheDocument();
+    // Gmail is featured, so it shows twice: once under Featured, once under
+    // its own category. That is deliberate on desktop.
+    expect(await screen.findAllByText('Gmail')).toHaveLength(2);
+    expect(within(section('Featured')).getByText('Gmail')).toBeInTheDocument();
+    const communication = section('Communication');
+    expect(within(communication).getByText('Gmail')).toBeInTheDocument();
+    expect(within(communication).getByText('Slack')).toBeInTheDocument();
+    expect(within(communication).getByText('2')).toBeInTheDocument();
+  });
+
+  it('drops category sections on cloud and lists every available connector once', async () => {
+    fetchConnectors.mockResolvedValue([
+      GMAIL,
+      DRIVE,
+      // Not flagged `featured` — it must still be listed, not swallowed.
+      { ...SLACK, cloud_available: true },
+    ]);
+    setOrgMode(true);
+    render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
+
+    await screen.findByText('Gmail');
+    const featured = section('Featured');
+    expect(within(featured).getByText('Gmail')).toBeInTheDocument();
+    expect(within(featured).getByText('Google Drive')).toBeInTheDocument();
+    expect(within(featured).getByText('Slack')).toBeInTheDocument();
+    // One tile each, and no per-category sections at all.
+    expect(screen.getAllByText('Gmail')).toHaveLength(1);
+    expect(screen.queryByText('Communication')).toBeNull();
+    expect(screen.queryByText('Files')).toBeNull();
   });
 
   it('asks the server for desktop-only connectors in cloud mode only', async () => {
@@ -98,7 +121,8 @@ describe('ConnectorPicker grouping', () => {
     fetchConnectors.mockResolvedValue([GMAIL, SLACK]);
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
-    await screen.findByText('Gmail');
+    // Featured + category on desktop, so Gmail matches more than once.
+    await screen.findAllByText('Gmail');
     expect(screen.queryByText(DESKTOP_ONLY_TITLE)).toBeNull();
   });
 });
