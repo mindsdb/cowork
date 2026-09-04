@@ -370,7 +370,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                             <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
                           </div>
                         )}
-                        {pub.versions.length > 1 && (
+                        {pub.supportsPublishRoutes !== false && pub.versions.length > 1 && (
                           <div className="mt-3">
                             <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
                           </div>
@@ -432,10 +432,19 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <ErrorRow message={pub.error} />
   
                   <div className="flex items-center justify-between gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
-                    <FooterButton onClick={doUnpublish} disabled={pub.busy}
-                      busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
-                      Stop sharing
-                    </FooterButton>
+                    {pub.supportsPublishRoutes !== false ? (
+                      <FooterButton onClick={doUnpublish} disabled={pub.busy}
+                        busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
+                        Stop sharing
+                      </FooterButton>
+                    ) : (
+                      // `DELETE /publish` is local-only, and there is nothing to
+                      // stop on Cloud: an artifact is autopublished from birth.
+                      // Narrowing the audience back to "Only you" is what
+                      // unsharing means there, and the access view already does
+                      // it — so an empty spacer keeps the footer's layout.
+                      <span />
+                    )}
   
                     {view === 'password' ? (
                       <FooterButton primary onClick={doSavePassword}
@@ -459,7 +468,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       ) : (
                         <UpToDateTag />
                       )
-                    ) : pub.modified ? (
+                    ) : (pub.modified && pub.supportsPublishRoutes !== false) ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel="Updating…">
                         Update
