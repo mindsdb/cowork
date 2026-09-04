@@ -4,7 +4,7 @@
 // Platform contract (ENG-1778): desktopOnly steps are hidden on web, and
 // the counts/completion follow the visible steps.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ isWeb: false }));
@@ -51,9 +51,29 @@ describe('OnboardingChecklist', () => {
     expect(onStartChat).toHaveBeenCalledTimes(1);
   });
 
+  // onStartChat answers false when the provider preflight fails — App has
+  // already shown the "Connect a provider" card, so no toast on top of it.
   it('keeps a failed step incomplete and lets the user retry it', async () => {
     const { OnboardingChecklist } = await load();
     const onStartChat = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    const step = screen.getByText('See Cowork work');
+    await user.click(step);
+
+    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(toastAdd).not.toHaveBeenCalled();
+
+    await user.click(step);
+
+    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(onStartChat).toHaveBeenCalledTimes(2);
+  });
+
+  it('toasts and keeps the step incomplete when starting the chat throws', async () => {
+    const { OnboardingChecklist } = await load();
+    const onStartChat = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(true);
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
@@ -66,7 +86,22 @@ describe('OnboardingChecklist', () => {
     await user.click(step);
 
     expect(screen.getByText('1/3')).toBeTruthy();
-    expect(onStartChat).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a second click while the chat is still starting', async () => {
+    const { OnboardingChecklist } = await load();
+    let finish;
+    const onStartChat = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    const step = screen.getByText('See Cowork work');
+    await user.click(step);
+    await user.click(step);
+
+    expect(onStartChat).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(true); });
+    expect(screen.getByText('1/3')).toBeTruthy();
   });
 
   it('shows all steps on desktop', async () => {

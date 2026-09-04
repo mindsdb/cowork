@@ -31,19 +31,20 @@ export default function OnboardingChecklist({ onStartChat }) {
   if (dismissed) return null;
 
   // A done step is inert — re-clicking it must not spawn another chat
-  // (ENG-1502). Only persist completion once the chat actually starts.
+  // (ENG-1502). Completion is persisted only once the chat actually
+  // starts (ENG-2307). `onStartChat` answers false when the provider
+  // preflight fails — App has already routed to the "Connect a provider"
+  // card by then, so the still-unticked step is signal enough. A throw is
+  // the silent case, so that one gets a toast.
   const start = async (step) => {
     if (isComplete(step.id) || startingSteps.current.has(step.id)) return;
     startingSteps.current.add(step.id);
     try {
       if (await onStartChat(step.prompt)) complete(step.id);
-      else {
-        startingSteps.current.delete(step.id);
-        toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
-      }
     } catch {
-      startingSteps.current.delete(step.id);
       toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
+    } finally {
+      startingSteps.current.delete(step.id);
     }
   };
 
