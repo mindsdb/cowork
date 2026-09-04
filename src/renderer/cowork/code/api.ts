@@ -292,6 +292,22 @@ export interface TaskWorkspace {
   source_dirty: boolean;
 }
 
+/** A failed Code request: the server's message, its HTTP status and, when it names one, a stable error code. */
+export interface CodingRequestError extends Error {
+  status?: number;
+  code?: string;
+}
+
+export function codingErrorCode(reason: unknown): string | undefined {
+  return reason instanceof Error ? (reason as CodingRequestError).code : undefined;
+}
+
+/** The author identity Git would use for commits on this computer; unset fields are null. */
+export interface GitIdentity {
+  name: string | null;
+  email: string | null;
+}
+
 export interface GitState {
   folder_id?: string | null;
   folder_name?: string | null;
@@ -706,8 +722,12 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (response.status === 404 && detail === 'Not Found') {
       detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
     }
-    const error = new Error(detail) as Error & { status?: number };
+    const error = new Error(detail) as CodingRequestError;
     error.status = response.status;
+    // The server names actionable failures in a header so the UI can offer a
+    // fix (a missing Git identity, a sign-in that no longer matches).
+    const code = response.headers?.get?.('X-MindsHub-Error-Code');
+    if (code) error.code = code;
     throw error;
   }
   if (response.status === 204) return undefined as T;
@@ -846,6 +866,9 @@ const liveCodingApi = {
     }),
   branch: (id: string, name: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/branch`, { method: 'POST', body: JSON.stringify({ name }) }),
   commit: (id: string, message: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/commit`, { method: 'POST', body: JSON.stringify({ message }) }),
+  gitIdentity: () => requestJson<GitIdentity>('/git/identity'),
+  /** Fills in whichever of name / email Git has no value for; configured values are kept. */
+  setGitIdentity: (body: { name: string; email: string }) => requestJson<GitIdentity>('/git/identity', { method: 'PUT', body: JSON.stringify(body) }),
   apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
   validate: (id: string) => requestJson<{ items: ProjectCommandResult[] }>(`/sessions/${encodeURIComponent(id)}/validate`, { method: 'POST' }),
   runProjectAction: (id: string, body: { resource_id: string; command_id: string; shell?: TerminalShellPreference; cols?: number; rows?: number }) =>

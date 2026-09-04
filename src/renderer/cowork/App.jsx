@@ -4920,6 +4920,7 @@ function AppCore() {
           >
             <CodeView
               active={effectiveWorkspaceMode === 'code'}
+              account={codeAccountUser}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
