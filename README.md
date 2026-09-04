@@ -28,6 +28,56 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 
 ---
 
+## Build Channels
+
+The *Environments* table above covers **how** you run the app. A build **channel** (or "kind") covers **which env it targets and where it stores its data**. Every launch resolves to one of four kinds. [`src/main/channels.ts`](src/main/channels.ts) is the source of truth: its `CHANNELS` table maps each kind to a data home, API host, and default sidecar branch, and every other layer derives from it.
+
+| Kind | User-facing name | Data home | API env | Source | Produced by |
+|------|------------------|-----------|---------|--------|-------------|
+| `dev` | MindsHub Cowork (Dev) | `~/.cowork-dev` | **staging** (`api.staging.mindshub.ai`) | your working tree | `npm run dev` — a runtime kind, never a shipped installer |
+| `preview` | MindsHub Cowork (Preview) | `~/.cowork-preview` | **staging** | the PR branch | CI per-PR installer, for testers |
+| `stable` | MindsHub Cowork (**Staging**) | `~/.cowork-stable` | **staging** | `staging` | CI rolling installer |
+| `prod` | anton | `~/.cowork` | **prod** (`api.mindshub.ai`) | `main` | released installer from [downloads.mindshub.ai](https://downloads.mindshub.ai) |
+
+**How the kind is decided** ([`resolveBuildKind`](src/main/cowork-home.ts)): a `COWORK_BUILD_KIND` env var wins if set; otherwise any **unpackaged** run is `dev`; otherwise the kind comes from the bundled `build-config.json`, and an absent config falls back to `prod`. So `dev` only exists when you run from source — it is never packaged into a distributed installer. CI stamps `build-config.json` with `preview`, `stable`, or `prod` when it packages those.
+
+> **`npm run pack` produces a prod build.** `pack` and `dist` bundle the checked-in `build-config.json`, which is `{"buildKind":"prod"}`. A local package is therefore a **prod-kind** build — it uses the `~/.cowork` home and the prod API, not a sandbox. To build a non-prod kind locally, set `COWORK_BUILD_KIND` (and a matching `VITE_MINDS_API_URL`, or the channel-consistency check fails the build).
+
+Things that trip people up:
+
+- **"Staging" is the `stable` kind.** The internal name is `stable` and its home is `~/.cowork-stable`. Users see the label "Staging", and it targets the staging env. The name is historical.
+- **Only `prod` talks to production.** The other three kinds target `api.staging.mindshub.ai`. Keycloak follows the API host (`api.X → auth.X`), so their auth resolves to `auth.staging.mindshub.ai`. A bare dev run must never authenticate against prod. No build targets a `dev` API env — that realm is effectively dead.
+- **`prod` keeps the historical paths.** Its home is `~/.cowork` and its Electron userData name stays `anton`, never re-set. Every other kind uses `~/.cowork-<kind>` and its own userData name.
+
+### Where each channel saves its data
+
+A channel's state is not all under one folder. It spreads across several locations, each keyed on the build kind so channels never clobber each other. Non-prod kinds keep their state under (or near) `~/.cowork-<kind>`; prod keeps every historical global location, byte-for-byte unchanged. Paths below are for macOS.
+
+| Location (non-prod / prod) | What lives there | How it's isolated |
+|----------------------------|------------------|-------------------|
+| **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
+| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv) | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
+| **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
+| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs), the encrypted MindsHub refresh token (`mindshub-refresh.bin`), the OTA UI cache (`ui-cache/`), shell auto-update bookkeeping | `app.setName` per kind |
+| **OS keychain** — service `cowork-oauth-<kind>` / `cowork-oauth` | Connector OAuth refresh tokens | Per-kind service name |
+| **Legacy `~/.anton`** | Pre-channel global config (`.env`, `state.json`); still read as a fallback and migrated into the prod home once | prod only |
+
+The packaged bundle identity (`appId`, `productName`, icon, Linux package name) is also set per kind at build time (`scripts/channel-identity.mjs`), so non-prod builds install as distinct apps beside prod.
+
+Everything under the `~/.cowork-<kind>` home — the data home, uv install, and non-prod server logs — is identical on every OS; only `~` resolves differently. The three OS-managed locations follow each platform's convention:
+
+| Location | macOS | Windows | Linux |
+|----------|-------|---------|-------|
+| Electron userData | `~/Library/Application Support/<app name>` | `%APPDATA%\<app name>` | `~/.config/<app name>` |
+| prod server log (`getPath('logs')`) | `~/Library/Logs/anton` | `%APPDATA%\anton\logs` | `~/.config/anton/logs` |
+| Keychain / secret store | Keychain | Credential Manager (DPAPI) | Secret Service (libsecret) |
+
+The [fresh-install reset function](#fresh-install-reset-macos) below wipes all of these locations; use it as a checklist of everywhere state hides.
+
+> **Caveat — standalone `cowork-server` defaults to prod.** The Electron shell enforces the home split by injecting `COWORK_HOME`. A `cowork-server` launched outside the desktop app — a bare `uv run cowork-server`, or an Alembic command — inherits no `COWORK_HOME` and silently targets the **prod** home `~/.cowork`. Set the target explicitly before any standalone DB or migration work: `COWORK_HOME=~/.cowork-dev` (or `DATABASE_URI=sqlite:///$HOME/.cowork-dev/cowork.db`). Back up the target `.db` first.
+
+---
+
 ## Quick Start
 
 ### Local development
