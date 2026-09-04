@@ -282,7 +282,10 @@ export function ArtifactViewerBody({
           onReject={async () => {
             setRepairBusy(true);
             try {
-              await workspace.decideRepair('rejected');
+              const outcome = await workspace.decideRepair('rejected');
+              if (!outcome?.decided) {
+                setErr('That suggestion is no longer open, so there was nothing to reject.');
+              }
             } catch (decisionError) {
               setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
             } finally {
@@ -293,7 +296,13 @@ export function ArtifactViewerBody({
             const threadId = workspace.repair?.commentThreadId;
             setRepairBusy(true);
             try {
-              await workspace.decideRepair('accepted');
+              // Only resolve the comment once the decision actually landed;
+              // an ignored call used to look identical to a successful one.
+              const outcome = await workspace.decideRepair('accepted');
+              if (!outcome?.decided) {
+                setErr('That suggestion is no longer open, so there was nothing to accept.');
+                return;
+              }
               const resolved = threadId
                 ? await comments.setStatus(threadId, 'resolved')
                 : true;

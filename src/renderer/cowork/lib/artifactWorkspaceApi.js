@@ -224,12 +224,14 @@ export function cancelAgentRepair(artifact, repairId) {
   });
 }
 
-export function decideAgentRepair(artifact, repairId, status) {
+export function decideAgentRepair(artifact, repairId, status, { expectedHeadRevisionId = null } = {}) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  // Rejecting restores over whatever is head now, so the server needs the head
+  // the user was actually shown, not the one the repair was computed against.
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/decision`, {
     method: 'POST',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, expectedHeadRevisionId }),
   });
 }
 

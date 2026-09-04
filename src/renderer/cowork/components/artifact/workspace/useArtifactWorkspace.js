@@ -159,14 +159,23 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       setRepair(loaded.repair || null);
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
       if (bundledRevisions) setRevisions(bundledRevisions);
+      setComparison(null);
       if (loaded.repair?.status === 'ready') {
-        const detail = await loadAgentRepair(artifact, loaded.repair.id);
-        if (!isCurrent()) return;
-        if (detail.compare) {
-          setComparison({ kind: 'agent', ...detail.compare, repair: detail.repair });
+        // Its own try: a repair whose base revision aged out of history answers
+        // 404, and the source catch below reads 404 as "this artifact predates
+        // editing" - which would hide the whole workspace over a stale record.
+        try {
+          const detail = await loadAgentRepair(artifact, loaded.repair.id);
+          if (!isCurrent()) return;
+          if (detail.compare) {
+            setComparison({ kind: 'agent', ...detail.compare, repair: detail.repair });
+          }
+        } catch (repairError) {
+          if (!isCurrent()) return;
+          // Soft: the artifact itself loaded. Same channel refreshRepair uses
+          // for a repair that ended without a comparison to show.
+          setError(repairError.message || 'Could not load the agent suggestion');
         }
-      } else {
-        setComparison(null);
       }
       // New servers bundle the initial history with the editable source so an
       // artifact open needs one stable-id lookup and one request. Keep the
@@ -296,7 +305,12 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }, [artifact, source]);
 
   const restoreRevision = useCallback(async (revisionId) => {
-    if (!source) return null;
+    if (!source) {
+      // Reachable when the source never loaded - a binary or oversized
+      // artifact - where the button is live but has nothing to write into.
+      setError('This artifact has no editable source to restore into');
+      return null;
+    }
     setStatus('saving');
     const generation = workspaceGeneration.current;
     try {
@@ -374,15 +388,27 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   }, [artifact, repair?.id]);
 
   const decideRepair = useCallback(async (decision) => {
-    if (!repair?.id) return null;
+    if (!repair?.id) {
+      // A user-initiated decision with no record behind it is a bug, not a
+      // normal path: the comparison has outlived the repair that opened it.
+      setError('This suggestion is no longer open');
+      setComparison(null);
+      return { decided: false, reason: 'missing-repair' };
+    }
     const generation = workspaceGeneration.current;
-    const decided = await decideAgentRepair(artifact, repair.id, decision);
-    if (workspaceGeneration.current !== generation) return null;
-    setRepair(decided);
-    setComparison(null);
-    if (decision === 'rejected') await load();
-    return decided;
-  }, [artifact, load, repair?.id]);
+    const decided = await decideAgentRepair(artifact, repair.id, decision, {
+      expectedHeadRevisionId: currentRevision?.id || null,
+    });
+    // The write has landed. A workspace replaced since must not turn a
+    // completed decision into a silent no-op, so only the state update is
+    // guarded; the result always reports what actually happened.
+    if (workspaceGeneration.current === generation) {
+      setRepair(decided);
+      setComparison(null);
+      if (decision === 'rejected') await load();
+    }
+    return { decided: true, repair: decided };
+  }, [artifact, currentRevision?.id, load, repair?.id]);
 
   const changeMode = useCallback((nextMode) => {
     setMode(nextMode);

@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   loadArtifactSource: vi.fn(),
   loadArtifactRevisions: vi.fn(),
   saveArtifactSource: vi.fn(),
+  decideAgentRepair: vi.fn(),
+  loadAgentRepair: vi.fn(),
 }));
 
 vi.mock('../../../../platform/host', () => ({ host: platform }));
@@ -21,8 +23,8 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   loadArtifactSource: (...args) => api.loadArtifactSource(...args),
   loadArtifactRevisions: (...args) => api.loadArtifactRevisions(...args),
   cancelAgentRepair: vi.fn(),
-  decideAgentRepair: vi.fn(),
-  loadAgentRepair: vi.fn(),
+  decideAgentRepair: (...args) => api.decideAgentRepair(...args),
+  loadAgentRepair: (...args) => api.loadAgentRepair(...args),
   loadArtifactRevision: (...args) => api.loadArtifactRevision(...args),
   requestAgentRepair: vi.fn(),
   restoreArtifactRevision: vi.fn(),
@@ -78,6 +80,8 @@ beforeEach(() => {
   });
   api.loadArtifactSource.mockReset().mockResolvedValue(source);
   api.loadArtifactRevisions.mockReset().mockResolvedValue({ revisions: [] });
+  api.decideAgentRepair.mockReset();
+  api.loadAgentRepair.mockReset();
   api.saveArtifactSource.mockReset();
 });
 
@@ -329,5 +333,104 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     expect(result.current.source.artifactId).toBe(artifactB.id);
     expect(result.current.source.content).toBe('<h1>Second</h1>');
+  });
+});
+
+describe('useArtifactWorkspace agent repair decisions', () => {
+  const readyRepair = {
+    id: 'repair-1',
+    status: 'ready',
+    path: 'index.html',
+    revisionId: 'rev-1',
+    commentThreadId: 'thread-1',
+  };
+
+  it('reports a decision that landed even after the workspace reloaded', async () => {
+    // The POST has already happened by the time the generation moves, so a
+    // silent null would tell the caller nothing happened when it did.
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: null });
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    const decision = deferred();
+    api.decideAgentRepair.mockReturnValue(decision.promise);
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      repair: { ...readyRepair },
+    });
+    await act(async () => { await result.current.load(); });
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    let outcome;
+    await act(async () => {
+      const pending = result.current.decideRepair('accepted');
+      await result.current.load();
+      decision.resolve({ ...readyRepair, status: 'accepted' });
+      outcome = await pending;
+    });
+
+    expect(outcome.decided).toBe(true);
+    expect(outcome.repair.status).toBe('accepted');
+  });
+
+  it('says so instead of going quiet when the comparison outlived its repair', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: null });
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    let outcome;
+    await act(async () => { outcome = await result.current.decideRepair('accepted'); });
+
+    expect(outcome).toEqual({ decided: false, reason: 'missing-repair' });
+    expect(result.current.error).toBe('This suggestion is no longer open');
+    expect(api.decideAgentRepair).not.toHaveBeenCalled();
+  });
+
+  it('sends the head the user was shown, so a reject cannot clobber a newer edit', async () => {
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revision: { id: 'rev-9' },
+      repair: { ...readyRepair },
+    });
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    api.loadAgentRepair.mockResolvedValue({ repair: readyRepair, compare: null });
+    api.decideAgentRepair.mockResolvedValue({ ...readyRepair, status: 'rejected' });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => { await result.current.decideRepair('rejected'); });
+
+    expect(api.decideAgentRepair).toHaveBeenCalledWith(
+      artifact, 'repair-1', 'rejected', { expectedHeadRevisionId: 'rev-9' },
+    );
+  });
+
+  it('keeps the artifact open when a stale repair cannot be fetched', async () => {
+    // agent_repair_detail answers 404 once the base revision is pruned, and
+    // the source catch reads 404 as "this artifact predates editing".
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: { ...readyRepair } });
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    api.loadAgentRepair.mockRejectedValue(httpError(404, 'Revision not found'));
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.unsupportedReason).toBe('');
+    expect(result.current.source.content).toBe(source.content);
+    expect(result.current.error).toBe('Revision not found');
+  });
+
+  it('surfaces a restore that has no source to write into', async () => {
+    api.loadArtifactSource.mockRejectedValue(httpError(403, 'Reviewer'));
+    api.loadArtifactReview.mockResolvedValue({ capabilities: reviewerCapabilities });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    let returned;
+    await act(async () => { returned = await result.current.restoreRevision('rev-0'); });
+
+    expect(returned).toBeNull();
+    expect(result.current.error).toBe('This artifact has no editable source to restore into');
   });
 });
