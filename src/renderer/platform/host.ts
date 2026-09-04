@@ -17,6 +17,7 @@ import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
+import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -1443,15 +1444,27 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
+export interface AccountSession {
+  accountId: string | null;
+  legacyState: LegacyStateVerdict;
+}
+
 /**
- * The signed-in account, resolved at preload time and therefore readable
- * synchronously. The async accessors cannot serve the one caller that needs it —
- * the browser-cache purge, which has to run before React mounts.
+ * The signed-in account and the verdict on unmarked browser state, resolved at
+ * preload time and therefore readable synchronously. The async accessors cannot
+ * serve the one caller that needs it — the browser-cache purge, which has to run
+ * before React mounts.
  */
-export function signedInAccountIdSync(): string | null {
-  if (!isElectron) return null;
-  const value = (bridge as { signedInAccountId?: unknown }).signedInAccountId;
-  return typeof value === 'string' && value ? value : null;
+export function accountSessionSync(): AccountSession {
+  const unknown: AccountSession = { accountId: null, legacyState: 'keep' };
+  if (!isElectron) return unknown;
+  const value = (bridge as { accountSession?: unknown }).accountSession;
+  if (!value || typeof value !== 'object') return unknown;
+  const { accountId, legacyState } = value as Partial<AccountSession>;
+  return {
+    accountId: typeof accountId === 'string' && accountId ? accountId : null,
+    legacyState: legacyState === 'purge' || legacyState === 'undecided' ? legacyState : 'keep',
+  };
 }
 
 export interface AccountOwnershipQuestion {
@@ -1512,7 +1525,7 @@ export const host = {
   isLocalApiOrigin,
   accountOwnershipPending,
   decideAccountOwnership,
-  signedInAccountIdSync,
+  accountSessionSync,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,

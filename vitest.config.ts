@@ -63,7 +63,7 @@ export default defineConfig({
         // looks exactly like reading its own. The branch table is the only thing
         // that proves the refusals still fire.
         'src/main/account-data.ts': { statements: 98, branches: 96 },
-        'src/renderer/cowork/lib/accountLocalState.ts': { statements: 89, branches: 91 },
+        'src/renderer/cowork/lib/accountLocalState.ts': { statements: 90, branches: 94 },
       },
     },
     projects: [

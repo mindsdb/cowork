@@ -47,6 +47,7 @@ import {
   needsOwnershipDecision,
   observePreExistingData,
   readActiveAccount,
+  resolveAccountRoot,
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
@@ -1276,11 +1277,20 @@ function setupIPC() {
     // The renderer blocks on this reply, and coworkHome() throws by design on a
     // mispackaged build-config, so it must answer even then.
     try {
-      const active = readActiveAccount(coworkHome());
-      event.returnValue = active.kind === 'signed-in' ? active.accountId : null;
+      const home = coworkHome();
+      const active = readActiveAccount(home);
+      const accountId = active.kind === 'signed-in' ? active.accountId : null;
+      // The verdict on browser state that carries no account marker. It is
+      // decided here because the claim is here: the renderer cannot see whether
+      // this session resolved onto the default root or its own.
+      const legacyState = needsOwnershipDecision(home, active)
+        ? 'undecided'
+        : resolveAccountRoot(home, active) === null ? 'keep' : 'purge';
+      event.returnValue = { accountId, legacyState };
     } catch (err) {
       console.warn('[account] could not resolve the signed-in account', err);
-      event.returnValue = null;
+      // No account means the purge is a no-op, so the verdict cannot matter.
+      event.returnValue = { accountId: null, legacyState: 'keep' };
     }
   });
 

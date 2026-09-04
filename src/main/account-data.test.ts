@@ -83,6 +83,73 @@ describe('observing whether the install already had data', () => {
   it('reads an unrecorded answer as "had data", which is the safe direction', () => {
     expect(hadPreExistingData(home)).toBe(true);
   });
+
+  // The database alone was too narrow. An install whose onboarding stored
+  // provider keys but whose sidecar never started successfully has none, so it
+  // recorded as empty and the first account to sign in would have claimed it
+  // and inherited the keys and the connector vault with nobody asked.
+  it('records true for provider keys in the dotenv and no database', () => {
+    fs.writeFileSync(
+      path.join(home, '.env'),
+      'ANTON_TERMS_CONSENT=1\nANTON_ANTHROPIC_API_KEY=sk-not-a-real-key\n',
+      'utf-8',
+    );
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(true);
+  });
+
+  it('records true for a connector vault and no database', () => {
+    fs.mkdirSync(path.join(home, 'data-vault'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'data-vault', 'postgres.json'), '{}', 'utf-8');
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(true);
+  });
+
+  it('records true for a provider state file and no database', () => {
+    fs.writeFileSync(path.join(home, 'state.json'), '{"preferences":{}}', 'utf-8');
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(true);
+  });
+
+  it('records true for user files and no database', () => {
+    fs.mkdirSync(path.join(home, 'projects', 'a-project'), { recursive: true });
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(true);
+  });
+
+  // The other half of the rule, and the reason none of the above is a bare
+  // existence check: an install that only ever reached the sign-in screen has a
+  // dotenv holding a generated auth token and consent flag, and the store
+  // directories the sidecar mkdirs at startup. Counting those would ask a
+  // brand-new user whose data theirs is.
+  it('records false for an install that only ever reached the sign-in screen', () => {
+    fs.writeFileSync(
+      path.join(home, '.env'),
+      '# generated\nCOWORK_AUTH_TOKEN=generated-at-first-start\nANTON_TERMS_CONSENT=1\n',
+      'utf-8',
+    );
+    for (const dir of ['projects', 'files', 'memory', 'skills', 'data-vault']) {
+      fs.mkdirSync(path.join(home, dir), { recursive: true });
+    }
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(false);
+  });
+
+  it('records false for a credential key present but empty', () => {
+    fs.writeFileSync(path.join(home, '.env'), 'ANTON_ANTHROPIC_API_KEY=\n', 'utf-8');
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(false);
+  });
+
+  it('does not read a commented-out credential as data', () => {
+    fs.writeFileSync(
+      path.join(home, '.env'),
+      '# ANTON_ANTHROPIC_API_KEY=sk-not-a-real-key\n',
+      'utf-8',
+    );
+    observePreExistingData(home);
+    expect(hadPreExistingData(home)).toBe(false);
+  });
 });
 
 describe('resolveAccountRoot - signed in', () => {

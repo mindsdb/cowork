@@ -24,7 +24,7 @@ import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
 import { purgeStaleAccountState } from './cowork/lib/accountLocalState';
-import { signedInAccountIdSync } from './platform/host';
+import { accountSessionSync } from './platform/host';
 
 // Drop the previous account's browser caches BEFORE React mounts.
 //
@@ -34,7 +34,8 @@ import { signedInAccountIdSync } from './platform/host';
 // unsent message is already on screen and in component state. The account id is
 // resolved in preload, which re-runs on every reload, so a sign-out reload sees
 // the new value rather than the one the window was created with.
-purgeStaleAccountState(signedInAccountIdSync());
+const accountSession = accountSessionSync();
+purgeStaleAccountState(accountSession.accountId, accountSession.legacyState);
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real

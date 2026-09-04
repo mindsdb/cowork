@@ -2510,6 +2510,11 @@ function AppCore() {
   // Drop the previous account's browser-local caches once we know who is signed
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
   // has its own epoch, and only a change of ACCOUNT invalidates this state.
+  //
+  // This handles a MARKED cache naming another account. An unmarked one needs
+  // to know who owns the default data root, which only the main process can
+  // answer, so that verdict is applied by the pre-mount purge in main.tsx and
+  // left at its 'keep' default here.
   useEffect(() => {
     purgeStaleAccountState(codeAccountUser?.sub ?? null);
   }, [codeAccountUser?.sub]);

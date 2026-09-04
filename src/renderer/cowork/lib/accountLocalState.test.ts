@@ -41,9 +41,12 @@ beforeEach(() => {
 });
 
 describe('purgeStaleAccountState', () => {
-  it('purges nothing on the first boot, because nothing is stale yet', () => {
+  it('keeps an unmarked cache for the account that owns the default root', () => {
+    // The default verdict. This account's own state from before per-account
+    // roots existed, so purging it would destroy the history of the only person
+    // who has ever used the install.
     seed();
-    expect(purgeStaleAccountState(ACCOUNT_A)).toBe(false);
+    expect(purgeStaleAccountState(ACCOUNT_A, 'keep')).toBe(false);
     for (const key of Object.keys(ACCOUNT_KEYS)) {
       expect(localStorage.getItem(key)).not.toBeNull();
     }
@@ -103,5 +106,80 @@ describe('purgeStaleAccountState', () => {
     purgeStaleAccountState(ACCOUNT_B);
     const left = Object.keys(localStorage).filter((k) => k.startsWith('anton:conv-turns:'));
     expect(left).toEqual([]);
+  });
+});
+
+// An unmarked cache predates per-account roots, so it belongs to whoever owns
+// the default data root. Only main can tell whether that is us, which is why
+// the verdict is an argument rather than something decided here.
+describe('an unmarked legacy cache', () => {
+  it('is purged for an account resolved onto its own root', () => {
+    // The upgrade path of the reported bug, in localStorage rather than the
+    // database: B signs in first on an install whose history is A's. Without
+    // this, B reads A's drafts and conversation payloads, and stamping B's name
+    // on them would make them B's forever.
+    seed();
+
+    expect(purgeStaleAccountState(ACCOUNT_B, 'purge')).toBe(true);
+
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+    for (const key of Object.keys(UNRELATED_KEYS)) {
+      expect(localStorage.getItem(key)).not.toBeNull();
+    }
+  });
+
+  it('is left alone, and unstamped, while the ownership question is open', () => {
+    seed();
+
+    expect(purgeStaleAccountState(ACCOUNT_A, 'undecided')).toBe(false);
+
+    // Nothing removed AND nothing recorded: stamping here is what would make
+    // the answer unenforceable, because the reload after it would read the
+    // cache as already belonging to this account.
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).not.toBeNull();
+    }
+    expect(localStorage.getItem('anton.lastAccount')).toBeNull();
+  });
+
+  it('is purged on the reload after the person answers "start fresh"', () => {
+    // The two calls are two document loads: the one with the dialog up, then
+    // the reload the answer triggers, by which time this account is resolved
+    // onto its own root.
+    seed();
+    purgeStaleAccountState(ACCOUNT_A, 'undecided');
+
+    expect(purgeStaleAccountState(ACCOUNT_A, 'purge')).toBe(true);
+
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+  });
+
+  it('survives the reload after the person adopts the data', () => {
+    seed();
+    purgeStaleAccountState(ACCOUNT_A, 'undecided');
+
+    expect(purgeStaleAccountState(ACCOUNT_A, 'keep')).toBe(false);
+
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).not.toBeNull();
+    }
+    expect(localStorage.getItem('anton.lastAccount')).toBe(ACCOUNT_A);
+  });
+
+  it('still purges a MARKED cache from another account, whatever the verdict', () => {
+    // The verdict only governs unmarked state. A marked cache names its owner,
+    // so a mismatch needs no ruling from main.
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
+    seed();
+
+    expect(purgeStaleAccountState(ACCOUNT_B, 'keep')).toBe(true);
+
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
   });
 });

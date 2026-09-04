@@ -20,6 +20,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CREDENTIAL_ENV_KEYS } from './credential-env-keys';
 import { retryOnTransientLock } from './fs-retry';
 
 // Deliberately inside the root it claims, not in state.json: cowork-server
@@ -36,7 +37,16 @@ const PRE_EXISTING_FILE = '.pre-existing-data';
 // Remembers "start fresh", so the ownership question is asked once.
 const DECLINED_FILE = '.declined-default-root';
 
+// What makes a root "already someone's". The database is not enough on its own:
+// an install whose onboarding stored provider keys but whose sidecar never
+// started successfully has no database at all.
 const ROOT_DATA_MARKER = 'cowork.db';
+const PROVIDER_STATE_MARKER = 'state.json';
+const ENV_FILE = '.env';
+// Contents, never mere existence: the sidecar mkdirs its stores on first start,
+// so an install that only ever reached the sign-in screen has the empty
+// directories already.
+const USER_DATA_DIRS = ['data-vault', 'projects', 'files', 'memory', 'skills'];
 
 // Per-account roots live under here, one subdirectory per account.
 export const ACCOUNTS_DIR = 'accounts';
@@ -76,10 +86,54 @@ function assertUsableAsPathSegment(accountId: string): void {
   }
 }
 
-function rootHoldsDatabase(root: string): boolean {
+function dirHoldsEntries(dir: string): boolean {
   try {
-    return fs.existsSync(path.join(root, ROOT_DATA_MARKER));
+    return fs.readdirSync(dir).length > 0;
   } catch {
+    return false; // missing, or not a directory
+  }
+}
+
+/**
+ * Whether this root's `.env` holds a provider credential.
+ *
+ * The file itself proves nothing: the sidecar writes one to hold a generated
+ * COWORK_AUTH_TOKEN, and the desktop writes consent flags into it, so a plain
+ * launch produces a dotenv on an install nobody has configured. A credential
+ * key with a value does prove it.
+ */
+function envHoldsCredential(root: string): boolean {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(root, ENV_FILE), 'utf-8');
+  } catch {
+    return false; // missing or unreadable
+  }
+  return text.split('\n').some((line) => {
+    const eq = line.indexOf('=');
+    if (eq <= 0 || line.trimStart().startsWith('#')) return false;
+    return CREDENTIAL_ENV_KEYS.includes(line.slice(0, eq).trim())
+      && line.slice(eq + 1).trim() !== '';
+  });
+}
+
+/**
+ * Whether this root already holds data that belongs to a person.
+ *
+ * Testing the database alone was too narrow. An install that persisted provider
+ * keys but never got a working sidecar has no `cowork.db`, so it recorded as
+ * empty and the first account to sign in would claim it and inherit those
+ * credentials, and the connector vault, with nobody asked.
+ */
+function rootHoldsUserData(root: string): boolean {
+  try {
+    if (fs.existsSync(path.join(root, ROOT_DATA_MARKER))) return true;
+    if (fs.existsSync(path.join(root, PROVIDER_STATE_MARKER))) return true;
+    if (envHoldsCredential(root)) return true;
+    return USER_DATA_DIRS.some((name) => dirHoldsEntries(path.join(root, name)));
+  } catch {
+    // Unreadable. Assume there is something here and ask, rather than handing
+    // it to whoever signs in first.
     return true;
   }
 }
@@ -98,7 +152,7 @@ export function observePreExistingData(home: string): void {
   const marker = path.join(home, PRE_EXISTING_FILE);
   try {
     if (fs.existsSync(marker)) return;
-    const hadData = rootHoldsDatabase(home);
+    const hadData = rootHoldsUserData(home);
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(marker, JSON.stringify({ hadData }) + '\n', {
       encoding: 'utf-8',
@@ -415,14 +469,14 @@ export function declineDefaultRoot(home: string, accountId: string): void {
 
 /**
  * Remove empty quarantine roots. Nothing ever resolves back to one, so they
- * accumulate a store tree each; one holding a database holds somebody's work and
- * is left for a support path rather than tidied away. Call at boot.
+ * accumulate a store tree each; one holding any of somebody's work is left for a
+ * support path rather than tidied away. Call at boot.
  */
 export function sweepStaleQuarantineRoots(home: string): void {
   for (const name of knownAccountRoots(home)) {
     if (!name.startsWith(QUARANTINE_PREFIX) || name === QUARANTINE_ACCOUNT) continue;
     const root = path.join(home, ACCOUNTS_DIR, name);
-    if (rootHoldsDatabase(root)) {
+    if (rootHoldsUserData(root)) {
       console.warn('[account-data] a quarantined session left data behind at %s', root);
       continue;
     }
