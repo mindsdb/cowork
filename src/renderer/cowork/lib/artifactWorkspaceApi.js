@@ -215,12 +215,14 @@ export function loadAgentRepair(artifact, repairId) {
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}`);
 }
 
-export function cancelAgentRepair(artifact, repairId) {
+export function cancelAgentRepair(artifact, repairId, { discardReady = false } = {}) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  // Discarding a ready repair throws away real agent work, so the server only
+  // does it when this says so; a queued one is released without the flag.
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/cancel`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify({ discardReady }),
   });
 }
 

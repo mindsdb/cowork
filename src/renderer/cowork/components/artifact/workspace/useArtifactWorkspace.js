@@ -160,7 +160,14 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
       if (bundledRevisions) setRevisions(bundledRevisions);
       setComparison(null);
-      if (loaded.repair?.status === 'ready') {
+      // Take over the view only for a decision the user can still act on: the
+      // same file, and the agent's revision still head. A repair the artifact
+      // has moved past gets a notice instead of the whole canvas. Everything
+      // this needs is already in the response.
+      const decidable = loaded.repair?.status === 'ready'
+        && loaded.repair.path === loaded.path
+        && loaded.repair.revisionId === loaded.revision?.id;
+      if (decidable) {
         // Its own try: a repair whose base revision aged out of history answers
         // 404, and the source catch below reads 404 as "this artifact predates
         // editing" - which would hide the whole workspace over a stale record.
@@ -378,12 +385,16 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     return detail;
   }, [artifact, load, repair?.id]);
 
-  const cancelRepair = useCallback(async (repairId = repair?.id) => {
+  const cancelRepair = useCallback(async (
+    repairId = repair?.id,
+    { discardReady = false } = {},
+  ) => {
     if (!repairId) return null;
     const generation = workspaceGeneration.current;
-    const cancelled = await cancelAgentRepair(artifact, repairId);
-    if (workspaceGeneration.current !== generation) return null;
+    const cancelled = await cancelAgentRepair(artifact, repairId, { discardReady });
+    if (workspaceGeneration.current !== generation) return cancelled;
     setRepair(cancelled);
+    if (discardReady) setComparison(null);
     return cancelled;
   }, [artifact, repair?.id]);
 

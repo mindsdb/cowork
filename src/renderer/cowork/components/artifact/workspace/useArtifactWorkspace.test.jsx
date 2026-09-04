@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   saveArtifactSource: vi.fn(),
   decideAgentRepair: vi.fn(),
   loadAgentRepair: vi.fn(),
+  cancelAgentRepair: vi.fn(),
 }));
 
 vi.mock('../../../../platform/host', () => ({ host: platform }));
@@ -22,7 +23,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   loadArtifactReview: (...args) => api.loadArtifactReview(...args),
   loadArtifactSource: (...args) => api.loadArtifactSource(...args),
   loadArtifactRevisions: (...args) => api.loadArtifactRevisions(...args),
-  cancelAgentRepair: vi.fn(),
+  cancelAgentRepair: (...args) => api.cancelAgentRepair(...args),
   decideAgentRepair: (...args) => api.decideAgentRepair(...args),
   loadAgentRepair: (...args) => api.loadAgentRepair(...args),
   loadArtifactRevision: (...args) => api.loadArtifactRevision(...args),
@@ -82,6 +83,7 @@ beforeEach(() => {
   api.loadArtifactRevisions.mockReset().mockResolvedValue({ revisions: [] });
   api.decideAgentRepair.mockReset();
   api.loadAgentRepair.mockReset();
+  api.cancelAgentRepair.mockReset();
   api.saveArtifactSource.mockReset();
 });
 
@@ -432,5 +434,94 @@ describe('useArtifactWorkspace agent repair decisions', () => {
 
     expect(returned).toBeNull();
     expect(result.current.error).toBe('This artifact has no editable source to restore into');
+  });
+});
+
+describe('useArtifactWorkspace agent repair auto-open', () => {
+  const compare = { before: { id: 'rev-0' }, after: { id: 'rev-1' } };
+  const repairAt = (over = {}) => ({
+    id: 'repair-1',
+    status: 'ready',
+    path: 'index.html',
+    revisionId: 'rev-1',
+    commentThreadId: 'thread-1',
+    superseded: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    api.loadArtifactRevisions.mockResolvedValue({ revisions: [] });
+    api.loadAgentRepair.mockResolvedValue({ repair: repairAt(), compare });
+  });
+
+  it('opens the comparison for a decision still waiting on this file', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, repair: repairAt() });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.comparison?.kind).toBe('agent');
+  });
+
+  it('does not hijack the view once the artifact moved past the suggestion', async () => {
+    // The owner's own edit makes head rev-9, so the comparison would show two
+    // revisions that both predate what they are looking at.
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revision: { id: 'rev-9' },
+      repair: repairAt({ superseded: true }),
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.comparison).toBeNull();
+    expect(result.current.repair.superseded).toBe(true);
+    expect(api.loadAgentRepair).not.toHaveBeenCalled();
+  });
+
+  it('does not hijack the view for a repair on another file', async () => {
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      repair: repairAt({ path: 'other.html' }),
+    });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.comparison).toBeNull();
+  });
+
+  it('sends the discard intent so the server may drop a ready suggestion', async () => {
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revision: { id: 'rev-9' },
+      repair: repairAt({ superseded: true }),
+    });
+    api.cancelAgentRepair.mockResolvedValue(repairAt({ status: 'discarded' }));
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => {
+      await result.current.cancelRepair('repair-1', { discardReady: true });
+    });
+
+    expect(api.cancelAgentRepair).toHaveBeenCalledWith(
+      artifact, 'repair-1', { discardReady: true },
+    );
+    expect(result.current.repair.status).toBe('discarded');
+  });
+
+  it('releases a queued repair without the discard intent', async () => {
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      repair: repairAt({ status: 'queued', revisionId: null }),
+    });
+    api.cancelAgentRepair.mockResolvedValue(repairAt({ status: 'cancelled' }));
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.repair?.id).toBe('repair-1'));
+
+    await act(async () => { await result.current.cancelRepair('repair-1'); });
+
+    expect(api.cancelAgentRepair).toHaveBeenCalledWith(
+      artifact, 'repair-1', { discardReady: false },
+    );
   });
 });

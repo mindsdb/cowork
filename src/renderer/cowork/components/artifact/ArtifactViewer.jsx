@@ -124,6 +124,10 @@ export function ArtifactViewer({
   const [repairBusy, setRepairBusy] = useState(false);
   const [textSelection, setTextSelection] = useState(null);
   const [feedbackNotice, setFeedbackNotice] = useState('');
+  // Dismissed per repair, not per open: a suggestion the artifact has moved
+  // past is worth mentioning once, not on every visit to the artifact.
+  const [dismissedRepairId, setDismissedRepairId] = useState('');
+  const [repairNoticeError, setRepairNoticeError] = useState('');
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -797,6 +801,60 @@ export function ArtifactViewer({
         >
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
+      )}
+      {/* A superseded suggestion is still decidable, so it is announced rather
+          than taking over the canvas the way a current one does. */}
+      {workspace.repair?.status === 'ready'
+        && workspace.repair?.superseded
+        && workspace.repair.id !== dismissedRepairId && (
+        <div className="artifact-repair-notice" role="status">
+          <span>
+            {repairNoticeError
+              || 'An agent suggestion from before your last edit is still open.'}
+          </span>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={async () => {
+              setRepairNoticeError('');
+              setRepairBusy(true);
+              try {
+                await workspace.refreshRepair();
+              } catch (noticeError) {
+                setRepairNoticeError(noticeError?.message || 'Could not open that suggestion.');
+              } finally {
+                setRepairBusy(false);
+              }
+            }}
+          >
+            View change
+          </button>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={async () => {
+              setRepairNoticeError('');
+              setRepairBusy(true);
+              try {
+                await workspace.cancelRepair(workspace.repair.id, { discardReady: true });
+              } catch (noticeError) {
+                setRepairNoticeError(noticeError?.message || 'Could not discard that suggestion.');
+              } finally {
+                setRepairBusy(false);
+              }
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="artifact-repair-notice-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setDismissedRepairId(workspace.repair.id)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
       )}
 
       <ArtifactViewerBody
