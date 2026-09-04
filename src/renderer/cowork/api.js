@@ -1401,6 +1401,20 @@ export async function setActiveHubWorkspace(workspaceId) {
   });
 }
 
+/**
+ * The signed-in account's free monthly tokens, paid balance, and auto top up
+ * state (ENG-1782). Never throws: signed out, an unreachable sidecar, and an
+ * old sidecar with no such route all answer the same dark shape, and the
+ * composer notice and Settings tab render nothing for it.
+ */
+export async function fetchHubUsage() {
+  try {
+    const data = await req('/hub/usage/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch { /* an old sidecar has no such route: stay dark */ }
+  return { reachable: false };
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {

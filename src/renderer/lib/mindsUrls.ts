@@ -95,6 +95,10 @@ const KEYCLOAK_BASE = MINDS_KEYCLOAK_URL.replace(/\/auth\/?$/, '');
 // `billing_opened` event, which would then be measurable and wrong.
 export const MINDS_CONSOLE_URL = mindsServiceHost('console');
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
+// The console opens its add-credits dialog on `?exhausted=1` for a billing
+// owner (ENG-1782). For anyone else the same page opens a request-tokens
+// dialog instead, so callers only use this for the owner.
+export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —

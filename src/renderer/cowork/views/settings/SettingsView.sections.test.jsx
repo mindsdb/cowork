@@ -193,6 +193,13 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     expect(await screen.findByText(/Sign in \/ Sign up to MindsHub/i)).toBeInTheDocument();
     expect(spies.getAccessToken).toHaveBeenCalled();
   });
+
+  it('renders the Usage section (ENG-1782)', async () => {
+    // Signed out in this harness (getAccessToken → ''), so the section asks
+    // the person to sign in rather than showing numbers it cannot have.
+    render(<Harness section="usage" />);
+    expect(await screen.findByText('Sign in to see your usage')).toBeInTheDocument();
+  });
 });
 
 describe('SettingsView — LLM provider visibility (ENG-2185)', () => {
