@@ -8,7 +8,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ isWeb: false }));
+const toastAdd = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/host', () => ({ host: hostMock }));
+vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
 
 const load = async () => {
   vi.resetModules();
@@ -20,6 +22,7 @@ describe('OnboardingChecklist', () => {
   beforeEach(() => {
     localStorage.clear();
     hostMock.isWeb = false;
+    toastAdd.mockClear();
   });
 
   it('closes from the header X without starting any chat', async () => {
@@ -37,7 +40,7 @@ describe('OnboardingChecklist', () => {
 
   it('does not start a duplicate chat when a done step is clicked again', async () => {
     const { OnboardingChecklist } = await load();
-    const onStartChat = vi.fn();
+    const onStartChat = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
@@ -46,6 +49,24 @@ describe('OnboardingChecklist', () => {
     await user.click(step);
 
     expect(onStartChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed step incomplete and lets the user retry it', async () => {
+    const { OnboardingChecklist } = await load();
+    const onStartChat = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    const step = screen.getByText('See Cowork work');
+    await user.click(step);
+
+    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(toastAdd).toHaveBeenCalledWith({ type: 'danger', title: 'Could not start chat. Please try again.' });
+
+    await user.click(step);
+
+    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(onStartChat).toHaveBeenCalledTimes(2);
   });
 
   it('shows all steps on desktop', async () => {
@@ -75,7 +96,7 @@ describe('OnboardingChecklist', () => {
   it('completes at 2/2 on web after the two visible steps', async () => {
     hostMock.isWeb = true;
     const { OnboardingChecklist } = await load();
-    const onStartChat = vi.fn();
+    const onStartChat = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
@@ -89,7 +110,7 @@ describe('OnboardingChecklist', () => {
   it('does not complete on desktop after only the two web-visible steps', async () => {
     const { OnboardingChecklist } = await load();
     const user = userEvent.setup();
-    render(<OnboardingChecklist onStartChat={vi.fn()} />);
+    render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(true)} />);
 
     await user.click(screen.getByText('See Cowork work'));
     await user.click(screen.getByText('Customize Cowork to your role'));

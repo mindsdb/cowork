@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from './useOnboarding';
 import OnboardingItem from './OnboardingItem';
 import OnboardingComplete from './OnboardingComplete';
 import Ico from '../Icons';
+import { useToastManager } from '../ui/Toast';
 
 // "Get to know Cowork" checklist — docked in the sidebar above the
 // footer, on every screen. Each row seeds a new chat with that step's
@@ -17,6 +18,8 @@ const STEPS_ID = 'onboarding-sidebar-steps';
 
 export default function OnboardingChecklist({ onStartChat }) {
   const { steps, isComplete, completedCount, total, allDone, dismissed, complete, dismiss } = useOnboarding();
+  const toastManager = useToastManager();
+  const startingSteps = useRef(new Set());
 
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) === 'true'; } catch { return false; }
@@ -27,13 +30,21 @@ export default function OnboardingChecklist({ onStartChat }) {
 
   if (dismissed) return null;
 
-  // Mark the step done first so it shows struck through afterwards, then
-  // hand its prompt to the composer to open the new chat. A done step is
-  // inert — re-clicking it must not spawn another chat (ENG-1502).
-  const start = (step) => {
-    if (isComplete(step.id)) return;
-    complete(step.id);
-    onStartChat(step.prompt);
+  // A done step is inert — re-clicking it must not spawn another chat
+  // (ENG-1502). Only persist completion once the chat actually starts.
+  const start = async (step) => {
+    if (isComplete(step.id) || startingSteps.current.has(step.id)) return;
+    startingSteps.current.add(step.id);
+    try {
+      if (await onStartChat(step.prompt)) complete(step.id);
+      else {
+        startingSteps.current.delete(step.id);
+        toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
+      }
+    } catch {
+      startingSteps.current.delete(step.id);
+      toastManager.add({ type: 'danger', title: 'Could not start chat. Please try again.' });
+    }
   };
 
   const header = (

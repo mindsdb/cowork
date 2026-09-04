@@ -4455,7 +4455,7 @@ function AppCore() {
             // drawer. Close it like navigate/onOpenSchedule do, so the new
             // task isn't buried under it.
             if (sidebarPopout) setNavPopoutOpen(false);
-            handleSendFromHome(text);
+            return handleSendFromHome(text);
           }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
