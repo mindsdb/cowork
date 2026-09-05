@@ -1,18 +1,7 @@
-// Side-panel host that mounts the latest `data-vault-form` for the
-// active conversation. Subscribes to the form store; the markdown
-// extension publishes specs into that store as it parses
-// `data-vault-form` code blocks during streaming.
-//
-// Submit / skip / cancel:
-//   1. POST /v1/datavault/submissions to stage the values (server
-//      keeps them in memory keyed by submission_id; never echoed).
-//   2. Dispatch a chat continuation message that references the
-//      submission_id, action id, form_id, and skipped field NAMES.
-//      Field VALUES never appear in the chat — Anton's tool fetches
-//      them server-side just-in-time.
-//
-// The cancel action skips the staging step; we just send a
-// continuation that says "user cancelled".
+// Stage field values server-side and send only submission id, action/form ids, and skipped field
+// names to chat.
+// Secrets must never appear in the continuation; Anton fetches them just in time. Cancel skips
+// staging.
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
@@ -33,10 +22,8 @@ import { submitDataVaultForm } from '../../api';
 const BROWSER_OAUTH_POLL_MS    = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
-// The web-fallback OAuth routes' "service" slug and the "X connected"
-// success title both come from the connector's own spec (oauth.service_id,
-// label) rather than a hardcoded per-engine map, so any OAuth-builtin
-// connector works here without a code change.
+// Resolve OAuth service IDs and success labels from connector specs so new connectors need no
+// per-engine mapping.
 function getBrowserOAuthMethod(spec) {
   return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
 }
@@ -47,51 +34,28 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // Track the form_id we last animated in for. A new form for the
-  // same conversation (e.g. user starts a second connection in the
-  // same chat) should re-trigger the appearance, but a patch into
-  // the same form_id should NOT — it'd be jarring to re-fade on
-  // every status update.
+  // Animate once per form_id; patches to the same form must not restart the appearance.
   const animatedFormIdRef = useRef(null);
   const oauthPollRef = useRef(null);
   const [appearKey, setAppearKey] = useState(0);
-  // Status toast: shown when spec.status_text is set; user can
-  // dismiss with × . Once dismissed for a given text, it stays
-  // hidden — but a NEW status text (e.g. probe phase advanced)
-  // re-shows the toast with the new content. Tracked here rather
-  // than on the spec so server-side updates don't have to know
-  // anything about UI dismissal state.
+  // Keep dismissal separate from server specs; new status text can be shown after an earlier
+  // message was dismissed.
   const [dismissedStatus, setDismissedStatus] = useState(null);
-  // Active method for the panel chrome — when set (and not on the
-  // success screen), the header bar becomes the "← Back to options ·
-  // <method>" breadcrumb. Source of truth lives in formStore so
-  // DataVaultForm can write it (on pick) and the panel can clear it
-  // (on "back").
+  // Share method selection through formStore so the form can select it and the panel breadcrumb can
+  // clear it.
   const [activeMethodId, setActiveMethodId] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
-  // Generic "name this connection" label — submitted as `user_label`
-  // alongside whatever per-connector fields the form collects.
   const [userLabel, setUserLabel] = useState(spec?.user_label || '');
 
   useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
 
-  // `useState`'s initial value is only read on mount. This panel is reused
-  // across different connections without unmounting (e.g. the store swaps
-  // `spec` under it), so `spec.user_label` changing on its own wouldn't
-  // update `userLabel` — it would keep showing whatever the *first*
-  // connection's value was. Reset explicitly whenever the underlying
-  // connection identity changes (mirrors how `spec._existing_name` already
-  // identifies "which connection is this panel for").
+  // Reset labels on connection identity changes because this panel is reused without unmounting.
   useEffect(() => {
     setUserLabel(spec?.user_label || '');
   }, [spec?._existing_name]);
 
-  // After a successful save, prefer the authoritative label the server
-  // resolved (may differ from what was typed — e.g. de-duplicated with a
-  // " 2" suffix, or a computed default when none was typed) over the
-  // locally-typed value. Only overwrites when the store actually carries
-  // one; no-op until whatever patched the form in also threads it through.
+  // After save, adopt a returned server label, which may be deduplicated or defaulted.
   useEffect(() => {
     if (spec?._is_success && spec?.user_label) {
       setUserLabel(spec.user_label);
@@ -115,10 +79,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     const fid = spec?.form_id || null;
     if (fid && fid !== animatedFormIdRef.current) {
       animatedFormIdRef.current = fid;
-      // Bump key to remount the wrapper so the CSS animation re-fires.
       setAppearKey((k) => k + 1);
-      // Reset dismissal state when a NEW form arrives — old
-      // dismissal isn't relevant to a fresh connection attempt.
       setDismissedStatus(null);
     }
     if (!fid) {
@@ -127,12 +88,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
   }, [spec?.form_id]);
 
-  // Status toast disabled — LLM feedback should land in the chat
-  // only, not duplicated inside the form panel. The chat already
-  // surfaces every progress / tool-result event, and a toast inside
-  // the form just made the surface feel busy. Kept the local
-  // `dismissedStatus` state untouched in case we want a different
-  // in-form indicator in the future.
+  // Status toasts are disabled because progress already appears in chat.
   const showStatusToast = false;
 
   const startBrowserOAuthPoll = (state, successTitle, formId) => {
@@ -154,13 +110,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         if (outcome?.status === 'success') {
           clearInterval(oauthPollRef.current);
           setBusy(false);
-          // Bring this tab back to the foreground now that sign-in
-          // finished — mirrors desktop regaining window focus once its
-          // own browser-tab OAuth flow completes (ENG-2190). Doesn't
-          // depend on a popup reference (window.open()'s return value is
-          // discarded above — noopener-adjacent by not being captured at
-          // all) — the tab that opened it closes itself independently via
-          // a script in auth's callback page.
+          // Refocus the app after OAuth; without a popup reference, closing the auth tab depends on
+          // its callback page.
           try { window.focus(); } catch { /* best effort */ }
           try { await fetchDatasources(); } catch { /* best effort */ }
           patchForm(conversationId, {
@@ -188,12 +139,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     if (!spec) return;
     setError('');
 
-    // Success branch — two intents:
-    //   • view_connectors → route to the Connect Apps and Data page,
-    //     then clear the panel
-    //   • dismiss / cancel → just clear the panel
-    // The connection is already in the vault either way; nothing
-    // to dispatch back to anton.
+    // Success actions only navigate or dismiss; the connection is already saved.
     if (spec._is_success) {
       if (id === 'view_connectors') {
         onNavigateToConnectors?.();
@@ -202,10 +148,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
-    // Parse-error recovery — when the form is the synthetic
-    // "fm_parse_error" spec the markdown extension publishes, the
-    // primary action just dispatches a recovery message back to
-    // anton so it can re-emit a clean form. No staging needed.
+    // Parse-error retries ask Anton for a clean request_credentials form; no values need staging.
     if (spec._is_error) {
       if (id === 'retry' && kind === 'primary') {
         onContinue?.({
@@ -224,7 +167,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
-    // Cancel — short-circuit, just send a continuation with cancel.
     if (kind === 'cancel') {
       onContinue?.(buildContinuation({
         spec, action: id, kind, submissionId: null, skipped: skipped || [],
@@ -233,12 +175,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
-    // PostHog projects are account-scoped. Users know their project by name,
-    // not the numeric ID that the connector engine needs, so discover choices
-    // before posting the generic connector submission. Only applies to the
-    // personal-API-key method — browser_oauth_builtin has no personal_api_key/
-    // host fields to probe with (its own branch below handles project context
-    // differently, or not at all yet).
+    // Discover PostHog project names/IDs before personal-key submission. Built-in browser OAuth has
+    // no personal key/host to probe.
     if (spec._connector_id === 'posthog' && kind === 'primary'
       && authMethod !== 'browser_oauth_builtin'
       && !String(values?.project_id || '').trim()
@@ -284,8 +222,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
-    // Built-in browser OAuth — user clicked Submit after filling any
-    // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const providerLabel = providerNameFromSpec(spec);
@@ -323,7 +259,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         return;
       }
 
-      // Web fallback — server-side redirect flow.
       const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
       if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
       try {
@@ -339,25 +274,15 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
-    // OAuth submit — when the active method declares
-    // `submit_action: "oauth_launch"`, run the PKCE browser flow
-    // before handing off to the save path. We resolve client_id /
-    // secret from the spec (Pattern A — hosted) or the user's
-    // values (Pattern B — BYOK), call the main-process helper, and
-    // augment the values with the resulting refresh_token + scope
-    // so the vault sees a complete credentials payload.
+    // Resolve OAuth client credentials from the spec or user fields, then add the returned
+    // refresh_token/scope before saving.
     const activeMethodSpec = (() => {
       const id = authMethod;
       if (!id || !Array.isArray(spec.methods)) return null;
       return spec.methods.find((m) => m.id === id) || null;
     })();
-    // Modify-flow synthetic method (`__edit_current__`) carries
-    // `_underlying_method` — the saved record's real auth method id.
-    // Server-side validation rejects unknown ids, so we always send
-    // the underlying real id over the wire while keeping the
-    // synthetic id locally for resolving the active spec entry.
-    // `wireMethodId` falls through to `authMethod` for ordinary
-    // (non-synthetic) methods so create-flow behaviour is unchanged.
+    // Resolve synthetic modify selections to their saved _underlying_method for server validation;
+    // keep synthetic IDs local.
     const wireMethodId = activeMethodSpec?._underlying_method || authMethod;
     const connectionName = spec._existing_name || spec.name || '';
     if (activeMethodSpec?.submit_action === 'oauth_launch' && kind === 'primary') {
@@ -373,14 +298,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         return;
       }
 
-      // ── Web shell: redirect-based OAuth ──────────────────────────
-      // No Electron main process → no loopback PKCE. Drive the
-      // server-side redirect flow instead: server mints the auth URL,
-      // we open it, the provider redirects to the server callback
-      // (which exchanges the code AND saves the vault record), and we
-      // poll for the outcome. Requires a connector id — an LLM-emitted
-      // form without one can't use this path (the server keys the
-      // save on the connector id).
+      // Web uses server-side OAuth because it cannot run Electron loopback PKCE. Require a
+      // connector ID for server-side saving.
       if (host.isWeb) {
         const connectorId = spec._connector_id || null;
         if (!connectorId) {
@@ -388,12 +307,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           return;
         }
         setBusy(true);
-        // Open the popup window SYNCHRONOUSLY, inside the click gesture,
-        // BEFORE the async `startConnectorOAuth`. If we opened it after
-        // the await, the broken user-gesture chain would trip popup
-        // blockers. We point it at about:blank now and redirect it to
-        // the real auth URL once the server returns it. Falls back to
-        // host.openExternal if the browser still blocked the popup.
+        // Open a blank popup during the click gesture, before awaiting the auth URL, to avoid popup
+        // blocking.
+        // Use host.openExternal if it still fails.
         let popup = null;
         try { popup = window.open('', '_blank'); } catch { popup = null; }
         try {
@@ -409,10 +325,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             setBusy(false);
             return;
           }
-          // Send the (already-open) tab to the consent screen. The
-          // callback renders its own "you can close this tab" page
-          // server-side. If the popup was blocked, fall back to the
-          // host's opener (new tab or, in Electron, the OS browser).
           if (popup) {
             try { popup.location.href = started.authUrl; }
             catch { await host.openExternal(started.authUrl); }
@@ -420,9 +332,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             await host.openExternal(started.authUrl);
           }
 
-          // Poll until the server-side callback reports a terminal
-          // state. ~3 min budget at 2s intervals; the server's pending
-          // entry expires at 10 min so this never polls a dead state
+          // Bound polling below the server’s pending-state expiry so abandoned flows cannot poll
           // forever.
           const POLL_MS = 2000;
           const MAX_POLLS = 90;
@@ -446,29 +356,17 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               setBusy(false);
               return;
             }
-            // 'pending' → keep waiting.
           }
           if (!outcome) {
             setError('Timed out waiting for the OAuth sign-in to complete.');
             setBusy(false);
             return;
           }
-          // Bring the app tab back to the foreground now that sign-in
-          // finished — mirrors desktop regaining window focus once its
-          // own browser-tab OAuth flow completes (ENG-2190). The popup
-          // also closes itself independently via a script in the
-          // callback page (see auth's render_callback_page) — this is
-          // just the faster path for the case where `popup` is a live
-          // reference. It isn't always: the popup-blocked fallback above
-          // routes through host.openExternal() instead, which opens a new
-          // tab without keeping a reference to it at all — that case (and
-          // the browser_oauth_builtin path above, which never captures a
-          // reference either) relies solely on the callback page's own
-          // self-close script to close the tab.
+          // Close the captured popup and refocus the app. When no reference exists, the callback
+          // page closes its own tab.
           if (popup) { try { popup.close(); } catch {} }
           try { window.focus(); } catch {}
-          // The server callback already persisted the connection — just
-          // flip the form into its success branch + recap in chat.
+          // The OAuth callback already persisted the connection.
           patchForm(conversationId, {
             form_id: spec.form_id,
             _is_success: true,
@@ -514,36 +412,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           token_type: result.token_type || 'Bearer',
           user_label: userLabel,
         };
-        // OAuth submits go through the connector-aware save endpoint —
-        // not the legacy datasources path that validates against
-        // Anton-core's built-in engine schemas (which would reject
-        // a refresh_token-shaped payload). Falls back to the agent
-        // path when the spec hasn't been stamped with a connector id
-        // (e.g. an LLM-emitted form rather than a registry pick).
+        // Use connector-aware saving for OAuth credentials; legacy schemas reject refresh tokens.
+        // Without a connector ID, use the agent path.
         const connectorId = spec._connector_id || null;
         if (connectorId) {
           try {
             const saved = await saveConnector(connectorId, {
-              // `wireMethodId` resolves the synthetic
-              // `__edit_current__` modify-flow method to the real
-              // saved method id; for ordinary methods this is just
-              // `authMethod` (unchanged from before).
               method: wireMethodId || activeMethodSpec.id || null,
-              // Modify-flow stamps the existing connection name on
-              // the spec so the save lands on the same vault row
-              // (`(engine, name)` is the row key). Without this the
-              // server falls back to `uuid.uuid4().hex[:8]` and we
-              // end up with a sibling entry instead of an update.
+              // Preserve the existing (engine, name) vault key in modify mode or saving would
+              // create a sibling connection.
               name: connectionName,
               values: oauthValues,
             });
-            // Reconcile with the authoritative value — the server may
-            // have de-duplicated it (e.g. appended " 2") or computed a
-            // default when none was typed.
+            // Use the server’s label, which may be defaulted or deduplicated.
             if (saved.user_label) setUserLabel(saved.user_label);
-            // Flip the form into its success branch so the user gets
-            // a clear "connected" affordance + the standard
-            // Close / View connectors actions.
             patchForm(conversationId, {
               form_id: spec.form_id,
               _is_success: true,
@@ -551,7 +433,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               subtitle: 'Saved to the data vault. The agent can use this connection in tasks.',
             });
             trackDataSourceConnected(connectorId);
-            // Surface a one-line confirmation in the chat too.
             onContinue?.({
               text: `Connected ${saved.label || connectorId} — saved to the data vault.`,
             });
@@ -560,11 +441,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             setBusy(false);
           }
         } else if (onSubmit) {
-          // Spec wasn't stamped with a connector id — fall back to
-          // the legacy agent path with the augmented values. We
-          // route via `wireMethodId` so modify-flow submissions
-          // resolve to the saved method's real id, not the
-          // synthetic `__edit_current__`.
+          // Without a connector ID, submit augmented credentials through the agent with the
+          // resolved real method ID.
           onSubmit({
             formId: spec.form_id,
             formSpec: wireMethodId
@@ -586,12 +464,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     setBusy(true);
     try {
       const submissionValues = { ...(values || {}) };
-      /* The discovered picker and the manual Project ID box both feed
-         `project_id`, so one of them has to win when both carry a value.
-         A typed id wins: it is the one still visible on screen, and a user
-         who picks a project and then types over it has corrected
-         themselves. `posthog_project_choice` is a UI-only field and never
-         reaches the wire either way. */
+      /*
+       * Typed PostHog IDs override discovered choices because they reflect the user’s visible
+       * correction. Never send the UI-only choice field.
+       */
       if (spec._connector_id === 'posthog') {
         const typedProjectId = String(submissionValues.project_id || '').trim();
         if (!typedProjectId && submissionValues.posthog_project_choice) {
@@ -599,23 +475,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }
         delete submissionValues.posthog_project_choice;
       }
-      // Endpoint-as-agent path: hand the submission off to the
-      // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
-      // stream against /v1/datavault/submissions and pipes the
-      // events into the conversation as a fresh assistant turn.
-      // The agent does the validation / save / patch decisions
-      // server-side without round-tripping through the LLM.
+      // Stream submission as a turn through the host; server validation/saving does not expose
+      // field values to the LLM.
       if (onSubmit) {
         onSubmit({
           formId: spec.form_id,
-          // Spread the chosen auth_method into the spec we send so
-          // the server-side agent reads it from `spec.auth_method`
-          // (its existing entry point) AND keeps
-          // `spec.selected_method` for any logic that reads it
-          // directly. Use `wireMethodId` so the synthetic modify
-          // method (`__edit_current__`) resolves to the real saved
-          // method id — server-side spec validation only knows the
-          // real ones.
+          // Send the real method ID in both auth_method and selected_method for server readers;
+          // synthetic IDs are not valid methods.
           formSpec: wireMethodId
             ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
@@ -628,9 +494,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         // directly. We can drop the local busy flag; the Composer's
         // streaming indicator picks up from here.
       } else {
-        // Legacy fallback — used by any host that hasn't wired
-        // onSubmit (older tests, embeds). Stages the values without
-        // streaming and posts a recap message into chat.
+        // Fallback for hosts without onSubmit: stage values and post a recap without streaming.
         const result = await submitDataVaultForm({
           formId: spec.form_id,
           conversationId,
@@ -656,20 +520,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
   if (!spec) return null;
 
-  // The user can always dismiss the form panel — even after a
-  // successful save where there's no useful action left, or while
-  // a stuck/abandoned form is sitting there. Clears the form from
-  // the conversation's store; the panel unmounts.
   const handleClose = () => {
-    // Host may own dismissal (e.g. returning the user to where they opened
-    // the connect flow, ENG-1534); fall back to a plain form-clear.
+    // Let the host restore the prior view on dismissal; otherwise clear the form. ENG-1534.
     if (onClose) { onClose(conversationId); return; }
     if (conversationId) clearForm(conversationId);
   };
 
-  // Resolve the active method spec so the breadcrumb header can show
-  // its label. Falls back to `spec.selected_method` so a server-side
-  // pre-pick still surfaces in the header.
   const resolvedActiveMethodId = activeMethodId || spec.selected_method || null;
   const activeMethodSpec = (Array.isArray(spec.methods) && resolvedActiveMethodId)
     ? (spec.methods.find((m) => m.id === resolvedActiveMethodId) || null)
@@ -677,36 +533,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const onBackToOptions = () => {
     if (!conversationId) return;
     setSelectedMethod(conversationId, null);
-    // Modify-flow opens directly on the saved method by stamping
-    // `selected_method` on the spec itself. Clearing the per-
-    // conversation override above isn't enough — the form's resolver
-    // falls back to `spec.selected_method` and stays on the same
-    // method. Patch the spec to drop it so the picker actually
-    // re-engages. No-op for create flows where `selected_method`
-    // wasn't set in the first place.
+    // Clear spec.selected_method too: modify forms would otherwise fall back to it and never return
+    // to the picker.
     if (spec?.selected_method) {
       patchForm(conversationId, { form_id: spec.form_id, selected_method: null });
     }
   };
 
   return (
-    // `key` flips when a NEW form_id arrives, so React remounts the
-    // wrapper and the appearance animation fires fresh. Patches that
-    // only update the existing form (status_text, fields…) keep the
-    // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
-      // `shrink-0`: the panel sits in the right rail's flex column —
-      // without it, the rail squeezes the panel down to fit its own
-      // height, our `overflow-hidden` clips the content, and the rail's
-      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
-      // to 0 makes the panel claim its full content height so the rail's
-      // scroll engages naturally.
+      // Prevent flex shrinking so the panel claims its full content height and the enclosing rail
+      // can scroll it.
       className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
       style={{
-        // Highlight ring driven from outside (e.g. the chat's
-        // connect-intro bubble on hover) — accent border + soft
-        // halo so the form card draws the eye without layout shift.
         boxShadow: highlighted
           ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
           : 'none',
@@ -714,12 +554,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
       }}
     >
-      {/* Header bar — during the connect flow it's the
-          "← Back to options · <method>" navigation (when a method is
-          active) or a plain "Connect" label. On the SUCCESS screen the
-          breadcrumb is dropped — the connection is done, there's nothing
-          to go back to — leaving just the close button (ENG-1534). The X
-          sits flush right in every case. */}
       <div className="flex items-stretch border-b border-t-0 border-x-0 border-solid border-line min-h-[42px]">
         {spec._is_success ? (
           <div className="flex-1 min-w-0" />
@@ -767,8 +601,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
       <div className="pt-[10px] px-[14px] pb-[14px]">
         {spec._is_probing ? (
-          /* Probe running — replace the form with a spinner so the
-             popup shows clear progress instead of appearing frozen. */
           <div className="flex flex-col items-center justify-center pt-8 px-5 pb-[36px] gap-3">
             <span
               aria-hidden
@@ -784,7 +616,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             </span>
           </div>
         ) : spec.form_error && !spec._is_error ? (
-          /* Probe returned failure — show error card + Try again. */
           <div className="flex flex-col gap-3 pt-1 px-0 pb-[2px]">
             <Alert variant="danger" title="Connection failed">
               <div className="text-sm text-ink-2 leading-[1.55]">
@@ -833,7 +664,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             </Button>
           </div>
         ) : (
-          /* Normal / success / parse-error state — render the form as usual. */
           <>
             {showStatusToast && (
               <div
@@ -881,10 +711,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
                 if (methodId !== 'browser_oauth_builtin') return;
-                // Methods with fields wait for Submit — handleAction takes over.
                 const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
                 if (method?.fields?.length) return;
-                // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
                 const providerLabel = providerNameFromSpec(spec);
                 const successTitle = `${providerLabel} connected`;
@@ -907,7 +735,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   return;
                 }
 
-                // Web fallback
                 const serviceId = method?.oauth?.service_id;
                 if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
                 try {

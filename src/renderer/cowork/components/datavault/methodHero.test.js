@@ -14,9 +14,7 @@ describe('providerNameFromSpec', () => {
     expect(providerNameFromSpec({ title: 'Connect Google Drive' })).toBe('Google Drive');
   });
   it('falls back to the connector id with known display casing', () => {
-    // The browser-OAuth form spec has no label AND (often) no title —
-    // resolve from the connector id so the success copy says "GitHub
-    // connected", not "Provider connected" (ENG-1534).
+    // An OAuth spec can omit label/title; derive the connected-service name from connector id.
     expect(providerNameFromSpec({ _connector_id: 'github' })).toBe('GitHub');
     expect(providerNameFromSpec({ engine: 'google_drive' })).toBe('Google Drive');
   });
@@ -47,7 +45,6 @@ describe('computeHeroView', () => {
     expect(v.heroOneClick).toBe(true); // fields: [] → nothing to fill first
     expect(v.heroLabel).toBe('Authorize with GitHub');
     expect(v.heroHelper).toBe('Opens GitHub authorization in your browser — one click to wire.');
-    // Everything else falls under "See other options".
     expect(v.rest.map((m) => m.id)).toEqual(['fine-grained-pat', 'oauth']);
   });
 

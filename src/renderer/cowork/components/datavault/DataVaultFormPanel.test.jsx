@@ -57,9 +57,8 @@ describe('DataVaultFormPanel — user_label', () => {
     render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
 
     const user = userEvent.setup();
-    // Trip the required error first — without the check in place this
-    // submit would already succeed, so the assertion below only holds
-    // with the new validation.
+    // Trigger required validation first; otherwise the later assertion could pass without the
+    // guard.
     await user.click(screen.getByRole('button', { name: /submit/i }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText('Project ID is required.')).toBeInTheDocument();

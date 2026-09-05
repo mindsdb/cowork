@@ -1,13 +1,4 @@
-// Markdown "How to" modal — surfaces when a connector method's
-// `how_to` field is set in its JSON spec. Renders the markdown
-// through the same MarkdownContent we use in chat, so links open
-// externally (the renderer's <a target="_blank"> path is already
-// routed through main's setWindowOpenHandler → shell.openExternal).
-//
-// Sits at the `system` layer (z-index 1200) so it can overlay the
-// title bar / legal viewer / onboarding — How-to docs are usually
-// triggered from inside a form that itself may sit above other
-// chrome.
+// Use the system layer: connector instructions can open above forms, onboarding, or legal chrome.
 
 import { Modal, ModalHeader, ModalBody } from '../ui/Modal';
 import { MarkdownContent } from '../markdown/MarkdownContent';

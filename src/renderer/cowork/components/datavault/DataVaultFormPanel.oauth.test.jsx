@@ -1,11 +1,5 @@
-// Regression coverage for the browser_oauth_builtin PostHog path: it must
-// stay a one-step "click Connect, browser opens" flow — no form fields, no
-// personal-api-key project discovery (ENG-1602, which only applies to that
-// method — OAuth has no personal_api_key/host fields to probe with).
-// PostHog's project_id (needed by the connector engine, never surfaced by
-// the OAuth consent screen) is discovered behind the scenes in the main
-// process after the token exchange, not via a form field — see
-// oauth-posthog-projects.ts and index.ts's IPC.OAUTH_CONNECT handler.
+// PostHog builtin OAuth must stay one-step; main discovers project_id after exchange, without
+// personal-key discovery fields.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,10 +47,8 @@ describe('DataVaultFormPanel — PostHog browser_oauth_builtin', () => {
     setForm(CID, POSTHOG_OAUTH_SPEC);
     render(<DataVaultFormPanel conversationId={CID} />);
 
-    // "Label" is the generic, every-connector name field rendered above the
-    // method's own fields regardless of spec — it's the only textbox that
-    // should exist here. A method-specific field (e.g. a project_id input)
-    // would mean this stopped being a one-click "click Connect" flow.
+    // Only the generic Label textbox belongs in this OAuth flow; method-specific fields would add
+    // an unintended setup step.
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
     expect(screen.getByLabelText('Label')).toBeInTheDocument();
 
