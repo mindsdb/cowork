@@ -1195,4 +1195,36 @@ describe('NewTaskPanel', () => {
     });
     expect(screen.getByText('design.png')).toBeInTheDocument();
   });
+
+  it('offers to set up Code Mode where the missing coding agent is reported', async () => {
+    const { host } = await import('../../platform/host');
+    (host as unknown as { isElectron?: boolean }).isElectron = true;
+    const { codingApi } = await import('./api');
+    vi.mocked(codingApi.engines).mockResolvedValueOnce([
+      { id: 'codex', label: 'Codex', adapter_version: '1', available: false, reason: 'Code Mode components are not installed on this computer yet.' },
+    ]);
+    try {
+      render(
+        <NewTaskPanel
+          busy={false}
+          error=""
+          defaultEngineId="codex"
+          defaultModel="gpt-5.6-sol"
+          models={models}
+          modelMeta={modelMeta}
+          projects={[project]}
+          selectedProjectId={project.id}
+          onProjectChange={vi.fn()}
+          onOpenProjectSettings={vi.fn()}
+          onCreate={vi.fn(async () => {})}
+        />,
+      );
+
+      expect(await screen.findByText('Code Mode components are not installed on this computer yet.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Set up Code Mode' })).toBeInTheDocument();
+    } finally {
+      delete (host as unknown as { isElectron?: boolean }).isElectron;
+    }
+  });
+
 });

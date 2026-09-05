@@ -9,6 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
+import { codeSetupStatus, runCodeRuntimeSetup } from './code-runtime-setup';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
@@ -313,6 +314,7 @@ function getIconPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
+let activeCodeSetup: { cancelled: boolean } | null = null;
 
 // Pulls the desktop app back to the foreground after a browser-based
 // flow (OAuth sign-in/connect, MindsHub login, the Drive Picker) hands
@@ -1178,6 +1180,26 @@ function setupIPC() {
   ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
     if (!activeInstall) return false;
     activeInstall.cancelled = true;
+    return true;
+  });
+
+  // Code Mode setup: the coding agent's components (and Git where missing),
+  // installed the first time Code Mode is switched on rather than at first run.
+  ipcMain.handle(IPC.CODE_SETUP_STATUS, async () => codeSetupStatus());
+  ipcMain.handle(IPC.CODE_SETUP_START, async () => {
+    if (!mainWindow) return false;
+    if (activeCodeSetup) return false;
+    const state = { cancelled: false };
+    activeCodeSetup = state;
+    try {
+      return await runCodeRuntimeSetup(mainWindow, { shouldAbort: () => state.cancelled });
+    } finally {
+      if (activeCodeSetup === state) activeCodeSetup = null;
+    }
+  });
+  ipcMain.handle(IPC.CODE_SETUP_CANCEL, async () => {
+    if (!activeCodeSetup) return false;
+    activeCodeSetup.cancelled = true;
     return true;
   });
 

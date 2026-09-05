@@ -39,6 +39,7 @@ vi.mock('../../../platform/host', () => ({
     isElectron: true,
     get isWeb() { return deployment.isWeb; },
     codeModeAvailable: true,
+    codeSetupStatus: vi.fn(async () => ({ installed: true, gitWorks: true, devSource: false })),
     isMac: () => false,
     openExternal: vi.fn(),
     serverDiagnostics: spies.serverDiagnostics,

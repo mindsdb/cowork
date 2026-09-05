@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import ModelSelect from '../../components/ModelSelect';
 import { Select } from '../../components/ui';
 import { Switch } from '../../components/ui/Switch';
+import Button from '../../components/ui/Button';
+import { CodeSetupModal } from '../../code/CodeSetupModal';
 import { host } from '../../../platform/host';
 import { codingApi } from '../../code/api';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from '../../code/defaults';
@@ -44,6 +46,10 @@ export default function CodingAgentSettingsSection({
     });
   }, [modelId, settings.modelEnabled, settings.modelFamilies, settings.modelLabels, settings.modelProviders, settings.recommendedModels]);
 
+  // Bumped when the setup modal finishes so the agent list is read again from
+  // the restarted sidecar: an existing user's `enabled` is already true, so
+  // that alone would not refetch, and the old list still marks Codex unavailable.
+  const [catalogReload, setCatalogReload] = useState(0);
   useEffect(() => {
     if (host.isWeb || !enabled) return undefined;
     let active = true;
@@ -59,7 +65,7 @@ export default function CodingAgentSettingsSection({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [enabled]);
+  }, [enabled, catalogReload]);
 
   useEffect(() => {
     if (host.isWeb || !enabled) return undefined;
@@ -91,22 +97,80 @@ export default function CodingAgentSettingsSection({
     disabled: !engine.available,
     title: engine.available ? undefined : engine.reason || 'Unavailable',
   }));
+  // The coding agent's components are installed the first time Code Mode is
+  // switched on (they are large, so the first install leaves them out), and so
+  // is Git where the computer has none. Either one missing means setup is
+  // needed: after a partial run where the components landed but Git did not,
+  // Code Mode still cannot clone, branch or commit. Unknown readiness must
+  // never enable Code Mode before that setup has had a chance to run.
+  const [setupStatus, setSetupStatus] = useState(null);
+  const [setupError, setSetupError] = useState('');
+  const [setupCheck, setSetupCheck] = useState(0);
+  const [setupOpen, setSetupOpen] = useState(false);
+  useEffect(() => {
+    if (!available) return undefined;
+    let cancelled = false;
+    setSetupStatus(null);
+    setSetupError('');
+    // The host owns compatibility with older bridges. A failed or malformed
+    // response from a current bridge needs a retry, not a successful fallback.
+    Promise.resolve().then(() => host.codeSetupStatus())
+      .then((result) => {
+        if (typeof result?.installed !== 'boolean' || typeof result?.gitWorks !== 'boolean') {
+          throw new Error('Invalid Code Mode readiness response');
+        }
+        if (!cancelled) setSetupStatus(result);
+      })
+      .catch(() => { if (!cancelled) setSetupError('Could not check this computer. Try again before enabling Code Mode.'); });
+    return () => { cancelled = true; };
+  }, [available, setupOpen, setupCheck]);
+  const componentsMissing = setupStatus?.installed === false;
+  const gitMissing = setupStatus?.gitWorks === false;
+  const needsSetup = componentsMissing || gitMissing;
+  const handleEnabledChange = (next) => {
+    if (next && !setupStatus) return;
+    if (next && needsSetup) {
+      setSetupOpen(true);
+      return;
+    }
+    onEnabledChange(next);
+  };
+  const completeSetup = () => {
+    setSetupStatus({ installed: true, gitWorks: true });
+    setSetupOpen(false);
+    setCatalogReload((count) => count + 1);
+    onEnabledChange(true);
+  };
+  const missingPiece = componentsMissing ? 'its components are not installed' : 'Git is not installed';
+
   if (!available) return null;
 
   const accessControl = (
     <SettingsGroup title="Code Mode">
       <Section
         title="Enable Code Mode"
-        subtitle={enabled
-          ? 'Code is available on this computer.'
-          : 'Build, test, and review code with an agent on this computer.'}
+        subtitle={setupError ? <span role="alert">{setupError}</span> : !setupStatus
+          ? 'Checking this computer…'
+          : enabled
+          ? (needsSetup ? `Code Mode is on, but ${missingPiece} on this computer yet.` : 'Code is available on this computer.')
+          : (needsSetup
+            ? `Build, test, and review code with an agent on this computer. Switching this on ${componentsMissing ? 'downloads the coding agent, about 110 MB' : 'installs Git'}.`
+            : 'Build, test, and review code with an agent on this computer.')}
       >
-        <Switch
-          checked={enabled}
-          onCheckedChange={onEnabledChange}
-          aria-label="Enable Code Mode"
-        />
+        <div className="flex items-center gap-3">
+          {setupError && <Button size="sm" variant="tinted" onClick={() => setSetupCheck((count) => count + 1)}>Try again</Button>}
+          {enabled && needsSetup && (
+            <Button size="sm" variant="tinted" onClick={() => setSetupOpen(true)}>Set up now</Button>
+          )}
+          <Switch
+            checked={enabled}
+            disabled={!enabled && !setupStatus}
+            onCheckedChange={handleEnabledChange}
+            aria-label="Enable Code Mode"
+          />
+        </div>
       </Section>
+      <CodeSetupModal open={setupOpen} onClose={() => setSetupOpen(false)} onComplete={completeSetup} />
     </SettingsGroup>
   );
 

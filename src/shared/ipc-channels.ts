@@ -8,6 +8,16 @@ export const IPC = {
   INSTALL_ERROR: 'install:error',
   INSTALL_CANCEL: 'install:cancel',
   INSTALL_CANCELLED: 'install:cancelled',
+  // Code Mode setup: installs the coding agent (the cowork-server `code`
+  // extra) and, where missing, Git — on demand, when Code Mode is switched on.
+  CODE_SETUP_STATUS: 'code-setup:status',
+  CODE_SETUP_START: 'code-setup:start',
+  CODE_SETUP_CANCEL: 'code-setup:cancel',
+  CODE_SETUP_LOG: 'code-setup:log',
+  CODE_SETUP_PROGRESS: 'code-setup:progress',
+  CODE_SETUP_DONE: 'code-setup:done',
+  CODE_SETUP_ERROR: 'code-setup:error',
+  CODE_SETUP_CANCELLED: 'code-setup:cancelled',
 
   // Settings / Onboarding
   SETTINGS_READ: 'settings:read',

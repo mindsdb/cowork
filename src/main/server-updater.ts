@@ -24,6 +24,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { buildKind } from './cowork-home';
+import { codeRuntimeInstalledIn, withCodeExtra } from './code-runtime-spec';
 import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
@@ -95,7 +96,7 @@ function getUvToolsDir(): string {
  *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
  *  otherwise this falls back to the platform heuristic, which can be wrong on
  *  Windows (%APPDATA%\uv\tools vs …\uv\data\tools across uv versions). */
-function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
+export function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
   const venv = path.join(toolsDir, 'cowork-server');
   // Windows: <venv>/Lib/site-packages ; Unix: <venv>/lib/pythonX.Y/site-packages
   const win = path.join(venv, 'Lib', 'site-packages');
@@ -130,7 +131,7 @@ function findDistInfoDir(distName: string, toolsDir?: string): string | null {
 /** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
  *  Returns null when the dist was installed from a registry (PyPI) — i.e.
  *  no direct_url.json with vcs_info. */
-function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+export function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
   const dir = findDistInfoDir(distName, toolsDir);
   if (!dir) return null;
   const distInfo = path.join(dir, 'direct_url.json');
@@ -209,12 +210,20 @@ function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promis
   );
 }
 
+/** Code Mode's engine is the `code` extra, added after first install when the
+ *  user switches Code Mode on. Every `--reinstall` rebuilds the venv from the
+ *  spec it is given, so a spec that forgets the extra silently removes the
+ *  engine. Decide from what is installed right now, before the venv is rebuilt. */
+export function keepCodeExtra(spec: string, toolsDir?: string): string {
+  return codeRuntimeInstalledIn(sitesPackagesDir(toolsDir)) ? withCodeExtra(spec) : spec;
+}
+
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
-function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
+function installGit(uv: string, coworkRef?: string, antonRef?: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
   return runUv(
     uv,
-    ['tool', 'install', spec.package, '--force', '--reinstall', '--python', PYTHON_RANGE],
+    ['tool', 'install', keepCodeExtra(spec.package, toolsDir), '--force', '--reinstall', '--python', PYTHON_RANGE],
     writeUvOverrides(spec.overrides),
   );
 }
@@ -226,7 +235,7 @@ function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<
  *  the other. Shared by the unsupported-Python recreate and the boot repair. */
 async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
   const onGit = !!readVcsInfo('cowork_server', toolsDir);
-  if (onGit) return installGit(uv, getCoworkRef(), getAntonRef());
+  if (onGit) return installGit(uv, getCoworkRef(), getAntonRef(), toolsDir);
   // Repair the version that IS installed, not whatever resolves today: a
   // bare package name resolves the latest stable, which on the staging rc
   // stream is a silent downgrade — and a downgraded server can face a
@@ -238,7 +247,7 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
   const withArgs = installed ? await antonWithArgs(installed) : [];
   return runUv(uv, [
     'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
-    installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME,
+    keepCodeExtra(installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME, toolsDir),
     ...withArgs,
   ]);
 }
@@ -246,7 +255,7 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
 /** `uv tool dir` — its on-disk layout differs across versions/OSes
  *  (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows), so ask uv.
  *  Async so it never blocks the Electron main thread. Null on failure. */
-function uvToolsDir(uv: string): Promise<string | null> {
+export function uvToolsDir(uv: string): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
       uv, ['tool', 'dir'],
@@ -469,7 +478,7 @@ async function fetchLatestVersion(): Promise<string | null> {
  *  the resolution fails. Stable wheels (loose anton constraint) need
  *  nothing. Fail-open on fetch errors: without the restated pin an rc
  *  install aborts cleanly at resolution and is retried on the next poll. */
-async function antonWithArgs(version: string): Promise<string[]> {
+export async function antonWithArgs(version: string): Promise<string[]> {
   const json = (await fetchPypiJson(`https://pypi.org/pypi/${PACKAGE_NAME}/${version}/json`)) as {
     info?: { requires_dist?: unknown };
   } | null;
@@ -777,14 +786,18 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       ? { updated: false, error: 'could not determine installed version' }
       : { updated: false };
   }
+  // Ask uv where the tool venv really is. The platform heuristic can point at
+  // the wrong folder on Windows (%APPDATA%\uv\tools vs …\uv\data\tools), and a
+  // reinstall decided from the wrong folder would drop the Code Mode extra.
+  const toolsDir = (await uvToolsDir(uv)) ?? undefined;
   if (decision.action === 'up-to-date') {
     // cowork-server is current — but an anton-only release may still be pending
     // (ENG-1094). The cowork-update path above already pulls the right anton via
     // the target wheel, so this only matters when cowork itself is unchanged.
     // Apply path ignores an inconclusive anton lookup — skip silently rather
     // than surface it; the next check/poll retries.
-    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
-    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
+    const anton = await resolveAntonPypiUpdate(toolsDir);
+    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update, toolsDir);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
@@ -806,10 +819,14 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // The rollback pin is resolved up front: fetching it mid-failure would
     // fail open on a flaky network and leave the rollback unresolvable.
     const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
+    // Read before the reinstall rebuilds the venv; both the upgrade and a
+    // rollback must carry the Code Mode extra when it is installed today.
+    const toSpec = keepCodeExtra(`${PACKAGE_NAME}==${to}`, toolsDir);
+    const fromSpec = keepCodeExtra(`${PACKAGE_NAME}==${from}`, toolsDir);
     _notify?.({ phase: 'downloading', to }); // sidecar goes down (ENG-749)
     const upgrade = await runUv(
       uv,
-      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
+      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, toSpec, ...toWithArgs],
     );
     if (!upgrade.ok) {
       console.error('[server-updater] upgrade failed:', upgrade.stderr);
@@ -821,7 +838,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');
-      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, fromSpec, ...fromWithArgs]);
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
@@ -847,13 +864,13 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
  *  with `--with anton-agent==<to>` makes the applied version deterministic
  *  rather than "whatever a bare re-resolution happens to pick". Rolls back to
  *  the prior anton on a health-check failure, mirroring _pypiUpdate. */
-async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }): Promise<ServerUpdateResult> {
+async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }, toolsDir?: string): Promise<ServerUpdateResult> {
   console.log(`[server-updater] anton-only update available: anton-agent ${anton.from} → ${anton.to} (cowork-server ${coworkVersion} unchanged)`);
   return withServerMaintenance(async () => {
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
-    const coworkSpec = `${PACKAGE_NAME}==${coworkVersion}`;
+    const coworkSpec = keepCodeExtra(`${PACKAGE_NAME}==${coworkVersion}`, toolsDir);
     const install = await runUv(uv, [
       'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
       coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.to}`,

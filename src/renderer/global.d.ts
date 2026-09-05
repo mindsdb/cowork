@@ -6,6 +6,14 @@ interface AntonTronAPI {
   codeModeAvailable?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
+  codeSetupStatus?: () => Promise<{ installed: boolean; gitWorks: boolean; devSource: boolean }>;
+  startCodeSetup?: () => Promise<boolean>;
+  cancelCodeSetup?: () => Promise<boolean>;
+  onCodeSetupLog?: (cb: (msg: string) => void) => () => void;
+  onCodeSetupProgress?: (cb: (steps: any[]) => void) => () => void;
+  onCodeSetupDone?: (cb: () => void) => () => void;
+  onCodeSetupError?: (cb: (err: string) => void) => () => void;
+  onCodeSetupCancelled?: (cb: () => void) => () => void;
   cancelInstall: () => Promise<boolean>;
   onInstallLog: (cb: (msg: string) => void) => () => void;
   onInstallProgress: (cb: (steps: any[]) => void) => () => void;

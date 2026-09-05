@@ -64,12 +64,13 @@ function sendProgress(win: BrowserWindow, steps: InstallStep[]) {
   } catch {}
 }
 
-function runCommand(
+export function runCommand(
   command: string,
   args: string[],
   win: BrowserWindow,
-  opts?: { shell?: boolean; shouldAbort?: () => boolean; env?: NodeJS.ProcessEnv }
+  opts?: { shell?: boolean; shouldAbort?: () => boolean; env?: NodeJS.ProcessEnv; log?: (text: string) => void }
 ): Promise<{ code: number; stdout: string; stderr: string }> {
+  const log = opts?.log ?? ((text: string) => sendLog(win, text));
   return new Promise((resolve) => {
     const env = {
       ...process.env,
@@ -106,13 +107,13 @@ function runCommand(
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       stdout += text;
-      sendLog(win, text);
+      log(text);
     });
 
     proc.stderr.on('data', (data: Buffer) => {
       const text = data.toString();
       stderr += text;
-      sendLog(win, text);
+      log(text);
     });
 
     proc.on('close', (code) => {
@@ -120,7 +121,7 @@ function runCommand(
     });
 
     proc.on('error', (err) => {
-      sendLog(win, `Error: ${err.message}\n`);
+      log(`Error: ${err.message}\n`);
       finish(1, stdout, err.message);
     });
   });
@@ -134,7 +135,7 @@ function fileExists(p: string): boolean {
   }
 }
 
-function xcodeCliInstalled(): Promise<boolean> {
+export function xcodeCliInstalled(): Promise<boolean> {
   return new Promise((resolve) => {
     execFile('xcode-select', ['-p'], (err) => {
       resolve(!err);
@@ -142,7 +143,7 @@ function xcodeCliInstalled(): Promise<boolean> {
   });
 }
 
-function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
+export function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
   return new Promise((resolve) => {
     const proc = spawn('xcode-select', ['--install'], { stdio: 'pipe' });
     proc.on('close', (code) => {
@@ -161,7 +162,7 @@ function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
   });
 }
 
-function waitForXcodeInstall(
+export function waitForXcodeInstall(
   win: BrowserWindow,
   timeoutMs: number = 600000,
   shouldAbort?: () => boolean
@@ -490,7 +491,9 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     // poll).
     let packageSpec = spec.package;
     let withArgs: string[] = [];
-    if (spec.channel === 'pypi') {
+    // COWORK_SERVER_PACKAGE is the documented escape hatch that wins over
+    // everything; resolving a PyPI version here would silently replace it.
+    if (spec.channel === 'pypi' && !process.env.COWORK_SERVER_PACKAGE) {
       const { resolvePypiInstallTarget } = await import('./server-updater');
       const target = await resolvePypiInstallTarget();
       if (target) {

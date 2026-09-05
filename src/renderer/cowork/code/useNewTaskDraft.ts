@@ -290,8 +290,10 @@ export function useNewTaskDraft({
     if (workspaceLoading) return selectedProject ? 'Checking project resources…' : 'Checking folder…';
     if (executionLoading) return 'Finding an available computer…';
     if (workspaceIssue) return workspaceIssue;
-    if (executionIssue) return executionIssue;
+    // A missing coding agent is the root cause of "no computer can run this";
+    // say that, with its fix, rather than the symptom.
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
+    if (executionIssue) return executionIssue;
     if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
     if (!selectedModelValid || enabledModelOptions.length === 0) return '';
     if (!prompt.trim()) return '';
@@ -304,6 +306,9 @@ export function useNewTaskDraft({
     : !workspaceSelected || !!workspaceIssue || !!executionIssue
       ? 'folder'
       : 'locked';
+  // The chosen coding agent is known but cannot run here, typically because
+  // Code Mode's components were never installed on this computer.
+  const engineUnavailable = !loading && Boolean(selectedEngine) && !selectedEngineAvailable;
 
   const handleStart = async () => {
     if (!prompt.trim()) {
@@ -384,6 +389,8 @@ export function useNewTaskDraft({
     taskReady,
     startUnavailable,
     readinessMessage,
+    engineUnavailable,
+    reloadEngines: codingCatalog.reloadEngines,
     readinessKind,
     handleStart,
   };
