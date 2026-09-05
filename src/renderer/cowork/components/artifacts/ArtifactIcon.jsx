@@ -1,23 +1,11 @@
-// ArtifactIcon — the file-type glyph shown on every artifact card / list row.
-//
-// These are *colored, branded* file-type icons (pdf red, csv green, docx
-// blue, a teal globe for live web apps, …), distinct from the theme-tinted
-// line icons in `components/Icons.jsx` — so they live here, colocated with
-// the resolver that maps an artifact to the right one. Design-supplied SVGs.
-//
-//   <ArtifactIcon artifact={a} size={16} />
-//
-// Anything without a dedicated glyph falls back to a generic file with its
-// extension lettered in the middle (`GenericFileIcon`).
+// Design-supplied file glyphs keep their brand colors. Unknown types show their extension in a
+// generic file icon.
 
 import { useId } from 'react';
 
-// File-type icons are authored on a 16×14 canvas; the web-app globe on 16×16.
-// `width=height=size` + the natural viewBox scales uniformly (preserveAspectRatio
-// "meet" default), so the non-square ones just center without distortion.
+// Square dimensions preserve the non-square file icons’ aspect ratios through the viewBox.
 
-// Live web app / dashboard — teal globe with a soft top-down gradient.
-// useId() keeps the gradient id unique per instance (many cards on screen).
+// Use a unique gradient ID for each rendered icon.
 function WebAppIcon({ size }) {
   const gid = useId();
   return (
@@ -37,10 +25,8 @@ function WebAppIcon({ size }) {
   );
 }
 
-// Shared "sheet of paper with a folded corner" base (pdf / csv / docx).
 const FOLDED_PAGE = 'M2 0.5H11.4668C11.512 0.500091 11.5556 0.518236 11.5869 0.550781L14.4531 3.52832C14.483 3.55932 14.4999 3.60053 14.5 3.64355V13C14.5 13.2761 14.2761 13.5 14 13.5H2C1.72386 13.5 1.5 13.2761 1.5 13V1C1.5 0.723858 1.72386 0.5 2 0.5Z';
 const FOLD = 'M11 1V2.66667C11 3.40305 11.597 4 12.3333 4H14';
-// Square page (txt / generic — no folded corner).
 const SQUARE_PAGE = 'M2 0.5H14.333C14.4251 0.5 14.5 0.574945 14.5 0.666992V13C14.5 13.2761 14.2761 13.5 14 13.5H2C1.72386 13.5 1.5 13.2761 1.5 13V1C1.5 0.723858 1.72386 0.5 2 0.5Z';
 
 function PdfIcon({ size }) {
@@ -87,7 +73,6 @@ function TxtIcon({ size }) {
   );
 }
 
-// Generic file — square page with the extension lettered in the middle.
 function GenericFileIcon({ size, ext }) {
   const label = (ext || '').toUpperCase().slice(0, 4);
   return (
@@ -105,7 +90,6 @@ function GenericFileIcon({ size, ext }) {
   );
 }
 
-// Lowercase, dot-stripped extension for an artifact (from `ext`, else path).
 export function artifactExt(a) {
   const fromExt = (a?.ext || '').replace(/^\./, '').toLowerCase();
   if (fromExt) return fromExt;
@@ -113,9 +97,7 @@ export function artifactExt(a) {
   return (m?.[1] || '').toLowerCase();
 }
 
-// Single source of truth for "is this a live web app" — drives the globe
-// icon, the name rendering (apps show no extension), and publishability
-// (only web apps can be published).
+// Shared live-web-app classification for icons, names and publishing controls.
 export function isWebAppArtifact(a) {
   const type = (a?.type || '').toLowerCase();
   if (type.includes('app') || type.includes('html') || type.includes('site')) return true;
@@ -123,14 +105,9 @@ export function isWebAppArtifact(a) {
   return ext === 'html' || ext === 'htm';
 }
 
-// Display name for an artifact: title-primary, with the filename as a
-// secondary line for file artifacts (ENG-1123). Web apps show only the
-// title — there is no meaningful "filename" for a live app.
-//   - Web apps → title (falls back to filename, then "Untitled").
-//   - Files    → title (falls back to filename, then "file") as the
-//                primary line; the parsed filename as a secondary line,
-//                so the accurate extension stays visible even though the
-//                primary text is now the agent's title, not the filename.
+// Show the title first and retain filenames below file artifacts so their extensions remain
+// visible.
+// Web apps have no meaningful filename and show only the title. ENG-1123.
 export function fileNameOf(a) {
   return (a?.path || '').split(/[\\/]/).pop() || '';
 }
@@ -163,7 +140,6 @@ const EXT_BY_GROUP = {
 
 export function ArtifactIcon({ artifact, size = 16 }) {
   const ext = artifactExt(artifact);
-  // Live web apps / dashboards → teal globe.
   if (isWebAppArtifact(artifact)) {
     return <WebAppIcon size={size} />;
   }

@@ -4,10 +4,8 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ArtifactStatus } from './ArtifactStatus.jsx';
 
-// The Badge success variant (green "available to all" look) is the one that
-// must NEVER appear on a protected artifact — badgeVariants tags it with
-// `text-success-text`. Every badge shares the `rounded-full` pill class, so
-// that's the stable anchor for "the badge wrapping this label".
+// Locate the badge by its pill wrapper; protected artifacts must not receive the success variant's
+// public-access styling.
 const badgeFor = (label) => screen.getByText(label).closest('.rounded-full');
 const isSuccess = (label) => badgeFor(label).className.includes('text-success-text');
 // The neutral (default) variant positively — `!isSuccess` alone also passes for
@@ -88,12 +86,9 @@ describe('ArtifactStatus access labelling (ENG-1212)', () => {
 });
 
 describe('ArtifactStatus access-label visibility (ENG-1475)', () => {
-  // The access badge is a plain inline-flex pill (Badge is whitespace-nowrap and
-  // sizes to its content), so its label is always shown. It must NOT be
-  // collapsed to icon-only by a container-width query — that keyed off the whole
-  // card / status cell, hiding the label even when the pill had ample room.
-  // Container queries can't be exercised in happy-dom, so assert on the
-  // stylesheet directly that no such collapse rule is reintroduced.
+  // Keep access labels visible regardless of card container width.
+  // happy-dom cannot evaluate container queries, so guard the stylesheet against icon-only collapse
+  // rules.
   it('never hides the access label with a card/cell-width container query', () => {
     // vitest runs from the package root, so resolve globals.css from cwd.
     const css = readFileSync(

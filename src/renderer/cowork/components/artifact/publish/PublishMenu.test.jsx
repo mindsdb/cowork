@@ -33,10 +33,7 @@ describe('PublishMenu — outside-click dismiss', () => {
     fireEvent.click(screen.getByText('Share'));
     expect(screen.getByText('Share to the Web')).toBeInTheDocument();
 
-    // The artifact preview renders as an <iframe>; a real click there would
-    // hit-test to this overlay div (it visually covers the whole viewport),
-    // never bubbling into the iframe's own document. Firing the press
-    // directly on the overlay simulates that real-world hit-test.
+    // Press the viewport-covering overlay, matching real hit testing above the artifact iframe.
     fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
 
     expect(screen.queryByText('Share to the Web')).toBeNull();
@@ -62,7 +59,6 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     fireEvent.click(screen.getByText('Shared'));
     fireEvent.click(screen.getByText('Change'));
 
-    // The loading guard is not shown; the real Update button is clickable.
     expect(screen.queryByTitle('Loading current access…')).toBeNull();
     expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled();
   });
@@ -85,7 +81,6 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     fireEvent.click(screen.getByText('Shared'));
     fireEvent.click(screen.getByText('Change'));
 
-    // Draft seeded empty (list not loaded yet).
     const ta = screen.getByPlaceholderText('alice@acme.com, bob@acme.com');
     expect(ta.value).toBe('');
 
@@ -128,9 +123,7 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     expect(screen.queryByText('Only you')).toBeNull();
   });
 
-  // Published is not the same as shared. On Cloud every artifact is published
-  // from birth, so a trigger keyed on `publishedUrl` alone told every owner their
-  // private artifact was already "Shared".
+  // Published is not shared: Cloud artifacts are published privately at creation.
   describe('the trigger label', () => {
     it('reads "Share" for an owner-only artifact, published or not', () => {
       render(<PublishMenu controller={makeController({

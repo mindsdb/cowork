@@ -48,9 +48,7 @@ export function ArtifactRevisionBar({
               }}
             >
               <option value="">History</option>
-              {/* Head is listed but not selectable: there is nothing to compare
-                  it with, and leaving it out meant the revision just written
-                  was missing from the one place people look for it. */}
+              {/* List the current head for history completeness, but disable comparing it with itself. */}
               {revisions.map((item, index) => (
                 <option key={item.id} value={item.id} disabled={index === 0}>
                   Revision {item.number} · {item.summary}

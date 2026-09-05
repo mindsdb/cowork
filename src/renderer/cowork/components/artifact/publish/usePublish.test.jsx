@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePublish } from './usePublish';
 
-// Regression coverage for ENG-931: the restricted-access list must always
-// reflect the server's real list — on any open, and it must never be
-// self-clobbered by the re-sync effect after refresh() feeds onChange back
-// into the artifact prop.
+// Keep the recipient list aligned with server state when refresh feeds onChange back into the
+// artifact prop.
 
 const apiMock = vi.hoisted(() => ({
   publishArtifact: vi.fn(),
@@ -87,9 +85,8 @@ describe('usePublish — server is the source of truth for the access list (ENG-
   });
 
   it('does not self-clobber the loaded list when onChange feeds back into the prop', async () => {
-    // Emulate the chat-bubble parent: onChange result becomes the next prop
-    // (setPreviewArt). This is the sequence that would wipe the list if
-    // onChange dropped the access fields.
+    // Feed onChange into the next artifact prop to expose lost access fields during parent
+    // synchronization.
     let artifact = { path: '/p/a.html' };
     const onChange = vi.fn((updated) => { artifact = updated; });
     const { result, rerender } = renderHook(

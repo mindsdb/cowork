@@ -7,9 +7,7 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
   const [busy, setBusy] = useState(false);
   if (!selection) return null;
 
-  // `finally`, because the composer is disabled while busy: a rejecting
-  // `onCreate` would otherwise leave the button dead for good, with the typed
-  // comment unsent and no way back but reselecting the text.
+  // Reset busy in finally so a rejected onCreate leaves the typed comment available for retry.
   const submit = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -21,10 +19,8 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
       });
       if (ok) onCancel?.();
     } catch {
-      // `onCreate` is contracted to report its own failures (the comments hook
-      // turns them into the panel's error line) and answer false, so a throw
-      // is unexpected: keep the composer open with the text intact and let the
-      // user retry rather than swallow the draft.
+      // Unexpected onCreate throws preserve the open composer and draft for retry; normal failures
+      // are reported by the comments hook.
     } finally {
       setBusy(false);
     }

@@ -25,15 +25,12 @@ const OWNER_CAPABILITIES = {
   canResolveComments: true,
 };
 
-// Why a workspace is unavailable, in the user's words. Both land in the same
-// `unsupported` status because the surfaces react identically — but "too old to
-// edit" and "not shared with you" are different facts and reading the wrong one
-// sends the user looking in the wrong place.
+// Distinguish unsupported server versions from denied access in copy, even though both use
+// unsupported UI state.
 const AUTO_OPENED_KEY = 'cowork.artifact.repair.autoOpened';
 
-// The workspace effect rebuilds state on every open, so a ref cannot remember
-// this across opens. Storage can be unavailable, and a miss only costs one
-// extra auto-open, so both sides fail open.
+// Remember auto-open across workspace resets. Unavailable session storage only causes another
+// auto-open.
 function hasAutoOpened(repairId) {
   try {
     return (window.sessionStorage.getItem(AUTO_OPENED_KEY) || '').split(',').includes(repairId);
@@ -74,15 +71,11 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   const dirty = !!source && draft !== source.content;
   const currentRevision = source?.revision || reviewRevision;
-  // Derived, not read off the record: agent_repair_detail returns the stored
-  // repair without the server's computed flag, so trusting the field alone
-  // loses it the moment the comparison is opened. This also holds against a
-  // server that predates the field.
+  // Derive pending from status because repair-detail responses and older servers omit the computed
+  // flag.
   const repairPending = repair?.status === 'ready';
-  // Server-computed, never inferred here. Comparing the repair's revision with
-  // our own copy of head cannot tell "the artifact moved past this" from "our
-  // copy is behind the agent's revision" - both read as not-equal, and the
-  // second wrongly told the owner their edit came first.
+  // Trust only server-computed superseded: a local revision mismatch may mean our head is stale,
+  // not that the repair is obsolete.
   const repairSuperseded = repairPending && repair.superseded === true;
 
   const refreshHistory = useCallback(async (
@@ -106,11 +99,9 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     setConflict(null);
     setUnsupportedReason('');
     let nextCapabilities = null;
-    // Source authorization is enforced by the workspace endpoint itself, so
-    // owners can load it in parallel with the separate comments-access check.
-    // Capture failures as values immediately: a reviewer response can finish
-    // first and intentionally ignore the (expected 403) source result without
-    // ever creating an unhandled rejection.
+    // The source endpoint enforces authorization independently. Capture parallel failures as values
+    // so reviewers
+    // can ignore expected source 403s without unhandled rejections.
     const sourceRequest = loadArtifactSource(artifact).then(
       (value) => ({ value, error: null }),
       (requestError) => ({ value: null, error: requestError }),
@@ -120,10 +111,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     // comments API can authorize collaborators. Desktop uses its local journal;
     // published links keep their independently configured access policy.
     if (host.isWeb) {
-      // The read-only entry goes FIRST because the role is not known until the
-      // server answers, and provisioning is owner-only: a reviewer asking for
-      // it is refused, which used to read as an error banner with comments
-      // switched off — the exact state draft review exists to avoid.
+      // Read review access first while role is unknown; provisioning is owner-only and would reject
+      // legitimate reviewers.
       let review = null;
       try {
         review = await loadArtifactReview(artifact);
@@ -194,21 +183,16 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
       if (bundledRevisions) setRevisions(bundledRevisions);
       setComparison(null);
-      // Take over the view only for a decision the user can still act on: the
-      // same file, and the agent's revision still head. A repair the artifact
-      // has moved past gets a notice instead of the whole canvas. Everything
-      // this needs is already in the response.
+      // Auto-open only actionable repairs for this file whose revision is still head; superseded
+      // repairs get a notice.
       const decidable = loaded.repair?.status === 'ready'
         && loaded.repair.path === loaded.path
         && loaded.repair.revisionId === loaded.revision?.id;
-      // Once per repair, not once per open: a decision left pending should not
-      // take the canvas again every time the artifact is reopened for something
-      // unrelated. Per viewer and per session by design - it decides whether to
-      // interrupt, so losing it is harmless, and it needs no server round trip.
+      // Interrupt once per repair per viewer/session, not on every reopen. Losing this local
+      // preference is harmless.
       if (decidable && !hasAutoOpened(loaded.repair.id)) {
-        // Its own try: a repair whose base revision aged out of history answers
-        // 404, and the source catch below reads 404 as "this artifact predates
-        // editing" - which would hide the whole workspace over a stale record.
+        // Handle repair-history 404s separately so an expired base revision cannot mark the entire
+        // artifact unsupported.
         try {
           const detail = await loadAgentRepair(artifact, loaded.repair.id);
           if (!isCurrent()) return;
@@ -220,15 +204,10 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
           }
         } catch (repairError) {
           if (!isCurrent()) return;
-          // Soft: the artifact itself loaded. Same channel refreshRepair uses
-          // for a repair that ended without a comparison to show.
           setError(repairError.message || 'Could not load the agent suggestion');
         }
       }
-      // New servers bundle the initial history with the editable source so an
-      // artifact open needs one stable-id lookup and one request. Keep the
-      // fallback for staged rollouts where Desktop may briefly meet an older
-      // cowork-server.
+      // Use bundled history when available; retain the separate fetch for older server rollouts.
       if (!bundledRevisions) {
         await refreshHistory(loaded.path, generation);
         if (!isCurrent()) return;
@@ -271,10 +250,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     if (open && supported) {
       load();
     } else if (open) {
-      // A legacy/incomplete artifact record has no full identity, so there
-      // is no workspace request to wait for. Keep this state distinct from a
-      // real in-flight load; otherwise the mode tabs say "Loading…" forever
-      // even though no request was started.
+      // Incomplete identities start no request; show unsupported instead of an endless loading
+      // state.
       setUnsupportedReason(NO_WORKSPACE);
       setStatus('unsupported');
     } else {
@@ -310,13 +287,10 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       return next;
     } catch (saveError) {
       if (workspaceGeneration.current !== generation) return null;
-      // Two different 409s land here. A stale revision carries the current one
-      // in `detail`, and the conflict banner's Discard / Reload is the answer to
-      // it. An artifact identity conflict — two folders on disk claiming the
-      // same id, e.g. a copied folder or a sync tool's "conflicted copy" —
-      // answers a bare string, and reloading cannot resolve that. Labelling it
-      // "this draft changed elsewhere" sends the user to reload forever, so it
-      // takes the error path and says what the server said.
+      // Only revision conflicts carry detail.currentRevision and can be solved by reloading. Other
+      // 409s, such
+      // as duplicate artifact IDs, must retain the server error instead of offering an ineffective
+      // reload.
       const staleRevision = saveError?.detail?.currentRevision;
       if (saveError?.status === 409 && staleRevision) {
         setConflict(staleRevision);
@@ -354,8 +328,6 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   const restoreRevision = useCallback(async (revisionId) => {
     if (!source) {
-      // Reachable when the source never loaded - a binary or oversized
-      // artifact - where the button is live but has nothing to write into.
       setError('This artifact has no editable source to restore into');
       return null;
     }
@@ -469,8 +441,6 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   const decideRepair = useCallback(async (decision, { confirmedHeadRevisionId = null } = {}) => {
     if (!repair?.id) {
-      // A user-initiated decision with no record behind it is a bug, not a
-      // normal path: the comparison has outlived the repair that opened it.
       setError('That suggestion is no longer open, so there was nothing to decide.');
       setComparison(null);
       return { decided: false, reason: 'missing-repair' };
@@ -497,9 +467,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
 
   const changeMode = useCallback((nextMode) => {
     setMode(nextMode);
-    // A comparison is a focused review task, not persistent chrome. Keeping
-    // it open after someone explicitly chooses Edit or Preview obscures the
-    // canvas and makes the mode switch appear broken.
+    // Leave comparison when selecting Edit or Preview so it does not obscure that mode.
     setComparison(null);
   }, []);
 
