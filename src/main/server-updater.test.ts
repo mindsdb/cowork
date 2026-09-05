@@ -4,10 +4,8 @@ import * as cp from 'child_process';
 import * as https from 'https';
 import { EventEmitter } from 'events';
 
-// Integration-style tests for the orchestration entry point only — the
-// decision logic itself is tested directly in update-logic.test.ts (qa.md
-// §5a rule). server-process pulls in electron; fs/child_process/https are
-// mocked so nothing touches real binaries, venvs, or the network.
+// Test orchestration with filesystem/process/network mocks; update-logic.test.ts covers pure
+// decisions.
 vi.mock('./server-process', () => ({
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
   stopServer: vi.fn(async () => {}),
@@ -78,8 +76,8 @@ describe('maybeUpdateServer (orchestration)', () => {
   });
 
   it('reports loudly (never throws) when uv cannot be found', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
-    mockUvUnresolvable(); // and not on PATH either
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(maybeUpdateServer()).resolves.toEqual({
       updated: false,
@@ -128,7 +126,7 @@ describe('maybeUpdateServer (orchestration)', () => {
         const sha = args[1].includes('cowork-server.git') ? NEW_COWORK : OLD_ANTON;
         cb(null, `${sha}\trefs/heads/main\n`, '');
       } else {
-        cb(null, '', ''); // uv tool install → success
+        cb(null, '', '');
       }
       return {} as never;
     }) as never);
@@ -144,11 +142,8 @@ describe('maybeUpdateServer (orchestration)', () => {
     expect(result.previousVersion).toBe(OLD_COWORK);
     expect(result.error).toBe('New commit failed to start: health check failed');
 
-    // First install: the configured ref (main), no anton override. Rollback
-    // install: pinned to the EXACT prior commits — cowork positional, anton
-    // repointed via a UV_OVERRIDE file (a bad update must never strand the
-    // user). The override goes through the env, not argv, so uv resolves it
-    // without a "conflicting URLs" abort and regardless of its version.
+    // Rollback pins both prior commits. Supply anton through UV_OVERRIDE so existing source pins do
+    // not conflict and older uv versions work.
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(2);
     expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
@@ -168,16 +163,13 @@ describe('maybeUpdateServer (orchestration)', () => {
       ),
     ).toBe(true);
 
-    // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('uv-unresolvable bails are loud', () => {
-  // Every recovery/update entry point no-ops when uv is missing from the
-  // probed locations AND from PATH. Each bail must warn: these paths run
-  // unattended, and a silent no-op looks identical to "nothing to do" in a
-  // support log.
+  // Missing uv must warn at every unattended entry point; a silent skip is indistinguishable from
+  // no work needed.
   it('checkForServerUpdate flags the error and warns', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     mockUvUnresolvable();
@@ -235,7 +227,7 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
     ) => {
       execCalls.push([cmd, ...args]);
       if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.7.27.1\n', '');
-      else cb(null, '', ''); // uv tool install → success
+      else cb(null, '', '');
       return {} as never;
     }) as never);
     return execCalls;
@@ -268,9 +260,8 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
   });
 
   it('checkForServerUpdate flags error (not "up to date") when the anton lookup is inconclusive', async () => {
-    // cowork-server is current, but the anton PyPI request fails. Collapsing that
-    // into a plain "no update" would let the on-demand UI say "You're up to date"
-    // for an inconclusive check — flag it as an error instead (PR #533 review).
+    // A failed Anton version lookup makes the overall update check inconclusive, even when
+    // cowork-server is current.
     installPypiChannel(null);
     mockUv();
     await expect(checkForServerUpdate()).resolves.toEqual({
@@ -312,23 +303,16 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
     expect(result.error).toContain('New anton failed to start');
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(2);
-    expect(installs[0]).toContain('anton-agent==2.26.7.27.2'); // forward
-    expect(installs[1]).toContain('anton-agent==2.26.7.27.1'); // rollback
+    expect(installs[0]).toContain('anton-agent==2.26.7.27.2');
+    expect(installs[1]).toContain('anton-agent==2.26.7.27.1');
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('repairServerInstall (orchestration)', () => {
-  // Regression: a venv that's installed, current, and on a supported Python but
-  // still won't boot (corrupt/partial env — e.g. FastAPI's annotated-doc landed
-  // as an empty namespace package that ImportErrors at startup) slipped through
-  // every recovery path. repairServerInstall does a clean --force --reinstall on
-  // the same source so the boot flow can retry. It never starts the server
-  // itself (the caller owns that), and never throws.
-  //
-  // It reinstalls ONLY when the crash log looks like a broken install — a
-  // migration/port/config failure must not trigger a (pointless, possibly
-  // env-corrupting) reinstall.
+  // Repair corrupt installs on the same source without starting the server or throwing.
+  // Only broken-install traces qualify; migration, port and configuration failures must not trigger
+  // reinstall.
   const BROKEN = "ImportError: cannot import name 'Doc' from 'annotated_doc' (unknown location)";
   const MIGRATION = "alembic.script.revision.ResolutionError: No such revision or branch 'e8b3c5d7a9f1'";
 
@@ -353,13 +337,12 @@ describe('repairServerInstall (orchestration)', () => {
     }) as never);
 
     await expect(repairServerInstall(MIGRATION)).resolves.toBe(false);
-    // The gate fires before any uv work — no reinstall, no venv churn.
     expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
   });
 
   it('returns false and warns (never throws) when uv cannot be found', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
-    mockUvUnresolvable(); // and not on PATH either
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
     // A repairable broken install that silently isn't repaired is
@@ -391,7 +374,7 @@ describe('repairServerInstall (orchestration)', () => {
       } else if (args[0] === 'tool' && args[1] === 'list') {
         cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
       } else {
-        cb(null, '', ''); // uv tool install → success
+        cb(null, '', '');
       }
       return {} as never;
     }) as never);
@@ -400,7 +383,6 @@ describe('repairServerInstall (orchestration)', () => {
 
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(1);
-    // The reinstall ran with the PATH-resolved uv, pinned to the installed version.
     expect(installs[0][0]).toBe(PATH_UV);
     expect(installs[0]).toContain('cowork-server==0.26.8.2.1');
   });
@@ -420,9 +402,9 @@ describe('repairServerInstall (orchestration)', () => {
     ) => {
       execCalls.push([cmd, ...args]);
       if (args[0] === 'tool' && args[1] === 'dir') {
-        cb(null, '/fake/uv/tools\n', ''); // uv tool dir
+        cb(null, '/fake/uv/tools\n', '');
       } else {
-        cb(null, '', ''); // uv tool install → success
+        cb(null, '', '');
       }
       return {} as never;
     }) as never);
@@ -477,7 +459,7 @@ describe('repairServerInstall (orchestration)', () => {
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
-      else cb(new Error('network error'), '', 'resolution failed'); // install fails
+      else cb(new Error('network error'), '', 'resolution failed');
       return {} as never;
     }) as never);
 

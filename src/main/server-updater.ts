@@ -1,22 +1,7 @@
-// Background updater for the cowork-server Python backend.
-//
-// Source-aware: it inspects how cowork-server was actually installed (via
-// the tool venv's direct_url.json) and updates IN PLACE on that same
-// source, so it can never clobber one source with another:
-//
-//   - git install   → "update" = re-pull the configured branch/tag HEAD
-//                     for cowork-server AND its anton dependency. Trigger
-//                     is a changed remote commit SHA (cheap `git ls-remote`),
-//                     not a PyPI version number. Rolls back to the prior
-//                     commit on health-check failure.
-//   - PyPI install  → "update" = compare versions on PyPI and
-//                     `uv tool install --upgrade` (the release path).
-//
-// The source of truth for WHERE to install from is ./server-source, shared
-// with the installer so the two never disagree.
-//
-// Call after the server has booted so users aren't blocked. Disable with
-// COWORK_SERVER_DISABLE_AUTOUPDATE=1. Never throws.
+// Update the installed source in place: git commit pairs or PyPI versions, with rollback on failed
+// health checks.
+// server-source.ts shares source resolution with setup. COWORK_SERVER_DISABLE_AUTOUPDATE disables
+// polling.
 
 import { execFile } from 'child_process';
 import * as https from 'https';
@@ -91,10 +76,7 @@ function getUvToolsDir(): string {
 // Install-source detection (read the tool venv's direct_url.json)
 // ---------------------------------------------------------------------------
 
-/** Locate site-packages inside the cowork-server tool venv. Callers that have
- *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
- *  otherwise this falls back to the platform heuristic, which can be wrong on
- *  Windows (%APPDATA%\uv\tools vs …\uv\data\tools across uv versions). */
+/** Prefer a tools directory resolved by uv tool dir; platform heuristics can miss Windows layouts. */
 function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
   const venv = path.join(toolsDir, 'cowork-server');
   // Windows: <venv>/Lib/site-packages ; Unix: <venv>/lib/pythonX.Y/site-packages
@@ -142,11 +124,10 @@ function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
   }
 }
 
-/** The installed version of a dist, read from its `.dist-info` directory name
- *  ("anton_agent-2.26.7.27.1.dist-info" → "2.26.7.27.1"). This is the only
- *  place the installed anton-agent version is available: `uv tool list` reports
- *  the tool (cowork-server) and its entry points, never its dependencies. Null
- *  when the dist isn't installed. */
+/**
+ * Read dependency versions from dist-info; uv tool list exposes only the top-level tool. Missing
+ * dist returns null.
+ */
 function readInstalledDistVersion(distName: string, toolsDir?: string): string | null {
   const dir = findDistInfoDir(distName, toolsDir);
   if (!dir) return null;
@@ -154,10 +135,7 @@ function readInstalledDistVersion(distName: string, toolsDir?: string): string |
   return base.slice(distName.length + 1, base.length - '.dist-info'.length) || null;
 }
 
-/** The `Requires-Dist:` values from an installed dist's METADATA — the actual
- *  dependency constraints uv will honor on a `--reinstall`. Reading the local
- *  wheel metadata (rather than re-fetching from PyPI) reflects exactly what is
- *  installed. Empty array when the dist or its METADATA can't be read. */
+/** Read the installed wheel’s Requires-Dist constraints, returning [] when metadata is unavailable. */
 function readInstalledRequiresDist(distName: string, toolsDir?: string): string[] {
   const dir = findDistInfoDir(distName, toolsDir);
   if (!dir) return [];
@@ -191,11 +169,8 @@ function lsRemote(repo: string, ref: string): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<{ ok: boolean; stderr: string }> {
-  // Every runUv call is a `uv tool install/upgrade/reinstall` that rewrites the
-  // tool venv on disk. Hold a maintenance window for its duration so
-  // startServer() can't spawn python against a half-written environment (a
-  // concurrent restart racing the reinstall — the spurious ModuleNotFoundError
-  // seen when a repair reinstall overlapped a post-onboarding restart).
+  // Hold maintenance scope while rewriting the venv so a concurrent start cannot import a
+  // half-written environment.
   return withServerMaintenance(
     () =>
       new Promise((resolve) => {
@@ -219,21 +194,16 @@ function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<
   );
 }
 
-/** Clean `--force --reinstall` on whatever source the venv actually came from
- *  (git refs vs. the PyPI package), detected from the tool venv's
- *  direct_url.json. `--reinstall` rebuilds the environment from scratch, so it
- *  repairs a corrupt or half-written venv — never clobbering one source onto
- *  the other. Shared by the unsupported-Python recreate and the boot repair. */
+/**
+ * Rebuild the venv from its installed git/PyPI source; used by interpreter recreation and boot
+ * repair.
+ */
 async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
   const onGit = !!readVcsInfo('cowork_server', toolsDir);
   if (onGit) return installGit(uv, getCoworkRef(), getAntonRef());
-  // Repair the version that IS installed, not whatever resolves today: a
-  // bare package name resolves the latest stable, which on the staging rc
-  // stream is a silent downgrade — and a downgraded server can face a
-  // database migrated ahead of it and fail to boot. Unknown version
-  // (corrupt venv metadata) falls back to the latest stable, best effort.
-  // This deliberately re-pins an off-stream pre-release on prod too: this
-  // path has no health check, so the stream repair in _pypiUpdate owns that.
+  // Repair the installed version, including rc versions, to avoid downgrading beneath its migrated
+  // database.
+  // Unknown metadata falls back to stable; health-checked stream repair belongs to _pypiUpdate.
   const installed = await getInstalledVersion(uv);
   const withArgs = installed ? await antonWithArgs(installed) : [];
   return runUv(uv, [
@@ -269,19 +239,11 @@ function readVenvPython(toolsDir: string): { major: number; minor: number } | nu
   }
 }
 
-/** Recover a cowork-server venv stranded on an unsupported Python.
- *
- * A venv provisioned on Python < 3.12 by an older build keeps getting newer
- * code pulled into it by in-place git updates; that code fails to *parse* on
- * 3.11, so the server crashes at import time and never answers /health — and
- * the normal updater (gated behind a successful start) never runs to fix it.
- * Read the venv's interpreter from pyvenv.cfg and, if it's outside the
- * supported range, reinstall on the SAME source the venv came from (mirroring
- * maybeUpdateServer, so a PyPI install is never clobbered onto git); the
- * --python pin rebuilds the venv on a supported managed CPython (3.11 → 3.12).
- * Returns false (no-op) when the interpreter is already fine, can't be
- * determined, or the reinstall didn't actually move it; the caller owns the
- * restart. Never throws. */
+/**
+ * Reinstall an unsupported interpreter’s venv on the same source using managed CPython.
+ * Return true only if recreation moved it into the supported range; the caller owns restart. Never
+ * throws.
+ */
 export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
@@ -301,12 +263,8 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
       console.warn(`[server-updater] cowork-server venv on unsupported Python ${before.major}.${before.minor}; recreating`);
       if (isServerRunning()) await stopServer();
 
-      // Reinstall on the source the venv was actually installed from — the git
-      // channel carries anton refs, PyPI is a plain package spec. Both pin
-      // --python, which is what rebuilds the venv on a supported interpreter.
-      // Detect the source against the SAME reliably-resolved toolsDir used above,
-      // not the platform heuristic — otherwise a git install on a Windows layout
-      // the heuristic misses would be wrongly reinstalled from PyPI.
+      // Detect the source using the same uv-resolved toolsDir; a missed Windows layout must not
+      // convert git to PyPI.
       const { ok, stderr } = await reinstallFromSource(uv, toolsDir);
       if (!ok) {
         console.error('[server-updater] venv recreate reinstall failed:', stderr);
@@ -329,32 +287,12 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
   }
 }
 
-/** Repair a cowork-server venv that is on a *supported* Python but still fails
- * to boot — e.g. a partial or interrupted in-place upgrade left a dependency
- * half-written. The signature case: FastAPI's `annotated-doc` dependency lands
- * as a bare namespace package (an empty `annotated_doc/` dir), so
- * `from annotated_doc import Doc` raises `ImportError: ... (unknown location)`
- * and the server crashes before it can answer /health.
- *
- * This is the recovery gap `recreateVenvIfUnsupportedPython` (Python too old)
- * and `maybeUpdateServer` (only acts on a version *change*) both miss: the
- * installed version is current, the interpreter is fine, the environment is
- * simply corrupt. A `--force --reinstall` on the same source rebuilds the venv
- * from scratch and re-resolves every dependency cleanly. Returns true only when
- * uv reported success, so the caller knows a retry is worthwhile; the caller
- * owns the restart. Never throws.
- *
- * Cost note: if the reinstall does NOT fix the crash (e.g. a genuinely broken
- * published artifact), this will run again on the next launch. That's the same
- * tradeoff `recreateVenvIfUnsupportedPython` already makes — a slow retry beats
- * a permanently dead app, and it self-resolves once upstream is fixed.
- *
- * `failureLog` is the crashed server's captured stderr
- * (getServerDiagnostics().recentLog). The reinstall only runs when that log
- * looks like a broken install (a missing module / unimportable name). For a
- * migration error, port clash, or bad config the reinstall can't help — and an
- * unnecessary one can corrupt a *healthy* venv if it races a concurrent start
- * — so we skip it and return false. */
+/**
+ * Rebuild supported-Python environments only when the crash log indicates missing/unimportable
+ * modules.
+ * Skip migration, port and config failures. Return true on reinstall success; caller owns restart.
+ * A persistent broken artifact may retry next launch. Never throws.
+ */
 export async function repairServerInstall(failureLog?: string): Promise<boolean> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
@@ -403,12 +341,7 @@ function currentBuildKind(): string | null {
   }
 }
 
-// Staging-ring builds (preview/stable) follow the rc stream, so their
-// "latest" scans the full releases map including pre-releases; prod AND dev
-// trust info.version, which PyPI computes excluding pre-releases — a prod
-// build can never be offered an rc, and a dev machine's shared uv tool
-// (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
-// session.
+// Preview/stable scan rc releases; prod/dev use PyPI’s stable info.version.
 function includePrereleases(): boolean {
   const kind = currentBuildKind();
   return kind === 'preview' || kind === 'stable';
@@ -463,12 +396,10 @@ async function fetchLatestVersion(): Promise<string | null> {
   });
 }
 
-/** The extra `--with` args a given cowork-server version needs. Staging rc
- *  wheels pin `anton-agent==<rc>`; uv honors pre-release markers only in
- *  DIRECT requirements, so the pin must be restated on the command line or
- *  the resolution fails. Stable wheels (loose anton constraint) need
- *  nothing. Fail-open on fetch errors: without the restated pin an rc
- *  install aborts cleanly at resolution and is retried on the next poll. */
+/**
+ * Restate an rc wheel’s anton pin as a direct requirement so uv admits that exact prerelease.
+ * Metadata fetch failure leaves resolution to fail cleanly and retry next poll.
+ */
 async function antonWithArgs(version: string): Promise<string[]> {
   const json = (await fetchPypiJson(`https://pypi.org/pypi/${PACKAGE_NAME}/${version}/json`)) as {
     info?: { requires_dist?: unknown };
@@ -477,44 +408,18 @@ async function antonWithArgs(version: string): Promise<string[]> {
   return pin ? ['--with', `anton-agent==${pin}`] : [];
 }
 
-/** Exact install target for a pypi-channel install: the newest version for
- *  this build's stream plus the direct anton pin its wheel requires. Used by
- *  the installer so fresh staging installs resolve rc wheels exactly like
- *  the updater does. */
+/** Resolve the channel’s exact server version and direct Anton pin for both setup and updates. */
 export async function resolvePypiInstallTarget(): Promise<{ version: string; withArgs: string[] } | null> {
   const version = await fetchLatestVersion();
   if (!version) return null;
   return { version, withArgs: await antonWithArgs(version) };
 }
 
-/** PyPI channel, anton-only (ENG-1094): is there a newer anton-agent on PyPI
- *  that the installed cowork-server's Requires-Dist still permits?
- *
- *  The desktop used to check only cowork-server on the PyPI channel, so an
- *  anton-only release (e.g. a completion-verifier hotfix shipped as a new
- *  anton-agent with cowork-server's version unchanged) never reached a
- *  PyPI-channel install until cowork-server happened to publish. cowork-server's
- *  own `Requires-Dist: anton-agent<3,>=…` already permits the newer anton, so
- *  no cowork-server release or pin edit is needed — only the detection was
- *  missing.
- *
- *  Returns `{ update, error }`. `update` is `{ from, to }` when an anton-only
- *  update is warranted, else null. `error` is true only when the anton PyPI
- *  lookup was INCONCLUSIVE (the request failed) — kept distinct from a completed
- *  lookup that simply found nothing, so the check path can report "couldn't
- *  check" instead of "up to date" (a missing installed anton isn't an error,
- *  just nothing to offer). The apply path ignores `error` and skips.
- *
- *  Fails closed (no update) when the constraint can't be read — never offers an
- *  anton a `--with anton-agent==X` reinstall couldn't resolve against the
- *  installed cowork-server (which would loop the banner). Shared by BOTH the
- *  check and the apply so the two can't disagree.
- *
- *  Callers must pass the tools dir resolved via `uvToolsDir(uv)` — the on-disk
- *  install layout diverges across uv versions/OSes, and the `getUvToolsDir()`
- *  heuristic this falls back to can miss it (notably on Windows). A miss makes
- *  the installed anton unreadable, which reads as "nothing to offer" and
- *  silently disables the ENG-1094 detection. */
+/**
+ * Offer Anton-only updates permitted by the installed server’s Requires-Dist.
+ * Distinguish failed lookup from no update; unreadable constraints fail closed.
+ * Pass uvToolsDir’s resolved path so platform heuristics cannot silently miss installed metadata.
+ */
 async function resolveAntonPypiUpdate(
   toolsDir?: string,
 ): Promise<{ update: { from: string; to: string } | null; error: boolean }> {
@@ -551,16 +456,10 @@ export interface ServerUpdateCheckResult {
   updateAvailable: boolean;
   currentVersion?: string;
   latestVersion?: string;
-  // Set when the check itself couldn't complete (missing prerequisite, remote
-  // lookup failed, thrown error) — distinct from a completed check that found
-  // no update. Never set for a deliberate, deterministic "no" (updates
-  // disabled via env). See checkForServerUpdate.
+  // Distinguish an inconclusive check from a completed no-update result; disabled updates are not
+  // errors.
   error?: boolean;
-  // Which backend component the available update is for. On the PyPI channel an
-  // update can now be an anton-only release (ENG-1094), so currentVersion/
-  // latestVersion describe whichever component this names; the banner uses it
-  // to say what's actually changing. Absent on the git channel (both components
-  // move together as one commit-pair update).
+  // Name the updated component on PyPI; git updates move the server/Anton pair together.
   component?: 'cowork-server' | 'anton-agent';
   // Set when the "update" is the stream repair (a deliberate downgrade).
   // Boot-only: the caller must not surface it mid-session or offer it as a pill.
@@ -778,11 +677,8 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       : { updated: false };
   }
   if (decision.action === 'up-to-date') {
-    // cowork-server is current — but an anton-only release may still be pending
-    // (ENG-1094). The cowork-update path above already pulls the right anton via
-    // the target wheel, so this only matters when cowork itself is unchanged.
-    // Apply path ignores an inconclusive anton lookup — skip silently rather
-    // than surface it; the next check/poll retries.
+    // When the server is current, check Anton separately; skip inconclusive lookup and retry at the
+    // next poll.
     const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
     if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
@@ -796,15 +692,9 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
-    // Install the exact version the decision compared against — a bare
-    // `--upgrade PACKAGE` re-resolves and can diverge from that target, and
-    // it can never reach a pre-release, which the staging rc stream needs
-    // (an exact `==X` specifier enables pre-releases per PEP 440, scoped to
-    // this one package; the wheel's anton rc pin is restated as a direct
-    // requirement via antonWithArgs, so no resolution-wide prerelease flag
-    // is ever set).
-    // The rollback pin is resolved up front: fetching it mid-failure would
-    // fail open on a flaky network and leave the rollback unresolvable.
+    // Install the exact compared version and its direct Anton pin; never enable prereleases
+    // globally.
+    // Resolve rollback pins before applying so a network failure cannot make recovery unresolvable.
     const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
     _notify?.({ phase: 'downloading', to }); // sidecar goes down (ENG-749)
     const upgrade = await runUv(
@@ -840,13 +730,10 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   });
 }
 
-/** Apply an anton-only update (ENG-1094): reinstall the SAME cowork-server
- *  version while forcing the newer anton-agent as a direct requirement. The
- *  installed cowork-server's Requires-Dist already permits `anton.to`
- *  (resolveAntonPypiUpdate verified this), so uv resolves cleanly; pinning it
- *  with `--with anton-agent==<to>` makes the applied version deterministic
- *  rather than "whatever a bare re-resolution happens to pick". Rolls back to
- *  the prior anton on a health-check failure, mirroring _pypiUpdate. */
+/**
+ * Reinstall the same server with the permitted exact Anton version. Roll back Anton if health
+ * fails.
+ */
 async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }): Promise<ServerUpdateResult> {
   console.log(`[server-updater] anton-only update available: anton-agent ${anton.from} → ${anton.to} (cowork-server ${coworkVersion} unchanged)`);
   return withServerMaintenance(async () => {

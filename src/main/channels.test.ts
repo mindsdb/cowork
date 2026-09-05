@@ -130,10 +130,7 @@ describe('checkChannelConsistency', () => {
   });
 });
 
-// Build scripts can't import the TS channel table, so they carry .mjs mirrors.
-// These tests are the sync mechanism: edit CHANNELS without the mirror (or
-// vice versa) and the suite fails, instead of CI quietly validating builds
-// against a stale copy.
+// Keep build-script .mjs mirrors synchronized with the runtime TS channel table.
 describe('build-script mirrors of the channel table', () => {
   it('scripts/channel-origins.mjs (build-time guard) matches CHANNELS exactly', () => {
     expect(Object.keys(EXPECTED_API_ORIGIN).sort()).toEqual([...BUILD_KINDS].sort());
@@ -146,26 +143,20 @@ describe('build-script mirrors of the channel table', () => {
     for (const kind of ['stable', 'preview'] as const) {
       const id = channelIdentity(kind);
       expect(id).not.toBeNull();
-      // The packaged productName must equal the runtime appName: the userData
-      // dir (app.setName → appName) and the on-disk app the user sees
-      // (productName) have to agree, and reset-onboarding.sh derives the
-      // Electron dir from this same name.
+      // Packaged productName must match runtime appName; reset-onboarding.sh also derives the
+      // Electron directory from it.
       expect(id!.productName).toBe(CHANNELS[kind].appName);
       expect(id!.appId).toBe(`com.mindshub.cowork.${kind}`);
-      // Build-time bundle icon must match the runtime icon (CHANNELS[kind].iconName)
-      // so the packaged icon and the running window/dock icon can't drift apart.
-      // Bare basename (resolved under directories.buildResources = assets/), the
-      // same convention electron-builder.yml uses for `icon: icon.png`.
+      // Use the assets-relative basename from electron-builder and keep it aligned with the runtime
+      // channel icon.
       expect(id!.macIcon).toBe(CHANNELS[kind].iconName);
       expect(id!.winIcon).toBe(CHANNELS[kind].iconName);
       expect(id!.linuxIcon).toBe(CHANNELS[kind].iconName);
     }
-    // prod/dev (and unset) get NO overrides — prod must keep the
-    // electron-builder.yml identity byte-for-byte; dev is never packaged.
-    // Debian keys on the package name and refuses to unpack two packages over
-    // the same paths, so a channel that shares any of them cannot be installed
-    // beside prod. Lowercase per Debian policy, and labelled the way the S3
-    // alias already labels the channel (mindshub-cowork-staging.deb).
+    // prod/dev (and unset) get NO overrides — prod must keep electron-builder.yml identity; dev is
+    // never packaged.
+    // Debian package names and installed paths must differ across channels to permit
+    // co-installation.
     expect(channelIdentity('preview')!.linuxName).toBe('mindshub-cowork-preview');
     expect(channelIdentity('stable')!.linuxName).toBe('mindshub-cowork-staging');
     for (const kind of ['stable', 'preview'] as const) {
@@ -179,10 +170,8 @@ describe('build-script mirrors of the channel table', () => {
   });
 });
 
-// The Linux deb is the only target whose per-channel identity has to change
-// filesystem PATHS as well as labels: dpkg refuses to unpack two packages over
-// the same files, so preview/staging must differ from prod in package name,
-// /opt directory (productName) and executable name, or they cannot coexist.
+// dpkg rejects overlapping installed paths; channel identity must distinguish package, /opt
+// directory and executable.
 describe('channel-identity — linux builder args', () => {
   it('overrides every name dpkg would otherwise collide on', () => {
     const args = linuxBuilderArgs('preview');
@@ -202,12 +191,8 @@ describe('channel-identity — linux builder args', () => {
   });
 });
 
-// The deb's FILE name should name the package inside it. It was pinned to the
-// literal `mindshub-cowork_`, so a preview build produced a file called
-// mindshub-cowork_… containing package mindshub-cowork-preview. CI renames the
-// artifact before upload, so nothing broke — it just misled anyone reading
-// release/. ${productFilename} resolves to linux.executableName (AppInfo is
-// constructed with the platform options), so it follows the channel for free.
+// The deb filename must identify its contained channel package; productFilename follows
+// linux.executableName.
 describe('deb artifact name follows the package name', () => {
   it('derives the file name from the executable rather than a fixed literal', () => {
     const yml = readFileSync(

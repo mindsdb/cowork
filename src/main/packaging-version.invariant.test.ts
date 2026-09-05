@@ -4,21 +4,9 @@ import path from 'path';
 import * as channelIdentityModule from '../../scripts/channel-identity.mjs';
 import { fileURLToPath } from 'url';
 
-// Regression guard: every Linux .deb shipped with internal version 2.0.7.
-//
-// electron-builder takes a package's version from `appInfo.version`, which is
-// package.json's static `version` unless the build overrides it via
-// `extraMetadata.version`. mac (run-electron-builder.mjs, CLI) and Windows
-// (dist-win.mjs, programmatic API) both inject the resolved CalVer; `dist:linux`
-// called electron-builder directly and injected nothing, so every deb's
-// control-file `Version:` stayed 2.0.7 forever. CI renamed the FILE from
-// app-version.gen.txt, which hid it — the documented `apt install ./….deb`
-// upgrade path silently no-opped between releases ("already the newest
-// version"), and `dpkg -l` could not tell two releases apart.
-//
-// The seam: a packaging entry point can look fine while bypassing the one
-// wrapper that knows the real version. So this follows each CI entry point
-// through the scripts it calls and asserts the injection is actually reachable.
+// Follow each CI packaging entry point to the resolved-version injection.
+// Renaming release files cannot fix package.json's static version inside a deb, which would make
+// apt skip upgrades.
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOWS = path.join(REPO, '.github', 'workflows');
@@ -28,10 +16,7 @@ const pkg = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')) as
   scripts: Record<string, string>;
 };
 
-/**
- * `electron-builder` as its own command — `node scripts/run-electron-builder.mjs`
- * names it inside a longer filename and must not count.
- */
+/** Match electron-builder as a command, not text inside a wrapper filename. */
 const BARE_ELECTRON_BUILDER = /(?<![-\w/])electron-builder(?![-\w.])/;
 
 /** Both injection styles in use: `-c.extraMetadata.version=` and `extraMetadata: { version }`. */
@@ -80,11 +65,8 @@ describe('installer builds inject the resolved app version', () => {
     expect(missing).toEqual([]);
   });
 
-  // A helper used but never imported is a ReferenceError at BUILD time, not a
-  // syntax error — `node --check` passes and no test executes this script, so
-  // CI first learns about it halfway through a release build. That is exactly
-  // how `linuxBuilderArgs` shipped uncalled-for: a merge had changed the import
-  // line an edit was anchored to, so the import silently never landed.
+  // Check the helper is imported as well as called: syntax checks cannot catch a build-time
+  // ReferenceError.
   it('imports every channel-identity helper the builder wrapper calls', () => {
     const src = readFileSync(path.join(SCRIPTS, 'run-electron-builder.mjs'), 'utf8');
     const imported = new Set(
