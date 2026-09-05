@@ -2,10 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PERSONAL_ORG_LABEL } from '../../../shared/minds-orgs';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
-// Mutable host mock — flip isWeb / checkConfigured per test. ENG-912: a
-// console-hosted (web) instance is pre-provisioned (config_ready:true, key
-// seeded server-side, unreadable via the loopback-gated /raw), so onboarding
-// must offer consent-only entry instead of a MindsHub-key prompt.
+// Mutable host and config fixtures model cold web onboarding with a preprovisioned account.
 const hostMock = vi.hoisted(() => ({
   isWeb: true,
   isElectron: false,
@@ -15,9 +12,7 @@ const hostMock = vi.hoisted(() => ({
   saveSettings: vi.fn(async () => true),
   validateProvider: vi.fn(async () => ({ ok: true })),
   readSettings: vi.fn(async () => ({})),
-  // Between signing in and minting, the screen asks which organization the key
-  // belongs to. One organization is the default answer here, so every existing
-  // test below goes straight to the mint as it always did.
+  // Default to no organization list so unrelated tests bypass the picker.
   mindshubListOrgs: vi.fn(async () => ({ orgs: [], activeOrgId: null })),
 }));
 // Mutable keycloak mock so a test can flip authenticated (standalone/localhost
@@ -82,23 +77,16 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 
-  // PR #445 review: the keycloak auto-finalize path (authenticated
-  // standalone/localhost) must yield deterministically — never flash the
-  // provider key form or the consent screen. Driven by state, not the ref.
+  // Drive auto-finalization through state to avoid a transient credential form.
   it('web + config_ready:true + keycloak authenticated → auto-finalizes, never shows the key form or consent screen', async () => {
     keycloakMock.authenticated = true;
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
-    // Auto-finalize completes → success screen.
     await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
-    // The provider key form and the manual consent Continue never appeared.
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 
-  // The live cloud bug: hosted org deployments DO authenticate through Keycloak,
-  // so the path above fired there and wrote admin-only provider keys. The 403 set
-  // phase='error', which bypasses both branches below (each guarded
-  // `phase !== 'error'`), trapping members on the key form on every reload.
+  // Hosted Keycloak onboarding must not attempt an admin provider write.
   it('web + org_mode:true → consent-only, writes NOTHING (no org-setting 403 trap)', async () => {
     keycloakMock.authenticated = true;
     hostMock.checkConfigured = vi.fn(async () => ({
@@ -118,15 +106,12 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     await waitFor(() => expect(screen.getByText('MindsHub Cowork')).toBeInTheDocument());
     expect(screen.getByText(/Give the agent a task/)).toBeInTheDocument();
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
-    // The org-classified write never happens — that 403 is what trapped members.
     expect(syncSettingsToDb).not.toHaveBeenCalled();
     expect(hostMock.saveSettings).not.toHaveBeenCalled();
   });
 });
 
-// ENG-917: desktop sign-up rides the same loopback PKCE flow as sign-in —
-// the app must hear the flow complete (including after the email-verification
-// pause) instead of firing an external link and going deaf.
+// Desktop signup pauses for email verification through the same loopback flow as login.
 describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;
@@ -155,7 +140,6 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
     await clickCreateAccount();
     await waitFor(() => expect(hostMock.mindshubSignup).toHaveBeenCalledTimes(1));
     expect(hostMock.openExternal).not.toHaveBeenCalled();
-    // The wait state sets the email-verification expectation and offers Cancel.
     expect(screen.getByText('FINISH SIGN-UP IN YOUR BROWSER')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     resolveSignup({ ok: false, reason: 'cancelled' }); // let the pending promise settle
@@ -187,20 +171,15 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
   });
 });
 
-// ENG-922: on a fresh desktop install the cowork-server isn't up during
-// onboarding, so the DB write fails and finalizeSettings DEFERS to the install
-// screen. persistOnboarding returns before syncModels, and the post-install
-// bulk .env re-sync excludes model keys (ENG-739) — so unless the chosen model
-// is handed to onComplete for a one-time replay, a non-Anthropic BYOK user lands
-// config-not-ready ("Select a model"). This locks the OnboardingScreen half of
-// that wiring (the App-side replay is exercised by the manual clean-machine E2E).
+// Before server installation, defer the DB write and pass the selected BYOK model to onComplete for
+// replay.
 describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)', () => {
   beforeEach(() => {
-    hostMock.isWeb = false;      // desktop
+    hostMock.isWeb = false;
     hostMock.isElectron = true;
     keycloakMock.authenticated = false;
     hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
-    hostMock.saveSettings = vi.fn(async () => true);   // .env write succeeds (IPC, no server needed)
+    hostMock.saveSettings = vi.fn(async () => true);
     hostMock.readSettings = vi.fn(async () => ({}));
     // The race: cowork-server not installed yet → DB sync fails AND checkInstall
     // reports not-ready → resolveFinalizeOutcome returns 'defer'.
@@ -227,7 +206,6 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    // The just-chosen model is handed up for the post-install replay — never dropped.
     expect(onComplete).toHaveBeenCalledWith(
       expect.arrayContaining([
         'ANTON_PLANNING_MODEL=llama-3.3-70b',
@@ -257,10 +235,8 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     expect(onComplete).not.toHaveBeenCalled();
   });
 });
-// ENG-1533: on first run a provisioning refusal does NOT show a paywall — it
-// offers BYOK. That is why the refusal is its own event carrying an `outcome`,
-// rather than a `billing_opened` trigger: on the commonest path there is no
-// billing open to record.
+// A key-provisioning refusal offers BYOK, so record a refusal outcome rather than a billing-open
+// event.
 describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-1533)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;
@@ -298,11 +274,7 @@ describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-
   });
 });
 
-// The MindsHub path used to probe twice: once on the free model (server-side),
-// then again on the recommended *paid* model. An empty wallet denies the paid
-// one, and that denial was read as a broken key, so a brand-new user was sent to
-// bring-your-own-key holding a MindsHub key that worked. The second probe told us
-// nothing the first had not, so the fix is that it is gone.
+// A successful free-model probe must not trigger a duplicate paid-model probe.
 describe('OnboardingScreen — the MindsHub path probes once, on the free model', () => {
   beforeEach(() => {
     hostMock.isWeb = true;
@@ -328,10 +300,7 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   it('sends exactly one probe, and never names a model', async () => {
     await connectWithMindsKey();
 
-    // The count is the assertion that matters, and it is checked only after the
-    // flow has settled on the success screen: the old code reached 2, but it
-    // passes through 1 on the way, so a waitFor on the count alone would go
-    // green against the very code this replaces.
+    // Assert probe count after success settles, not while a second probe could still begin.
     await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
     expect(hostMock.validateProvider).toHaveBeenCalledTimes(1);
     // Every call, not just the first. The paid model rode the *second* probe, so
@@ -344,9 +313,7 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   });
 
   it('commits minds-cloud as the provider for both roles', async () => {
-    // The finalize lines were rewritten by the same diff and nothing else reads
-    // them back. Dropping either one leaves onboarding "successful" with the app
-    // pointed at no provider.
+    // Finalization still writes MindsHub as both role providers.
     await connectWithMindsKey();
 
     await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
@@ -356,9 +323,7 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   });
 
   it('hands a pasted MindsHub key to main and writes it nowhere', async () => {
-    // The key the user typed must reach the keychain by IPC and leave no env
-    // line behind — a line here is a long-lived bearer back on disk, which is
-    // the whole defect this path was changed to remove.
+    // Send typed keys through IPC to the keychain, never as an environment line.
     await connectWithMindsKey();
 
     await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
@@ -396,14 +361,7 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   });
 });
 
-// ── Which organization the key is minted in ───────────────────────
-//
-// An API key belongs to whatever organization the token names when it is
-// minted, and nothing used to influence that in the user's favour: a Beta Labs
-// employee whose console tab happened to have Personal active got a key their
-// company could neither pay for nor revoke. Ranking fixes the common case in
-// the main process; this screen covers the one it cannot answer on its own,
-// which is an account belonging to two company organizations.
+// Exercise the multi-company picker separately from main's automatic ranking.
 describe('OnboardingScreen — choosing an organization at sign-in', () => {
   const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
   const BETA = { id: 'org-beta', name: 'beta.example', displayName: 'Beta Labs', isPersonal: false };
@@ -435,7 +393,6 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
   };
 
   it('asks nothing of a personal-only account, and mints straight away', async () => {
-    // The path every existing user is on. It has to look exactly as it did.
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
@@ -458,29 +415,21 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await screen.findByText('Choose an organization');
-    // Nothing is minted until the person answers.
     expect(hostMock.mindshubFinalize).not.toHaveBeenCalled();
     // The default is the first company organization, which is the answer the
     // ranking would have reached on its own.
     expect(screen.getByRole('radio', { name: /acme\.example/ })).toBeChecked();
-    // The personal organization is offered too: someone may deliberately want it.
-    // Listed as `Personal`, not as auth's generated `<email>'s organization` —
-    // the picker names it the same way the account menu does (ENG-2109).
+    // Personal organizations use the shared generic label.
     expect(screen.getByRole('radio', { name: new RegExp(PERSONAL_ORG_LABEL) })).toBeInTheDocument();
   });
 
   it('does not offer a pick a shell older than ENG-2199 cannot honour', async () => {
-    // Renderer bundles update over the air while `src/main/**` waits for an
-    // installer, so a new renderer against an old shell is routine. That shell
-    // drops `chosenByUser` and its entitlement fallback overrides the answer,
-    // so showing the picker would promise something it cannot keep. Those
-    // installs get the ranking, exactly as before the picker existed.
+    // Older shells cannot honor chosenByUser; hide the picker and retain automatic ranking.
     hostMock.canPickOrganization = vi.fn(() => false);
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('Choose an organization')).toBeNull();
-    // And it does not quietly send a pick the shell would ignore.
     expect(hostMock.mindshubFinalize.mock.calls[0][0]).toBeUndefined();
   });
 
@@ -491,16 +440,12 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     await screen.findByText('Choose an organization');
     fireEvent.click(screen.getByRole('radio', { name: /Beta Labs/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    // The second argument is the whole point: it is what tells main a person
-    // answered, and main refuses to move the session off an organization
-    // carrying it. Sending the id alone is what shipped the bug (ENG-2199).
+    // Pass the explicit-choice flag with the selected organization ID.
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id, true));
   });
 
   it('does not claim a person chose the organization when nobody was asked', async () => {
-    // A picker that never rendered cannot have been answered. Marking this call
-    // as chosen would pin every single-organization install to whatever the
-    // ranking happened to reach, and silence the fallback for all of them.
+    // Without a picker, do not claim an explicit choice.
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
@@ -508,16 +453,12 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
   });
 
   it('names the organization the key actually landed in', async () => {
-    // Not the one it asked for: the entitlement and personal-organization
-    // fallbacks in main can still move it, and saying the wrong name is how
-    // someone believes their usage is billed somewhere it is not.
+    // Report the organization actually activated, not the requested one.
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: PERSONAL }));
     await signIn();
     await waitFor(() => expect(screen.getByText(/Working in/)).toBeInTheDocument());
-    // `Personal` rather than auth's generated label, same rule as everywhere
-    // else the product names an organization (ENG-2109). The assertion that
-    // matters is unchanged: it names the organization the key LANDED in.
+    // Use the generic Personal label for the organization actually activated.
     expect(screen.getByText(PERSONAL_ORG_LABEL)).toBeInTheDocument();
   });
 

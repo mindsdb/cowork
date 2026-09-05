@@ -1,7 +1,3 @@
-// "NOW LOADING" — the beat between onboarding and the cowork shell.
-// Shows the COWORK wordmark with "now playing: <coworker>" while the
-// progress bar fills, then hands off to the terminal.
-
 import { useEffect, useState } from 'react';
 import { ArcadeShell, PixelProgress } from './components';
 
@@ -20,7 +16,6 @@ export default function LaunchScreen({
     const started = Date.now();
     const id = setInterval(() => {
       const t = Math.min(1, (Date.now() - started) / durationMs);
-      // chunky steps, not a smooth tween
       setProgress(Math.round(t * 12) / 12);
       if (t >= 1) clearInterval(id);
     }, 80);

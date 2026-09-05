@@ -1,10 +1,4 @@
-// SELECT YOUR COWORKER — the cartridge-select screen.
-//
-// Same app · the agent is a cartridge. Anton and Hermes are the two
-// real harnesses today (settings key `harness`); OpenClaw and ??? are
-// visible-but-locked cartridges that telegraph the roadmap. Arrow keys
-// or click to browse, Enter to confirm. The choice is handed up to the
-// onboarding flow, which persists it alongside the provider settings.
+// The onboarding flow persists the selected cartridge as the harness setting.
 
 import { useEffect, useRef, useState } from 'react';
 import { ArcadeShell, PressPrompt, StatBar } from './components';
@@ -22,10 +16,8 @@ export interface Coworker {
   stats: { memory: number; artifacts: number; autonomy: number } | null;
 }
 
-// Each cartridge's colour is a concrete hex (single source of truth):
-// it feeds both the `--cart-color` CSS custom property — `var()` resolves
-// a hex fine — and StatBar's box-shadow string, which can't resolve a
-// var() at all. Keep these in step with the --arc-* palette in arcade.css.
+// Use concrete palette colors for both CSS variables and StatBar shadow values; keep aligned with
+// arcade.css.
 export const COWORKERS: Coworker[] = [
   {
     id: 'anton',
@@ -84,8 +76,7 @@ export default function CoworkerSelect({
   const [lockMsg, setLockMsg] = useState('');
   const focused = COWORKERS[focus];
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Roving-tabindex focus: one button is tabbable at a time; arrow keys
-  // move DOM focus between cards so screen readers track the selection.
+  // Use roving tabindex so keyboard focus and screen-reader selection move together.
   const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const focusRef = useRef(0);
   focusRef.current = focus;
@@ -112,8 +103,7 @@ export default function CoworkerSelect({
   };
 
   useEffect(() => {
-    // Land keyboard focus inside the radiogroup on mount so arrow keys
-    // work immediately and the game-select reads as focusable.
+    // Focus the group on mount so arrow-key browsing works immediately.
     cardRefs.current[focusRef.current]?.focus({ preventScroll: true });
     const handler = (e: KeyboardEvent) => {
       const len = COWORKERS.length;
@@ -166,7 +156,6 @@ export default function CoworkerSelect({
           })}
         </div>
 
-        {/* Detail panel for the focused cartridge */}
         <div
           className="arc-panel arc-cart-detail"
           style={{ '--cart-color': focused.color } as React.CSSProperties}

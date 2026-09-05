@@ -1,36 +1,21 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-// NOTE: the `import App` above pulls in the app's CSS first (App.tsx →
-// styles.css, CoworkApp.tsx → globals.css), so despite appearing first
-// here, Tailwind utilities actually land AFTER globals.css/styles.css
-// in both the dev and production bundles — utilities WIN equal-specificity
-// ties against legacy classes. Legacy rules that still beat utilities do
-// so via higher selector specificity (e.g. `.menu .menu-item`), which is
-// why some migrated components carry `!` important utilities (ENG-1017).
+// App imports legacy styles first, so Tailwind utilities win equal-specificity ties.
+// Higher-specificity legacy selectors may still require explicit overrides.
 import './cowork/styles/tailwind.css';
-// KaTeX stylesheet for math formula rendering (remark-math + rehype-katex
-// in the Markdown stack). Bundled locally by Vite — cowork's CSP forbids
-// CDN scripts, so the MathJax-from-CDN approach used by mindshub_frontend
-// isn't an option here. Imported before globals.css so our spacing tweaks
-// (see the `.katex-display` rules there) win on shared selectors.
+// Bundle KaTeX locally because CSP forbids CDN scripts. Import before globals.css so local
+// math-spacing rules win.
 import 'katex/dist/katex.min.css';
-// Load cowork's token system globally — the arcade onboarding screens
-// rely on it for the bundled fonts (JetBrains Mono) and the terminal
-// page for its theme tokens. Antontron's own styles.css aliases its
-// legacy var names to the new tokens.
+// Onboarding also needs the cowork fonts/tokens; shell styles alias their legacy names to these
+// tokens.
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
 
-// Electron-only entry. The bridge is exposed by preload.ts before this
-// runs, so a missing `window.antontron` means we're loaded in a real
-// browser hitting the dev server — most likely a developer who opened
-// http://localhost:5173/ during `npm run dev`. Bail with a friendly
-// pointer instead of silently falling through to the host-abstraction
-// web fallbacks (which would render the SPA against Electron's FastAPI
-// sidecar and look indistinguishable from the real web build).
+// This entry requires preload's Electron bridge. Show a development pointer in plain browsers
+// instead of silently using web host fallbacks.
 if (typeof window !== 'undefined' && !(window as any).antontron) {
   document.body.innerHTML = `
     <div style="
