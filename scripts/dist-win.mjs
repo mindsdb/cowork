@@ -1,18 +1,6 @@
-// Windows installer build with per-channel bundle identity + shell auto-update
-// feed wiring. Wraps electron-builder's programmatic API (not the CLI) so the
-// spaced productName ("MindsHub Cowork (Staging)") can't be mangled by Windows
-// shell quoting. prod/dev/unset apply no identity overrides → same bundle as the
-// previous `electron-builder --win`.
-//
-//   node scripts/dist-win.mjs         # --x64 (what CI uses)
-//   node scripts/dist-win.mjs --all   # all Windows arches
-//
-// `config` is deep-merged over electron-builder.yml, so the win target/
-// artifactName survive; we only override identity + inject the updater version
-// and (for prod/stable) the generic update feed. This mirrors, on the
-// programmatic path, what scripts/run-electron-builder.mjs does for the mac CLI
-// build so the eligible-channel Windows post-build steps (write-update-metadata,
-// latest.yml) see a resolved src/main/updater-version.gen.txt.
+// Use electron-builder's API so Windows shell quoting cannot split channel product names.
+// Default x64; --all builds every Windows architecture. Merge identity/feed overrides over
+// electron-builder.yml.
 
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -22,7 +10,7 @@ import { channelIdentity } from './channel-identity.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// npm run build compiles shared helpers before this script runs.
+// Build must compile the shared helpers before this script runs.
 const { calVerToUpdaterSemVer } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'version.js')).href
 );
@@ -32,7 +20,6 @@ const { resolveShellUpdateFeed, shellUpdaterCacheDirName, resolveWindowsPublishe
 
 const arches = process.argv.includes('--all') ? [Arch.x64, Arch.arm64] : [Arch.x64];
 
-// --- Updater version + feed (mirrors scripts/run-electron-builder.mjs) ---
 const displayVersion = readFileSync(
   join(root, 'src', 'main', 'app-version.gen.txt'),
   'utf8',
@@ -56,9 +43,8 @@ writeFileSync(
   `${updaterVersion}\n`,
 );
 
-// Pin the Windows updater's expected Authenticode signer. Without this,
-// electron-updater's NsisUpdater skips signature verification and would install
-// any executable the feed serves (see resolveWindowsPublisherNames).
+// Pin the Authenticode publisher: electron-updater skips signature verification when the pin is
+// absent.
 const publisherNames = feed
   ? resolveWindowsPublisherNames(process.env.COWORK_WIN_PUBLISHER_CN)
   : [];
@@ -82,7 +68,6 @@ if (feed) {
   }
 }
 
-// --- Channel bundle identity (mirrors the mac build script) ---
 const id = channelIdentity(process.env.COWORK_BUILD_KIND);
 const config = { extraMetadata: { version: updaterVersion } };
 if (id) {
@@ -94,10 +79,8 @@ if (id) {
   console.log('[dist-win] no channel identity override (prod/dev) — using electron-builder.yml');
 }
 if (feed) {
-  // publisherName goes on the PUBLISH config, not `win`: electron-builder 26's
-  // schema rejects win.publisherName (it lives under win.signtoolOptions or on
-  // the publish provider), and its afterPack hook regenerates the authoritative
-  // resources/app-update.yml from this publish config — so the pin ships there.
+  // Put publisherName on publish: electron-builder 26 rejects win.publisherName
+  // and regenerates the packaged app-update.yml from the publish configuration.
   config.publish = { provider: 'generic', url: feed.url, publisherName: publisherNames };
 }
 

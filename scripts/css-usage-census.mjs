@@ -1,37 +1,6 @@
 #!/usr/bin/env node
-// CSS usage census for the legacy stylesheet retirement (ENG-1020).
-//
-// Classifies every class selector and @keyframes name in the legacy CSS
-// files as used / dead by scanning all renderer + main source, HTML entry
-// points, and SVGs. Run it before deleting anything from globals.css or
-// styles.css, and re-run as migration phases retire more classes:
-//
-//   node scripts/css-usage-census.mjs
-//
-// Exit code 0 always — this is a report, not a gate. Pipe to a file to
-// diff between phases.
-//
-// Matching rules (each one exists because a naive version shipped a bug):
-//   - Comments are stripped from CSS before collecting names, so
-//     commented-out selectors don't count as definitions.
-//   - A class is "used" if its name appears in source as an exact token
-//     (not inside a longer identifier — class attributes are
-//     space-separated, so `onboarding-step-row` must NOT keep `step-row`
-//     alive, and the Tailwind token `text-success-text` must not keep
-//     `success-text`).
-//   - Dynamic names: a class also counts as used when a dash-prefix of it
-//     is being template-composed (`menu-item${...}`), so `menu-item-on`
-//     survives even if only built dynamically.
-//   - Runtime-injected classes can NEVER be proven dead by this scan:
-//     highlight.js emits `hljs-*` / `class_` / `function_` at runtime;
-//     third-party kits (gravity-field) add their own. Those families are
-//     allowlisted below — extend the list when adopting a library that
-//     injects classes.
-//   - Keyframes: referenced from CSS `animation(-name)` shorthands AND
-//     from JSX inline styles AND from Tailwind arbitrary utilities like
-//     `animate-[queue-pop-in_220ms_ease]` — where the name is followed by
-//     an underscore, not a word boundary. The keyframe matcher treats `_`
-//     as a boundary for CSS-side names precisely because of that case.
+// Report candidate dead CSS with node scripts/css-usage-census.mjs; always exits 0.
+// Static scans cannot prove runtime-injected classes dead: extend the allowlist for new libraries.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 
@@ -40,8 +9,7 @@ const CSS_FILES = [
   'src/renderer/styles.css',
 ];
 
-// Class-name families injected at runtime by libraries — unprovable by
-// static scan, always treated as used.
+// Runtime-injected families cannot be proven dead by static scanning.
 const RUNTIME_INJECTED = [/^hljs(-|$)/, /^class_$/, /^function_$/, /^gf-/];
 
 const SRC_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.html', '.svg', '.json']);
@@ -59,14 +27,11 @@ function walk(dir, out) {
 
 const sources = [];
 walk('src', sources);
-try { walk('tests', sources); } catch {} // Playwright e2e specs query the DOM too
+try { walk('tests', sources); } catch {}
 for (const entry of ['index.html']) {
   try { statSync(entry); sources.push(entry); } catch {}
 }
-// Strip comments before matching — a class named only in prose ("Reuse the
-// global .btn-primary styling — …") is not a usage. Whole-line `//` comments
-// and block comments only; trailing same-line `//` is left alone so URLs
-// (`https://…`) can't truncate real code.
+// Strip prose before matching, but retain trailing // to avoid truncating URLs in code.
 function stripComments(src) {
   return src
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -79,11 +44,8 @@ function classIsUsed(name) {
   if (RUNTIME_INJECTED.some((re) => re.test(name))) return true;
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   if (new RegExp(`(?<![\\w-])${esc}(?![\\w-])`).test(blob)) return true;
-  // dynamic-suffix heuristic: a dash-prefix of the name composed via a
-  // template literal, with the interpolation starting RIGHT AFTER the
-  // prefix (`menu-item${…}` keeps menu-item-on). A looser "any template
-  // literal starting with this prefix" check false-kept 13 dead
-  // settings-* classes off one `settings-section${…}` hit.
+  // Require interpolation immediately after the dash-prefix; broader template matches falsely
+  // retain sibling classes.
   let i = name.lastIndexOf('-');
   while (i > 0) {
     const prefix = name.slice(0, i + 1);
@@ -95,14 +57,12 @@ function classIsUsed(name) {
 
 function keyframeIsUsed(name, ownFile) {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // CSS animation shorthand/longhand references (any css file in src)
   const cssRef = new RegExp(
     `animation(?:-name)?\\s*:[^;]*(?<![\\w-])${esc}(?![\\w-])`
   );
   if (cssRef.test(cssBlob)) return true;
-  // other css files (arcade.css, skin css) — scan them too
-  // JS/JSX references: inline styles, animationName, and Tailwind
-  // arbitrary values (animate-[name_duration...]) where `_` follows.
+  // Include inline styles and Tailwind arbitrary animations, where an underscore follows the
+  // keyframe name.
   const jsRef = new RegExp(`(?<![\\w-])${esc}(?![\\w-])|animate-\\[${esc}_`);
   return jsRef.test(blob);
 }
@@ -111,8 +71,7 @@ for (const f of CSS_FILES) {
   const raw = readFileSync(f, 'utf8');
   const css = raw
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    // url(...) payloads and quoted strings hold dots that are not class
-    // selectors (font file extensions, data URIs, content: values)
+    // Ignore dots inside URLs and strings; they are not class selectors.
     .replace(/url\([^)]*\)/g, 'url()')
     .replace(/"[^"\n]*"|'[^'\n]*'/g, '""');
   const classes = new Set();
