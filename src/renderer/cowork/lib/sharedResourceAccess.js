@@ -1,9 +1,8 @@
 import { host } from '../../platform/host';
 
 /**
- * Shared-resource capabilities are server decisions. Hosted Cowork fails
- * closed when a response does not carry them; desktop keeps its historical
- * local-owner behaviour so older loopback servers remain usable.
+ * Capabilities are server-owned: hosted responses without them fail closed; desktop retains legacy
+ * local-owner fallback.
  */
 export function canUseSharedResource(resource, capability, isWeb = host.isWeb) {
   const decision = resource?.capabilities?.[capability];
@@ -12,10 +11,8 @@ export function canUseSharedResource(resource, capability, isWeb = host.isWeb) {
 }
 
 /**
- * Desktop historically treats both default project names as system-owned.
- * Cowork Cloud has one immutable project, `general`; a hosted project named
- * `default` is an ordinary user-created project whose server capabilities
- * remain authoritative.
+ * Cloud reserves only general; default is a user project there. Desktop retains both legacy
+ * reserved names.
  */
 export function isReservedProjectName(name, isWeb = host.isWeb) {
   return name === 'general' || (!isWeb && name === 'default');
@@ -28,10 +25,8 @@ export const OTHER_ACTOR_LABEL = 'Another member';
 export const UNKNOWN_ACTOR_LABEL = 'Unknown';
 
 /**
- * The server no longer stores email addresses, and returns one only when the
- * actor is the viewer themselves. Everyone else arrives as a bare user id,
- * which is a UUID no member can read and which we have no directory to
- * resolve, so it never reaches the screen.
+ * Only the viewer's email is returned; other actors have opaque ids with no directory lookup, so
+ * display the anonymous label.
  */
 export function actorLabel(actor) {
   if (!actor) return '';
@@ -42,10 +37,8 @@ export function actorLabel(actor) {
 }
 
 /**
- * cowork-server serializes attribution through camelCase aliases, so camelCase
- * is the shape on the wire. Read the snake_case spelling as a fallback, the
- * same hedge the actor branch already makes, so a payload dumped without
- * aliases still resolves instead of silently losing the creator.
+ * Prefer server camelCase aliases; retain snake_case fallback for payloads serialized without
+ * aliases.
  */
 export function sharedResourceAttribution(resource) {
   const attribution = resource?.attribution;

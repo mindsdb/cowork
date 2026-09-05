@@ -1,9 +1,5 @@
-// ENG-385 / ENG-1533 / ENG-1537: the credit-block impression fires here, on
-// receipt of the failure event, and not in the render path (ChatView re-runs
-// every paint). It lives in its own file because the gate reads a binding
-// imported at module load, so the analytics mock has to be hoisted above the
-// adapter's import — and responseStreamAdapter.test.js deliberately runs
-// against the real analytics module.
+// Mock analytics before importing the adapter to test once-per-receipt credit impressions; the
+// general reducer tests use real analytics.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { trackTokenCapHit, trackArtifactBuilt } = vi.hoisted(() => ({
@@ -29,9 +25,8 @@ describe('token_cap_hit impression on a credit block', () => {
   });
 
   it('fires for a spent free allowance — the cohort the metric exists to measure (ENG-1537)', () => {
-    // Splitting this into its own code silently dropped it from the metric,
-    // and a never-topped-up org is precisely who `_enabled_aware_default`
-    // steers onto the free-bucket model.
+    // Included-allowance exhaustion is still a credit-block impression, including users never
+    // topped up.
     fire('included_allowance_exhausted');
     expect(trackTokenCapHit).toHaveBeenCalledTimes(1);
     expect(trackTokenCapHit).toHaveBeenCalledWith('included_allowance_exhausted');

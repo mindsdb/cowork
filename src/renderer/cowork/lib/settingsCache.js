@@ -1,13 +1,7 @@
 /**
- * Read-through cache of the last successful settings fetch, used only to seed
- * the UI on first paint before the boot fetch resolves.
- *
- * This is a cache of the server — the single source of truth (ENG-941/ENG-1125)
- * — never a competing set of hard-coded defaults. Previously App.jsx seeded its
- * settings state from a literal object whose values could (and did, e.g.
- * showDots) disagree with the server's, so a wrong value flashed until the
- * fetch landed. Now the seed is either the last server response we saw or, on
- * the very first launch, empty — and the boot fetch fills it either way.
+ * Seed first paint from the last successful server settings response, or empty on first launch.
+ * The boot fetch remains authoritative; local defaults would flash values that can disagree with
+ * the server.
  */
 import {
   currentOrganizationEpoch,
@@ -59,11 +53,8 @@ export function loadCachedSettings() {
 /** Persist the latest settings blob for the next cold start. Best-effort. */
 export function cacheSettings(settings) {
   /**
-   * A settings request started in the old organization can finish after the
-   * switch clears storage. Once a tenant transition begins, keep every late
-   * write out until the hard reload gives this module a fresh lifetime. If the
-   * epoch advances after this check, the write still targets this document's
-   * epoch-qualified key and cannot overwrite current-organization settings.
+   * Reject late writes after a tenant transition until reload.
+   * A transition racing this check remains safe because the key belongs to this document's epoch.
    */
   if (cacheWritesDisabled || currentOrganizationEpoch() !== organizationEpoch) return;
   try {

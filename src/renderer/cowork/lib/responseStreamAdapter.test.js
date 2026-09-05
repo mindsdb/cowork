@@ -75,10 +75,8 @@ describe('responseStreamAdapter — ask_user', () => {
   });
 
   it('drops an ask_user with no question_id', () => {
-    // Every retirement path matches on question_id, so an id-less question
-    // could never be deduped, answered, or timed out — it would sit at
-    // `answer: null` forever and keep the composer redirected into a question
-    // nobody can answer. Identity-preserving, like any other ignored event.
+    // Ignore id-less questions: no retirement path can match them, so accepting one would
+    // permanently redirect the composer.
     const before = initialStreamState();
     expect(reduceStream(before, { ...ASK, question_id: '' })).toBe(before);
     expect(reduceStream(before, { ...ASK, question_id: undefined })).toBe(before);
@@ -108,11 +106,8 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
   });
 
   it('surfaces a rate-limit wait as a live line, not silence (ENG-1537)', () => {
-    // anton pauses in-turn to wait out a velocity limit. Every OTHER ad-hoc
-    // progress phase is discarded by this reducer as noise ("the live step
-    // state is enough"), so without an explicit branch the notice was sent by
-    // the server and thrown away here — leaving a silent 90s pause that is
-    // indistinguishable from a hang.
+    // Retain rate-limit progress as live feedback; discarding it makes an intentional wait look
+    // like a hang.
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       {
@@ -168,9 +163,7 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'Second thought.' },
     ], initialStreamState(), now);
 
-    // Only the second burst survives — no trailing text from the first.
     expect(state.currentThought).toEqual({ text: 'Second thought.', startedAt: 1000 });
-    // The tool call is a real step; reasoning never is.
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
@@ -225,15 +218,12 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
       { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
     ], initialStreamState(), now);
 
-    // Preamble is NOT left sitting in the answer…
     expect(state.bodyText).toBe('');
-    // …it's shown as the current inner-dialogue thought instead.
     expect(state.currentThought).toEqual({
       text: "Let me verify SpaceX's status first.",
       startedAt: 1000,
       _isPreamble: true,
     });
-    // And the tool call still became a real step.
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
@@ -286,7 +276,6 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
     // Only the final round's text survives as the answer — the preamble
     // ("First, let me check.") is gone from bodyText.
     expect(state.bodyText).toBe('Here is the real answer.');
-    // Thought line is cleared once the turn completes.
     expect(state.currentThought).toBeNull();
   });
 
@@ -368,10 +357,8 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
   });
 
   it('marks the step cellStatus "error" when tool_call.end carries ok: false', () => {
-    // Without this, a failed tool call renders identically to a
-    // successful one — tool_done/tool_call.end fires unconditionally by
-    // design, so "it closed" was the only signal the UI had (anton PR
-    // #304 review).
+    // A tool end event is unconditional; preserve its failure verdict instead of implying success
+    // from closure.
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
@@ -421,10 +408,7 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
   });
 
   it('does not touch any step when tool_call.end arrives with no matching tool-call step', () => {
-    // e.g. the tool's only progress event was lost — the step was never
-    // created, so tool_call.end must be a strict no-op, not a patch of
-    // "the last in-progress step" (which could be an unrelated scratchpad
-    // cell running concurrently in the same turn).
+    // An unmatched tool end must not patch an unrelated in-progress scratchpad cell.
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'sp_1' },
@@ -461,13 +445,8 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
   });
 
   it('gives each tool call its own _scratchpadTabId instead of sharing null', () => {
-    // ScratchpadModal groups cells by _scratchpadTabId — if every
-    // tool-call step shared the same value (null), three unrelated
-    // test_tool invocations would collapse into one synthetic pad and
-    // render as "step 1/3", "step 2/3", "step 3/3" as if they were
-    // sequential steps of a single execution, instead of three
-    // independent invocations (found via manual verification, ENG-763
-    // stage 2).
+    // Independent tool calls need distinct tab ids so ScratchpadModal cannot collapse them into one
+    // multi-step notebook.
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'test_tool', content: 'step 1' },
@@ -481,17 +460,8 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
   });
 });
 
-// ─── the artifact card's fields have to survive the adapter ────────────────
-//
-// The server builds this card AFTER the turn's publish reconciliation so it can
-// arrive with `publishedUrl` already set, and on an org deployment that URL is
-// the only route to the content — there is no path-based fallback. The adapter
-// copies a hand-written subset of the payload into `step.data`, and identity and
-// publish state were not in it, so the inline card announced an artifact it then
-// could not open.
-//
-// Nothing else covers the gap between "the server puts a field on the card" and
-// "the card uses it", which is exactly where this went wrong.
+// Preserve server artifact identity and publish fields through the adapter so a newly emitted card
+// can open immediately.
 
 const ARTIFACT_EVENT = {
   type: 'response.artifact_created',
@@ -525,9 +495,7 @@ describe('artifact_created → step.data', () => {
 
   it('carries the org addressing triple through', () => {
     const { data } = stepOf(ARTIFACT_EVENT);
-    // projectId + slug is how an artifact is addressed once paths stop being
-    // usable; id is the one identity behind it, and the slug carries its
-    // first eight characters.
+    // Retain projectId/slug addressing alongside full artifact identity when paths are unavailable.
     expect(data.projectId).toBe('proj-1');
     expect(data.slug).toBe('clock-7db94eb8');
     expect(data.id).toBe('7db94eb8f0a54c7e9c1d2b3a4f5e6d70');
@@ -544,11 +512,8 @@ describe('artifact_created → step.data', () => {
     });
   });
 
-  // ENG-1998: the server's card_for_folder() puts `serveUrl` on every
-  // artifact (services/artifacts.py), including images — but this adapter
-  // dropped it on the floor, so the live-turn card had no URL to fetch an
-  // image thumbnail/preview from until the artifact was reopened from the
-  // persisted list (whose fetch path builds the card differently).
+  // Carry serveUrl through the live adapter so image thumbnails do not depend on reopening from the
+  // artifact list.
   it('carries the serve URL through', () => {
     expect(stepOf(ARTIFACT_EVENT).data.serveUrl)
       .toBe('/api/v1/artifacts/serve/general/clock-7db94eb8/index.html');

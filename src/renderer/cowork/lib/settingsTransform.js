@@ -1,19 +1,8 @@
 /**
- * Settings translation layer — pure functions, no network calls.
- *
- * Translates between the three representations of settings data:
- *
- *   1. **Server (DB)**: snake_case keys, string values, sensitive fields
- *      returned as {is_sensitive: true, is_set: bool} without the value.
- *      Provider enums use underscores: "openai_compatible", "minds_cloud".
- *
- *   2. **React state**: camelCase keys, parsed values (booleans, objects).
- *      Sensitive fields masked as "***" when set, empty string when unset.
- *      Provider UI types use hyphens: "openai-compatible", "minds-cloud".
- *
- *   3. **Provider cards** (providers_json): array of {type, apiKey, baseUrl, ...}
- *      objects that drive the Settings UI cards. Backfilled from individual
- *      API key settings on read; synced back on write.
+ * Translate server snake_case/string settings into camelCase/parsed React state and provider cards.
+ * Sensitive fields arrive as {is_sensitive, is_set} and become *** or empty; provider underscores
+ * become UI hyphens.
+ * Backfill provider cards from individual key settings on read and synchronize them on write.
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
@@ -107,21 +96,10 @@ export function providerTypeToServerValue(value) {
   return PROVIDER_TO_SERVER[value] || value;
 }
 
-// ─── Effective (server-executed) role config ────────────────────────
-//
-// ENG-739: the model/provider a role ACTUALLY runs on comes from the
-// canonical planning_model / coding_model (+ *_provider) settings — the flat
-// fields cowork-server resolves from at turn time. `model_overrides` is
-// orphaned renderer state the server stopped reading (resolution moved off the
-// nested blob and its reader, cowork/runtime/inference.py, was removed). The
-// picker used to source its "current model" from `model_overrides`, so a stale
-// planning_model pin — e.g. a login-written `latest:sonnet` — was invisible in
-// the picker: it showed the override's model as already-selected, offered no
-// change to save, and a stuck free-tier user had no self-serve recovery. These
-// helpers read the executed field so the pin surfaces (via the stale
-// placeholder in resolveModelPickerValue) and picking an enabled model is a
-// real, savable change — matching what a direct PUT /settings/planning_model
-// does. Never consult `model_overrides` for the current value.
+// Use canonical planning_model/coding_model and provider fields: these are what cowork-server
+// executes.
+// Never use model_overrides for the current selection; the server no longer reads it, hiding real
+// stored pins from the picker.
 export function effectiveRoleModel(settings, role) {
   const s = settings || {};
   if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
@@ -139,13 +117,8 @@ export function effectiveRoleProvider(settings, role) {
 
 // ─── Static metadata ────────────────────────────────────────────────
 
-// Model names are NOT maintained in this repo. The cowork-server
-// (`RECOMMENDED_MODELS` / `RECOMMENDED_PAIR` in app_settings.py) is the
-// single source of truth for every provider — it's served by
-// `/settings/recommended-models` and overlaid onto `recommendedModels` /
-// `recommendedPair` in fetchSettings(). The buckets below are empty
-// placeholders so the structure exists before the overlay lands (and so an
-// offline shell degrades to free-text model inputs rather than crashing).
+// cowork-server owns recommended model lists/pairs through /settings/recommended-models.
+// Keep local buckets empty until overlay; offline shells can fall back to custom input.
 export const STATIC_SETTINGS = {
   providerTypes: ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'],
   providerTypeLabels: {
@@ -173,22 +146,8 @@ export const STATIC_SETTINGS = {
 const _cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 /**
- * Derive a human-readable label from a model id, so the UI never has to
- * maintain a parallel name map alongside the backend's id list. Pure and
- * family-aware (Claude / GPT / Gemini); unknown ids fall through to a
- * best-effort title-cased form. Resilient to new versions — adding
- * `claude-opus-4-9` server-side needs no change here.
- *
- *   claude-opus-4-8            → "Claude Opus 4.8"
- *   claude-haiku-4-5-20251001  → "Claude Haiku 4.5"  (date snapshot dropped)
- *   gpt-5.5-mini               → "GPT-5.5 Mini"
- *   gemini-3-flash-preview     → "Gemini 3 Flash Preview"
- *   o4-mini                    → "o4 Mini"
- *
- * This is the FALLBACK half of the naming rule, not the rule. Render paths must
- * call `displayModelLabel` (catalog label first) — calling this directly is
- * how the 402/403 card came to say "Mindshub air" under a picker that said
- * "MindsHub Air" (ENG-1638). Exported for tests and for displayModelLabel.
+ * Fallback naming from model ids, including family/version formatting.
+ * Render paths must call displayModelLabel first so policy-supplied names take precedence.
  */
 export function modelLabel(id) {
   if (!id) return '';
@@ -211,14 +170,7 @@ export function modelLabel(id) {
   return rest.length ? `${head} ${rest.map(_cap).join(' ')}` : head;
 }
 
-/**
- * The display name for a model id: MindsHub's policy-supplied label when we
- * have one, else the id-derived form above. One rule, used by every picker, so
- * the composer and the Settings dropdown can't disagree about a model's name.
- *
- * `modelLabels` only ever covers minds-cloud (direct providers don't publish
- * labels), so the fallback is the normal case, not an error path.
- */
+/** Prefer policy labels, falling back to id-derived names for BYOK and missing catalog entries. */
 export function displayModelLabel(id, modelLabels = {}) {
   return (modelLabels && modelLabels[id]) || modelLabel(id);
 }
@@ -278,11 +230,9 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
   );
   return {
-    // `keepOrder` is for the refresh a picker fires as it opens: the list is on
-    // screen by the time the response lands, so a row that moves is a row that
-    // jumps under the cursor (ENG-1737). Ids we already hold keep their place,
-    // new ids go on the end, ids the server dropped go. The mount-time load
-    // takes the server's order as-is; it is the order the next open starts from.
+    // On-open refresh preserves existing row positions to avoid moving targets under the cursor;
+    // append new ids and drop removed ones.
+    // Mount-time loads take gateway order.
     recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
     modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
@@ -304,18 +254,9 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
 // ─── Role row copy ──────────────────────────────────────────────────
 
 /**
- * Subtitle for the router role's Settings row (ENG-1851).
- *
- * The router pick has two consumers: history summarization, and the
- * respond-or-delegate gate that runs ahead of each chat turn on a strict
- * latency budget. The server resolves the gate's model apart from the pick and
- * reports it as `gate` — `{ provider, model, followsRouterPick }` — and the row
- * shows that rather than restating the rule, so the copy stays true across the
- * UI/server OTA skew and whichever provider the server resolved the role to.
- * A server that sends no `gate` is one whose gate does run on this pick, and
- * the legacy copy describes it.
- *
- * Pure so the copy decision is unit-tested directly; RoleRow inlines the JSX.
+ * Display the server-reported gate model rather than reconstructing its routing rule across OTA
+ * versions.
+ * Legacy servers omit gate when gating follows the router pick.
  */
 export function routerRoleSubtitle(gate, { rowProviderType = '', providerTypeLabels = {} } = {}) {
   if (!gate || typeof gate !== 'object') {
@@ -402,13 +343,8 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
   const savedNotListed = !!curModel && !list.includes(curModel);
   const savedIsCustom = savedNotListed && allowOther;
   const showStalePin = savedNotListed && !allowOther;
-  // Free-text mode requires a provider that accepts it. Gating on `allowOther`
-  // keeps the invariant "selectValue always matches a rendered option" true
-  // even when `forceCustom` lingers from a prior provider: toggling "Other…"
-  // on Anthropic then repointing to minds-cloud (which renders neither a
-  // `__custom__` option nor a text input) would otherwise wedge the control
-  // into a blank, unwritable select — the same "Saved but not applied" bug via
-  // a different door.
+  // Gate custom mode on allowOther even when forceCustom survives a provider switch; otherwise no
+  // rendered option matches the value.
   const inputMode = (!!forceCustom || savedIsCustom) && allowOther;
   const selectValue = inputMode
     ? '__custom__'
@@ -452,12 +388,7 @@ export function buildModelOptions(
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
   const { modelProviders = {}, modelFamilies = {} } = meta || {};
-  // Family rules come from lib/modelCatalog so this picker and the composer cannot
-  // disagree about them. Presence in `modelFamilies` is the signal, NOT the map
-  // being non-empty: the map is global to the settings blob while `modelList` is
-  // per-provider, so for a BYOK role every id is absent from it. Reading absent as
-  // "is its own head" tagged every BYOK model "(latest)", including dated
-  // snapshots that provably never move.
+  // Use shared family rules; missing entries mean undescribed BYOK models, not moving aliases.
   const isMoving = (m) => isMovingAlias(m, modelFamilies);
   // A frozen version whose head is also listed. An orphan — a typo'd `family`, or a
   // head filtered out upstream — is listed but carries no tag at all: "older
@@ -475,21 +406,9 @@ export function buildModelOptions(
   // `showStalePin === false` with no rendered option, the ENG-739 desync class.
   const ordered = orderByFamily(list, modelFamilies);
 
-  // Version state rides on `tag`, the row's right-aligned pill (see ui/Combobox),
-  // never in `label`: ModelSelect renders the selected option's label verbatim in a
-  // fixed-width trigger and filters on that same string, so a marker in the label
-  // showed permanently in the closed control and made typing "latest" or "version"
-  // match rows by their marker instead of by their name.
-  //
-  // A row has one pill slot, so markers JOIN into it in the order below rather than
-  // one displacing another: an alias either moves or is frozen, and whatever else
-  // ends up in the slot (the wallet's "Needs credits" state) reads after the version
-  // state, so no marker can hide another.
-  //
-  // Both pickers read the same family rules from lib/modelCatalog, so they always
-  // agree on which alias moves. They render that differently on purpose: this one
-  // words both states in the pill, while the composer's menu shows a "latest" pill
-  // and marks a frozen version by indenting it under its head instead.
+  // Keep version/credit markers in tag: label also feeds the closed trigger and search.
+  // Join markers so wallet state cannot hide version state; family classification is shared with
+  // the composer.
   const tagFor = (m) => [
     tagMoving && isMoving(m) ? 'Latest' : '',
     isPinnedUnderHead(m) ? 'Older version' : '',
@@ -503,21 +422,9 @@ export function buildModelOptions(
       value: m,
       label: labelFor(m),
       /*
-       * A model the wallet can't currently pay for can't be picked. Letting it
-       * be picked meant the turn ran a different, affordable model instead,
-       * because resolution substitutes a pin it knows will be denied. So the
-       * user was told one model wrote their code while another did.
-       *
-       * The row stays visible so the model is still discoverable, and `locked`
-       * is what ModelSelect turns into the "Add credits" button on the row.
-       * Closing the pick without that button would leave the row naming an
-       * action it does not offer: the call site's top-up hint only renders when
-       * the CURRENT model is locked, so it says nothing to someone sitting on an
-       * affordable model and looking at one they can't pay for.
-       *
-       * A stored pin that is locked also still renders here, disabled and
-       * selected, which is what keeps a saved value from ever being a value with
-       * no matching option.
+       * Disable locked models to avoid silently executing a different affordable fallback.
+       * Keep stored pins rendered, even when locked, and set locked so ModelSelect offers Add
+       * credits.
        */
       disabled: locked,
       ...(locked ? { locked: true } : {}),
@@ -543,11 +450,6 @@ export function buildModelOptions(
           pin: 'top',
         }]
       : []),
-    // Wallet-based access, pay-as-you-go shape: a model the org's wallet can't
-    // currently pay for renders disabled, carrying the route to credits on the
-    // row. The "Needs credits" state rides in the same pill as the version state
-    // rather than in the label, because a label suffix ate the width and
-    // truncated to "…Add credits to unl.".
     ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
@@ -555,24 +457,14 @@ export function buildModelOptions(
 
 // ─── Row → client transform ─────────────────────────────────────────
 
-/**
- * Transform a SettingResponse[] from the server into the flat camelCase
- * settings blob the React UI expects.
- *
- * Handles: key remapping, boolean parsing, JSON parsing, sensitive-field
- * masking, defaultModel derivation, and provider card backfill.
- */
 export function transformSettingsRows(rows) {
   const result = { ...STATIC_SETTINGS, providerStatus: {}, providerStatusDetails: {} };
 
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
-    // The `harness` row's `options` is the server's actual
-    // available_harness_ids() — e.g. omits "hermes" when hermes-agent
-    // isn't installed. Surfaced separately from the row's own value so a
-    // picker can tell "not currently selected" apart from "not offered
-    // at all."
+    // Harness options come from installed server harnesses; distinguish an unselected harness from
+    // one unavailable to this server.
     if (row.key === 'harness' && Array.isArray(row.options)) {
       result.harnessOptions = row.options;
     }
@@ -599,12 +491,8 @@ export function transformSettingsRows(rows) {
 // ─── Provider card backfill ──────────────────────────────────────────
 
 /**
- * Ensure the providers array reflects all configured API keys.
- *
- * The stored providers_json may be incomplete (e.g. migrated from
- * state.json with only some providers, or the user configured a key
- * via the Credentials section rather than a provider card).  This
- * backfills missing entries and masks API keys for display.
+ * Backfill provider cards from individual key settings; migrated or independently configured keys
+ * may be absent from providers_json.
  */
 function backfillProviders(result) {
   const providers = Array.isArray(result.providers)
@@ -614,17 +502,10 @@ function backfillProviders(result) {
   const rawPlanningType = providerValueToType(result.planningProvider);
   const rawCodingType = providerValueToType(result.codingProvider);
 
-  // MindsHub is itself an OpenAI-compatible gateway, so a provider set to
-  // openai-compatible may really be MindsHub — promote it so the UI shows a
-  // MindsHub card instead of a phantom empty OpenAI-compatible row. The key
-  // alone does not establish that, though: a user who signs in and then points
-  // Cowork at a local model has one too, and promoting there hides the endpoint
-  // they actually run on and costs them the card the save path reads to decide
-  // a role can stay put. The base URL is what settles it.
-  //
-  // No OpenAI key is passed: this decides what the UI draws, not where a turn
-  // goes, so a config with no base URL at all stays on the MindsHub card rather
-  // than rendering a custom row that routes nowhere.
+  // A MindsHub key alone does not identify an OpenAI-compatible endpoint; the user may have
+  // switched to a local model.
+  // Use the base URL to promote the card. Omit the OpenAI key for this display decision so an
+  // absent endpoint stays on MindsHub.
   const isMindsBacked = result.mindsApiKey === '***'
     && mindsServesOpenAiCompatible({
       baseUrl: result.openaiBaseUrl,
@@ -689,11 +570,8 @@ function backfillProviders(result) {
 // ─── Write diff ──────────────────────────────────────────────────────
 
 /**
- * Diff the current settings against the last-fetched snapshot and return
- * only the server-key → value pairs that actually changed.
- *
- * Skips: masked sentinels ("***"), unchanged values, and keys that don't
- * map to a server setting.  JSON-encodes object values.
+ * Return changed server-key/value pairs; skip masked sentinels and unmapped keys, and JSON-encode
+ * objects.
  */
 /** Keys that are read from the server but never written back — they are
  *  transient UI-only state (e.g. provider test results). */
@@ -709,13 +587,9 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // `null` is a tombstone ("clear the stored row"), handled by
     // updateSettings as a DELETE — never a PUT of the string "null".
     if (value === null) continue;
-    // Budget keys are writable only when the server serves them: the server
-    // returns a row for every settings field, so absence from the fetched
-    // snapshot means an older server that would 400 the write (and fail the
-    // whole multi-key save with it). Deliberately budget-scoped: lastFetched
-    // is {} until the first successful fetch, so as a global rule this would
-    // silently drop the first save of a session. For budget keys the trade
-    // is worth it — absence really does mean a server that can't take them.
+    // Older servers reject absent budget fields, failing the whole save.
+    // Keep this check budget-specific: applying it to all keys would discard the first save before
+    // settings load.
     if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
@@ -731,42 +605,21 @@ export function diffSettingsForWrite(patch, lastFetched) {
   return writes;
 }
 
-// ─── Agent budget clamping ───────────────────────────────────────────
-//
-// The server bounds these (pydantic ge/le) and 400s anything outside, and a
-// failed key fails the whole multi-key save — so the client must never PUT
-// an out-of-range value. Values are STRINGS end-to-end (server rows are
-// strings; the page-wide dirty compare is a JSON diff, so types must survive
-// the save → re-fetch round trip unchanged).
+// Preserve string values across save/refetch: dirty-state comparison uses JSON and treats type
+// changes as edits.
 
 export const BUDGET_FIELDS = {
   maxToolRounds: { min: 5, max: 500, fallback: 50 },
   maxContinuations: { min: 0, max: 25, fallback: 5 },
-  // Per-turn spend ceiling (ENG-1286). `min` is 750_000, not 0 and not a
-  // rounder-looking 100_000: a turn's first LLM call costs roughly the
-  // conversation's context (~190k on a long one), so a ceiling below a couple
-  // of calls stops the turn before it has done anything. Measured against
-  // anton, a 100_000 ceiling dispatched ZERO tools and still spent 400_000 —
-  // and this input CLAMPS INTO that band, so a user typing 0 (the natural way
-  // to say "no limit") landed on the single worst value available. 750_000 is
-  // the lowest value where a 190k-context turn still gets several rounds, and
-  // it sits just above the p75 external turn (736k).
-  // Ranges must stay in lockstep with UserSettings' ge/le — a value this clamp
-  // allows but the server rejects 400s the whole multi-key save, not just this
-  // field. cowork-server pins the mirror in test_agent_budget_settings.py.
-  // `unitDivisor`: the stored/written value is always the natural token
-  // count (server rows, clamping, and the diff-for-write all stay in real
-  // tokens) — this only tells the input to display and accept millions
-  // (1.25 on screen means 1_250_000 tokens), since nobody wants to type or
-  // read seven digits. See `toDisplayUnits`/`toNaturalUnits` below.
+  // Keep ranges aligned with cowork-server UserSettings ge/le and test_agent_budget_settings.py or
+  // the entire multi-key save can fail.
+  // The 750k floor allows several LLM rounds with a ~190k-token context; smaller ceilings can
+  // expire before useful work.
+  // Store natural token counts; unitDivisor changes only the input’s display to millions.
   maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1_000_000 },
 };
 
-/**
- * Natural-units value -> what the input displays/accepts, per `spec.unitDivisor`.
- * Passes non-numeric fragments (a lone "-" mid-edit) through unchanged rather
- * than showing "NaN" — they're transient typing states, not real values.
- */
+/** Keep incomplete numeric edits (such as a lone minus) unchanged rather than displaying NaN. */
 export function toDisplayUnits(v, spec) {
   const unit = spec.unitDivisor || 1;
   if (v == null) return '';
@@ -790,12 +643,8 @@ export function formatCount(n) {
 }
 
 /**
- * Clamp one budget value into its range, as a string.
- *
- * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
- * not 5. Unparseable/empty input reverts to the spec fallback — clearing one
- * of the three budget fields is the discoverable way to reset it to the
- * factory default, not a mid-retype state to silently preserve.
+ * Use Number, not parseInt, so 5e2 means 500. Empty/unparseable input resets to the spec fallback
+ * on blur.
  */
 export function clampBudgetValue(raw, spec) {
   const { min, max, fallback } = spec;
@@ -807,22 +656,8 @@ export function clampBudgetValue(raw, spec) {
 }
 
 /**
- * Is this budget effectively unlimited — i.e. pinned to the top of its range?
- *
- * "No limit" writes `spec.max` rather than a sentinel, so the top of the range
- * IS the off switch — it was only ever a problem because it was undiscoverable,
- * which the checkbox fixes.
- *
- * EFFECTIVELY off, not literally: a turn makes roughly
- * `maxToolRounds x (maxContinuations + 1)` LLM calls, so at the server's
- * defaults (50 x 6 = ~306) 50M is reached at ~163k per call — below the ~190k a
- * long conversation carries. It has never happened (largest turn in 30 days of
- * production: 8.26M), but the step cap is not a guarantee that it can't.
- *
- * A 0-means-unlimited sentinel was
- * built and removed: it needed a hole in the range, a server-side validator to
- * guard the hole, and a special case in this clamp, and it collided with
- * `maxContinuations`, where 0 means literally zero.
+ * No limit writes spec.max, not a sentinel; this is a high finite ceiling and can still be reached.
+ * Zero cannot mean unlimited because maxContinuations=0 means no continuations.
  */
 export function isBudgetUnlimited(value, spec) {
   if (spec?.max == null || value == null || String(value).trim() === '') return false;
@@ -830,14 +665,9 @@ export function isBudgetUnlimited(value, spec) {
 }
 
 /**
- * The number to put back when "no limit" is switched OFF.
- *
- * Lives here rather than in the component because it is the one real decision
- * in the toggle, and `SettingsView` has no test coverage. Order: the value the
- * user had before they ticked the box, then the last committed value, then the
- * factory default — never the sentinel itself, which would leave the switch
- * stuck on. Candidates are clamped, so a remembered value that predates a floor
- * change comes back legal rather than 400ing the save.
+ * Restore the remembered value, saved value, then default, excluding the unlimited ceiling so the
+ * switch can turn off.
+ * Clamp restored values to current bounds for compatibility with server validation.
  */
 export function resolveBudgetRestore(remembered, saved, spec) {
   for (const candidate of [remembered, saved]) {
@@ -850,22 +680,9 @@ export function resolveBudgetRestore(remembered, saved, spec) {
 }
 
 /**
- * Return `settings` with any present budget keys clamped into range, and
- * empty/unparseable drafts DROPPED from the write entirely.
- *
- * Safety net for values that skipped the input's blur clamp (e.g. the
- * settings modal dismissed with Escape mid-edit — React fires no blur on
- * unmount, and the raw draft survives in App state). Two rules:
- *   * Keys the server never sent stay absent: materializing them here would
- *     create a phantom write — and a failing one on an older server. (Also
- *     enforced structurally: the Settings UI only renders the budget section
- *     when the fetched snapshot has the keys, and diffSettingsForWrite skips
- *     budget keys absent from it.)
- *   * An empty or unparseable draft is "no instruction", not "reset to
- *     default": clamping '' to the factory fallback here would silently
- *     overwrite the user's saved value (this function has no access to it).
- *     Dropping the key means diffSettingsForWrite writes nothing and the
- *     server keeps what it has; the post-save re-fetch heals the input.
+ * Clamp valid draft budgets at save time: Escape/unmount can bypass blur validation.
+ * Leave absent keys absent for older servers. Drop empty/unparseable drafts rather than resetting
+ * saved values; the post-save fetch restores them.
  */
 export function clampBudgets(settings) {
   let out = settings;
