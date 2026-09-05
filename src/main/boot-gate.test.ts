@@ -24,9 +24,7 @@ describe('awaitBootSettled', () => {
     expect(done).toBe(true);
   });
 
-  // ENG-749 regression: the gate tracks the barrier's real completion, not an
-  // internal clock — a slow attempt + rollback can run for minutes and it must
-  // stay closed the whole time.
+  // Wait for real completion, including slow rollback; elapsed time alone must not open the gate.
   it('never releases on an internal deadline, even past the removed worst-case budget', async () => {
     vi.useFakeTimers();
     let done = false;
