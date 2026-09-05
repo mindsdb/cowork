@@ -32,7 +32,7 @@ import {
 import { runCommand, triggerXcodeInstall, waitForXcodeInstall, xcodeCliInstalled } from './installer';
 import { authHeader } from './server-auth';
 import { getServerPort, isServerRunning, startServer, stopServer, withServerMaintenance } from './server-process';
-import { getAntonRef, getCoworkRef, getInstallSpec } from './server-source';
+import { getAntonRef, getInstallSpec } from './server-source';
 import { antonWithArgs, readVcsInfo, sitesPackagesDir, uvToolsDir } from './server-updater';
 import { PYTHON_RANGE, findOnPath, getEnvPath, getInstalledVersion, resolveUv, writeUvOverrides } from './uv-paths';
 
@@ -136,8 +136,12 @@ export async function codeInstallSpec(uv: string, toolsDir: string | null): Prom
     const spec = getInstallSpec();
     return { args: [withCodeExtra(spec.package)], env: writeUvOverrides(spec.overrides) };
   }
-  if (readVcsInfo('cowork_server', toolsDir ?? undefined)) {
-    const spec = getInstallSpec({ coworkRef: getCoworkRef(), antonRef: getAntonRef() });
+  const installedSource = readVcsInfo('cowork_server', toolsDir ?? undefined);
+  if (installedSource) {
+    const installedAgent = readVcsInfo('anton_agent', toolsDir ?? undefined);
+    // Enabling Code Mode adds an extra to the installed revision. Updating a
+    // moving branch (and its agent dependency) belongs to the updater.
+    const spec = getInstallSpec({ coworkRef: installedSource.commit, antonRef: installedAgent?.commit || getAntonRef() });
     return { args: [withCodeExtra(spec.package)], env: writeUvOverrides(spec.overrides) };
   }
   const installed = await getInstalledVersion(uv);
@@ -147,6 +151,12 @@ export async function codeInstallSpec(uv: string, toolsDir: string | null): Prom
 
 
 export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOptions = {}): Promise<boolean> {
+  // Source inspection, installation, recovery and verification share the same
+  // transaction as updates and repairs. None may start against a changing venv.
+  return withServerMaintenance(() => runSetup(win, opts));
+}
+
+async function runSetup(win: BrowserWindow, opts: CodeSetupOptions): Promise<boolean> {
   const shouldAbort = opts.shouldAbort ?? (() => false);
   const log = (text: string) => { if (canSend(win)) win.webContents.send(IPC.CODE_SETUP_LOG, text); };
   const steps: CodeSetupStep[] = codeSetupSteps(!(await gitWorks()));
@@ -173,6 +183,7 @@ export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOpt
     return true;
   };
   progress();
+  if (cancelled()) return false;
 
   // Work out what the components step will run before anything starts: a
   // missing uv fails fast, and the Git step needs to know whether the install
@@ -182,6 +193,7 @@ export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOpt
   if (!uv) return fail('components', 'uv was not found. Run the app installer again from Settings › Backend, then try again.');
   const toolsDir = await uvToolsDir(uv);
   const spec = await codeInstallSpec(uv, toolsDir);
+  if (cancelled()) return false;
   const needsGit = steps.some((step) => step.id === 'git');
   const route = gitInstallRoute(process.platform);
   if (needsGit && route === 'manual') {
@@ -234,83 +246,98 @@ export async function runCodeRuntimeSetup(win: BrowserWindow, opts: CodeSetupOpt
   };
 
   // The coding agent's components, into the existing server environment.
+  let restartNeeded = false;
   const installComponents = async () => {
     setStep('components', 'running');
     componentsOut.write('--- Code Mode components ---\n');
     componentsOut.write(`Installing ${spec.args[0]}\n`);
-    const result = await withServerMaintenance(async () => {
-      const wasRunning = isServerRunning();
-      if (wasRunning) {
-        componentsOut.write('Stopping the Code service while its components install…\n');
-        await stopServer();
-      }
-      return runCommand(uv, ['tool', 'install', ...spec.args, '--force', '--reinstall', '--python', PYTHON_RANGE], win, {
-        shouldAbort,
-        log: componentsOut.write,
-        env: { UV_PYTHON_PREFERENCE: 'only-managed', ...spec.env },
-      });
+    restartNeeded = true;
+    if (isServerRunning()) {
+      componentsOut.write('Stopping the Cowork service while its components install…\n');
+      await stopServer();
+    }
+    const result = await runCommand(uv, ['tool', 'install', ...spec.args, '--force', '--reinstall', '--python', PYTHON_RANGE], win, {
+      shouldAbort,
+      log: componentsOut.write,
+      env: { UV_PYTHON_PREFERENCE: 'only-managed', ...spec.env },
     });
     componentsOut.flush();
     return result;
   };
 
-  let gitFailure: string | null = null;
-  let install: { code: number };
-  if (sideBySide) {
-    log('Installing Git and downloading the coding agent at the same time.\n');
-    const componentsPromise = installComponents();
-    gitFailure = await installGit();
-    install = await componentsPromise;
-  } else {
-    if (needsGit) {
-      gitFailure = await installGit();
-      if (cancelled()) return false;
-      if (gitFailure) return fail('git', gitFailure);
+  const restartService = async () => {
+    setStep('restart', 'running');
+    log('\n--- Restarting the Cowork service ---\n');
+    restartNeeded = false;
+    try {
+      const started = await startServer();
+      if (!started.ok) throw new Error(started.reason || 'The service did not become ready.');
+      setStep('restart', 'done');
+      return true;
+    } catch (error) {
+      log(`${error instanceof Error ? error.message : String(error)}\n`);
+      return fail('restart', 'Cowork could not restart after setup. Open Settings › Backend to restart or repair the service.');
     }
-    install = await installComponents();
-  }
-  if (cancelled()) {
-    // The service was stopped for the install; bring it back so the app keeps working.
-    await startServer().catch(() => undefined);
-    return false;
-  }
-  if (install.code !== 0) {
-    await startServer().catch(() => undefined);
-    return fail('components', 'The components did not install. Check your connection and disk space, then try again.');
-  }
-  if (!codeRuntimeInstalledIn(sitesPackagesDir(toolsDir ?? undefined))) {
-    await startServer().catch(() => undefined);
-    return fail('components', 'The install finished but the coding agent is missing from it. Try again; if this keeps happening, report it with the details below.');
-  }
-  setStep('components', 'done');
-  if (gitFailure) {
-    // The components are in place and stay; only Git is still missing.
-    await startServer().catch(() => undefined);
-    log('\nThe Code service is running again on the new components. Git still needs installing.\n');
-    return fail('git', gitFailure);
-  }
+  };
 
-  // Restart the sidecar on the new environment.
-  setStep('restart', 'running');
-  log('\n--- Restarting the Code service ---\n');
-  const started = await startServer();
-  if (!started.ok) return fail('restart', `The Code service did not start after the install: ${started.reason || 'unknown reason'}.`);
-  setStep('restart', 'done');
-
-  // Confirm the engine is there.
-  setStep('verify', 'running');
-  log('Checking the coding agent…\n');
-  const deadline = Date.now() + ENGINE_WAIT_MS;
-  let available = false;
-  while (Date.now() < deadline) {
+  try {
+    let gitFailure: string | null = null;
+    let install: { code: number };
+    if (sideBySide) {
+      log('Installing Git and downloading the coding agent at the same time.\n');
+      // Even an unexpected installer error must wait for its sibling before
+      // recovering the service or releasing the lifecycle transaction.
+      const [components, git] = await Promise.allSettled([installComponents(), installGit()]);
+      if (components.status === 'rejected') throw components.reason;
+      if (git.status === 'rejected') throw git.reason;
+      install = components.value;
+      gitFailure = git.value;
+    } else {
+      if (needsGit) {
+        gitFailure = await installGit();
+        if (cancelled()) return false;
+        if (gitFailure) return fail('git', gitFailure);
+      }
+      install = await installComponents();
+    }
+    const componentsInstalled = install.code === 0 && codeRuntimeInstalledIn(sitesPackagesDir(toolsDir ?? undefined));
+    if (componentsInstalled) setStep('components', 'done');
+    // Cancellation and failure are terminal only after Cowork has recovered.
+    // A failed restart is actionable and must not be hidden by "cancelled".
+    if (!(await restartService())) return false;
     if (cancelled()) return false;
-    available = await codexEngineAvailable();
-    if (available) break;
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (install.code !== 0) {
+      return fail('components', 'The components did not install. Check your connection and disk space, then try again.');
+    }
+    if (!componentsInstalled) {
+      return fail('components', 'The install finished but the coding agent is missing from it. Try again; if this keeps happening, report it with the details below.');
+    }
+    if (gitFailure) {
+      log('\nThe Cowork service is running again on the new components. Git still needs installing.\n');
+      return fail('git', gitFailure);
+    }
+
+    // Confirm the engine is there.
+    setStep('verify', 'running');
+    log('Checking the coding agent…\n');
+    const deadline = Date.now() + ENGINE_WAIT_MS;
+    let available = false;
+    while (Date.now() < deadline) {
+      if (cancelled()) return false;
+      available = await codexEngineAvailable();
+      if (available) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+    if (!available) return fail('verify', 'The coding agent did not report itself ready. Restart the app; if it is still missing, run the setup again.');
+    log('Code Mode is ready.\n');
+    setStep('verify', 'done');
+    if (canSend(win)) win.webContents.send(IPC.CODE_SETUP_DONE);
+    return true;
+  } catch (error) {
+    const failedStep = steps.find((step) => step.status === 'running')?.id || 'components';
+    log(`${error instanceof Error ? error.message : String(error)}\n`);
+    if (restartNeeded && !(await restartService())) return false;
+    if (cancelled()) return false;
+    return fail(failedStep, 'Setup did not finish. Check the details below, then try again.');
   }
-  if (!available) return fail('verify', 'The coding agent did not report itself ready. Restart the app; if it is still missing, run the setup again.');
-  log('Code Mode is ready.\n');
-  setStep('verify', 'done');
-  if (canSend(win)) win.webContents.send(IPC.CODE_SETUP_DONE);
-  return true;
 }

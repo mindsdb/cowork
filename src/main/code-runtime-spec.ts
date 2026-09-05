@@ -15,8 +15,13 @@ export const CODEX_DIST_NAME = 'openai_codex';
 export function withCodeExtra(spec: string): string {
   const trimmed = spec.trim();
   if (!trimmed) return trimmed;
-  // Already carries extras: leave it.
-  if (/^cowork-server\s*\[/i.test(trimmed)) return trimmed;
+  // Preserve existing extras while adding code exactly once.
+  const extras = /^cowork-server\s*\[([^\]]*)\]/i.exec(trimmed);
+  if (extras) {
+    const names = extras[1].split(',').map((name) => name.trim()).filter(Boolean);
+    if (names.some((name) => name.toLowerCase() === CODE_EXTRA)) return trimmed;
+    return `cowork-server[${[...names, CODE_EXTRA].join(',')}]${trimmed.slice(extras[0].length)}`;
+  }
   // Name with a version or URL suffix: cowork-server==1.2, cowork-server>=0.1, cowork-server @ git+…
   const named = /^cowork-server(?=\s|$|[=<>!~@;])/i.exec(trimmed);
   if (named) return `cowork-server[${CODE_EXTRA}]${trimmed.slice(named[0].length)}`;
@@ -68,7 +73,7 @@ export function codeSetupSteps(needsGit: boolean, platform: NodeJS.Platform = pr
   if (needsGit) steps.push({ id: 'git', label: 'Install Git', status: 'pending', hint: gitStepHint(platform) });
   steps.push(
     { id: 'components', label: 'Download Code Mode components', status: 'pending' },
-    { id: 'restart', label: 'Restart the Code service', status: 'pending' },
+    { id: 'restart', label: 'Restart the Cowork service', status: 'pending' },
     { id: 'verify', label: 'Check the coding agent', status: 'pending' },
   );
   return steps;

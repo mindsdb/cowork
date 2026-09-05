@@ -15,9 +15,9 @@ vi.mock('./installer', () => ({
   runCommand: vi.fn(), triggerXcodeInstall: vi.fn(), waitForXcodeInstall: vi.fn(), xcodeCliInstalled: vi.fn(),
 }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({}) }));
-vi.mock('./server-process', () => ({
+vi.mock('./server-process', async () => ({
   getServerPort: () => 26866, isServerRunning: () => false, startServer: vi.fn(), stopServer: vi.fn(),
-  withServerMaintenance: (fn: () => unknown) => fn(),
+  withServerMaintenance: (await vi.importActual<typeof import('./server-lifecycle')>('./server-lifecycle')).withServerLifecycle,
 }));
 vi.mock('./server-source', () => ({
   getInstallSpec: vi.fn(),
@@ -40,8 +40,8 @@ vi.mock('./uv-paths', () => ({
 }));
 
 import * as http from 'http';
-import { runCommand } from './installer';
-import { startServer } from './server-process';
+import { runCommand, triggerXcodeInstall, waitForXcodeInstall, xcodeCliInstalled } from './installer';
+import { startServer, withServerMaintenance } from './server-process';
 import { getInstallSpec } from './server-source';
 import { readVcsInfo } from './server-updater';
 import { findOnPath } from './uv-paths';
@@ -69,6 +69,7 @@ describe('gitWorks', () => {
 describe('codeInstallSpec', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(readVcsInfo).mockReturnValue(null);
     delete process.env.COWORK_SERVER_PACKAGE;
   });
 
@@ -78,14 +79,16 @@ describe('codeInstallSpec', () => {
     expect(spec.env).toEqual({});
   });
 
-  it('follows the installed git source, with its overrides, when the server came from git', async () => {
-    vi.mocked(readVcsInfo).mockReturnValueOnce({ url: 'https://github.com/mindsdb/cowork-server.git', commit: 'abc', ref: 'staging' } as never);
-    vi.mocked(getInstallSpec).mockReturnValueOnce({ package: 'cowork-server @ git+https://github.com/mindsdb/cowork-server.git@staging', overrides: ['anton-agent @ git+https://x'], channel: 'git' });
+  it('keeps the installed server and agent commits even if their configured branches have moved', async () => {
+    vi.mocked(readVcsInfo)
+      .mockReturnValueOnce({ commit: 'abc', requestedRevision: 'staging' })
+      .mockReturnValueOnce({ commit: 'def', requestedRevision: 'staging' });
+    vi.mocked(getInstallSpec).mockReturnValueOnce({ package: 'cowork-server @ git+https://github.com/mindsdb/cowork-server.git@abc', overrides: ['anton-agent @ git+https://github.com/mindsdb/anton.git@def'], channel: 'git' });
 
     const spec = await codeInstallSpec('/uv', '/tools');
 
-    expect(getInstallSpec).toHaveBeenCalledWith({ coworkRef: 'staging', antonRef: 'main' });
-    expect(spec.args).toEqual(['cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@staging']);
+    expect(getInstallSpec).toHaveBeenCalledWith({ coworkRef: 'abc', antonRef: 'def' });
+    expect(spec.args).toEqual(['cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@abc']);
     expect(spec.env).toEqual({ UV_OVERRIDE: '/tmp/overrides.txt' });
   });
 
@@ -130,6 +133,7 @@ describe('runCodeRuntimeSetup', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(readVcsInfo).mockReturnValue(null);
     delete process.env.COWORK_SERVER_PACKAGE;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     gitInstalled = false;
@@ -194,15 +198,15 @@ describe('runCodeRuntimeSetup', () => {
 
     expect(await runCodeRuntimeSetup(win)).toBe(false);
 
-    expect(lastSteps()).toEqual([['git', 'error'], ['components', 'done'], ['restart', 'skipped'], ['verify', 'skipped']]);
+    expect(lastSteps()).toEqual([['git', 'error'], ['components', 'done'], ['restart', 'done'], ['verify', 'skipped']]);
     expect(startServer).toHaveBeenCalledTimes(1);
     const error = sends().find((c) => c[0] === IPC.CODE_SETUP_ERROR)?.[1];
     expect(error).toMatch(/Git could not be installed with winget/);
-    expect(logText()).toMatch(/Code service is running again on the new components/);
+    expect(logText()).toMatch(/Cowork service is running again on the new components/);
   });
 
   it('waits for Git before a git+ install, which uv can only clone with Git present', async () => {
-    vi.mocked(readVcsInfo).mockReturnValue({ url: 'https://github.com/mindsdb/cowork-server.git', commit: 'abc', ref: 'staging' } as never);
+    vi.mocked(readVcsInfo).mockReturnValue({ commit: 'abc', requestedRevision: 'staging' });
     vi.mocked(getInstallSpec).mockReturnValue({ package: 'cowork-server @ git+https://github.com/mindsdb/cowork-server.git@staging', overrides: [], channel: 'git' });
     const winget = deferred<{ code: number; stdout: string; stderr: string }>();
     vi.mocked(runCommand).mockImplementation(async (cmd) => (cmd === 'winget' ? winget.promise : { code: 0, stdout: '', stderr: '' }));
@@ -229,5 +233,106 @@ describe('runCodeRuntimeSetup', () => {
 
     expect(lastSteps()).toEqual([['components', 'done'], ['restart', 'done'], ['verify', 'done']]);
     expect(vi.mocked(runCommand).mock.calls.some((c) => c[0] === 'winget')).toBe(false);
+  });
+
+  it('keeps a competing update queued through installation, restart and engine verification', async () => {
+    gitInstalled = true;
+    const install = deferred<{ code: number; stdout: string; stderr: string }>();
+    const restart = deferred<Awaited<ReturnType<typeof startServer>>>();
+    vi.mocked(runCommand).mockReturnValue(install.promise);
+    vi.mocked(startServer).mockReturnValue(restart.promise);
+    const respond = vi.mocked(http.get).getMockImplementation()!;
+    let verify!: () => void;
+    vi.mocked(http.get).mockImplementation(((...args: Parameters<typeof http.get>) => {
+      verify = () => { respond(...args); };
+      const request = { on: () => request, destroy: () => undefined };
+      return request;
+    }) as never);
+    const setup = runCodeRuntimeSetup(win);
+    await settle();
+    expect(uvInstallCalls()).toHaveLength(1);
+    const updateBody = vi.fn(async () => undefined);
+    const update = withServerMaintenance(updateBody);
+    await settle();
+    expect(updateBody).not.toHaveBeenCalled();
+    install.resolve({ code: 0, stdout: '', stderr: '' });
+    await settle();
+    expect(startServer).toHaveBeenCalledOnce();
+    expect(updateBody).not.toHaveBeenCalled();
+    restart.resolve({ ok: true, port: 26866 });
+    await settle();
+    expect(verify).toBeTypeOf('function');
+    expect(updateBody).not.toHaveBeenCalled();
+    verify();
+    expect(await setup).toBe(true);
+    await update;
+    expect(updateBody).toHaveBeenCalledOnce();
+  });
+
+  it('does not mutate the installation when a queued setup has already been cancelled', async () => {
+    const release = deferred<void>();
+    const maintenance = withServerMaintenance(() => release.promise);
+    let abort = false;
+    const setup = runCodeRuntimeSetup(win, { shouldAbort: () => abort });
+    abort = true;
+    release.resolve();
+    await maintenance;
+    expect(await setup).toBe(false);
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(startServer).not.toHaveBeenCalled();
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_CANCELLED)).toBe(true);
+  });
+
+  it.each([true, false])('finishes Cowork recovery before reporting cancellation (restart succeeds: %s)', async (recovers) => {
+    gitInstalled = true;
+    let abort = false;
+    vi.mocked(runCommand).mockImplementation(async () => {
+      abort = true;
+      return { code: 0, stdout: '', stderr: '' };
+    });
+    const restart = deferred<Awaited<ReturnType<typeof startServer>>>();
+    vi.mocked(startServer).mockReturnValue(restart.promise);
+    const setup = runCodeRuntimeSetup(win, { shouldAbort: () => abort });
+    await settle();
+    expect(startServer).toHaveBeenCalledOnce();
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_CANCELLED || event === IPC.CODE_SETUP_DONE)).toBe(false);
+    restart.resolve(recovers ? { ok: true, port: 26866 } : { ok: false, port: 26866, reason: 'Test restart failure' });
+    expect(await setup).toBe(false);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_CANCELLED)).toBe(recovers);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_ERROR)).toBe(!recovers);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_DONE)).toBe(false);
+  });
+
+  it.each(['exit', 'throw'])('restores Cowork after an installer failure (%s)', async (failure) => {
+    gitInstalled = true;
+    if (failure === 'throw') vi.mocked(runCommand).mockRejectedValue(new Error('Test installer exception'));
+    else vi.mocked(runCommand).mockResolvedValue({ code: 1, stdout: '', stderr: 'Test network failure' });
+    expect(await runCodeRuntimeSetup(win)).toBe(false);
+    expect(startServer).toHaveBeenCalledOnce();
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_ERROR)).toBe(true);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_DONE)).toBe(false);
+  });
+
+  it('reports a thrown restart failure instead of hiding it as cancellation', async () => {
+    gitInstalled = true;
+    let abort = false;
+    vi.mocked(runCommand).mockImplementation(async () => { abort = true; return { code: 1, stdout: '', stderr: '' }; });
+    vi.mocked(startServer).mockRejectedValue(new Error('Test startup exception'));
+    expect(await runCodeRuntimeSetup(win, { shouldAbort: () => abort })).toBe(false);
+    expect(sends().find(([event]) => event === IPC.CODE_SETUP_ERROR)?.[1]).toMatch(/Cowork could not restart/);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_CANCELLED)).toBe(false);
+  });
+
+  it.each([true, false])('handles a Mac without Command Line Tools (system installer opens: %s)', async (opens) => {
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    vi.mocked(xcodeCliInstalled).mockResolvedValue(false);
+    vi.mocked(triggerXcodeInstall).mockResolvedValue(opens);
+    vi.mocked(waitForXcodeInstall).mockImplementation(async () => { gitInstalled = true; return true; });
+    vi.mocked(runCommand).mockResolvedValue({ code: 0, stdout: '', stderr: '' });
+    expect(await runCodeRuntimeSetup(win)).toBe(opens);
+    expect(triggerXcodeInstall).toHaveBeenCalledOnce();
+    expect(startServer).toHaveBeenCalledOnce();
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_DONE)).toBe(opens);
+    expect(sends().some(([event]) => event === IPC.CODE_SETUP_ERROR)).toBe(!opens);
   });
 });

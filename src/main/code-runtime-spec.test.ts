@@ -11,6 +11,8 @@ describe('withCodeExtra', () => {
     ['cowork-server==0.26.9.3.1', 'cowork-server[code]==0.26.9.3.1'],
     ['cowork-server>=0.1.10', 'cowork-server[code]>=0.1.10'],
     ['cowork-server', 'cowork-server[code]'],
+    ['cowork-server[channels]==1.0', 'cowork-server[channels,code]==1.0'],
+    ['cowork-server[channels, hermes] @ https://x/server.whl', 'cowork-server[channels,hermes,code] @ https://x/server.whl'],
     ['cowork-server @ git+https://github.com/mindsdb/cowork-server.git@staging', 'cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@staging'],
     ['git+https://github.com/mindsdb/cowork-server.git@abc123', 'cowork-server[code] @ git+https://github.com/mindsdb/cowork-server.git@abc123'],
     ['/tmp/build/cowork_server-1.0-py3-none-any.whl', 'cowork-server[code] @ file:///tmp/build/cowork_server-1.0-py3-none-any.whl'],
