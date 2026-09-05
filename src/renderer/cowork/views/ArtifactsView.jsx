@@ -1,15 +1,3 @@
-// Live artifacts page — mirrors the Projects header / filter pattern.
-//
-// Header:    "Live artifacts" Inter title + Inter subtitle (no CTA —
-//            artifacts are produced by Anton, not authored here).
-// Filter:    search (⌘K) · sort pill · count · grid/list toggle.
-// Sort:      default "Published first", then Recent · Oldest · Title · Type.
-// Grid:      ArtifactBubble cards as today (HTML preview, URL pill,
-//            Publish/Unpublish action).
-// List:      compact rows — status dot · title · kind · project · updated · ⋯.
-//
-// Status dot: cyan = published, green-pulse = live preview, none = local.
-
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
@@ -73,10 +61,7 @@ const SORT_OPTIONS = [
 // project of the organization, so the label has to come from the card's projectId /
 // projectName rather than from its filesystem path.
 
-// Resolve to the actual project object so the label can navigate
-// the user to that project's detail view. Returns null when the
-// artifact's path doesn't fall under any known project root — in
-// that case the label stays informational (no click affordance).
+// Return a project only for known path roots; unmatched labels remain informational.
 function projectOf(artifact, projects = []) {
   const p = artifact?.path || '';
   if (!p) return null;
@@ -87,10 +72,7 @@ function projectOf(artifact, projects = []) {
   }) || null;
 }
 
-// "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
-// content_mtime this sorts by (ENG-1123 Bug 2) — so the sort order and the
-// printed age can no longer disagree. a.mtime is always a plain number of
-// seconds (content_mtime) or absent/0 — never a string, so no Date.parse.
+// mtime is numeric content_mtime in seconds, matching the server’s displayed age.
 export function timestampOf(a) {
   return a.mtime || 0;
 }
@@ -103,34 +85,18 @@ function kindOf(a) {
   return ext || 'file';
 }
 
-// Shared by both comparison levels below, so a numeric-aware order (v2
-// before v10) applies consistently to the primary compare AND the filename
-// tie-break — using different collator options per level would let the
-// tie-break re-introduce the wrong order it's supposed to help fix.
-// Locale pinned to 'en' (not `undefined`, i.e. not the runtime's default
-// locale) so digit-vs-letter collation order — and therefore this file's
-// own test fixtures — can't vary between a developer's machine and CI.
-// No `sensitivity: 'base'`: default sensitivity treats "Report" and "report"
-// as unequal, which matters here — the tie-break must only ever run when the
-// primary text is truly identical on screen, not merely case/accent-equivalent.
+// Use numeric English collation at both levels for stable v2/v10 ordering across machines.
+// Keep default sensitivity so case/accent differences do not trigger the filename tie-break.
 const NAME_COLLATOR = new Intl.Collator('en', { numeric: true });
 
 export function titleCompare(a, b) {
   const t = NAME_COLLATOR.compare(displayTitle(a), displayTitle(b));
   if (t !== 0) return t;
-  // Tie-break only when a visible secondary line exists on both sides —
-  // web-app artifacts render no secondary line, so there is nothing on
-  // screen to justify breaking the tie by (falling back to fileNameOf here
-  // would reintroduce the exact "invisible sort key" bug this fixes).
+  // Break ties only with visible secondary filenames; web-app artifacts have none.
   if (isWebAppArtifact(a) || isWebAppArtifact(b)) return 0;
   return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
 }
 
-// Publish visibility chooser — a thin wrapper over the shared
-// <AccessChooser>. Owns only the draft + dialog chrome; the Public /
-// Password / Restricted UI and its validation live in one place now.
-// On confirm it hands back the access payload. Re-publishing pre-fills
-// the existing selection.
 function PublishDialog({ artifact, onCancel, onConfirm }) {
   const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
   if (!artifact) return null;
@@ -163,10 +129,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
 
 // ─── Card / Bubble (grid view) ───────────────────────────────────────────
 
-// Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
-// kebab can be the anchor for the page-level HoverMenu.
-// Hover treatment stays a JS handler (mutates .style on over/out) — a
-// deliberate carry-over, not converted to a CSS `hover:` variant here.
+// Forward the ref so the page-level menu can anchor to this button.
 const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, children, ...rest }, ref) {
   return (
     <button
@@ -191,11 +154,8 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 });
 
 /*
- * Download with feedback. `downloadArtifactFile` is async and fallible — an
- * expired bearer, a file deleted server-side, or a network drop resolves it
- * false — and a discarded promise leaves the click doing nothing at all
- * (review pass 2 on #764). Every download this page offers routes through
- * here so the failure reaches a toast.
+ * Await downloads and toast false results; discarded promises turn failed downloads into silent
+ * clicks.
  */
 async function downloadWithFeedback(artifact, toastManager) {
   if (!(await downloadArtifactFile(artifact))) {
@@ -207,10 +167,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
   /*
-   * A click means "show me this artifact" in both deployments: Desktop renders
-   * the local bytes, org mode renders the authenticated draft. What org mode
-   * cannot render — a fullstack app, an image — falls through to openBest and
-   * opens what collaborators see.
+   * Preview the local bytes or authenticated draft when supported; otherwise use the best available
+   * destination.
    */
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
@@ -234,33 +192,22 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     }
   };
 
-  // Not `projectLabel`: that name belongs to the imported
-  // `projectLabel(project)` function the tooltip below calls, and shadowing it
-  // with this string made that call throw "projectLabel is not a function",
-  // blanking the whole page. Not `projectName` either — that name is reserved
-  // for slugs (projectLabelSurfaces guards it). This is a resolved display
-  // label: projectNameOf routes through projectLabel itself.
   const projectDisplay = projectNameOf(artifact, projects);
   // The project the artifact belongs to. When resolved, the project label
   // becomes a clickable affordance that navigates to that project's page.
   const projectMatch = projectOf(artifact, projects);
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
-  // Hand the click off to the parent — it owns the single shared
-  // menu so the dropdown isn't rendered inside the card (cards
-  // apply `transform` on hover, which would re-anchor a
-  // position:fixed descendant to the card instead of the viewport).
+  // Let the parent render the menu: card transforms would anchor fixed descendants to the card
+  // instead of the viewport.
   const openMenu = (e) => {
     e.stopPropagation();
     if (!kebabRef.current) return;
     onMenuOpen?.(artifact, kebabRef.current.getBoundingClientRect());
   };
 
-  // Publishable = HTML + Markdown (isPublishableArtifact — the same predicate
-  // the Publish action + backend use); those show "Unpublished", everything
-  // else "Draft". Distinct from isWebAppArtifact (icon / name-only), so a .md
-  // is a "file" (shows its extension) yet still publishable. The name renders
-  // base-truncated with the extension always visible.
+  // Publishability controls status independently of name/icon type; markdown files remain
+  // publishable.
   const publishable = isPublishableArtifact(artifact);
   const { base, secondary } = splitArtifactName(artifact);
   // Open the live thing: published URL, else served URL, else local file. In org
@@ -369,15 +316,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 
 // ─── List view ───────────────────────────────────────────────────────────
 
-// Status dot · Title · Published · Type · Kind · Project · Updated · ⋯
-//
-// `Type` is the bare file extension (html, csv, png, …) and lives
-// before `Kind` (the broader category — Dashboard, Data, Image, …)
-// so the at-a-glance scan reads from concrete to abstract.
-// Name · Project · Status · (updated + actions). The trailing column is a
-// FIXED width — not `auto` — so the header grid (empty trailing cell) and each
-// row grid (updated + 2 icons) distribute their fr columns identically and the
-// Name/Project/Status headers line up exactly over their values.
+// Fix the trailing action-column width so header and row grids distribute their remaining columns
+// identically.
 const LIST_GRID = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 2fr) 200px';
 
 function ListHeaderRow() {
@@ -404,11 +344,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
   const items = [
     {
       id: 'open',
-      /*
-       * "Open viewer" would be a lie in org mode: the row itself previews the
-       * authenticated draft there, and this item is the page a collaborator
-       * opens. The filter below drops it when nothing is shared yet.
-       */
+      /* In org mode this action opens the shared page; draft preview is on the row itself. */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
       icon: Ico.externalLink(13),
       onClick: orgMode ? onOpenShared : onOpen,
@@ -494,10 +430,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 
   const orgMode = useOrgMode();
   const toastManager = useToastManager();
-  /*
-   * Same rule as ArtifactBubble above: a click previews whatever the deployment
-   * can render, from local bytes on Desktop and from the draft URL in org mode.
-   */
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
@@ -518,10 +450,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     if (canPreview) onOpenViewer?.(artifact);
     else if (published) openUrl(artifact.publishedUrl);
     else if (privateUrl) openUrl(privateUrl);
-    // Org mode, non-HTML, unshared: same fallback the grid card has — the
-    // draft URL still streams the bytes, so save them (ENG-2044). Without
-    // this branch the row and its Open button silently did nothing in List
-    // view while the identical artifact downloaded in Grid (review pass 2).
+    // Unshared org files can still download through the draft URL, matching grid behavior.
     else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
@@ -681,19 +610,15 @@ export default function ArtifactsView({
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
   const [publishTarget, setPublishTarget] = useState(null);
-  // Resolver for the promise returned by `handlePublish`, so a delegated
-  // caller (the preview's Publish button) can await the whole dialog +
-  // POST flow for its busy state. Settled when the chooser confirms,
-  // cancels, or errors — exactly once per flow.
+  // Resolve after the entire publish chooser/request flow so delegated callers retain busy state
+  // through confirm, cancel, or error.
   const publishResolveRef = useRef(null);
   const settlePublish = () => {
     publishResolveRef.current?.();
     publishResolveRef.current = null;
   };
-  // Page-level state for the shared HoverMenu — mounting the menu at
-  // the parent (and not inside a card) is required because cards
-  // apply `transform` on hover, which would re-anchor a position:fixed
-  // descendant to the card itself instead of the viewport.
+  // Render the menu at page level so hovered card transforms cannot change its fixed-position
+  // containing block.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
@@ -702,10 +627,7 @@ export default function ArtifactsView({
   const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
-  // Reflect parent refreshes exactly. The parent refetches when the
-  // route opens and after streams complete; if a file was trashed from
-  // another surface, the refreshed prop is the source of truth and the
-  // local grid must drop the stale card.
+  // Replace local data on parent refresh so deletions from other surfaces remove stale cards too.
   useEffect(() => {
     setList(initial);
     setViewer((cur) => {
@@ -741,10 +663,7 @@ export default function ArtifactsView({
     });
   };
 
-  // Per-path transient status the status pills read: 'publishing' |
-  // 'updating' | 'unpublishing' | 'failed'. Cleared (idle) when the action
-  // settles successfully; 'failed' sticks until the user retries. Pure map
-  // → the pill is whatever's here, so the status can't get stuck.
+  // Clear transient status on success; failure remains until retry.
   const [statusByPath, setStatusByPath] = useState({});
   const setPhase = (path, phase) => setStatusByPath((prev) => {
     if (!phase) {
@@ -755,15 +674,9 @@ export default function ArtifactsView({
     return { ...prev, [path]: phase };
   });
 
-  // Centralized publish — single source of truth for state updates,
-  // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
-  // command flow: POST → server zips, scrubs credentials, uploads to
-  // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into the local list so the UI flips to "Published"
-  // without a refetch.
-  // Publishing is two steps: choose visibility (public / password) in a
-  // small dialog, then confirmPublish does the actual POST. Re-publishing
-  // a protected artifact pre-fills its existing password.
+  // Choose visibility before publishing, prefilled from existing protection. Reflect the returned
+  // URL locally
+  // so successful publication updates immediately.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
     if (!isPublishableArtifact(artifact)) {
@@ -865,17 +778,11 @@ export default function ArtifactsView({
     }
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
-    // Delete is the slowest action on the card — it unpublishes remotely before
-    // it removes anything, and in org mode it also mints a turn key first — so
-    // without a phase the card sat there looking untouched for seconds and the
-    // only feedback was the row vanishing at the end.
+    // Show deletion progress while remote unpublishing and org credentials are resolved.
     setPhase(artifact.path, 'deleting');
     try {
-      // Unpublish first so deletion never leaves an orphaned public copy.
-      // If this fails we abort and keep the artifact (the server enforces
-      // the same rule as a backstop). Skipped in org mode — see
-      // needsClientUnpublishBeforeDelete: there this call 501s and the server's
-      // own delete does the unpublish with the right credential.
+      // Unpublish before local deletion and abort if it fails. Org deletion performs this
+      // server-side; its client unpublish route returns 501.
       if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
         await unpublishArtifact(artifact.path);
       }
@@ -932,18 +839,8 @@ export default function ArtifactsView({
       <PageHeader
         title="Live Artifacts"
         subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
-        // 20px below the subtitle text so the page reads with a
-        // little air before the search-row begins. The 20px spacer
-        // below the header still adds the standard between-section
-        // rhythm — together they make Live Artifacts breathe a touch
-        // more than other collection pages, where the action button
-        // already anchors the lower edge of the header.
       />
 
-      {/* Subtitle → search-row gap. Set to 20px per the design;
-          ProjectsView uses 18px because its header has an anchor
-          button on the right ("+ New project"), which reads as
-          slightly taller — Artifacts compensates with a few extra. */}
       <div className="h-5" />
 
       {total > 0 && (
@@ -1030,10 +927,6 @@ export default function ArtifactsView({
         />
       )}
 
-      {/* Single shared menu for the whole grid — anchored to whichever
-          card the user just clicked. Mounted here at the page level
-          (not inside each card) so the dropdown's `position: fixed`
-          stays viewport-relative regardless of card-level transforms. */}
       <HoverMenu
         open={!!menuFor}
         anchorRect={menuFor?.rect}
@@ -1082,29 +975,17 @@ export default function ArtifactsView({
             });
           }
           /*
-           * Fullstack apps can't be opened from their static entry html
-           * (it needs the backend), so only offer "Open in browser" for
-           * them once published — then it opens the live public URL.
-           * Unpublished fullstack gets no open/reveal item.
-           *
-           * Org mode asks a different question. The card body previews the
-           * draft there, so this item is the page a collaborator opens, and
-           * every published artifact needs it — a shared .md would otherwise
-           * have no route to its URL from this card at all, because the HTML
-           * test below is the only one it ever fails. Grid is the default
-           * view and the only view on mobile, so there is no list row to
-           * fall back to.
+           * Fullstack static HTML needs its backend, so desktop opens it only through a published
+           * URL.
+           * Org menus offer every published artifact’s shared page independently of draft preview
+           * support.
            */
           if (orgMode ? published : (isHtml && (!isBackend || published))) {
             items.push({
               id: 'open',
               label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
-              /*
-               * Awaited like the card's own onOpenPublished above: a
-               * synchronous try around an async bridge call cannot reach the
-               * fallback, and the rejection escapes unhandled.
-               */
+              /* Await the bridge call so rejection reaches the browser fallback. */
               onClick: async () => {
                 if (a.publishedUrl) {
                   try { await host.openExternal(a.publishedUrl); }
@@ -1125,12 +1006,7 @@ export default function ArtifactsView({
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
-          /*
-           * Org mode only: the draft URL is the one route to a non-HTML file's
-           * bytes there (ENG-2044). Desktop's grid keeps its existing menu —
-           * the list view already offers Download from `serveUrl`, and this
-           * fix leaves desktop behaviour untouched.
-           */
+          /* Org downloads use the authenticated draft URL for primary-file bytes. */
           if (orgMode && canDownloadOrgDraft(a)) {
             items.push({
               id: 'download',
@@ -1143,10 +1019,8 @@ export default function ArtifactsView({
             items.push({ separator: true });
             items.push({
               id: 'delete',
-              // Delete unpublishes remotely first, so it is the slowest item here.
-              // Disabled while it runs: handleTrash already ignores a re-entrant
-              // call, but a menu item that still looks clickable reads as "nothing
-              // happened" and invites the second click.
+              // Disable deletion while remote cleanup runs so delayed removal does not invite
+              // duplicate clicks.
               label: busyA ? 'Deleting…' : 'Delete',
               icon: Ico.trash(13),
               danger: true,

@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// ArtifactsView.jsx's module-level import of '../api' calls
-// host.getApiOrigin() at import time — mock both so importing the module
-// for its pure functions doesn't touch the real platform bridge.
+// Mock module-load API origin access.
 vi.mock('../api', () => ({
   revealArtifact: vi.fn(),
   publishArtifact: vi.fn(),
@@ -16,10 +14,7 @@ vi.mock('../api', () => ({
 vi.mock('../../platform/host', () => ({
   host: { isWeb: false, isMac: () => false, isElectron: false, openExternal: vi.fn() },
 }));
-// ArtifactsView.jsx imports trackArtifactPublished from '../lib/analytics'
-// at module scope, and that module reads `host.isElectron` at its own
-// module scope (line 44) — mock it too so this file's import of
-// ArtifactsView doesn't depend on that read resolving a particular way.
+// Analytics reads the platform bridge at import time.
 vi.mock('../lib/analytics', () => ({
   trackArtifactPublished: vi.fn(),
 }));
@@ -74,9 +69,7 @@ describe('titleCompare', () => {
   });
 
   it('yields the exact same order as the mixed file + web-app fixture below', () => {
-    // Hand-written expected order — NOT derived by calling the comparator
-    // again, so this actually checks the implementation against a fixed
-    // ground truth (the Linear "Done when" test).
+    // Use literal expected ordering so the assertion cannot reproduce a comparator bug.
     const items = [
       webApp('dash', 'Weather Dashboard', '/p/dash/index.html'),
       file('a', '2026 Forecast', '/p/a/MindsHub_2026_Forecast.xlsx'),
@@ -84,9 +77,7 @@ describe('titleCompare', () => {
       file('c', '2026 Forecast', '/p/c/2026_Forecast_v2.xlsx'),
     ];
     const sorted = [...items].sort(titleCompare).map((a) => a.id);
-    // "2026 Forecast" (c, a — tie-broken by filename: digits collate before
-    // letters, so "2026_Forecast_v2.xlsx" < "MindsHub_2026_Forecast.xlsx")
-    // then "Alpha Report" (b) then "Weather Dashboard" (dash).
+    // Equal primary sort values must use filename ordering.
     expect(sorted).toEqual(['c', 'a', 'b', 'dash']);
   });
 });

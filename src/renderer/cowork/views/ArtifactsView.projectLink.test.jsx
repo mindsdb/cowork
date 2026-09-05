@@ -1,13 +1,5 @@
-// The artifact card's footer links to the project the artifact belongs to.
-//
-// Regression (ENG-1676 follow-up): ArtifactBubble declared
-// `const projectLabel = projectNameOf(...)` — a string — which shadowed the
-// module's imported `projectLabel(project)` function. The tooltip on that link
-// calls `projectLabel(projectMatch)`, so as soon as a card resolved a project
-// AND an onOpenProject handler was supplied, render threw
-// "projectLabel is not a function" and React blanked the whole route with
-// "Unexpected Application Error!". The path only fires when both hold, which is
-// why it survived to staging.
+// Render a resolved project with onOpenProject to catch project-label helper shadowing at the call
+// site.
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -34,9 +26,7 @@ import ArtifactsView from './ArtifactsView';
 
 afterEach(() => localStorage.clear());
 
-// display_name differs from the slug, so the two helpers can't be conflated:
-// the button shows what projectNameOf resolved, the tooltip what projectLabel
-// returns for the matched project.
+// Distinct display name and slug expose the wrong label helper.
 const PROJECT = {
   id: 7,
   name: 'untitled-project-2',

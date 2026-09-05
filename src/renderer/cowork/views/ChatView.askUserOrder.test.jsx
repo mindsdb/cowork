@@ -46,11 +46,7 @@ const taskWith = (messages) => ({
   messages,
 });
 
-// Streaming text is split into one <span class="stream-word"> per word (for
-// the fade-in animation), so a single node never contains the whole reply —
-// getByText can't match it. container.textContent still concatenates in
-// document order regardless of how the text is split across nodes, so
-// index comparison is the reliable way to assert render order here.
+// Text is split across word spans, so compare textContent positions.
 const indexOf = (container, text) => container.textContent.indexOf(text);
 
 describe('ask_user card renders above the text that follows the answer', () => {
