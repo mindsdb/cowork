@@ -13,9 +13,7 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "var(--font-mono)";
 
-// Full-bleed "Preview" placeholder shown over the preview region until the
-// iframe has actually painted (or while a text preview is fetching), so the
-// user never sees a flash of empty grey.
+// Cover the preview until content loads to avoid a blank flash.
 function PreviewPlaceholder() {
   return (
     <div aria-hidden="true" style={{
@@ -104,9 +102,8 @@ export function ArtifactViewerBody({
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
 
-  // Once the preview has painted, prepare the HTML editor during idle time.
-  // The first Edit click is then a surface swap, not a second parse/download;
-  // after visiting Edit we keep both iframes alive for instant mode changes.
+  // Warm the editor during idle time after preview loads; retain both iframes after editing for
+  // instant mode changes.
   useEffect(() => {
     if (!editorKey || retainedEditorKey === editorKey) return undefined;
     if (showEditor) {
@@ -202,9 +199,8 @@ export function ArtifactViewerBody({
         <iframe
           ref={iframeRef}
           title={title || 'Artifact preview'}
-          // The comment-layer activation flag (when applicable) is already
-          // baked into previewUrl/previewDoc at mount time, so neither prop
-          // below is reactive after the initial mount.
+          // The comment activation flag is set at mount time to avoid reloading the preview when
+          // comment transport changes.
           src={previewUrl || undefined}
           srcDoc={previewDoc || undefined}
           onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
@@ -223,7 +219,6 @@ export function ArtifactViewerBody({
 
   return (
     <>
-      {/* Text renders inline; other artifacts use a sandboxed iframe. */}
       <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
@@ -236,8 +231,6 @@ export function ArtifactViewerBody({
               </>
             ) : showEditor ? sourceEditor : previewContent}
           </div>
-          {/* The compact toolbar is for placing and revealing comments. The
-              inbox replaces it while open so controls never overlap. */}
           {commentsOpen && commentsEnabled && !inboxOpen && (
             <CommentsToolbar
               mode={layer.mode}
@@ -257,7 +250,6 @@ export function ArtifactViewerBody({
             />
           )}
         </div>
-        {/* Review is a docked workspace on desktop and a full panel on compact screens. */}
         {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
           <CommentsPanel
             threads={comments.threads}
@@ -312,8 +304,7 @@ export function ArtifactViewerBody({
               // Only resolve the comment once the decision actually landed;
               // an ignored call used to look identical to a successful one.
               const outcome = await workspace.decideRepair('accepted');
-              // The hook owns the message for this case; repeating it here put
-              // the same sentence in two banners at once.
+              // The hook already displays this refusal; avoid a duplicate banner.
               if (!outcome?.decided) return;
               const resolved = threadId
                 ? await comments.setStatus(threadId, 'resolved')
@@ -342,9 +333,8 @@ export function ArtifactViewerBody({
           error={confirmRejectError}
           onClose={() => { setConfirmRejectHead(null); setConfirmRejectError(''); }}
           onConfirm={async () => {
-            // Held open until the restore lands: it rewrites the artifact, so
-            // closing first left a beat where nothing said the click had taken.
-            // A failure stays in the dialog, where the decision was made.
+            // Keep the restore dialog open through completion so pending work and any failure stay
+            // visible.
             setConfirmRejectError('');
             setRepairBusy(true);
             try {

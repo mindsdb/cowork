@@ -1,8 +1,6 @@
 /**
- * The chat a repair runs in is settled before the repair record is minted, and
- * the same id reaches both the server and the host. cowork-server finishes a
- * queued handoff only in a turn whose conversation matches the id stored on it,
- * so a mismatch here leaves the repair queued forever.
+ * Resolve the conversation before creating a repair and pass the same id to server and host, or the
+ * handoff never completes.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';

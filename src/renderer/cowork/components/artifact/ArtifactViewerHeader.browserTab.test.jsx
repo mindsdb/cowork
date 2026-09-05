@@ -1,10 +1,5 @@
-// "Open in a browser tab" beside the mode tabs.
-//
-// It lives there rather than in the ⋯ menu because that menu is hidden in org
-// mode — its other entries are OS/file actions and `/publish` routes an org
-// deployment cannot answer — while this affordance belongs on both. So the
-// assertions that matter are: it shows on Cloud, and it does not appear when
-// there is nothing for it to open.
+// Browser-tab opening must remain available in org mode even when the OS/file actions menu is
+// hidden, provided a target exists.
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';

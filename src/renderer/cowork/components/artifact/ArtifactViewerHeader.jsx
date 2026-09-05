@@ -6,14 +6,8 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
 
-// Ghost icon button shared by every top-bar affordance (folder, reload,
-// open-in-browser, kebab, close). forwardRef so it can be the render
-// target of a Base UI Tooltip/Menu trigger (those inject a ref).
-//
-// `active` gives a persistent toggled-on state (accent-tinted fill + accent
-// glyph) that survives mouse-leave — used by the comments switch so it reads
-// as on/off, not just a hover. Hover-idle colors are resolved from `active`
-// so the two states never fight over the inline background.
+// Forward refs for Base UI triggers. Resolve hover-idle colors from active so toggled comments stay
+// visibly on after mouseleave.
 const IconButton = forwardRef(function IconButton(
   { size = 30, disabled = false, active = false, style, children, ...rest }, ref,
 ) {
@@ -101,9 +95,7 @@ export function ArtifactViewerHeader({
       ? 'Loading editing tools…'
       : workspace.capabilities?.canEdit === false
         ? 'Only the artifact owner can edit'
-        // "Too old to edit" and "never shared with you" both land in the
-        // `unsupported` status; the hook names which one so the tooltip doesn't
-        // send the user looking in the wrong place.
+        // The hook distinguishes unsupported legacy artifacts from denied access for the tooltip.
         : workspace.unsupportedReason || 'This artifact cannot be edited here';
   const reviewDisabledReason = !workspace.supported
     ? 'Refresh the artifact to load review tools'
@@ -118,7 +110,6 @@ export function ArtifactViewerHeader({
       borderBottom: '1px solid var(--line)',
       background: 'var(--surface)',
     }}>
-      {/* Left — artifact title. */}
       <div className="artifact-viewer-title-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div
           id="artifact-viewer-title"
@@ -132,7 +123,6 @@ export function ArtifactViewerHeader({
         >{title}</div>
       </div>
 
-      {/* Middle — the artifact's three working modes. */}
       <div className="artifact-viewer-mode-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <ArtifactModeTabs
           value={workspace.mode}
@@ -142,11 +132,10 @@ export function ArtifactViewerHeader({
           editDisabledReason={editDisabledReason}
           reviewDisabledReason={reviewDisabledReason}
         />
-        {/* Beside the tabs rather than in the ⋯ menu: that menu is hidden in org
-            mode because its other entries are OS/file actions and `/publish`
-            routes an org deployment cannot answer, and this belongs on both.
-            Hidden outright when there is no URL to open — a button that opens
-            nothing is worse than no button. */}
+        {/*
+ * Keep browser-tab access outside the desktop-only menu so org users can reach it too; hide it
+ * without a URL.
+ */}
         {canOpenInBrowserTab && (
           <Tooltip content="Open in a browser tab">
             <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
@@ -156,7 +145,6 @@ export function ArtifactViewerHeader({
         )}
       </div>
 
-      {/* Right — comments, publishing, more actions, and close. */}
       <div className="artifact-viewer-action-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {commentsEnabled && (
           <div style={{ position: 'relative' }}>
@@ -178,13 +166,10 @@ export function ArtifactViewerHeader({
             )}
           </div>
         )}
-        {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
-            desktop-only, on the grounds that org mode's window is a review
-            surface and publishing "lives on the gallery card instead" — but the
-            card filters publish out in org mode too, so that left Cloud with no
-            way to share at all (ENG-2316). On Cloud this changes the audience of
-            an already-autopublished artifact; the controller handles the
-            transport difference. */}
+        {/*
+ * Owners share on both deployments; cloud updates the audience of an already-autopublished
+ * artifact.
+ */}
         {canManage && publishable && (
           <PublishMenu
             controller={pub}

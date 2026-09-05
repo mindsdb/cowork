@@ -1,15 +1,3 @@
-// Inline preview modal for artifacts. Renders the artifact's content in a
-// sandboxed iframe (HTML / fullstack) or inline (md / csv / txt). The top
-// bar has three responsive zones:
-//
-//   left   — artifact title (truncated)
-//   middle — Preview / Edit / Review modes
-//   right  — comments · Publish control · ⋯ menu · close
-//
-// Publish/unpublish/update/change-access all live in the <PublishMenu>
-// popover, backed by the usePublish state machine — so this component is
-// just chrome + preview.
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
@@ -18,9 +6,6 @@ import {
   unpublishArtifact,
   artifactServeUrl,
 } from '../../api';
-// Only the feedback notice near the bottom of this file still draws an icon
-// here; the rest of the chrome moved to ArtifactViewerHeader/Body and took the
-// import with it, which left that one call site referencing nothing.
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
@@ -55,10 +40,6 @@ import {
   withArtifactVersion,
 } from './artifactPreviewUtils';
 
-// Extensions we render inline with the lightweight text preview path
-// (server `/v1/artifacts/preview` → text body). `.md` gets the full
-// markdown renderer; `.csv` gets a parsed table; `.txt` and friends
-// fall back to a monospace block.
 
 
 export function ArtifactViewer({
@@ -79,31 +60,16 @@ export function ArtifactViewer({
   const draftPreviewUrl = artifact?.draftUrl || '';
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
-  // Backend artifacts treat the folder, not the entry html, as the
-  // "thing" the user opens in their OS or browser. Prefer the server's
-  // `folder` (the artifact's slug dir) — for fullstack apps the primary
-  // sits in a `static/` subdir, so stripping the filename off the path
-  // would point at `static/`, not the slug folder. Fall back to that
-  // strip for records that don't carry `folder` (e.g. from a chat bubble).
+  // Prefer the artifact folder: fullstack entry HTML can live under static/, whose parent is not
+  // the artifact root.
   const artifactFolder = artifact?.folder || actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
-  // Mounted preview URL — iframe loads this with `src=` so relative
-  // `<script>` / `<link>` refs in the HTML resolve against a real URL.
-  // (srcdoc has no base URL → relative refs 404.)
+  // Use a mounted URL so relative scripts and styles resolve against the artifact.
   const [previewUrl, setPreviewUrl] = useState('');
-  // Fetched draft HTML rendered via the iframe's `srcdoc` instead of `src=`
-  // — set only by the draft-preview branch below (see
-  // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md).
-  // Kept separate from `previewUrl` (always exactly one of the two is
-  // non-empty) rather than merged into one variant type: every existing
-  // `src=`-based preview path — proxy, locally-mounted static — is untouched
-  // by that fix and keeps reading `previewUrl` exactly as before.
+  // Draft HTML uses srcdoc after authenticated fetching; previewUrl and previewDoc are mutually
+  // exclusive.
   const [previewDoc, setPreviewDoc] = useState('');
-  // 'static' (HTML asset bundle) | 'proxy' (fullstack) — the comment marker
-  // layer is server-injected only on the static serve path, so the pin/mode
-  // affordance and the activation flag are gated on this.
   const [previewKind, setPreviewKind] = useState('');
-  // Whether the iframe has finished its first paint — drives the loading
-  // placeholder so it lingers past "URL is ready" until content is visible.
+  // Keep the placeholder until the iframe loads, even after its URL is ready.
   const [iframeReady, setIframeReady] = useState(false);
   // Text preview state for .md/.txt/.csv — populated via
   // `/v1/artifacts/preview`. Holds `{ content, truncated, mime }`.
@@ -113,42 +79,28 @@ export function ArtifactViewer({
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  // Manual-reload counter — bumped by the link-pill reload button to
-  // force a fresh mount/fetch even when the artifact's mtime is unchanged.
+  // Force a fresh mount/fetch on manual reload even if mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
-  // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
-  // shows/hides the floating comments toolbar; the toolbar owns the rest —
-  // comment-placement mode, the inbox sidebar, marker visibility, leaving.
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [markersShown, setMarkersShown] = useState(true);
   const [repairBusy, setRepairBusy] = useState(false);
   const [textSelection, setTextSelection] = useState(null);
   const [feedbackNotice, setFeedbackNotice] = useState('');
-  // Dismissed per repair, not per open: a suggestion the artifact has moved
-  // past is worth mentioning once, not on every visit to the artifact.
+  // Dismiss per repair so revisiting the artifact does not repeat the same suggestion.
   const [dismissedRepairId, setDismissedRepairId] = useState('');
   // Rendered twice: inline in the repair notice, and as the discard dialog's
   // error, so a failure is visible whether or not that dialog is open.
   const [repairNoticeError, setRepairNoticeError] = useState('');
-  // The repair the create guard named, so the refusal can offer a way out
-  // instead of stating a fact the user cannot act on.
   const [blockedBy, setBlockedBy] = useState(null);
   const [pendingDiscard, setPendingDiscard] = useState(null);
-  // Per-open counter used as a cache-buster fallback for artifacts whose
-  // object carries no `mtime` (e.g. chat-bubble previews built from stream
-  // steps). Increments only when there's no mtime, so every (re)open of
-  // such an artifact fetches fresh content (ENG-375).
+  // For cards without mtime, bump a per-open nonce so reopening fetches fresh content.
   const openNonceRef = useRef(0);
   const textContentRef = useRef(null);
 
-  // Publish/access state machine — the single source of truth for the
-  // <PublishMenu> popover and the link-pill's published-URL display.
   const pub = usePublish(artifact, { onChange, enabled: open });
   const workspace = useArtifactWorkspace(artifact, { open, onChange });
-  // Fallback target for a repair: a brand-new chat. Used when the viewer has no
-  // host chat (opened from the artifacts list) and the host either offers no
-  // resolver or can't reach the chat that created the artifact.
+  // Allocate a fallback repair chat when there is no host conversation or reachable origin chat.
   const repairConversationId = useMemo(
     () => conversationId || (open && workspace.supported ? allocateConversationId() : ''),
     // `artifact?.id` stays in the deps because switching artifacts has to mint a
@@ -171,8 +123,7 @@ export function ArtifactViewer({
     return () => window.clearTimeout(timer);
   }, [feedbackNotice]);
 
-  // A stable composite key backs one thread across private drafts and published
-  // versions. Derived before the early return so the hooks run unconditionally.
+  // Use one stable comment thread identity across drafts and published versions.
   const artifactKey = artifact?.artifactKey
     || pub.artifactKey
     || artifactCommentsKey(artifactIdentity(artifact));
@@ -180,26 +131,20 @@ export function ArtifactViewer({
     workspace.commentsReady
     || (!!pub.publishedUrl && pub.accessMode === 'restricted')
   );
-  // Injecting the inert marker bridge only needs the stable comment identity;
-  // it does not need to wait for the comments transport to finish provisioning.
-  // Waiting used to remount the whole HTML artifact as commentsReady flipped.
+  // Inject the inert bridge before comment transport is ready to avoid remounting the preview when
+  // readiness changes.
   const commentLayerRequested = !!artifactKey;
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
 
-  // Iframe handle + shared comments state. One `useArtifactComments` instance
-  // backs BOTH the inbox panel and the on-artifact marker layer (injected by
-  // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
-  // postMessage. Both stay dormant when comments are disabled.
+  // Share comments between inbox and iframe markers; the layer bridges them over postMessage.
   const iframeRef = useRef(null);
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
     onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
   });
 
-  // A short quote of the blocking thread, so the refusal names the comment the
-  // user has to deal with rather than the artifact as a whole.
   const blockedComment = useMemo(() => {
     if (!blockedBy?.commentThreadId) return '';
     const thread = (comments.threads || [])
@@ -208,11 +153,8 @@ export function ArtifactViewer({
     return text.length > 60 ? `${text.slice(0, 60)}…` : text;
   }, [blockedBy?.commentThreadId, comments.threads]);
 
-  // Every resolve, from the inbox panel and from the on-artifact pin popover
-  // alike, releases whatever repair was waiting on that thread. Resolving is
-  // the decision the accept-or-reject rule was protecting, and a path that
-  // skips this is the wedge itself. Release after the resolve, never before:
-  // a released repair can no longer be decided.
+  // Release waiting repairs only after resolving their comment; releasing first would prevent the
+  // decision.
   const setCommentStatus = useCallback(async (threadId, nextStatus) => {
     const ok = await comments.setStatus(threadId, nextStatus);
     if (ok && nextStatus === 'resolved') {
@@ -224,11 +166,8 @@ export function ArtifactViewer({
     ...payload,
     revisionId: workspace.currentRevision?.id || null,
   }), [comments.create, workspace.currentRevision?.id]);
-  // The injected layer owns the on-artifact UI (pins, hover highlight, thread
-  // popovers) and reports mode changes; this hook pushes the thread list down
-  // and exposes the imperative controls the toolbar + inbox drive. Marker
-  // visibility rides the pushed list (Hide comment ⇒ empty list ⇒ no pins),
-  // so it works against the layer without a server change.
+  // The injected layer owns pins/popovers; push threads and controls over the bridge. An empty
+  // thread list hides markers.
   const layer = useArtifactCommentLayer(iframeRef, {
     threads: comments.threads,
     viewer: comments.viewer,
@@ -246,9 +185,7 @@ export function ArtifactViewer({
     onDeleteReply: comments.deleteReply,
   });
 
-  // One switch for the whole comments chrome. Opening resets to the default
-  // sub-state (markers on, inbox closed); closing also drops the iframe out of
-  // comment-placement mode so no pin cursor lingers on a "plain" preview.
+  // Close placement mode with the comment controls so its cursor cannot remain on a plain preview.
   const toggleComments = () => {
     setCommentsOpen((was) => {
       if (was) layer.exitMode();
@@ -299,12 +236,8 @@ export function ArtifactViewer({
     setRepairBusy(true);
     setErr('');
     try {
-      // Settle the target chat BEFORE the repair record exists. cowork-server
-      // finishes a queued handoff only in a turn whose conversation matches the
-      // id stored on it, so a repair minted against one chat and run in another
-      // would stay queued forever. Inside a chat that's this chat; from the
-      // artifacts list the host resolves the chat that created the artifact and
-      // falls back to a fresh one.
+      // Resolve the chat before creating a repair: the server completes handoffs only in the
+      // conversation bound to their record.
       const targetConversationId = conversationId
         || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
         || repairConversationId;
@@ -366,12 +299,8 @@ export function ArtifactViewer({
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
 
-  // Image artifacts skip the HTML mount pipeline entirely (there's no server
-  // dir to register for iframe serving) and load straight from the artifact's
-  // serve URL — same CSP workaround as AttachmentThumbnail (fetch + blob:,
-  // since a direct loopback <img src> is blocked). `withArtifactVersion` busts the
-  // fetch on a content change or a manual reload, matching the iframe/text
-  // cache-busting below.
+  // Images load through versioned blob URLs because CSP blocks direct loopback sources; they need
+  // no HTML mount.
   const isImage = isImageArtifact(artifact);
   const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
   const imageUrl = imageRawUrl
@@ -379,22 +308,12 @@ export function ArtifactViewer({
     : '';
   const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
 
-  // Reset the painted flag whenever the mounted preview changes so the
-  // placeholder reappears for the new content.
   useEffect(() => { setIframeReady(false); }, [previewUrl, previewDoc]);
 
-  // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
-  // Mount the artifact when opened.
-  //   - Text (.md/.txt/.csv): skip the iframe entirely and fetch the
-  //     body via `/v1/artifacts/preview` so we can render it inline.
-  //   - Static (HTML-only): server registers the parent dir under a
-  //     token and returns a URL that serves the entry HTML; sibling
-  //     assets resolve naturally because they share the URL prefix.
-  //   - Proxy (backend+frontend): main hosts a loopback HTTP forwarder
-  //     pointed at the artifact's backend port (read lazily from
-  //     metadata.json on every request, so a restarted backend on a
-  //     new port keeps working).
+  // Text loads inline; static HTML mounts with sibling assets; fullstack previews use the backend
+  // proxy,
+  // which reads the current port so restarts remain reachable.
   useEffect(() => {
     if (!open || !artifact) return;
     if (!hasPreviewSource) {
@@ -437,19 +356,13 @@ export function ArtifactViewer({
       return () => { cancelled = true; };
     }
     if (isImage) {
-      // The `imageSrc` hook above does its own fetch keyed on `imageUrl`;
-      // nothing to mount server-side for a plain image file.
+      // Image fetching is handled by useBlobImageSrc; no server mount is needed.
       setLoading(false);
       return () => { cancelled = true; };
     }
-    // Cache-buster for the iframe so a content change (or just reopening /
-    // a manual reload) fetches fresh content instead of the webview's
-    // first-loaded copy. Prefer the server's content `mtime` — it changes
-    // only on a real edit — and fold in the per-open nonce + manual-reload
-    // counter so reopens and the reload button always re-fetch.
-    // Workspace saves explicitly bump reloadNonce below. Keeping the initial
-    // revision response out of this key prevents a just-painted iframe from
-    // being thrown away merely because editing metadata finished loading.
+    // Version previews by content mtime (or per-open nonce) plus manual reloads. Do not include the
+    // initial
+    // revision response: loading editing metadata must not discard a freshly painted iframe.
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
@@ -461,40 +374,24 @@ export function ArtifactViewer({
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
       if (!canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())) {
-        // Embedded (data:/blob:) content makes no network request at all —
-        // there's nothing for a credential to protect. A genuinely
-        // cross-origin absolute URL must never receive the web Keycloak
-        // bearer `authFetch` would attach (the old `src=` navigation never
-        // sent it either). Both keep the pre-fix direct navigation; only a
-        // same-origin API URL is safe to route through the fetch+srcdoc path
-        // below.
+        // Only same-origin API drafts may use authFetch. Cross-origin URLs must never receive the
+        // Keycloak token;
+        // data/blob content needs no credentials.
         setPreviewUrl(fetchUrl);
         setLoading(false);
         return () => { cancelled = true; };
       }
-      // A plain iframe `src=` navigation cannot carry the Authorization
-      // header the forward-auth ingress in front of the drafts endpoint
-      // requires on staging (see
-      // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md),
-      // so fetch through authFetch (like Edit's source load) and hand the
-      // result to the iframe via srcdoc instead of navigating it directly.
-      // previewUrl/previewDoc were both already reset to '' at the top of
-      // this effect, so setting only one of them here is enough to keep them
-      // mutually exclusive.
+      // Iframe navigation cannot attach Authorization, so fetch protected draft HTML and render it
+      // through srcdoc.
+      // Both preview states are reset before assigning one.
       loadArtifactDraftDocument(fetchUrl)
         .then((doc) => {
           if (cancelled) return;
           if (doc.isHtml) {
             setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
           } else {
-            // Non-HTML draft content type: org mode's draft preview only ever
-            // offers .html here (md/txt/csv already took the isText branch
-            // above), so this is expected only on Desktop. The fetch above
-            // already ran, so the iframe fetching fetchUrl again is a second
-            // round-trip — acceptable on Desktop's local loopback server; on
-            // web it degrades to the pre-fix behavior (the iframe navigation
-            // may hit the same 401 this task fixes for HTML), which is no
-            // worse than before this change.
+            // Non-HTML responses fall back to iframe navigation. This repeats the fetch and may
+            // still hit an auth 401 on web.
             setPreviewUrl(fetchUrl);
           }
         })
@@ -522,10 +419,8 @@ export function ArtifactViewer({
           } catch { /* fall through with the raw URL */ }
           if (cancelled) return;
           setPreviewKind('proxy');
-          // Fullstack previews flow through the proxy, which injects the marker
-          // layer into the root HTML on the same activation flag (see
-          // preview_proxy.py). Bake it in at mount time — same rationale as the
-          // static branch below (stable src, no reactive reload).
+          // Bake comment-layer activation into the proxy URL at mount time to keep its source
+          // stable.
           setPreviewUrl(commentLayerRequested
             ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
             : withArtifactVersion(iframeUrl, cacheVersion));
@@ -535,20 +430,14 @@ export function ArtifactViewer({
         if (!url) throw new Error('Preview mount returned no URL');
         if (cancelled) return;
         setPreviewKind('static');
-        // Bake the inert comment bridge into the first URL whenever the card
-        // has a stable identity. Transport readiness can then change without
-        // swapping this cross-origin iframe's `src` or flashing the preview.
+        // Set the inert bridge flag on the first URL so transport readiness does not reload the
+        // iframe.
         setPreviewUrl(commentLayerRequested
           ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
           : withArtifactVersion(url, cacheVersion));
-        // NOTE (ENG-931): we deliberately do NOT adopt the server's published
-        // URL here anymore. usePublish's open refresh() already pulls the
-        // authoritative published/access state from /artifacts/status for every
-        // artifact type (including chat-bubble stubs). The old adoption fired
-        // onChange({ ...artifact, publishedUrl }) from this async callback's
-        // STALE closure (stale `artifact` lacking accessMode/accessEmails, and a
-        // stale `!pub.publishedUrl` guard), which raced with refresh() and
-        // clobbered the just-loaded restricted access list back to "public".
+        // Let usePublish refresh authoritative access state. Adopting this callback’s stale
+        // artifact could overwrite
+        // a newly loaded restricted audience with public defaults.
       })
       .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load artifact'); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -556,10 +445,8 @@ export function ArtifactViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, commentLayerRequested]);
 
-  // Parse CSV → GFM pipe table once per loaded text. We cap at
-  // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
-  // snappy on large files; the total row count is computed separately
-  // so we can show a "showing N of M" notice.
+  // Cap displayed CSV rows for render cost, counting total rows separately for the truncation
+  // notice.
   const csvPreview = useMemo(() => {
     if (!isText || textExt !== '.csv' || !textPreview?.content) return null;
     const rows = parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
@@ -574,8 +461,7 @@ export function ArtifactViewer({
     };
   }, [isText, textExt, textPreview?.content]);
 
-  // Keep these callbacks above the early return: the viewer remains mounted
-  // while `open` changes, so every render must execute the same hook sequence.
+  // Keep hooks above the early return so closing the mounted viewer does not change their sequence.
   const onReload = useCallback(() => {
     if (!hasPreviewSource) return;
     setIframeReady(false);
@@ -593,14 +479,10 @@ export function ArtifactViewer({
   const title = artifact.title || artifact.path?.split('/').pop();
   const isPublished = !!pub.publishedUrl;
 
-  // Open the local file only when the file is actually on this machine
-  // (Electron + loopback server). When the desktop app points at a REMOTE
-  // server, or in web, the path is on the server box, so we fall back to
-  // the HTTP serve/published URL.
+  // OS paths work only with local Electron; remote/web servers require serve or published URLs.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
   const canOpenInBrowser = isPublished || canOpenLocalFile || !!artifact?.serveUrl;
 
-  // Open the artifact's containing folder in the OS file manager.
   const onOpenFolder = async () => {
     if (!canOpenLocalFile) return;
     try {
@@ -611,16 +493,13 @@ export function ArtifactViewer({
     }
   };
 
-  // Open the published URL in the default browser; falls back to a new
-  // window if the OS handoff is unavailable.
   const onOpenPublished = async () => {
     if (!pub.publishedUrl) return;
     try { await host.openExternal(pub.publishedUrl); }
     catch { window.open(pub.publishedUrl, '_blank', 'noreferrer'); }
   };
 
-  // Open the local file / served preview (HTML → default browser, other
-  // types → their default app). Handles backend artifacts + the web shell.
+  // Open HTML previews in the browser and other local files in their default app.
   const onOpenOS = async () => {
     if (isBackendArtifact && canOpenLocalFile) {
       if (!backendPort) {
@@ -656,22 +535,11 @@ export function ArtifactViewer({
     }
   };
 
-  // The link-pill arrow: published → open the public URL; otherwise → open
-  // the local/served preview.
   const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
 
-  // "Open this artifact in a browser tab", for the control beside the mode
-  // tabs. Distinct from `onOpenInBrowser` above, which falls back to handing
-  // the path to the OS — that opens the file, not a browser, and on an org
-  // deployment there is no local file to hand over at all.
-  //
-  // Preference order: the published URL is what the artifact *is* and what a
-  // person would share; the served URL is desktop's local HTTP view; the
-  // authenticated draft URL is org mode's route to an artifact nobody has
-  // published yet.
+  // The browser-tab control requires a URL; the OS-open action may instead open a file.
+  // Prefer published, then served, then authenticated draft URLs.
   const browserTabUrl = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
-  // host.openExternal is already right on both deployments: Electron hands the
-  // URL to the OS (a real browser, outside the app), web opens a new tab.
   const onOpenInBrowserTab = () => {
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
@@ -679,9 +547,7 @@ export function ArtifactViewer({
     });
   };
 
-  // Universal "save to disk" — type-agnostic stream with
-  // Content-Disposition: attachment, through the serve URL on desktop or the
-  // authenticated draft URL on an org deployment (ENG-2044).
+  // Download through the desktop serve URL or authenticated organization draft URL. ENG-2044.
   const onDownload = async () => {
     if (!(await downloadArtifactFile(artifact, { actionPath }))) {
       setErr(disabledReason || 'This artifact has no downloadable file yet.');
@@ -698,10 +564,8 @@ export function ArtifactViewer({
   };
 
   const onConfirmDelete = async () => {
-    // Deletion is centralized through cowork-server (not shell.trashItem)
-    // so the server's unpublish-before-delete guard always runs. The whole
-    // artifact folder is removed (not just the primary file) so metadata.json
-    // goes too and the artifact disappears from the listing.
+    // Delete through the server so unpublish-before-delete runs and the whole artifact folder,
+    // including metadata, is removed.
     setDeleteBusy(true);
     setErr('');
     try {
@@ -843,11 +707,10 @@ export function ArtifactViewer({
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
       )}
-      {/* A superseded suggestion is still decidable, so it is announced rather
-          than taking over the canvas the way a current one does. */}
-      {/* Any pending suggestion, not only a superseded one: the comparison
-          auto-opens at most once, so without this a decision closed without
-          being made would have no way back and would keep gating the file. */}
+      {/*
+ * Offer a way back to every pending decision: comparison auto-opens only once, and an undecided
+ * repair keeps gating the file.
+ */}
       {workspace.repairPending
         && !workspace.comparison
         && workspace.repair.id !== dismissedRepairId && (
@@ -892,8 +755,6 @@ export function ArtifactViewer({
           </button>
         </div>
       )}
-      {/* The create guard names its blocker, so the refusal carries the way
-          out rather than describing a state the user cannot change. */}
       {blockedBy && (
         <div className="artifact-repair-notice" role="status">
           <span>
@@ -951,7 +812,6 @@ export function ArtifactViewer({
         }}
       />
 
-      {/* Delete confirmation */}
       <ConfirmModal
         open={confirmDelete}
         title="Delete artifact?"
