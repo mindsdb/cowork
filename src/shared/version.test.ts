@@ -79,19 +79,12 @@ describe('compareUpdaterSemVer', () => {
   });
 });
 
-// ENG-850 regression guards. The whole auto-update decision rests on the
-// display CalVer mapping to an *order-preserving* SemVer: electron-updater with
-// allowDowngrade=false only moves N → N+1 when the target SemVer sorts strictly
-// above the running one, and reconcileDownloadedTarget declares an install
-// applied only when compareUpdaterSemVer(current, target) >= 0. A padding slip
-// or a boundary that fails to increment would either strand users on an old
-// shell or (worse) let a stale build read as "up to date". These pin the seams
-// unit tests are cheapest to defend and packaged smokes are most painful to hit.
+// CalVer-to-SemVer mapping must preserve chronology or upgrades stall and stale shells can appear
+// current.
 describe('calVerToUpdaterSemVer — zero-padding (the off-by-a-digit class)', () => {
   it('pads single-digit month and day into a fixed 6-digit calendar field', () => {
-    // The failure mode: "26" + "1" + "1" = "2611" (Nov 2026?!) instead of the
-    // intended "26" + "01" + "01" = "260101". Every single-digit component must
-    // widen to two digits or the calendar number stops being monotonic.
+    // Pad each single-digit calendar component; unpadded concatenation breaks chronological
+    // ordering.
     expect(calVerToUpdaterSemVer('2.26.1.1.1')).toBe('2.260101.1');
     expect(calVerToUpdaterSemVer('2.26.1.9.1')).toBe('2.260109.1');
     expect(calVerToUpdaterSemVer('2.26.9.1.1')).toBe('2.260901.1');
@@ -112,9 +105,7 @@ describe('calVerToUpdaterSemVer + compareUpdaterSemVer — end-to-end monotonici
   };
 
   it('is strictly increasing across a real release timeline (incl. month/year rollover)', () => {
-    // A chronologically ordered run of plausible display versions, including the
-    // two boundaries most likely to break naive concatenation: end-of-month
-    // (Jul 31 → Aug 1) and end-of-year (Dec 31 2026 → Jan 1 2027).
+    // Include month and year boundaries to expose naive calendar concatenation.
     const timeline = [
       '2.26.7.27.1',
       '2.26.7.27.2',   // same-day hotfix
@@ -136,9 +127,7 @@ describe('calVerToUpdaterSemVer + compareUpdaterSemVer — end-to-end monotonici
   });
 
   it('does not let the MAJOR component decide ordering (date is authoritative)', () => {
-    // Dec 31 2026 on MAJOR 2 must still sort below Jan 1 2027, even though a
-    // raw SemVer major compare would tie (both major 2). The calendar lives in
-    // the minor field precisely so this holds.
+    // Calendar order lives in the minor field and must advance even when SemVer majors tie.
     expect(compareUpdaterSemVer(map('2.27.1.1.1'), map('2.26.12.31.1'))).toBeGreaterThan(0);
   });
 });
@@ -164,18 +153,15 @@ describe('compareUpdaterSemVer — reconcile contract (install-applied decision)
   });
 
   it('sorts a legacy 3-part fallback below any CalVer-derived version', () => {
-    // '2.0.7' is the legacy package.json version. It is NOT display CalVer, but
-    // it IS a valid updater-SemVer shape, so compare returns a value (not null)
-    // and it lands below every mapped release. Good: a fallback build reads as
-    // older, so a real release still wins. Pinned so this stays intentional.
+    // Legacy 2.0.7 is valid updater SemVer and must sort below mapped releases so fallback builds
+    // can upgrade.
     expect(compareUpdaterSemVer('2.0.7', '2.260727.1')).toBeLessThan(0);
     expect(applied('2.0.7', '2.260727.1')).toBe(false);
   });
 
   it('returns null (never a false "applied") when a side is not updater-SemVer', () => {
-    // The trap: passing a 5-part DISPLAY CalVer straight into the comparer.
-    // reconcile must never see >= 0 from that — a null falls through to "not
-    // decided", which the caller treats as a recoverable failure, not success.
+    // Reject display CalVer passed directly as updater SemVer; an invalid comparison must not
+    // report an applied update.
     expect(compareUpdaterSemVer('2.26.7.27.1', '2.260727.1')).toBeNull();
     expect(compareUpdaterSemVer('2.260727', '2.260727.1')).toBeNull();
     expect(applied('2.26.7.27.1', '2.260727.1')).toBe(false);
@@ -195,7 +181,6 @@ describe('compareCalVer', () => {
     // Same date, different major → equal. A naive string/major compare would
     // always favour the major-2 component.
     expect(compareCalVer(parseCalVer('2.26.7.6.1')!, parseCalVer('0.26.7.6.1')!)).toBe(0);
-    // Later date wins regardless of major.
     expect(compareCalVer(parseCalVer('0.26.7.7.1')!, parseCalVer('2.26.7.6.1')!)).toBeGreaterThan(0);
     expect(compareCalVer(parseCalVer('2.26.7.6.1')!, parseCalVer('0.26.7.7.1')!)).toBeLessThan(0);
   });
@@ -304,7 +289,7 @@ describe('unifiedVersion', () => {
     const release = unifiedVersion(['2.26.8.2.1']); // Sun Aug 2 2026
     const hotfix = unifiedVersion(['2.26.8.3.1']); // Mon Aug 3 2026
     expect(release?.label).toBe('2026-W31');
-    expect(hotfix?.label).toBe('2026-W31'); // no jump to W32
+    expect(hotfix?.label).toBe('2026-W31');
     expect(release?.buildDate).toBe('Aug 2, 2026');
     expect(hotfix?.buildDate).toBe('Aug 3, 2026');
   });
@@ -315,10 +300,8 @@ describe('unifiedVersion', () => {
   });
 
   it('lets the ISO-year label diverge from the cycle/build year at the boundary', () => {
-    // Sun Jan 3 2027 build → Fri Jan 1 2027 freeze. That Friday's ISO week is
-    // 2026-W53 (its Thursday is Dec 31 2026), yet the cycle span and build date
-    // are firmly in 2027. The label carrying a different year than the visible
-    // dates is correct, not a bug — pin it so a future "fix" doesn't unpick it.
+    // Jan 1 2027 belongs to ISO week 2026-W53; a prior-year week label beside 2027 dates is
+    // intentional.
     const u = unifiedVersion(['2.27.1.3.1']);
     expect(u).toMatchObject({
       label: '2026-W53',

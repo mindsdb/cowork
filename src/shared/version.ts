@@ -1,18 +1,6 @@
-// Unified app-version helpers (ENG-213).
-//
-// Pure functions: take component version strings, return a parsed CalVer and
-// a single "content" label. Shared by the renderer (Settings) and the main
-// process (About menu) so both derive the *same* unified version.
-//
-// Every component versions on CalVer `MAJOR.YY.M.D.SEQ`, emitted in three
-// real shapes depending on whether the build sits on a tag:
-//   clean          2.26.7.6.1                    (tagged release)
-//   git-describe    2.26.7.6.1-95-g0472770        (App / UI, untagged)
-//   PEP 440         0.26.7.6.4.dev40+g82a1da968   (Server / anton, untagged)
-//
-// The MAJOR differs per component (app/anton = 2, server = 0), so ordering is
-// on the YY.M.D date only — never the raw string (a naive compare would always
-// pick the major-2 component).
+// Shared CalVer helpers for Settings and About. Components emit MAJOR.YY.M.D.SEQ as a tag,
+// git-describe suffix or PEP 440 dev suffix. Component majors differ, so cross-component ordering
+// ignores major and compares date, sequence, then commit distance.
 
 export interface CalVer {
   major: number;
@@ -68,15 +56,9 @@ export function compareCalVer(a: CalVer, b: CalVer): number {
 const UPDATER_CALVER_RE = /^v?(\d+)\.(\d{2})\.(\d{1,2})\.(\d{1,2})\.(\d+)(?:-(\d+)-g([0-9a-f]+))?$/i;
 
 /**
- * Convert the five-part display CalVer into the three numeric components
- * required by electron-updater/SemVer.
- *
- *   2.26.7.27.1           -> 2.260727.1
- *   2.26.7.27.1-3-gabc123 -> 2.260727.1-3.gabc123
- *
- * YY, month and day are packed into the SemVer minor component, preserving
- * chronological ordering; the same-day sequence becomes the patch. Untagged
- * builds are prereleases ordered by git distance and are isolated by feed.
+ * Pack CalVer into updater SemVer: 2.26.7.27.1 → 2.260727.1; git distance becomes a prerelease
+ * (2.260727.1-3.gabc123). Packing the date preserves chronological ordering; feeds isolate untagged
+ * builds.
  */
 export function calVerToUpdaterSemVer(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -150,9 +132,7 @@ export function isoWeekLabel(date: Date): string {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Day-gap between the newest and oldest parseable component. 0 when fewer
- *  than two parse. Surfaces the version skew the single week label would
- *  otherwise hide (a component stranded on older code). */
+/** Expose day skew hidden by a shared release-week label; zero when fewer than two versions parse. */
 export function versionSkewDays(raws: (string | null | undefined)[]): number {
   const times = raws
     .map(parseCalVer)
@@ -166,28 +146,10 @@ export function versionSkewDays(raws: (string | null | undefined)[]): number {
  *  release train cuts weekly, so a full release behind ≈ 7 days. */
 export const SKEW_WARN_DAYS = 7;
 
-// Day-of-week (getUTCDay numbering: Sun=0 … Sat=6) the weekly release train
-// freezes. `.github/workflows/staging-freeze.yml` runs `cron: 47 13 * * 5`, so
-// the freeze — and thus the boundary between one release and the next — lands
-// on Friday. The headline "release week" starts here rather than on Monday
-// (raw ISO) so a scheduled release AND every hotfix that ships before the next
-// freeze carry ONE label. Under a Mon–Sun ISO week a release cut late in the
-// week (Fri/Sat/Sun) would roll to a new week number on the very next hotfix
-// (Mon), which reads as a bigger jump than it is; anchoring to the freeze day
-// removes that. Trade-off: the number is no longer the raw ISO week of the
-// build date — it is the ISO week of the freeze that opened the cycle — so it
-// can differ from a calendar "week N" by up to the freeze offset. The exact
-// build date is surfaced alongside it (`buildDate`) so nothing is hidden.
-//
-// Second trade-off (day-granular boundary): the freeze runs Friday *13:47 UTC*,
-// but CalVer carries no time — `2.26.7.31.1` is just "Jul 31". We therefore
-// treat a build dated ON the freeze Friday as post-freeze (it gets the incoming
-// week). A hotfix cut Friday BEFORE 13:47 UTC belongs to the outgoing cycle yet
-// receives the incoming label — the same "jumped the week" symptom, narrowed
-// from a 3-day window (Fri/Sat/Sun release → Mon hotfix) to the Fri 00:00–13:47
-// UTC morning. Not closed: closing it needs a time component in CalVer or a
-// build-time freeze marker, both far more than this is worth. Documented so a
-// Friday label that looks off is understood, not re-debugged.
+// Release cycles start at Friday's freeze (.github/workflows/staging-freeze.yml, 13:47 UTC),
+// keeping hotfixes on one label until the next freeze. CalVer has no time, so a Friday hotfix
+// before 13:47 is unavoidably labeled as the incoming cycle. buildDate exposes the actual date;
+// resolving that ambiguity needs timestamp or freeze metadata.
 const RELEASE_FREEZE_DOW = 5; // Friday
 
 /** Start of the release week `date` belongs to: the most recent freeze day
@@ -204,9 +166,7 @@ export function formatDay(date: Date): string {
   return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
 }
 
-/** Human span of a release week from its `start` (Friday) through the following
- *  Thursday, e.g. "Jul 31 – Aug 6, 2026". The start year is dropped when both
- *  ends share it. */
+/** Friday–Thursday span, omitting the start year when both ends share it. */
 export function releaseWeekRange(start: Date): string {
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 6);
@@ -217,16 +177,11 @@ export function releaseWeekRange(start: Date): string {
 }
 
 export interface UnifiedVersion {
-  /** Release-week headline, e.g. "2026-W31" — the ISO week of the freeze
-   *  (Friday) that opened the newest component's release cycle, NOT the raw ISO
-   *  week of the build date. A hotfix that lands before the next freeze keeps
-   *  this label; the next freeze rolls it. See `releaseWeekStart`.
-   *
-   *  The year is the *ISO* year of that freeze week, which can trail the build's
-   *  calendar year by a few days around Jan 1: a build dated Jan 1 2027 sits in
-   *  the freeze week whose Thursday is Dec 31 2026, so it labels "2026-W53".
-   *  That is correct, not stale — `buildDate` and `cycleRange` show the real
-   *  January dates. Don't "fix" the year to match the build date. */
+  /**
+   * ISO week of the Friday freeze that opened the newest component's cycle. Its ISO year can differ
+   * from the build's calendar year (Jan 1 2027 → 2026-W53); do not replace it with the build year.
+   * buildDate and cycleRange show the actual dates.
+   */
   label: string;
   /** Exact build date of the newest component, e.g. "Aug 2, 2026". Shown beside
    *  the label so a within-cycle update stays visible even when `label` holds. */

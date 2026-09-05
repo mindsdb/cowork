@@ -173,9 +173,7 @@ describe('deriveUpdateBanner', () => {
       expect(s.phase).toBe('failed');
       expect(s.targetVersion).toBeUndefined();
 
-      // Now targetless: it must no longer hide OTA…
       expect(deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('ota-ready');
-      // …but the Retry affordance survives when nothing else is pending.
       expect(deriveUpdateBanner({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
     });
   });
