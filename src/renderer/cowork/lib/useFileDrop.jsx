@@ -1,23 +1,7 @@
-/* useFileDrop — drag OS files onto a zone and get back real File objects.
-   Mirrors the dashed-accent drag affordance used by NewProjectModal, but
-   factored so ChatView (conversation attachments) and ProjectDetail
-   (project files) can both wrap their main container with a dropzone.
-
-   Usage:
-     const { isDragging, dropHandlers } = useFileDrop({ onFiles, disabled });
-     <div style={{ position: 'relative' }} {...dropHandlers}>
-       …content…
-       <FileDropOverlay active={isDragging} label="Drop to add" />
-     </div>
-
-   Notes:
-   - A drag-counter ref (not a bare boolean) keeps `isDragging` stable while
-     the cursor moves between child elements — dragenter/dragleave fire per
-     element, so a naive boolean flickers. Counter>0 ⇒ dragging.
-   - Only reacts when the drag actually carries files (`types` includes
-     'Files'); ignores text/element drags.
-   - Skips directories (webkitGetAsEntry().isDirectory) and dedupes by name
-     within a single drop. */
+/*
+ * Count nested dragenter/dragleave events to avoid flicker when crossing child elements.
+ * Handle file drags only; skip directories and deduplicate names within each drop.
+ */
 
 import { memo, useCallback, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
@@ -67,14 +51,8 @@ function extractFiles(e) {
   return out;
 }
 
-// Pull real File objects out of a paste event's clipboard. Sibling of
-// extractFiles (drops): reads ClipboardData rather than DataTransfer and
-// drops the directory check — the clipboard never carries entries. Lets
-// the composer treat a pasted image/gif the same as a drag-drop or a
-// file-picker pick. Dedupe by name+size because pasted screenshots all
-// share a generic name ("image.png"), so a name-only key would collapse
-// two distinct images while still needing to fold an item that surfaces
-// via both items[] and files[].
+// Clipboard screenshots share generic names: dedupe by name+size so different images survive while
+// items/files duplicates collapse.
 export function extractClipboardFiles(clipboardData) {
   if (!clipboardData) return [];
   const out = [];
@@ -149,13 +127,10 @@ export function useFileDrop({ onFiles, disabled = false } = {}) {
   };
 }
 
-/* Animated overlay shown while a file drag is over the zone. Absolutely
-   positioned to cover the (position:relative) zone root. Fade + slight
-   scale-in via CSS transition; theme-aware via the same CSS vars the rest
-   of the app uses. `label` is the call-to-action; pass `busy` to swap in an
-   "Uploading…" state, and `error` for a transient failure message.
-   memo: hosts render this inside frequently-updating JSX (Composer re-renders
-   per keystroke), and all props are primitives — skip when nothing changed. */
+/*
+ * Position within a relative zone root. Memoize because hosts such as Composer rerender per
+ * keystroke while overlay props stay stable.
+ */
 export const FileDropOverlay = memo(function FileDropOverlay({ active, label, busy = false, error = '' }) {
   const visible = active || busy || !!error;
   const text = error || (busy ? 'Uploading…' : label);

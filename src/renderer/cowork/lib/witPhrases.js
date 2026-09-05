@@ -58,12 +58,7 @@ function hash(str) {
   return Math.abs(h);
 }
 
-/**
- * Pick a phrase deterministically from a bank, given a key + tick.
- * The bank cycles in order starting at hash(key) % length, so
- * incrementing tick walks forward without ever picking the same
- * phrase twice in a row.
- */
+/** Start at a deterministic key-derived offset; increasing tick cycles through the bank in order. */
 export function pickPhrase(bank, key, tick = 0) {
   const list = PHRASES[bank] || [];
   if (list.length === 0) return '';

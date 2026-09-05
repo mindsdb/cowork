@@ -1,17 +1,5 @@
-// Shared skills store — one source of truth for the skill list across the
-// Skills page and the composer's "/" menu.
-//
-// The app has no React Query / global store; skills were page-local useState
-// (SkillsView). That makes cross-surface sync impossible: saving a skill from
-// a chat card, or deleting one on the Skills page, wouldn't update the "/"
-// menu without a reload. This module is a tiny external store (a module-level
-// cache + a subscriber set surfaced through React's useSyncExternalStore) so
-// every consumer re-renders on any mutation — no reload, no prop-drilling
-// through App.jsx.
-//
-// ponytail: deliberately ~50 lines instead of pulling in a query/state library
-// for a single list. If skills ever need pagination/optimistic-cache merging,
-// revisit React Query.
+// Share one subscribed skills list across chat cards, the Skills page, and the composer's slash
+// menu.
 
 import { useSyncExternalStore } from 'react';
 
@@ -79,15 +67,10 @@ export async function reloadSkills({ afterCurrent = false } = {}) {
 
 function _subscribe(notify) {
   _subscribers.add(notify);
-  /* Lazily load on first subscriber. Deferred so the fetch starts after the
-     current render cycle — firing reloadSkills() synchronously here (inside
-     useSyncExternalStore's subscribe call) can trigger a React "update during
-     render" warning if _emit() resolves before the tree finishes mounting.
-     A failed load leaves an empty list behind, so retry on 'error' as well:
-     without it one offline blip pins every consumer to an unverified
-     catalogue until someone opens the Skills page, which reloads on mount.
-     At most one retry is in flight, so a persistent outage costs one request
-     per failed request, not one per subscriber. */
+  /*
+   * Defer loading past subscription setup to avoid React updates during render.
+   * Retry error state as well as never-loaded state; _inFlight prevents a request per subscriber.
+   */
   if ((_skills === null || _catalogueStatus === 'error') && !_inFlight) {
     queueMicrotask(reloadSkills);
   }
