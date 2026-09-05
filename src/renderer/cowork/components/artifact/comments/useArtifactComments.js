@@ -1,11 +1,5 @@
-// Shared artifact-comments state: initial load + realtime SSE (reconnect with
-// backoff + full refetch, terminal 401/403 stops), and create / reply / status /
-// edit / delete mutations.
-//
-// Lifted out of CommentsPanel so a single instance can back BOTH the sidebar
-// list and the on-artifact marker layer bridge (ArtifactCommentLayer) — one
-// stream, one source of truth. Talks only to cowork-server, which attaches the
-// user's MindsHub creds and proxies to the inference backend.
+// Use one instance for inbox and on-artifact markers so they share state and one SSE stream.
+// Only cowork-server attaches MindsHub credentials to upstream requests.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -41,15 +35,12 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
     setThreads((prev) => upsertThread(prev, event));
   }, []);
 
-  // Initial load, then subscribe from the max updated_at (closes the gap).
-  // On any drop we do a FULL refetch before resubscribing (decision A): deletes
-  // that happened while offline reconcile by absence in the fresh set. A terminal
-  // 401/403 stops for good (session expired) instead of hammering the server.
+  // Subscribe from the latest updated_at after loading. Refetch fully after disconnect to catch
+  // deletions
+  // by absence; terminal 401/403 stops reconnection.
   useEffect(() => {
-    // The hook lives at the viewer level (not the short-lived panel), so a
-    // change of artifact (userDir/reportId) or disabling must drop the previous
-    // artifact's threads/error/expired/viewer — otherwise stale threads would
-    // draw markers on, and a stale banner would show over, the new artifact.
+    // Clear all comment state when changing/disabling artifacts so old markers and errors cannot
+    // appear on the next preview.
     setThreads([]);
     setError('');
     setExpired(false);

@@ -3,13 +3,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useArtifactCommentLayer } from './useArtifactCommentLayer';
 
-// A harness, not a mock: a srcdoc-loaded iframe's contentWindow is exactly
-// what the real draft preview hands this hook now that ArtifactViewer's
-// draft-HTML branch renders the fetched document via `srcdoc` instead of
-// navigating `src` (docs/artifact-collaboration-workflow/
-// task-org-draft-preview-401.md). The bridge's trust check keys on
-// `ev.source === iframe.contentWindow`, never on origin — an opaque srcdoc
-// origin must not change that.
+// Use a real srcdoc iframe contentWindow: trust is based on event source identity, not the
+// document's opaque origin.
 function Harness({ threads }) {
   const iframeRef = useRef(null);
   useArtifactCommentLayer(iframeRef, { threads, viewer: { id: 'u1' }, enabled: true });

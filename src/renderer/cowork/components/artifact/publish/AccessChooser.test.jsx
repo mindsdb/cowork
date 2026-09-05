@@ -74,10 +74,7 @@ describe('ACCESS_LABELS', () => {
   });
 });
 
-// "Only me" and "share with a list" were one radio, told apart only by whether
-// the textarea underneath happened to be empty — so the choice a person had
-// made was invisible in the choice they had selected. They are two options now,
-// which means a UI mode that has to survive the round trip to the wire's three.
+// Keep Only me and explicit recipient-list modes distinct through their shared wire representation.
 
 describe('owner-only as its own selection', () => {
   it('collapses to the wire shape, carrying the flag that keeps it private', () => {

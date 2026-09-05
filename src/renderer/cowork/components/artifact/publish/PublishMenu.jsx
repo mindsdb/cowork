@@ -1,20 +1,3 @@
-// PublishMenu — the self-contained Publish / Published control for the
-// artifact viewer top bar.
-//
-// A Base UI Popover anchored to the trigger, driving the full publish
-// state machine off `usePublish`:
-//
-//   not published → "Share to the Web" (access chooser + Share)
-//   publishing    → button shows a spinner
-//   published     → URL + current access + Unpublish + Update button, or an
-//                    "Up to date" status when there is nothing to publish
-//     ├─ Change          → edit access in place (no unpublish→publish)
-//     └─ Change password → focused password change (password mode only)
-//
-// Self-hosting the panel here means every entry point that renders the
-// viewer (Artifacts grid, chat bubble, working-folder rail) gets the same
-// rich flow — previously only the grid had it.
-
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
@@ -34,8 +17,7 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 
 function draftFromController(pub) {
-  // Same derivation as accessDraftFromArtifact: the controller carries the
-  // server's three modes, and the picker offers "Only you" as its own.
+  // The server has three access modes; the UI adds an explicit owner-only choice.
   const serverMode = pub.accessMode || 'public';
   return {
     mode: serverMode === 'restricted' && isOwnerOnlySelection(pub) ? 'ownerOnly' : serverMode,
@@ -45,12 +27,8 @@ function draftFromController(pub) {
   };
 }
 
-// Has the editable draft diverged from what's currently live? Decides whether
-// the change-access view shows the "Update" button (changes to publish) or the
-// "Up to date" status (nothing to publish).
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
-  // Nothing else to compare: the mode IS the whole selection.
   if (draft.mode === 'ownerOnly') return false;
   if (draft.mode === 'password') return (draft.password || '') !== (current.password || '');
   if (draft.mode === 'restricted') {
@@ -61,12 +39,9 @@ function draftDiffers(draft, current) {
   return false;
 }
 
-// ── Small shared bits ───────────────────────────────────────────────────
 
 function PanelHeader({ title }) {
-  // .s-h3 already sets color:var(--ink); it does not set padding/border, so
-  // those move safely to utilities. Directional border zeroes its off-axis
-  // sides (preflight-off box-paint footgun).
+  // Zero the unused border sides because Tailwind preflight is off.
   return (
     <div className="s-h3 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">{title}</div>
   );
@@ -81,17 +56,14 @@ function SectionLabel({ children, action }) {
   );
 }
 
-// Teal text link used for Change / Dismiss / Change password.
 function LinkButton({ onClick, children }) {
   return (
     <button type="button" onClick={onClick} className="bg-transparent border-0 cursor-pointer p-0 font-body text-sm font-medium text-accent">{children}</button>
   );
 }
 
-// Footer action buttons. `primary` = accent fill, otherwise neutral.
-// `title` here is only ever a disabled-state hint (the "Loading current
-// access…" guard). A hover/focus tooltip can't fire on a disabled control, so
-// this stays as a native `title=` rather than ui/Tooltip.
+// Keep disabled-state hints as native titles because Tooltip cannot receive hover/focus from
+// disabled controls.
 function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, children }) {
   return (
     <Button variant={primary ? 'primary' : 'default'} onClick={onClick} disabled={disabled} title={title}>
@@ -101,10 +73,6 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
   );
 }
 
-// Calm, non-interactive "synced" status shown in the footer when there is
-// nothing to publish — deliberately not styled as a control, so status reads
-// as status and the action button only appears when there is something to do
-// (ENG-500).
 function UpToDateTag() {
   return (
     <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
@@ -135,7 +103,6 @@ function UrlField({ url }) {
   );
 }
 
-// Read-only "current access" card (summary view).
 function AccessSummaryCard({ mode, ownerOnly }) {
   // A restricted publish with no recipients and no org grants access to the
   // owner alone — saying "people you list" there would be a lie (ENG-1769).
@@ -159,7 +126,6 @@ function ErrorRow({ message }) {
   return <Alert variant="danger" className="mx-4 mb-3">{message}</Alert>;
 }
 
-// ── Version history ───────────────────────────────────────────────────────
 
 function formatWhen(iso) {
   if (!iso) return '';
@@ -213,7 +179,6 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
   );
 }
 
-// ── Main control ─────────────────────────────────────────────────────────
 
 export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
   const pub = controller;
@@ -225,7 +190,6 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const [open, setOpen] = useState(false);
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
-  // Editable access draft for the publish + change-access flows.
   const [draft, setDraft] = useState(() => draftFromController(pub));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
@@ -233,8 +197,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const [pwd, setPwd] = useState({ value: '', reveal: false });
   const [activatingMd5, setActivatingMd5] = useState('');
 
-  // Re-seed the panel each time it opens (and whenever published-state
-  // flips underneath it) so it never shows a stale draft.
+  // Re-seed when opening or published state changes so the panel does not retain stale edits.
   useEffect(() => {
     if (!open) return;
     pub.setError('');
@@ -243,7 +206,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (isPublished) {
       setView('summary');
       setDraft(draftFromController(pub));
-      pub.loadVersions();  // lazy-load history for the rollback section
+      pub.loadVersions();
     } else {
       setView('publish');
       setDraft({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
@@ -251,11 +214,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isPublished]);
 
-  // Late-arriving authoritative access (ENG-931): when the panel is opened from
-  // a source whose artifact object lacked the real list (e.g. a chat bubble),
-  // the draft is seeded empty and the true list arrives a moment later via
-  // usePublish's open refresh(). Re-seed the Change-access draft when that
-  // loaded access changes — but never over edits the user already started.
+  // Adopt late-loaded access only before the user edits the draft; chat stubs may initially lack
+  // the real audience.
   useEffect(() => {
     if (!open || view !== 'access' || draftDirty) return;
     setDraft(draftFromController(pub));
@@ -305,14 +265,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
 
   return (
     <>
-      {/* Outside-press dismiss. Base UI's own outside-click detection listens
-          on the parent document, but the artifact preview is an <iframe>
-          (ArtifactViewer) — clicks inside it fire in the iframe's own
-          document and never reach a parent-document listener, so almost
-          anywhere the user clicks fails to close this popover (mirrors the
-          drag-region gap documented in ui/Menu.jsx's anchored-mode overlay).
-          A transparent layer positioned just under the popup intercepts
-          those presses directly instead of relying on bubbling. */}
+      {/*
+ * Intercept outside presses with a transparent layer: clicks inside the preview iframe cannot
+ * bubble to
+ * Base UI’s parent-document listener.
+ */}
       {open && createPortal(
         <div
           data-testid="publish-menu-outside-dismiss"
@@ -327,10 +284,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           title={disabled ? (disabledReason || undefined) : undefined}
           style={triggerStyle}
         >
-          {/* "Shared" is a claim about other people having access. An
-              owner-only artifact is published — on Cloud everything is, from
-              birth — but nobody else can open it, so the button that offers to
-              change that still reads "Share". */}
+          {/* Published owner-only artifacts are not shared with others, so their action still reads Share. */}
           {isSharedWithSomeone
             ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(13)}</span></>)
             : 'Share'}
@@ -339,13 +293,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
             <Popover.Popup style={{
               width: 'min(380px, 92vw)',
-              // No border — floats on --sh-popup alone (ENG-790), same
-              // treatment as ui/Menu.jsx's dropdown popups.
               background: 'var(--surface)', borderRadius: 14,
               boxShadow: 'var(--sh-popup)', overflow: 'hidden',
               fontFamily: FONT_BODY, outline: 'none',
             }}>
-              {/* NOT PUBLISHED — Share to the Web */}
               {!isPublished && (
                 <>
                   <PanelHeader title="Share to the Web" />
@@ -364,7 +315,6 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 </>
               )}
   
-              {/* PUBLISHED */}
               {isPublished && (
                 <>
                   <PanelHeader title="Shared" />
@@ -454,11 +404,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         Stop sharing
                       </FooterButton>
                     ) : (
-                      // `DELETE /publish` is local-only, and there is nothing to
-                      // stop on Cloud: an artifact is autopublished from birth.
-                      // Narrowing the audience back to "Only you" is what
-                      // unsharing means there, and the access view already does
-                      // it — so an empty spacer keeps the footer's layout.
+                      // Cloud artifacts stay autopublished; unshare by narrowing access to Only
+                      // you, not the local-only DELETE /publish route.
                       <span />
                     )}
   

@@ -47,10 +47,7 @@ describe('InboxCard collaboration actions', () => {
     expect(screen.queryByRole('button', { name: 'Mark as resolved' })).not.toBeInTheDocument();
   });
 
-  // Deleting your own comment is authorized by authorship, not by role — the
-  // comments service answers 403 "not author", never "not owner". Gating it
-  // behind `canResolve` also cost the owner their own Delete whenever the
-  // service returns no capabilities at all (inference before #465).
+  // Delete is authorized by authorship, independent of canResolve and absent legacy capabilities.
   it('keeps Delete for the comment author without resolve rights', () => {
     render(
       <InboxCard
@@ -94,8 +91,7 @@ describe('InboxCard agent action feedback', () => {
   );
 
   it('says the request is starting while one is in flight', () => {
-    // Clicking used to leave the button unchanged, so nothing on screen said
-    // the click had registered until the turn card appeared in chat.
+    // Show progress before the turn card appears so the click is visibly acknowledged.
     render_({ agentBusy: true });
 
     const button = screen.getByRole('button', { name: /Starting/ });

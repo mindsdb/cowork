@@ -1,17 +1,5 @@
-// AccessChooser — the "Who can access your app" picker.
-//
-// One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the
-// Public / Password / Restricted logic — and its validation — lives in
-// exactly one place. Built on Base UI's RadioGroup/Radio for real
-// radiogroup semantics + arrow-key navigation; skinned inline with the
-// app's `--accent` / `--surface` / `--line` tokens so it stays
-// theme-aware without a bespoke stylesheet.
-//
-// Controlled via a single `value` draft + `onChange`:
-//   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
-//   <AccessChooser value={draft} onChange={setDraft} />
-//   // on confirm: publish(buildAccessPayload(draft))
+// Controlled by value/onChange. Initialize with accessDraftFromArtifact; submit with
+// buildAccessPayload.
 
 import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
@@ -20,20 +8,12 @@ import { Checkbox, Textarea, Tooltip } from '../../ui';
 
 const FONT_MONO = "var(--font-mono)";
 
-// Shared class strings for the bare-input shell (a bordered row wrapping an
-// unstyled <input>), so the password field and any future inputs stay in sync.
 const INPUT_SHELL = 'flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]';
 const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0';
 
-// ── Access-draft helpers (the contract between UI and the publish API) ──
 
-// Seed a draft from an artifact's current (owner-side) access state, so
-// re-opening the chooser pre-selects what's already live.
-// `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
-// and "only me" is `restricted` with nothing selected. Deriving it here — and
-// collapsing it back in `buildAccessPayload` — is what lets the picker offer
-// "Only you" and "Specific people" as two visibly different choices instead of
-// one option whose meaning depends on whether a textarea happens to be empty.
+// ownerOnly is UI-only; map it to restricted with an empty audience on the wire, and derive it on
+// reads.
 export function accessDraftFromArtifact(artifact) {
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
   const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
@@ -55,8 +35,6 @@ export function isOwnerOnlySelection(artifact) {
   return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed;
 }
 
-// Loose-but-practical email shape check. Splits on whitespace, commas and
-// semicolons; trims, lowercases, de-dupes; partitions valid vs invalid.
 const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function parseEmailList(raw) {
   const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -71,31 +49,24 @@ export function parseEmailList(raw) {
   return { valid, invalid };
 }
 
-// Whether the draft can be submitted: public always, password needs a
-// non-empty secret, restricted needs input that isn't malformed. An empty
-// restricted selection is an explicit owner-only publish (ENG-1769); a
-// malformed address blocks submission rather than being dropped, which would
-// silently publish to the owner alone.
+// Validate each access mode without silently discarding malformed addresses, which could change the
+// intended audience.
 export function isAccessDraftValid(draft) {
   if (!draft) return false;
   if (draft.mode === 'public') return true;
-  // Nothing to fill in — it is a complete selection on its own.
   if (draft.mode === 'ownerOnly') return true;
   if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
   if (draft.mode === 'restricted') {
     const { valid, invalid } = parseEmailList(draft.emailsText);
     if (invalid.length) return false;
-    // An empty "Specific people" used to be how you said "only me". It is a
-    // separate option now, so an empty list here is an unfinished selection
-    // rather than a silent private publish — block it instead of quietly
-    // doing something other than what the label says.
+    // An empty Specific people selection is incomplete; Only you is now an explicit separate
+    // option.
     return valid.length > 0 || !!draft.orgAllowed;
   }
   return false;
 }
 
-// Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
-// is derived, never stored on the draft: the textarea is the source of truth.
+// Translate the UI draft to the publish API access payload.
 export function buildAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
   // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
@@ -117,11 +88,8 @@ export function buildAccessPayload(draft) {
   return { mode: 'public' };
 }
 
-// ── Presentation ───────────────────────────────────────────────────────
 
-// Single source of truth for the access option copy. PublishMenu imports this
-// for its summary card, so the wording can't drift between the picker and the
-// "currently published as" view.
+// Share access labels with PublishMenu’s summary so wording stays consistent.
 export const ACCESS_LABELS = {
   public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
   password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
@@ -154,8 +122,6 @@ function OptionCard({ value, active, icon, title, desc }) {
         <span className="block font-body font-semibold text-[13px] text-ink">{title}</span>
         <span className="block font-body text-[11.5px] text-ink-3 mt-px">{desc}</span>
       </span>
-      {/* Radio dot — driven by the controlled `active` so its border color
-          stays a plain inline style (no data-attribute stylesheet). */}
       <span
         className="shrink-0 w-[16px] h-[16px] rounded-full inline-grid place-items-center"
         style={{
@@ -169,8 +135,6 @@ function OptionCard({ value, active, icon, title, desc }) {
   );
 }
 
-// `modes` lets a caller restrict the offered set (e.g. ['public','password']);
-// defaults to all three. `value`/`onChange` are the controlled draft.
 export function AccessChooser({
   value,
   onChange,
@@ -191,10 +155,6 @@ export function AccessChooser({
         className="flex flex-col gap-2"
         aria-label="Who can access your app"
       >
-        {/* "Only you" is its own option rather than an empty "Specific people".
-            The two used to be the same radio, distinguished only by whether the
-            textarea below it happened to be blank — so the choice a person had
-            made was not visible in the choice they had selected. */}
         {modes.includes('ownerOnly') && (
           <OptionCard value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
             title={ACCESS_LABELS.ownerOnly.title} desc={ACCESS_LABELS.ownerOnly.desc} />
@@ -254,8 +214,6 @@ export function AccessChooser({
             {invalidEmails.length
               ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
               : (parsedEmails.length === 0 && !draft.orgAllowed
-                // Not "only you will have access": that is now a choice of its
-                // own, so arriving here means the selection is simply unfinished.
                 ? 'Add someone, or choose “Only you”'
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.

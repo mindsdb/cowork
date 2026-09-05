@@ -1,10 +1,4 @@
-// Pinned composer at the bottom of the comments inbox — creates UNANCHORED
-// (general) threads: comments not attached to any element on the page
-// (selector: null). Anchored comments are still created on the artifact via
-// comment mode; this is the only UI path that posts without a selector.
-//
-// Enter posts, Shift+Enter inserts a newline. On failure the draft stays in
-// the field (the hook surfaces the error banner) so the user can retry.
+// Posts whole-artifact comments with selector: null. Retain the draft after failure for retry.
 
 import { useCallback, useRef, useState } from 'react';
 import { ArrowUpIcon } from './icons';
