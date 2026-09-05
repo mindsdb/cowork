@@ -3,27 +3,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-// ENG-1632 behavior lock for the default-mode save path (withResolvedRoles).
-//
-// The old behavior wrote the raw recommended pair whenever a role's stored
-// provider differed from the default-mode provider. Because the server
-// serializes a pydantic default (anthropic) for a role with NO stored row —
-// and sign-in never wrote router_provider — that guard was permanently true,
-// so every default-mode save materialized coding_model='haiku' /
-// router_model='kimi' as explicit rows. The write survived the save diff
-// exactly for wallet-locked accounts (funded accounts' fetched values already
-// matched the pair), pinning unaffordable models on precisely the users who
-// could not pay for them: the completion verifier then 402'd every turn,
-// surfaced as a spurious "internal error".
-//
-// Locked now: a default-mode save (1) repoints the providers and (2)
-// TOMBSTONES all three role models — planning included (null → DELETE, so the
-// server's enabled-aware default governs). No model value is ever invented
-// client-side in default mode: a written row is indistinguishable from a real
-// user pick, so even an "affordable" seed would freeze (a topped-up account
-// would stay stranded on the free model — ENG-597's spring-back). The picker
-// stays honest because GET /settings returns the server-computed value for
-// unset fields (pnewsam review on #663).
+// Default-mode saves repoint providers and tombstone all three role models, including planning, so
+// the server's enabled-aware defaults remain dynamic.
+// Never seed a model: explicit rows are indistinguishable from user choices and can pin an
+// unaffordable model or prevent switching back after a top-up.
 
 const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
@@ -143,9 +126,8 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
       modelEnabled: { mindshub_air: true, sonnet: true, haiku: true, kimi: true },
     };
     const saved = await saveAndCapture(funded);
-    // Funded or locked makes no difference: default mode writes no models.
-    // The server's enabled-aware default resolves sonnet for a funded wallet
-    // and the free model for a locked one — and keeps adapting (spring-back).
+    // Default mode writes no models for funded or locked wallets; server defaults must keep
+    // adapting.
     expect(saved.planningModel).toBeNull();
     expect(saved.codingModel).toBeNull();
     expect(saved.routerModel).toBeNull();
@@ -165,10 +147,8 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
     expect(saved.routerModel).toBeUndefined();
   });
 
-  // A local endpoint is a deliberate choice, and a MindsHub card is keyed for
-  // everyone who signed in. Repointing on "differs from the default-mode
-  // provider" alone moved a LAN user onto the hosted gateway on any save --
-  // including one that only changed a theme dot.
+  // A preexisting MindsHub card must not cause an unrelated save to replace a deliberately chosen
+  // local endpoint.
   const lanSettings = () => ({
     ...lockedSettings(),
     planningProvider: 'openai-compatible',
@@ -202,11 +182,8 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
     expect(saved.planningModel).toBeNull();
   });
 
-  // Start from DB ROWS, not a hand-built providers array. The traced user's
-  // LM Studio connection save failed, so providers_json was never persisted
-  // while the provider, base URL and model landed anyway -- the card the
-  // usability check looks for does not exist. Seeding `providers` directly
-  // skips the backfill that has to reconstruct it.
+  // Start from DB rows without providers_json so the test exercises card reconstruction after a
+  // partial connection save.
   const lanRows = (providersJson) => [
     { key: 'planning_provider', value: 'openai_compatible' },
     { key: 'coding_provider', value: 'openai_compatible' },

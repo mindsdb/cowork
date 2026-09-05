@@ -8,10 +8,8 @@ describe('patchSavedJson', () => {
     expect(JSON.parse(next)).toEqual({ greeting: 'Hi', navTitle: 'Acme', harness: 'anton' });
   });
 
-  // The core reason this exists: an Appearance auto-save must never mark a
-  // genuinely-unsaved Provider/Model edit (tracked in the same snapshot via
-  // the shared page-wide Save button) as saved just because it happened to
-  // be present in the same settings object at the same time.
+  // Appearance autosave must not mark unrelated provider/model drafts in the shared snapshot as
+  // saved.
   it('does not clear an unrelated field that has diverged from the snapshot (a pending manual edit)', () => {
     const prev = JSON.stringify({ navTitle: '', anthropicApiKey: 'old-key' });
     const next = patchSavedJson(prev, 'navTitle', 'Acme');

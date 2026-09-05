@@ -1,13 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
-// ENG-1206 regression: signing out must never leave the confirm modal stuck on
-// "Signing out…". On Electron SUCCESS the main process drives the reload that
-// unmounts the modal, so the renderer must NOT also reload (the two race). But
-// if host.logout() REJECTS, main threw before it could drive that reload — and
-// since the main handler clears tokens + the server DB early, the user IS
-// signed out, so the renderer reloads itself to re-route to onboarding rather
-// than trapping the spinner or showing a misleading "try again".
+// Main drives successful Electron logout reloads. If logout rejects after clearing credentials, the
+// renderer reloads to avoid trapping the signed-out user in the modal.
 
 // A decodable JWT so the Account section renders the signed-in card (and thus
 // the "Sign out" button) rather than the sign-in card.
@@ -74,9 +69,7 @@ function renderAccount() {
 // Open the "Sign out of Cowork?" confirm dialog and return it.
 async function openConfirm() {
   renderAccount();
-  // The signed-in card (and its Sign out button) only render once the token
-  // resolves into accountUser. Before the modal opens this is the only
-  // "Sign out" button on screen.
+  // Wait for the token-derived account card before opening its Sign out modal.
   const cardButton = await screen.findByRole('button', { name: 'Sign out' });
   fireEvent.click(cardButton);
   // ConfirmModal renders via Base UI's Dialog (role="dialog"), portaled and
@@ -108,9 +101,7 @@ describe('SettingsView sign-out (ENG-1206)', () => {
     const dialog = await openConfirm();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
 
-    // Rejection ⇒ main never drove its reload, but the user is signed out, so
-    // the renderer reloads itself (unmounting the modal in production). It must
-    // NOT rotate the analytics identity on a failed attempt (ENG-537).
+    // A rejected logout reloads the renderer but must not rotate analytics identity.
     await waitFor(() => expect(reloadSpy).toHaveBeenCalledTimes(1));
     expect(spies.logout).toHaveBeenCalledTimes(1);
     expect(spies.resetDeviceIdentity).not.toHaveBeenCalled();
@@ -122,18 +113,14 @@ describe('SettingsView sign-out (ENG-1206)', () => {
     const dialog = await openConfirm();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
 
-    // On Electron SUCCESS the renderer must NOT reload itself (that races the
-    // main-driven webContents.reload() and re-sticks the modal). It DOES
-    // rotate the device identity once.
+    // Successful Electron logout rotates identity once; renderer reload would race main's reload.
     await waitFor(() => expect(spies.resetDeviceIdentity).toHaveBeenCalledTimes(1));
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   /*
-   * This assertion used to read the other way round: it pinned that
-   * the modal STAYS on "Signing out…", which encoded the trap as expected
-   * behavior. A tester whose sidecar restart ran long sat in front of that
-   * spinner for minutes with Escape, Cancel and the backdrop all disabled.
+   * Release the dismissal lock so a slow sidecar restart cannot trap the user while sign-out
+   * continues.
    */
   it('lets Escape dismiss the dialog once the lock window passes, with the sign-out still running', async () => {
     spies.logout.mockReturnValue(new Promise(() => {}));

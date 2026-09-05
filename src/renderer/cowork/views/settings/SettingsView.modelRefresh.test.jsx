@@ -3,10 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-// Opening the model dropdown re-checks the wallet, so a top-up made in an external
-// tab unlocks its models without an app restart. The freshness window that keeps a
-// re-open from re-paying the round trip must not swallow the FIRST open of the
-// session, which is the open most likely to be looking at stale state.
+// The first dropdown open must recheck the wallet despite the freshness window, so external top-ups
+// appear without restart.
 
 const spies = vi.hoisted(() => ({
   testProviders: vi.fn(async () => ({ providerStatus: { 'minds-cloud': 'ok' }, providerStatusDetails: {} })),
