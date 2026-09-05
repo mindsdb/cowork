@@ -10,9 +10,10 @@ export default function SharedResourceAttribution({ resource, className = '' }) 
     ? modifiedDate.toLocaleString()
     : null;
 
-  /* A resource can carry any subset of these three parts, so each separator
-     belongs to the part that follows it and only renders once something
-     precedes it. It stays inside that part so a wrap never strands it. */
+  /*
+   * Keep separators with the following metadata part so wrapping cannot strand them; omit
+   * separators before the first part.
+   */
   const hasCreated = Boolean(createdBy);
   const hasModifiedBy = Boolean(lastModifiedBy);
 

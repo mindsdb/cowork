@@ -2,13 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { ProviderIcon } from './ProviderIcon';
 
-// happy-dom (this project's renderer test environment) doesn't implement
-// real SVG layout, so SVGGraphicsElement.getBBox() isn't available here —
-// ProviderIcon feature-detects that and falls back to each mark's nominal
-// viewBox. These tests exercise that fallback path; the real Electron
-// (Chromium) runtime additionally gets the true-ink-bbox measurement these
-// tests can't observe directly, but the sizing/no-manual-nudge contract is
-// identical either way.
+// happy-dom lacks SVG getBBox, so these exercise nominal-viewBox fallback sizing.
+// Real Electron ink-bound measurement needs browser verification.
 
 function svgOf(container) {
   return container.querySelector('svg');

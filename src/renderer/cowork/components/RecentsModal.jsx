@@ -1,11 +1,3 @@
-// RecentsModal — opened from the sidebar's "Show more" row.
-// Surfaces up to 100 of the most recent tasks with their project +
-// last-active timestamp, plus a hover-only trash to delete.
-//
-// The sidebar's inline list is intentionally short (sized to fit the
-// window height) — this modal is the escape hatch when the user
-// needs to scroll back further than the inline list can show.
-
 import { useEffect, useRef, useState } from 'react';
 import { projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
@@ -18,10 +10,6 @@ const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
 function Row({ task, onSelect, onDelete }) {
   const [hover, setHover] = useState(false);
   const [trashHover, setTrashHover] = useState(false);
-  // The right edge holds either the time-ago OR the trash glyph —
-  // never both. Same Y, same X, swapped on hover. We reserve no
-  // dedicated trash column so the time stretches all the way to
-  // the end of the row when idle.
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -79,10 +67,8 @@ function Row({ task, onSelect, onDelete }) {
   );
 }
 
-// Group tasks by `projectName`. Returned groups are sorted by their
-// most-recent task's updatedAt (so the group whose work is freshest
-// floats to the top); within each group, tasks keep the input order
-// (callers already sort by recency before passing them in).
+// Order project groups by their newest task; preserve input task order within each group (callers
+// sort by recency).
 function groupByProject(tasks) {
   const ts = (raw) => {
     if (raw == null) return 0;
@@ -112,7 +98,6 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
   useEffect(() => {
     if (!open) return;
     setQuery('');
-    // Focus the search input on open — frequent flow is "open ⌘K-ish, type a fragment, hit return".
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -135,11 +120,6 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
     : tasks;
 
   return (
-    // The "modal" is a full-width drop-down panel that runs flush
-    // against the left+right edges of the window. Centering it would
-    // require borderRadius for legibility; here we want it to read as
-    // a slab pinned in place — corners would only show if the panel
-    // were inset, which it isn't.
     <div
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{
@@ -154,10 +134,6 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
       <div
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          // Hangs from the top, full window width, capped height.
-          // No radius (the panel runs edge-to-edge so corners don't
-          // exist visually). Border + shadow only on the bottom — top
-          // sits flush against the window chrome.
           width: '100%',
           maxHeight: 'min(560px, 86vh)',
           background: 'var(--surface)',
@@ -228,10 +204,6 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
                 display: 'flex', flexDirection: 'column', gap: 1,
                 marginBottom: 6,
               }}>
-                {/* Project header — small uppercase mono label with a
-                    count chip. Reads as a section divider, not as a
-                    clickable row, so each task underneath stays the
-                    primary affordance. */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px 4px',

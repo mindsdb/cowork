@@ -1,16 +1,6 @@
-// Inline skill-draft card + modal.
-//
-// Rendered for a skill the agent BUILT this turn (a `response.skill_created`
-// step, badge 'Skill'). Deliberately NOT the artifact card and NOT backed by
-// the artifact system — a built skill is a draft the user explicitly acts on:
-//   • Download → save the SKILL.md to the Downloads folder (client-side, no
-//     server round-trip), and
-//   • Save     → persist it into Cowork skills (shared store → the Skills page
-//     and the "/" menu update live).
-// Clicking the card body opens the SKILL.md in a read-only modal.
-//
-// Composes the existing primitives (Card / Button / Modal / Ico / Markdown) —
-// no new UI is invented here.
+// Agent-created skills are drafts, independent of artifacts; users explicitly save them to the
+// shared skill store
+// or download SKILL.md. Opening the card is read-only.
 
 import { useState } from 'react';
 
@@ -28,11 +18,9 @@ import {
   isReservedProjectName,
 } from '../lib/sharedResourceAccess';
 
-// Trigger a browser save-as for a text file, fully client-side (no server).
-// The event payload already carries the full SKILL.md, so download works
-// offline and on reload. ponytail: single SKILL.md only — multi-file skills
-// keep their siblings via Save (which installs the whole bundle); a client zip
-// would mean a new dependency for a rare case.
+// The event contains the full SKILL.md, so download works offline and after reload. Download
+// exports only SKILL.md;
+// Save installs all files in a multi-file bundle.
 function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
   downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
@@ -85,11 +73,8 @@ export default function SkillCard({ skill, projectName }) {
   const canSave = knownSkill
     ? canUseSharedResource(knownSkill, 'canEdit')
     : true;
-  // "Saved" only when THIS revision is in the store — compare instructions, not
-  // just slug existence: editing an existing skill seeds the draft from the
-  // stored version, so slug-existence alone would falsely show "Saved" before
-  // the refinement is saved (ENG-645 RC #2). Trimmed to ignore round-trip
-  // whitespace; a mismatch errs to "Draft · not saved" (the safe side).
+  // Compare revision content, not just slug existence, before showing Saved; ignore round-trip
+  // whitespace. ENG-645 RC #2.
   const isSaved = saved || (Array.isArray(skills) && skills.some(
     (s) => s.label === slug && (s.declarative || '').trim() === (skill.instructions || '').trim()
   ));
@@ -117,7 +102,6 @@ export default function SkillCard({ skill, projectName }) {
       // would get double-stored inside the body). Download uses skill_md.
       declarative: skill.instructions || '',
     };
-    // A saved skill with this slug → PUT; else POST.
     const exists = !!existingSkill;
 
     // Scope is set on CREATE only, and only for a real project. Hosted Cowork
@@ -133,8 +117,7 @@ export default function SkillCard({ skill, projectName }) {
     const markSaved = () => {
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
-      // Sweep the on-disk draft now it lives in the store; fire-and-forget (the
-      // server is idempotent, and a lingering draft must never fail the save UI).
+      // Clean up the saved draft without failing the save UI if idempotent cleanup fails.
       if (projectName && slug) deleteSkillDraft(projectName, slug).catch(() => {});
     };
 
@@ -182,7 +165,6 @@ export default function SkillCard({ skill, projectName }) {
         style={{ marginTop: 4 }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14 }}>
-          {/* Icon — `cube` distinguishes a skill from the artifact card's doc/sparkle. */}
           <div
             aria-hidden="true"
             style={{

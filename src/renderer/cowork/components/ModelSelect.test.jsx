@@ -38,15 +38,8 @@ describe('ModelSelect', () => {
   });
 
   it('shrinks the mindshub mark\'s height to its true aspect ratio, keeping the same width as every icon', () => {
-    // Regression: squeezing the bear's markedly-wide viewBox (517x287) into
-    // the same size x size box as every square provider mark letterboxed it
-    // (empty vertical padding to fit the width), unbalancing the glyph
-    // within its box in a way translateY nudging can't actually fix — the
-    // padding itself is what's asymmetric, not the glyph's position. Widening
-    // the box instead (rather than shrinking its height) was tried and
-    // rejected — it grew the icon's footprint next to the fixed flex gap,
-    // making the gap to the label look oversized. See ProviderIcon.test.jsx
-    // for the full measure/aspect-ratio/no-manual-nudge coverage.
+    // Wide provider marks must keep their width footprint without square-box letterboxing.
+    // ProviderIcon.test.jsx covers aspect sizing and the no-manual-nudge contract.
     render(<Harness />); // default initial = 'mindshub_air'
     const svg = screen.getByRole('combobox').querySelector('svg');
     expect(svg).toHaveAttribute('width', '15'); // same footprint as every other icon
@@ -54,8 +47,7 @@ describe('ModelSelect', () => {
   });
 
   it('applies no manual nudge to the trigger\'s icon — auto-centering handles alignment', () => {
-    // ProviderIcon measures every mark's true ink bounding box and crops to
-    // it, so the trigger no longer needs (or passes) a blanket nudgeY.
+    // ProviderIcon crops to each mark's ink bounds; the trigger needs no blanket nudgeY.
     render(<Harness />);
     const svg = screen.getByRole('combobox').querySelector('svg');
     expect(svg.style.transform).toBe('');
@@ -107,10 +99,7 @@ describe('ModelSelect', () => {
     expect(onValueChange).toHaveBeenCalledWith('gpt-codex');
   });
 
-  // A tag alone does not close a row off — only `disabled` does. Both option
-  // builders now pair the "Needs credits" tag with `disabled` + `locked`, and
-  // the two tests below that one cover what happens then. This one pins the
-  // primitive: an option carrying a tag and nothing else still selects.
+  // A tag alone does not disable selection; disabled and locked are separate option fields.
   it('fires onValueChange for a tagged option that is not disabled', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
@@ -225,9 +214,8 @@ describe('ModelSelect', () => {
   });
 });
 
-// A locked row is disabled, so the row itself stops being a click target. The
-// button this attaches is then the only thing on it that leads anywhere, and
-// both pickers get it from here rather than each building their own.
+// The Add credits button remains actionable on an otherwise disabled row and is shared by both
+// pickers.
 describe('ModelSelect — the route to credits on a locked row', () => {
   const LOCKED = [
     { value: 'mindshub_air', label: 'MindsHub Air' },
@@ -279,8 +267,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
   });
 });
 
-// The reasoning-effort footer (ENG-1940) — a row inside this same popup,
-// below the model list, replacing the old sibling EffortSelect pill.
+// The reasoning-effort footer shares the model popup.
 describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
   const MODEL_EFFORTS = {
     sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' },
@@ -318,9 +305,8 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
 
   it('opens a flyout on hover showing every level with a checkmark on the current value and a Default tag on the model default', async () => {
     const user = userEvent.setup();
-    // Current effort ("high") deliberately differs from sonnet's own
-    // default ("medium") so the checkmark and the "Default" tag land on
-    // two different rows, pinning that they're independent signals.
+    // Use an effort different from the default to distinguish the current checkmark from the
+    // Default tag.
     render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox'));
@@ -352,7 +338,6 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     await user.click(highRow);
 
     expect(onEffortChange).toHaveBeenCalledWith('high');
-    // Both the flyout and the parent model popup are gone.
     expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
@@ -385,13 +370,8 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
   });
 
-  // Base UI's Combobox closes the whole popup unconditionally on picking an
-  // item (AriaCombobox: setSelectedValue then setOpen(false, {reason:
-  // 'item-press'})) — ModelSelect vetoes that close specifically when the
-  // picked model has effort options, so the menu stays put and the Effort
-  // footer appears in place. A real stateful parent is required so these
-  // exercise the actual pick-then-close flow, not just presentation with a
-  // value already in place.
+  // Use a stateful parent to exercise Base UI's actual item-press close; ModelSelect must veto it
+  // when the new model offers effort options.
   function StatefulHarness({ initial, ...rest }) {
     const [value, setValue] = useState(initial);
     return <Harness initial={value} onValueChange={setValue} {...rest} />;
@@ -412,9 +392,7 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
   });
 
   it('picking a no-effort model with the footer up fades the footer out, then closes the popup', async () => {
-    // The exit choreography (FOOTER_EXIT_MS): watching the row leave teaches
-    // WHY it's gone — this model has no effort levels — where an instant
-    // close would just look like the footer vanished with the popup.
+    // Allow the footer exit animation before closing the popup for a model without effort options.
     const user = userEvent.setup();
     render(<StatefulHarness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
 
@@ -427,7 +405,6 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.getByRole('option', { name: 'MindsHub Air' })).toBeInTheDocument();
     expect(screen.getByText('Effort')).toBeInTheDocument();
 
-    // Then the popup closes on its own.
     await waitFor(() => expect(screen.queryByRole('option')).not.toBeInTheDocument());
   });
 
@@ -445,13 +422,8 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
   });
 
   it('relabels the trigger immediately on an effort-model pick, while the popup stays open', async () => {
-    // An earlier iteration froze the trigger until close (to keep the
-    // anchored popup from being dragged sideways by the pill resizing) —
-    // that read as the pick not registering: the list showed the new model
-    // checked while the pill still named the old one. The pill now updates
-    // live; the popup holds still via disableAnchorTracking instead, and
-    // the pill's own resize is animated (not assertable in jsdom, where
-    // offsetWidth is always 0 and the FLIP effect no-ops).
+    // The trigger must update during selection while the popup stays anchored.
+    // jsdom cannot assert the width animation because offsetWidth is zero.
     const user = userEvent.setup();
     // ariaLabel disambiguates the trigger from the open popup's search input,
     // which Base UI also exposes with role="combobox".
@@ -468,17 +440,14 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
 
-    // Popup vetoed open — and the trigger already reads the NEW model.
     expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
     expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('MindsHub Air');
   });
 
   it('appends the effort label to the trigger, muted, whenever one is explicitly picked — the model default included', () => {
-    // Keying visibility on "differs from the default" instead read as broken
-    // in practice: the live catalog's reasoning models all default to "high",
-    // so explicitly choosing High displayed nothing and the pick looked like
-    // it hadn't taken.
+    // An explicit default-level choice must still show its suffix so the selection appears to
+    // register.
     const { rerender } = render(
       <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />,
     );
@@ -500,9 +469,8 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
   });
 
   it('drops the trigger suffix when the picked effort is not valid for the current model', () => {
-    // e.g. the pick was made on another model whose levels differ — resolution
-    // falls back to this model's default, and the suffix hides rather than
-    // naming a level that won't be sent.
+    // An unsupported effort falls back to the new model's default; do not display a level that will
+    // not be sent.
     render(<Harness initial="opus" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Claude Opus 5');
     expect(screen.getByRole('combobox')).not.toHaveTextContent('·');

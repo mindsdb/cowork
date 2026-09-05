@@ -1,9 +1,3 @@
-// Backend state modal — opened by clicking the sidebar's status pill.
-// Reflects the live server state in its header (running / starting /
-// stopping / offline) and shows the diagnostics block (port, last
-// start time, log tail). Exit code + offline-specific causes / hints
-// only surface when the backend isn't currently up.
-
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
 import { Alert, Button, Tooltip } from './ui';
@@ -17,14 +11,8 @@ const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
 export default function ServerOfflineHelpModal({
   open,
   onClose,
-  // Atomic server actions wired from App.jsx. The modal composes
-  // "Restart" locally from `onStop` + `onStart` so the parent only
-  // needs to expose the two primitives. Older callers passed a
-  // single `onRetry` that did stop+start; that hid the "I just want
-  // to stop, not restart" intent and made it impossible to give the
-  // user a Stop button. Kept here for backwards-compat — when neither
-  // `onStop` nor `onStart` is provided, `onRetry` runs the legacy
-  // stop+start cycle.
+  // Restart composes onStop and onStart. Callers without either handler retain the legacy onRetry
+  // stop/start flow.
   onStart,
   onStop,
   onRetry,
@@ -36,9 +24,7 @@ export default function ServerOfflineHelpModal({
   const [diag, setDiag] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // Pull diagnostics fresh on each open — the recentLog only grows
-  // while the python process is running, so we want the latest tail
-  // every time the user clicks the icon.
+  // Refresh diagnostics on open to show the latest log tail.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -53,7 +39,6 @@ export default function ServerOfflineHelpModal({
     return () => { cancelled = true; };
   }, [open]);
 
-  // Esc + backdrop dismissal are handled by <Modal>.
 
   const error = diag?.lastError;
   const log = (diag?.recentLog || '').trim();
@@ -62,10 +47,8 @@ export default function ServerOfflineHelpModal({
   const startedAt = diag?.lastStartAt
     ? new Date(diag.lastStartAt).toLocaleTimeString()
     : null;
-  // "never started" is wrong for a backend that was still importing when we
-  // stopped waiting for it (the most common failure on a slow machine's first
-  // launch), and equally wrong for one the user deliberately stopped — a
-  // signal kill leaves no exit code, so both used to land on that string.
+  // A missing exit code can mean startup timed out or the server was deliberately stopped; it does
+  // not prove startup never began.
   const exitLabel = exitCodeLabel({
     kind: errorKind,
     exitCode: diag?.lastExitCode ?? null,
@@ -78,23 +61,10 @@ export default function ServerOfflineHelpModal({
     portHolderPid: diag?.portHolderPid ?? null,
   });
 
-  // Live state → title + header colour + subtitle. The same modal is
-  // used in every state — clicking the status pill while the backend
-  // is up should read as "Backend status" not "Backend isn't running".
-  //
-  // The offline branch splits further. Three signals are involved:
-  //   - `lastError`: present when a start attempt failed (timeout,
-  //     spawn error, deps missing, …). Absent after a successful
-  //     start, even if the python later crashed.
-  //   - `lastStopIntentional`: TRUE when the death was caused by a
-  //     user/app stopServer() call; FALSE on crash; NULL pre-first-
-  //     stop. This is the load-bearing signal — `lastError` alone
-  //     can't distinguish a clean stop from a post-start crash since
-  //     both leave it null.
-  // Decision: stopped panel iff there's no start-time error AND the
-  // last transition was intentional. Everything else (including the
-  // initial "never tried" state and post-start crashes) gets the
-  // failure panel.
+  // lastError clears after successful startup, so it cannot distinguish a later crash from a clean
+  // stop. Show the stopped panel
+  // only for an intentional stop without a startup error; crashes and the initial unattempted state
+  // use the failure panel.
   const state = serverBusy
     ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
     : serverOnline ? 'online' : 'offline';
@@ -169,8 +139,6 @@ export default function ServerOfflineHelpModal({
   const handleRestart = async () => {
     setBusy(true);
     try {
-      // Prefer atomic actions when wired; fall back to the legacy
-      // single onRetry handler so older callers still work.
       if (onStop && onStart) {
         await onStop();
         await onStart();
@@ -183,16 +151,10 @@ export default function ServerOfflineHelpModal({
     }
   };
 
-  // Legacy single-button click target — only used when atomic
-  // handlers aren't provided. Kept as a thin wrapper so the existing
-  // disabled-while-busy + diagnostics-refresh logic is unchanged for
-  // any caller that still ships the old API.
   const handleRetry = async () => {
     setBusy(true);
     try {
       await onRetry?.();
-      // Pull fresh diagnostics after the retry attempt — gives the
-      // user immediate feedback on whether the new attempt worked.
       const data = await host.serverDiagnostics();
       setDiag(data || null);
     } finally {
@@ -253,9 +215,6 @@ export default function ServerOfflineHelpModal({
           padding: '14px 18px',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
-          {/* Quick facts row — exit code only renders when the
-              backend isn't running, otherwise it's irrelevant noise.
-              The grid auto-fits whichever tiles are present. */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))`,
@@ -287,10 +246,7 @@ export default function ServerOfflineHelpModal({
             </div>
           </div>
 
-          {/* Headline error — offline + start-failure only. A
-              user-initiated stop has no failure to surface, so we
-              skip the error block entirely; the header subtitle
-              already explains why the backend is down. */}
+          {/* An intentional stop has no failure to display. */}
           {state === 'offline' && offlineKind === 'failed' && (error ? (
             <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
           ) : (
@@ -303,7 +259,6 @@ export default function ServerOfflineHelpModal({
             </div>
           ))}
 
-          {/* Recent log */}
           <div>
             <div style={{
               fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
@@ -326,9 +281,6 @@ export default function ServerOfflineHelpModal({
             }}>{log || '(no log captured yet)'}</pre>
           </div>
 
-          {/* What actually happened + what to do about it. Driven by the
-              failure kind, so the panel never asks for a log in the state
-              where no log can exist. */}
           {state === 'offline' && offlineKind === 'failed' && (
             <div style={{
               fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5,
@@ -352,14 +304,10 @@ export default function ServerOfflineHelpModal({
             variant="subtle"
             onClick={onClose}
           >Close</Button>
-          {/* Action buttons — split by intent so the user can stop
-              the backend without it immediately restarting:
-                * online   → [Stop] [Restart]   (Restart = stop + start)
-                * offline  → [Start]
-              All disabled while a transition is in flight so we
-              don't fire concurrent toggles into the main process.
-              Falls back to a single legacy button when only the
-              old `onRetry` API was provided. */}
+          {/*
+ * Disable actions during transitions to prevent concurrent server toggles; support onRetry-only
+ * callers.
+ */}
           {(onStart || onStop) ? (
             <>
               {state !== 'offline' && (

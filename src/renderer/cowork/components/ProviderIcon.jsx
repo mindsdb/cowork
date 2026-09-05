@@ -1,28 +1,9 @@
 import { useMemo } from 'react';
 
-// ProviderIcon — monochrome mark for the company behind a model, used by
-// the model picker (ENG-1096) trigger.
-//
-// Path data comes from the shared provider icon set (single black path on a
-// 40x40 viewBox), plus the app's own minds icon for MindsHub and the Gemini
-// mark for Google. Everything renders `fill="currentColor"` so the mark
-// follows the surrounding text color in both themes — no per-theme assets.
-//
-// Makers with no mark yet (zai: ENG-1112 tracks the missing svgs) — and any
-// model whose maker can't be inferred at all, like muse-spark (grouped under
-// "other") — fall back to a neutral placeholder glyph instead of a broken
-// image.
-//
-//   <ProviderIcon maker="anthropic" size={15} />
+// Marks use currentColor; unknown makers use a neutral placeholder.
 
 const MARKS = {
-  // Canonical MindsHub mark from mindshub.ai/favicon.svg (tight viewBox, evenodd).
-  // Keep in sync with public/minds-icon.svg. currentColor overrides the site's #1A8596 here.
-  // This viewBox is markedly wider than tall (517x287, ~1.8:1) — every other
-  // mark below is square or near-square — and its own ink isn't centered
-  // within that crop either. ProviderIcon measures every mark's true ink
-  // bounding box at runtime and renders exactly that (see measureMark
-  // below), so neither of those needs a hand-picked correction here.
+  // MindsHub mark: mindshub.ai/favicon.svg. Keep geometry in sync with public/minds-icon.svg.
   mindshub: { viewBox: '143 143 517 287', fillRule: 'evenodd', d: 'M279.468 152.181C271.519 152.694 214.593 177.182 203.363 186.285C192.689 194.937 160.226 242.853 157.035 247.58C156.851 247.852 156.679 248.072 156.471 248.327C154.768 250.406 146.62 261.014 145.359 275.008C144.153 288.379 143.697 387.564 143.59 416.084C143.574 420.341 147.021 423.734 151.279 423.734H183.974C187.505 423.734 190.583 421.33 191.438 417.904L192.505 413.628C193.065 411.383 192.118 409.033 190.158 407.804C187.835 406.348 186.99 403.372 188.201 400.913L202.999 370.862C203.241 370.372 203.429 369.857 203.562 369.327L211.913 335.867C212.727 332.605 215.566 330.249 218.922 330.051L349.371 322.332C353.79 322.07 357.518 325.584 357.518 330.011V416.041C357.518 420.289 360.962 423.734 365.211 423.734H405.514C409.155 423.734 412.297 421.181 413.044 417.618L413.903 413.516C414.366 411.307 413.448 409.037 411.58 407.771C409.405 406.296 408.558 403.501 409.549 401.068L423.464 366.894C423.744 366.206 423.921 365.496 423.999 364.758C424.671 358.347 428.29 325.932 433.105 321.85C438.269 317.472 490.713 284.312 494.288 282.052C494.424 281.966 494.526 281.898 494.657 281.804C497.05 280.081 522.966 261.517 528.712 261.218C534.2 260.932 563.5 270.581 568.696 272.309C569.227 272.485 569.765 272.602 570.321 272.661L621.282 278.085C628.461 279.623 633.333 279.068 634.872 278.598C643.693 275.52 651.881 269.965 654.873 267.571C659.329 264.096 659.978 260.562 659.679 258.686C659.6 258.189 659.465 257.692 659.222 257.251C658.475 255.893 656.423 254.3 654.888 253.278C654.291 252.881 653.727 252.433 653.238 251.908L628.718 225.646C627.795 224.723 627.222 221.842 627.051 220.518V215.004C627.564 209.671 624.444 205.089 622.82 203.465L591.536 172.951C589.683 171.519 589.144 169.815 589.082 168.779C589.068 168.547 589.078 168.314 589.088 168.082C589.094 167.932 589.1 167.783 589.1 167.633V163.737C589.1 163.33 589.14 162.925 589.179 162.52L589.188 162.426C589.444 159.772 588.411 157.765 587.818 157.053C584.695 153.449 581.122 153.334 577.836 153.228C577.615 153.221 577.395 153.214 577.177 153.206C574.936 153.123 570.475 155.328 567.405 157.079C566.152 157.793 564.776 158.206 563.334 158.208C552.549 158.218 504.923 158.309 494.48 159.104C487.561 159.631 467.23 154.246 449.983 149.677C437.828 146.458 427.204 143.644 423.886 143.591C419.913 143.527 405.785 147.108 391.453 150.741C376.833 154.447 362.001 158.206 357.518 158.206C353.552 158.206 339.137 156.901 323.693 155.503C304.569 153.772 283.866 151.897 279.468 152.181ZM456.502 349.917L500.524 299.627C503.452 296.282 508.959 297.992 509.477 302.408L521.587 405.737C521.74 407.045 522.391 408.244 523.404 409.085L529.219 413.915C531.038 415.425 531.588 417.984 530.551 420.109L526.753 427.89C525.735 429.976 523.442 431.118 521.163 430.674L485.79 423.779C484.086 423.447 482.665 422.275 482.015 420.664L455.605 355.214C454.882 353.42 455.228 351.372 456.502 349.917ZM249.826 360.683L290.431 336.831C293.433 335.068 297.281 336.743 298.035 340.142L311.306 399.936C311.514 400.875 311.982 401.736 312.656 402.422L320.138 410.026C321.558 411.469 321.996 413.612 321.257 415.496L318.438 422.679C317.571 424.889 315.301 426.215 312.951 425.885L277.801 420.949C276.15 420.717 274.715 419.697 273.952 418.214L247.862 367.449C246.619 365.029 247.481 362.06 249.826 360.683Z' },
   openai: { viewBox: '0 0 40 40', d: 'M32.6177 17.282C32.9927 16.25 33.0872 15.218 32.9927 14.1875C32.8997 13.1571 32.5247 12.1251 32.0552 11.1876C31.2122 9.78209 29.9927 8.6571 28.5872 8.0001C27.0872 7.34461 25.4927 7.15711 23.8997 7.53211C23.1498 6.78212 22.3053 6.12512 21.3678 5.65713C20.4303 5.18913 19.3053 5.00013 18.2748 5.00013C16.6651 4.99074 15.0925 5.48246 13.7748 6.40712C12.4624 7.34311 11.5249 8.6571 11.0554 10.1571C9.93043 10.4376 8.99292 10.9071 8.05542 11.4696C7.21243 12.1251 6.55544 12.9696 5.99294 13.8126C5.14995 15.2195 4.86795 16.8125 5.05545 18.407C5.24402 19.9968 5.89608 21.496 6.93043 22.718C6.57611 23.7086 6.44798 24.7659 6.55544 25.8124C6.64994 26.8444 7.02493 27.8749 7.49293 28.8124C8.33742 30.2194 9.55541 31.3444 10.9624 31.9999C12.4624 32.6569 14.0553 32.8444 15.6498 32.4694C16.3998 33.2194 17.2428 33.8749 18.1803 34.3444C19.1178 34.8139 20.2428 34.9999 21.2748 34.9999C22.8843 35.0097 24.4569 34.5185 25.7747 33.5944C27.0872 32.6569 28.0247 31.3444 28.4927 29.8444C29.5519 29.6432 30.5482 29.1934 31.3997 28.5319C32.2427 27.8749 32.9927 27.1249 33.4622 26.1874C34.3051 24.7819 34.5871 23.1875 34.3996 21.5945C34.2122 20 33.6497 18.5015 32.6177 17.282ZM21.3678 33.0304C19.8678 33.0304 18.7428 32.5609 17.7123 31.7179C17.7123 31.7179 17.8053 31.6234 17.8998 31.6234L23.8997 28.1554C24.0662 28.0803 24.1996 27.9469 24.2747 27.7804C24.3498 27.636 24.3821 27.4731 24.3677 27.3109V18.875L26.8997 20.375V27.3124C26.9255 28.0547 26.8015 28.7945 26.535 29.4878C26.2685 30.181 25.865 30.8134 25.3487 31.3473C24.8323 31.8811 24.2137 32.3054 23.5297 32.5949C22.8458 32.8843 22.1105 33.0314 21.3678 33.0304ZM9.27491 27.8749C8.61792 26.7499 8.33742 25.4374 8.61792 24.125C8.61792 24.125 8.71242 24.2195 8.80542 24.2195L14.8053 27.6874C14.9493 27.7638 15.1125 27.7966 15.2748 27.7819C15.4623 27.7819 15.6498 27.7819 15.7428 27.6874L23.0553 23.4695V26.3749L16.9623 29.9374C16.3306 30.3042 15.6327 30.5427 14.9087 30.6393C14.1846 30.7358 13.4486 30.6884 12.7429 30.4999C11.2429 30.1249 10.0249 29.1874 9.27491 27.8749ZM7.68043 14.8445C8.34242 13.7234 9.36829 12.8627 10.5874 12.4056V19.532C10.5874 19.718 10.5874 19.907 10.6804 20C10.7555 20.1665 10.8889 20.2998 11.0554 20.375L18.3678 24.5944L15.8373 26.0944L9.83743 22.625C9.19845 22.2639 8.63745 21.7797 8.18687 21.2004C7.7363 20.6211 7.40509 19.9582 7.21243 19.25C6.83744 17.8445 6.93043 16.157 7.68043 14.8445ZM28.3997 19.625L21.0873 15.407L23.6177 13.9071L29.6177 17.375C30.5552 17.9375 31.3052 18.6875 31.7747 19.625C32.2442 20.5625 32.5247 21.5945 32.4302 22.7195C32.3403 23.7755 31.9499 24.7837 31.3052 25.6249C30.6497 26.4694 29.8052 27.1249 28.7747 27.4999V20.375C28.7747 20.1875 28.7747 20 28.6802 19.907C28.6802 19.907 28.5872 19.718 28.3997 19.625ZM30.9302 15.875C30.9302 15.875 30.8372 15.782 30.7427 15.782L24.7427 12.3126C24.5552 12.2196 24.4622 12.2196 24.2747 12.2196C24.0872 12.2196 23.8997 12.2196 23.8052 12.3126L16.4928 16.532V13.6251L22.5873 10.0626C23.5248 9.50009 24.5552 9.31259 25.6802 9.31259C26.7122 9.31259 27.7427 9.68759 28.6802 10.3446C29.5247 11.0001 30.2747 11.8446 30.6497 12.7821C31.0247 13.7196 31.1177 14.8445 30.9302 15.875ZM15.1803 21.125L12.6499 19.625V12.5946C12.6499 11.5626 12.9303 10.4376 13.4928 9.59459C14.0553 8.6571 14.8998 8.0001 15.8373 7.53211C16.7927 7.05249 17.8756 6.88812 18.9303 7.06261C19.9623 7.15711 20.9928 7.62511 21.8373 8.2821C21.8373 8.2821 21.7428 8.3751 21.6498 8.3751L15.6498 11.8446C15.4833 11.9197 15.35 12.0531 15.2748 12.2196C15.1803 12.4071 15.1803 12.5001 15.1803 12.6876V21.125ZM16.4928 18.125L19.7748 16.25L23.0553 18.125V21.875L19.7748 23.75L16.4928 21.875V18.125Z' },
   anthropic: { viewBox: '0 0 40 40', d: 'M26.4651 8H21.6348L30.2836 29.903H35L26.4651 8ZM12.5363 8L4 29.903H8.83033L10.7388 25.2975H19.7249L21.5209 29.7906H26.3527L17.5915 8H12.5363ZM12.0866 21.2543L15.007 13.5035L18.0398 21.2543H12.0866Z' },
@@ -35,34 +16,17 @@ const MARKS = {
   meta: { viewBox: '0 0 40 40', d: 'M26.6842 9C23.9781 9 21.8626 11.038 19.9474 13.6272C17.3158 10.2763 15.1155 9 12.4825 9C7.11403 9 3 15.9883 3 23.383C3 28.0102 5.2383 30.9298 8.9883 30.9298C11.6871 30.9298 13.6287 29.6579 17.0804 23.6243C17.0804 23.6243 18.519 21.0848 19.5073 19.3348C19.8543 19.8942 20.2198 20.4976 20.6038 21.1447L22.2222 23.8669C25.3743 29.1418 27.1316 30.9298 30.3129 30.9298C33.9678 30.9298 36 27.9707 36 23.2471C36 15.5029 31.7939 9 26.6842 9ZM14.4474 21.9912C11.6506 26.3772 10.6828 27.3611 9.12573 27.3611C7.52193 27.3611 6.56871 25.9532 6.56871 23.443C6.56871 18.0745 9.24561 12.5848 12.4371 12.5848C14.1652 12.5848 15.6097 13.5819 17.8216 16.7485C15.7208 19.9707 14.4474 21.9912 14.4474 21.9912ZM25.0102 21.44L23.0731 18.2105C22.5869 17.4163 22.0838 16.6325 21.5643 15.8596C23.3085 13.1681 24.7456 11.826 26.4576 11.826C30.0102 11.826 32.8538 17.0599 32.8538 23.4868C32.8538 25.9371 32.0512 27.3596 30.3889 27.3596C28.7953 27.3596 28.0351 26.307 25.0088 21.4386' },
 };
 
-// Every mark's raw viewBox as a fallback "geometry" — used until (or unless)
-// a real measurement succeeds, and as the entire result in the neutral
-// placeholder's case (no mark, no path to measure).
 function nominalGeometry(mark) {
   if (!mark) return { x: 0, y: 0, width: 40, height: 40 };
   const [x, y, width, height] = mark.viewBox.split(' ').map(Number);
   return { x, y, width, height };
 }
 
-// Cache of maker -> true ink bounding box, computed once per maker for the
-// life of the app (not once per rendered instance — a picker listing many
-// models of the same provider shares one measurement).
+// Share geometry across instances to measure each maker only once.
 const geometryCache = new Map();
 
-// Measures a mark's TRUE ink bounding box via the browser's own SVG geometry
-// (SVGGraphicsElement.getBBox — correctly accounts for curves/arcs, unlike
-// eyeballing the nominal viewBox by hand). Replaces the old approach of
-// hand-tuning a per-mark nudgeY/aspect override for every glyph that isn't
-// both square AND already centered within its own crop: mindshub's bear
-// needed one, and there was no way to know which of the other nine marks
-// might too without seeing each rendered — this measures all of them.
-//
-// Renders a throwaway, zero-footprint SVG to measure, then removes it
-// immediately — a real DOM mutation, but idempotent and cached, so it runs
-// at most once per maker ever, not once per render. Test environments
-// (happy-dom) don't implement real SVG layout, so getBBox is feature-detected
-// and any failure falls back to the nominal viewBox — never wrong, just
-// occasionally not perfectly tight.
+// Measure true ink bounds with a temporary SVG rather than hand-tuning each mark's alignment.
+// Fall back to the nominal viewBox when SVG layout is unavailable (e.g. happy-dom).
 function measureMark(maker, mark) {
   if (geometryCache.has(maker)) return geometryCache.get(maker);
   let geometry = nominalGeometry(mark);
@@ -87,7 +51,6 @@ function measureMark(maker, mark) {
         }
       }
     } catch {
-      // Fall back to the nominal viewBox — see comment above.
     } finally {
       document.body.removeChild(svg);
     }
@@ -99,12 +62,7 @@ function measureMark(maker, mark) {
 export function ProviderIcon({ maker, size = 15, className, style, nudgeY = 0 }) {
   const mark = MARKS[maker];
   const geometry = useMemo(() => measureMark(maker, mark), [maker, mark]);
-  // Crop the rendered viewBox tight to the measured ink (instead of the
-  // mark's nominal, hand-drawn viewBox) and size width/height by ITS aspect
-  // ratio, width pinned to `size` so every icon keeps the same footprint
-  // next to its label. With no padding left inside the box, the row's
-  // existing flex centering (items-center) aligns the ink against the text
-  // correctly on its own — no per-mark nudge needed for any maker.
+  // Crop to measured ink so ordinary flex centering aligns the visible mark with its label.
   const aspect = geometry.height ? geometry.width / geometry.height : 1;
   const width = size;
   const height = aspect >= 1 ? size / aspect : size;
@@ -124,7 +82,6 @@ export function ProviderIcon({ maker, size = 15, className, style, nudgeY = 0 })
           ? <g transform={mark.transform}><path d={mark.d} fill="currentColor" fillRule={mark.fillRule} clipRule={mark.fillRule} /></g>
           : <path d={mark.d} fill="currentColor" fillRule={mark.fillRule} clipRule={mark.fillRule} />
       ) : (
-        // Neutral placeholder: outlined circle with a centred dot.
         <g stroke="currentColor" strokeWidth="3">
           <circle cx="20" cy="20" r="14" />
           <circle cx="20" cy="20" r="2.5" fill="currentColor" stroke="none" />
