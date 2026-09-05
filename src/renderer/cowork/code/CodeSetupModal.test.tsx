@@ -34,7 +34,7 @@ import { CodeSetupModal } from './CodeSetupModal';
 
 const steps = (status: string) => [
   { id: 'components', label: 'Download Code Mode components', status },
-  { id: 'restart', label: 'Restart the Code service', status: 'pending' },
+  { id: 'restart', label: 'Restart the Cowork service', status: 'pending' },
   { id: 'verify', label: 'Check the coding agent', status: 'pending' },
 ];
 
@@ -73,11 +73,23 @@ describe('CodeSetupModal', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(hostMock.cancelCodeSetup).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     act(() => hostMock.emit('cancelled'));
     expect(screen.getByText(/Setup was cancelled/)).toBeInTheDocument();
+    expect(screen.getByText(/Components already installed are kept/)).toBeInTheDocument();
     // Header X and footer button both read Close once the run has ended.
     await user.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('allows cancellation to be retried when the request fails', async () => {
+    hostMock.cancelCodeSetup.mockRejectedValueOnce(new Error('IPC unavailable'));
+    render(<CodeSetupModal open onClose={vi.fn()} onComplete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByText(/Could not stop setup/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
   });
 
   it('shows what failed and starts again on Try again', async () => {
@@ -91,5 +103,17 @@ describe('CodeSetupModal', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(hostMock.startCodeSetup).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(/did not install/)).toBeNull();
+  });
+
+  it('keeps the completed outcome if an earlier cancellation request rejects late', async () => {
+    let rejectCancel!: (reason: Error) => void;
+    hostMock.cancelCodeSetup.mockImplementationOnce(() => new Promise<undefined>((_resolve, reject) => { rejectCancel = reject; }));
+    render(<CodeSetupModal open onClose={vi.fn()} onComplete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    act(() => hostMock.emit('done'));
+    await act(async () => rejectCancel(new Error('IPC disconnected')));
+    expect(screen.getByRole('button', { name: 'Open Code Mode' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.queryByText(/Could not stop setup/)).toBeNull();
   });
 });

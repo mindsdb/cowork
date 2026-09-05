@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,6 +52,49 @@ describe('CodingAgentSettingsSection', () => {
     expect(screen.getByText('Code setup modal')).toBeInTheDocument();
     await user.click(screen.getByText('Finish setup stub'));
     expect(onEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it('waits for readiness before allowing the toggle to enable Code Mode', async () => {
+    let resolve;
+    mocks.codeSetupStatus.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const onEnabledChange = vi.fn();
+    const user = userEvent.setup();
+    render(<CodingAgentSettingsSection {...baseProps} enabled={false} onEnabledChange={onEnabledChange} />);
+    const toggle = screen.getByRole('switch', { name: 'Enable Code Mode' });
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await user.click(toggle);
+    expect(onEnabledChange).not.toHaveBeenCalled();
+    await act(async () => resolve({ installed: false, gitWorks: true }));
+    expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(toggle);
+    expect(screen.getByText('Code setup modal')).toBeInTheDocument();
+    expect(onEnabledChange).not.toHaveBeenCalled();
+  });
+
+  it.each(['rejected', 'malformed'])('offers a working retry after a %s readiness response', async (kind) => {
+    if (kind === 'rejected') mocks.codeSetupStatus.mockRejectedValueOnce(new Error('IPC unavailable'));
+    else mocks.codeSetupStatus.mockResolvedValueOnce({});
+    mocks.codeSetupStatus.mockResolvedValue({ installed: false, gitWorks: true });
+    const onEnabledChange = vi.fn();
+    const user = userEvent.setup();
+    render(<CodingAgentSettingsSection {...baseProps} enabled={false} onEnabledChange={onEnabledChange} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not check this computer');
+    const toggle = screen.getByRole('switch', { name: 'Enable Code Mode' });
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(toggle).not.toHaveAttribute('aria-disabled', 'true'));
+    await user.click(toggle);
+    expect(screen.getByText('Code setup modal')).toBeInTheDocument();
+    expect(onEnabledChange).not.toHaveBeenCalled();
+  });
+
+  it('still lets an existing user disable Code Mode if the readiness check fails', async () => {
+    mocks.codeSetupStatus.mockRejectedValue(new Error('IPC unavailable'));
+    const onEnabledChange = vi.fn();
+    render(<CodingAgentSettingsSection {...baseProps} enabled onEnabledChange={onEnabledChange} />);
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('switch', { name: 'Enable Code Mode' }));
+    expect(onEnabledChange).toHaveBeenCalledWith(false);
   });
 
   it('switches on directly when the coding agent is already installed', async () => {

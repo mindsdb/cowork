@@ -7,7 +7,7 @@ import Button from '../components/ui/Button';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
 
-type Phase = 'running' | 'done' | 'error' | 'cancelled';
+type Phase = 'running' | 'cancelling' | 'done' | 'error' | 'cancelled';
 
 const MAX_LOG_LINES = 300;
 
@@ -76,8 +76,18 @@ export function CodeSetupModal({ open, onClose, onComplete }: {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [log]);
 
-  const running = phase === 'running';
+  const running = phase === 'running' || phase === 'cancelling';
   const failedStep = steps.find((step) => step.status === 'error');
+  const cancel = async () => {
+    setError('');
+    setPhase('cancelling');
+    try {
+      await host.cancelCodeSetup();
+    } catch {
+      setError('Could not stop setup. Try cancelling again.');
+      setPhase((current) => current === 'cancelling' ? 'running' : current);
+    }
+  };
 
   return (
     <Modal
@@ -113,7 +123,9 @@ export function CodeSetupModal({ open, onClose, onComplete }: {
         {phase === 'error' && (
           <Alert variant="danger">{error || (failedStep ? `${failedStep.label} did not finish.` : 'Setup did not finish.')}</Alert>
         )}
-        {phase === 'cancelled' && <Alert variant="info">Setup was cancelled. Nothing was changed on this computer.</Alert>}
+        {phase === 'cancelling' && <Alert variant="info">Stopping setup and restoring the Cowork service…</Alert>}
+        {phase === 'running' && error && <Alert variant="danger">{error}</Alert>}
+        {phase === 'cancelled' && <Alert variant="info">Setup was cancelled. Components already installed are kept. Any macOS or Windows installer already opened may still need to be closed.</Alert>}
         <button type="button" className="code-setup-log-toggle" onClick={() => setShowLog((current) => !current)} aria-expanded={showLog}>
           {showLog ? 'Hide details' : 'Show details'}
         </button>
@@ -122,7 +134,7 @@ export function CodeSetupModal({ open, onClose, onComplete }: {
         )}
       </ModalBody>
       <ModalFooter>
-        {running && <Button variant="subtle" onClick={() => void host.cancelCodeSetup()}>Cancel</Button>}
+        {running && <Button variant="subtle" disabled={phase === 'cancelling'} onClick={() => void cancel()}>{phase === 'cancelling' ? 'Stopping…' : 'Cancel'}</Button>}
         {phase === 'done' && <Button variant="primary" onClick={onComplete}>Open Code Mode</Button>}
         {(phase === 'error' || phase === 'cancelled') && (
           <>

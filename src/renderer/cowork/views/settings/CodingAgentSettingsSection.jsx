@@ -101,26 +101,34 @@ export default function CodingAgentSettingsSection({
   // switched on (they are large, so the first install leaves them out), and so
   // is Git where the computer has none. Either one missing means setup is
   // needed: after a partial run where the components landed but Git did not,
-  // Code Mode still cannot clone, branch or commit. Until the status is known
-  // the toggle behaves as before.
+  // Code Mode still cannot clone, branch or commit. Unknown readiness must
+  // never enable Code Mode before that setup has had a chance to run.
   const [setupStatus, setSetupStatus] = useState(null);
+  const [setupError, setSetupError] = useState('');
+  const [setupCheck, setSetupCheck] = useState(0);
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(() => {
     if (!available) return undefined;
     let cancelled = false;
-    // Older bridges (and the web host) have no setup step: treat as complete.
-    const status = typeof host.codeSetupStatus === 'function'
-      ? host.codeSetupStatus()
-      : Promise.resolve({ installed: true, gitWorks: true });
-    Promise.resolve(status)
-      .then((result) => { if (!cancelled) setSetupStatus({ installed: result?.installed !== false, gitWorks: result?.gitWorks !== false }); })
-      .catch(() => { if (!cancelled) setSetupStatus({ installed: true, gitWorks: true }); });
+    setSetupStatus(null);
+    setSetupError('');
+    // The host owns compatibility with older bridges. A failed or malformed
+    // response from a current bridge needs a retry, not a successful fallback.
+    Promise.resolve().then(() => host.codeSetupStatus())
+      .then((result) => {
+        if (typeof result?.installed !== 'boolean' || typeof result?.gitWorks !== 'boolean') {
+          throw new Error('Invalid Code Mode readiness response');
+        }
+        if (!cancelled) setSetupStatus(result);
+      })
+      .catch(() => { if (!cancelled) setSetupError('Could not check this computer. Try again before enabling Code Mode.'); });
     return () => { cancelled = true; };
-  }, [available, setupOpen]);
+  }, [available, setupOpen, setupCheck]);
   const componentsMissing = setupStatus?.installed === false;
   const gitMissing = setupStatus?.gitWorks === false;
   const needsSetup = componentsMissing || gitMissing;
   const handleEnabledChange = (next) => {
+    if (next && !setupStatus) return;
     if (next && needsSetup) {
       setSetupOpen(true);
       return;
@@ -141,18 +149,22 @@ export default function CodingAgentSettingsSection({
     <SettingsGroup title="Code Mode">
       <Section
         title="Enable Code Mode"
-        subtitle={enabled
+        subtitle={setupError ? <span role="alert">{setupError}</span> : !setupStatus
+          ? 'Checking this computer…'
+          : enabled
           ? (needsSetup ? `Code Mode is on, but ${missingPiece} on this computer yet.` : 'Code is available on this computer.')
           : (needsSetup
             ? `Build, test, and review code with an agent on this computer. Switching this on ${componentsMissing ? 'downloads the coding agent, about 110 MB' : 'installs Git'}.`
             : 'Build, test, and review code with an agent on this computer.')}
       >
         <div className="flex items-center gap-3">
+          {setupError && <Button size="sm" variant="tinted" onClick={() => setSetupCheck((count) => count + 1)}>Try again</Button>}
           {enabled && needsSetup && (
             <Button size="sm" variant="tinted" onClick={() => setSetupOpen(true)}>Set up now</Button>
           )}
           <Switch
             checked={enabled}
+            disabled={!enabled && !setupStatus}
             onCheckedChange={handleEnabledChange}
             aria-label="Enable Code Mode"
           />
