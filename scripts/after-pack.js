@@ -1,20 +1,7 @@
-// electron-builder `afterPack` hook.
-//
-// electron-builder's AsyncEventEmitter fires USER handlers (this one, via
-// `config.afterPack`) AFTER all SYSTEM handlers. PublishManager's system handler
-// regenerates `resources/app-update.yml` from the publish config, clobbering any
-// extraResources copy: it hard-codes `updaterCacheDirName` to the unscoped
-// `${name}-updater` and derives `channel` from the package version. Running last,
-// this hook is the only place to durably override both on the packaged manifest:
-//   - updaterCacheDirName is scoped per channel so stable and prod don't share
-//     the OS cache ROOT, where one channel's cleanup could strand the other's
-//     pending update.
-//   - channel is pinned to SHELL_UPDATE_CHANNEL so it matches the published
-//     manifest name instead of varying per build.
-//
-// It then delegates to strip-xattrs (macOS iCloud codesign workaround), which
-// rewrites files to fresh inodes — running it AFTER our edit keeps our content
-// while clearing any xattrs the write introduced. Both steps run before signing.
+// User afterPack handlers run after PublishManager regenerates app-update.yml, so override it here.
+// Scope updater caches by build kind and pin the published channel to prevent cross-channel
+// interference.
+// Run strip-xattrs after editing but before signing to remove attributes introduced by the write.
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -28,7 +15,7 @@ async function normalizeAppUpdateManifest(context) {
   );
   const buildKind = (process.env.COWORK_BUILD_KIND || '').trim().toLowerCase();
   const feed = resolveShellUpdateFeed(buildKind, context.electronPlatformName);
-  // No eligible feed → PublishManager wrote no app-update.yml → nothing to fix.
+  // No eligible feed means there is no generated manifest to patch.
   if (!feed) return;
 
   const appUpdatePath = path.join(
@@ -42,16 +29,13 @@ async function normalizeAppUpdateManifest(context) {
 
   const scoped = shellUpdaterCacheDirName(feed.channel);
   const before = fs.readFileSync(appUpdatePath, 'utf8');
-  // 1. Scope the OS-cache pending-download dir per channel.
   const scopedManifest = /^updaterCacheDirName:.*$/m.test(before)
     ? before.replace(/^updaterCacheDirName:.*$/m, `updaterCacheDirName: ${scoped}`)
     : `${before.replace(/\n?$/, '\n')}updaterCacheDirName: ${scoped}\n`;
-  // 2. Pin the updater channel to the ring-stable published pointer.
   const after = withAppUpdateChannel(scopedManifest, SHELL_UPDATE_CHANNEL);
   fs.writeFileSync(appUpdatePath, after, 'utf8');
 
-  // Assert the FINAL packaged manifest, not just our intent: fail the build if
-  // either fix didn't take, or (on Windows) if the signer pin went missing.
+  // Verify the final manifest, including the Windows signer pin, before packaging can succeed.
   const packaged = fs.readFileSync(appUpdatePath, 'utf8');
   const unquote = (line) => line && line.trim().replace(/^["']|["']$/g, '');
   const cacheValue = unquote((packaged.match(/^updaterCacheDirName:\s*(.+)$/m) || [])[1]);

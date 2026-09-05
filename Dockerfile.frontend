@@ -1,41 +1,17 @@
-# Cowork frontend image: static SPA served by nginx. No API handling.
-#
-# In web mode the SPA calls the cowork-server API same-origin at /api/v1/*, so
-# the ingress in front of this image must route /api/v1 to the cowork-server
-# Service. This image serves ONLY the built SPA. (The all-in-one SPA+server
-# image is the separate cowork/Dockerfile; this one does not replace it.)
-#
-# Build (context = the cowork repo root; run from the cowork/ directory):
-#     docker build -f Dockerfile.frontend -t cowork-frontend:dev .
-#     # Target a specific environment (Vite bakes these at build time):
-#     docker build -f Dockerfile.frontend -t cowork-frontend:prod \
-#       --build-arg VITE_MINDS_API_URL=https://api.mindshub.ai \
-#       --build-arg VITE_KEYCLOAK_URL=https://auth.mindshub.ai/auth .
-#
-# Run:
-#     docker run -p 8080:8080 cowork-frontend:dev
-#     # Browse http://localhost:8080. Calls to /api/v1 will 404 unless an
-#     # upstream (ingress) routes them to cowork-server.
+# Static SPA only; ingress must route same-origin /api/v1 to cowork-server.
+# Build with Dockerfile.frontend and expose port 8080.
 
-# Stage 1: build the SPA.
 FROM node:22-slim AS spa-builder
 WORKDIR /build
 
-# Lockfile-only install first, so the dependency layer is cached when only
-# source changes.
+# Copy lockfiles first so source changes reuse the dependency layer.
 COPY package.json package-lock.json ./
-# --ignore-scripts skips native postinstall hooks; the web SPA has none.
+# Skip native hooks; the web SPA has no native dependencies.
 RUN npm ci --ignore-scripts
 
 COPY . ./
 
-# Vite bakes VITE_-prefixed vars into the bundle at build time. Leave the URL
-# vars unset by default: the SPA then derives the MindsHub API/auth hosts from
-# its own serving origin at runtime by swapping the leading `cowork` host token
-# for `api`/`auth` (static: cowork.<env>.mindshub.ai -> api.<env>.mindshub.ai,
-# cowork.mindshub.ai -> api.mindshub.ai; PR: cowork-<pr>.dev.mindshub.ai ->
-# api-<pr>.dev.mindshub.ai), so one image serves every environment. Override per
-# environment only to pin an explicit host.
+# Leave service URL args empty to derive hosts from page origin at runtime; explicit overrides pin a host.
 ARG VITE_MINDS_API_URL=
 ARG VITE_KEYCLOAK_URL=
 ARG VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=
@@ -45,15 +21,9 @@ ENV VITE_MINDS_API_URL=${VITE_MINDS_API_URL} \
     VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN} \
     VITE_APP_VERSION=${VITE_APP_VERSION}
 RUN npm run build:web
-# Output: /build/dist/renderer-web/ (shell index-web.html, relative asset base)
 
-# Stage 2: runtime. nginx serving the static SPA, non-root on 8080.
-# Pinned to the current stable line on Alpine 3.24. The older 1.27-alpine tag is
-# stuck on Alpine 3.21 with known CVEs. Bump this tag when a newer stable release
-# lands rather than patching packages in-image.
-# -slim, not -alpine: the full tag adds xslt/geoip/image-filter/njs, which this
-# config never loads and which pull gd -> fontconfig -> expat. Keep it slim
-# unless a directive here needs a dynamic module.
+# Use the slim nginx image unless configuration requires a dynamic module; unused modules add dependencies.
+# Update the base tag for security fixes rather than patching packages in this image.
 FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
 
 LABEL org.opencontainers.image.title="cowork-frontend"

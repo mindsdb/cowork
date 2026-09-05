@@ -12,11 +12,7 @@ files:
   - "!dist/**/*.map"
   - node_modules/**/*
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
-  # appdmg is a build-time DMG tool. Its native transitive deps (fs-xattr,
-  # macos-alias) don't rebuild per-arch, so the same arm64 .node lands in both
-  # halves of the universal app and breaks @electron/universal's merge. npm
-  # hoists them to top level, so each is excluded by name (not via appdmg/**).
-  # None belong in the shipped app.
+  # Exclude appdmg and hoisted native dependencies: their identical per-arch binaries break universal merging.
   - "!node_modules/appdmg/**"
   - "!node_modules/fs-xattr/**"
   - "!node_modules/macos-alias/**"
@@ -30,12 +26,8 @@ mac:
       arch: [universal]
     - target: zip
       arch: [universal]
-  # node-pty (the Claude Code terminal) builds arm64-only from source with no
-  # x64 prebuild, so its .node is identical in both universal halves and
-  # app-builder-lib 26.15.3 refuses to merge it without this acknowledgement.
-  # keytar and the rest ship real per-arch prebuilds, so they merge normally
-  # and stay correct on Intel. The terminal is arm64-only on Intel until
-  # node-pty gets a real x64 build.
+  # node-pty currently lacks a real x64 build; acknowledge identical arm64 binaries in universal packaging.
+  # Other native modules retain real per-architecture builds.
   x64ArchFiles: "**/node-pty/**"
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -67,27 +59,16 @@ win:
     - target: nsis
       arch: [x64]
   artifactName: "${productName}-Setup-${version}.${ext}"
-  # ENG-1241: Windows-only override, combined additively with the root-level
-  # extraResources below. macOS deliberately gets none — its credentials are
-  # staged outside the signed bundle by a pkgbuild postinstall script instead
-  # (see build/pkg-scripts/), since Contents/Resources there is root-owned
-  # and the app could never delete anything placed inside it. Windows's
-  # per-user install location doesn't have that problem, so the file simply
-  # stays where it's always been; credential-provisioning.ts reads and
-  # deletes it from there directly.
+  # Windows can delete provisioned credentials from its per-user install. macOS must stage outside
+  # the root-owned signed bundle through pkg postinstall; keep this resource Windows-only.
   extraResources:
     - from: server-credentials.json
       to: server-credentials.json
 
 nsis:
   oneClick: false
-  # ENG-1367: keep this off. When it's on, a manual (non-auto-update) upgrade
-  # run tells the previous version's uninstaller to delete its Start-Menu
-  # shortcut and unregister the AppUserModelID, which destroys the user's
-  # taskbar pin on every update. With it off the installer passes
-  # --keep-shortcuts instead, and the pin survives. Upgrades still land in the
-  # previously recorded install directory either way; only the fresh-install
-  # directory chooser is lost (the /D installer switch remains for that).
+  # Keep directory changes disabled on upgrade: otherwise the old uninstaller removes shortcuts/AppUserModelID
+  # and destroys taskbar pins. Fresh installs can still specify /D.
   allowToChangeInstallationDirectory: false
   perMachine: false
 
@@ -95,36 +76,25 @@ linux:
   icon: icon.png
   category: Development
   maintainer: MindsDB <hello@mindsdb.com>
-  # Avoid the legacy package.json name ("anton") leaking into the package
-  # name, /opt path, and binary.
   executableName: mindshub-cowork
-  # No arch list: build for the host arch only. Native modules (keytar)
-  # can't be cross-compiled, so CI builds each arch on its own runner.
+  # Native modules require one build per native architecture.
   target:
     - target: deb
-  # ENG-1241: carrier only — /opt is root-owned, so deb.afterInstall stages a
-  # private copy into the installing user's home and deletes this one. Keep it
-  # linux-scoped: the root-level list is additive and would reach macOS.
+  # Linux credentials are a carrier for postinst staging; keep them platform-scoped so they cannot reach macOS.
   extraResources:
     - from: server-credentials.json
       to: server-credentials.json
 
 deb:
   packageName: mindshub-cowork
-  # ${productFilename} resolves to linux.executableName, so the file name
-  # follows the per-channel package name instead of always claiming to be prod.
+  # productFilename resolves to executableName, preserving channel-specific filenames.
   artifactName: "${productFilename}_${version}_${arch}.${ext}"
-  # Stages the credentials out of root-owned /opt into the installing user's
-  # home; without it they persist world-readable and the app can never clean up.
+  # Stage credentials in the user's home so provisioning can delete them.
   afterInstall: build/deb-scripts/postinst.sh
-  # Removes the staged credentials an install that was never launched left in
-  # the user's home. Carries upstream's after-remove.tpl for the same reason.
+  # Clean staged credentials left by an install that never launched; preserve upstream removal steps.
   afterRemove: build/deb-scripts/postrm.sh
-  # Overriding depends replaces electron-builder's defaults, so the default
-  # runtime libs are repeated here. curl bootstraps uv on first run; git is for
-  # coding mode's per-task worktrees, NOT the server install (every packaged
-  # kind resolves the pypi channel). lsof backs killProcessOnPort()'s orphan
-  # reaping (server-process.ts) — none are guaranteed on a minimal Debian.
+  # depends replaces defaults. Keep runtime libraries plus curl for uv, git for coding worktrees,
+  # and lsof for orphan-port cleanup; minimal Debian may provide none of them.
   depends:
     - libgtk-3-0
     - libnotify4
@@ -140,9 +110,7 @@ deb:
     - curl
 
 extraResources:
-  # Generated by run-electron-builder.mjs for eligible prod/stable packages.
-  # Embedding it before signing keeps the feed config inside the signed app;
-  # unsupported builds omit the generated source and remain updater-disabled.
+  # Embed eligible-channel feed metadata before signing; missing generated metadata keeps updates disabled.
   - from: build/app-update.yml
     to: app-update.yml
   - from: assets/
