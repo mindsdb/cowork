@@ -1,13 +1,3 @@
-/* Anton Chat — Direction A: Conservative.
-   Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
-   Editorial, document-like. Inter body, Inter headings, mono for operator
-   metadata. Centered ~720px column, OrbitMorph-led Anton turns, floating
-   composer, right rail with collapsible cards.
-
-   Wired against the live message model (role: user|assistant|error|activity,
-   plus _streaming) and our real Composer + project/model state. Tokens come
-   from CSS vars so the panel reads correctly in both light and dark themes. */
-
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
@@ -92,11 +82,6 @@ function formatMetaTime(value) {
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
 }
 
-// ─── Shared turn-action toolbar ──────────────────────────────────────────
-// Used by both user and assistant turns for consistent styling. Actions
-// fade in on hover of the parent turn, but stay visible when `isLast`
-// is true (matching Claude's pattern where the most recent exchange
-// always shows its toolbar).
 const ICON_SZ = 15;
 function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
@@ -154,32 +139,12 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
   );
 }
 
-// ─── User pill ───────────────────────────────────────────────────────────
-//
-// `onDelete` is set by the parent only when this user message is an
-// "orphan" — no assistant response followed it (e.g. the stream was
-// stopped before anton produced anything). For paired user→answer
-// cycles, the delete affordance lives on the assistant bubble's
-// TurnActions and removes both halves. The orphan case has no
-// assistant bubble, so we surface the delete here instead.
-// Connect-intro bubble — synthesized assistant turn shown after the
-// user picks a connector. Reads as a small card with the connector
-// logo + label and a "Fill out the form on the side panel →" prompt.
-// Hovering it highlights the form panel on the right rail so the
-// affordance is obvious.
-//
-// In modify mode, the bubble grows two affordances inline next to
-// the card: a borderless "← Cancel" and a danger-tinted
-// "Disconnect". Both stay in the chat row so the user can bail or
-// destroy without scrolling around to find a menu.
 function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, onCancel, onDisconnect, onClickCard }) {
   const iconName = connector?.logo || 'database';
   const Icon = (Ico[iconName] || Ico.database);
   const clickable = typeof onClickCard === 'function';
-  // No "Anton" eyebrow on this bubble — the follow-up assistant
-  // turn that always renders right after it carries its own,
-  // and two headers stacked back-to-back read as a stutter. The
-  // card itself is visually distinct enough to stand on its own.
+  // The following assistant turn already names the agent; avoid repeating its header on the connect
+  // card.
   return (
     <div className="flex flex-col gap-2 pb-1">
       <div className="flex items-center gap-2.5 flex-wrap">
@@ -237,15 +202,6 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
   );
 }
 
-// Pill-shaped action button used next to the connect-intro card in
-// modify mode. Two visual variants:
-//   • "ghost"  — borderless, ink color, hover lifts background
-//                 (used for Cancel — the safe, reversible action)
-//   • "danger" — red border + tint, hover ramps the fill
-//                 (used for Disconnect — destructive, asks confirm)
-// Icon + label sit inline with a 6px gap; whole button is a single
-// rounded shape so the row reads as a clean affordance group next
-// to the connector card.
 function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
   const isDanger = kind === 'danger';
   return (
@@ -323,12 +279,10 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
     <div className="user-turn">
       <div className="user-turn-inner">
         <div className="user-turn-bubble">
-          {/* User messages flow through the same markdown pipeline as
-              assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
-              the composer can't trigger the side-effect renderers
-              reserved for assistant output. */}
+          {/*
+ * Render user markdown without form/chart side effects; special fences from the composer must not
+ * invoke assistant-only renderers.
+ */}
           {repair ? (
             <ArtifactRepairCard
               repair={repair}
@@ -361,11 +315,8 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
           )}
         </div>
         {attachments?.map((a) => {
-          // Image attachments preview inline as a thumbnail (fetched as a
-          // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image via the OS/browser. We can only build the
-          // raw URL when the conversation is project-scoped; without it,
-          // fall back to the icon+name chip.
+          // CSP blocks direct loopback images, so fetch thumbnails as blobs. Without project-scoped
+          // URLs, show a file chip.
           const isImage = a.mime && String(a.mime).startsWith('image/');
           const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
           if (rawUrl) {
@@ -406,10 +357,6 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
 
-// ─── Anton answer turn — content stack ────────────────────────────────────
-// No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
-// is the single indicator; once done, a hover-only footer (bottom-right)
-// names the agent that answered and when.
 function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast }) {
   return (
     <div
@@ -450,11 +397,8 @@ export function artifactStepToCard(step, projectPath) {
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
-    // Preserve the complete server card that the stream adapter stored. In
-    // particular, id + draftUrl + capabilities are what make the
-    // immediately opened viewer editable and reviewable. Keeping the payload
-    // whole also prevents each new artifact field from requiring another
-    // fragile pass-through list here.
+    // Preserve the full server card so draft editing/review capabilities and future fields survive
+    // opening from chat.
     ...data,
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
@@ -470,12 +414,8 @@ export function artifactStepToCard(step, projectPath) {
   };
 }
 
-// Renders any badge='Artifact' steps as inline ArtifactCards.
-//
-// `live` says whether these steps belong to a turn still in flight. It rides
-// down to the card because an artifact the agent created THIS turn cannot be in
-// an artifacts index that was loaded before it existed, and judging it against
-// one would mark a brand-new artifact "Deleted".
+// Pass live through to cards: an index fetched before this turn cannot know that its newly created
+// artifacts exist.
 function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
@@ -493,26 +433,11 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   );
 }
 
-// Renders any badge='AskUser' steps as inline question cards, the same way
-// StepArtifacts renders artifacts — both receive the shared `steps` array.
-//
-// `expired` is derived PER QUESTION, not per conversation. Conversation-level
-// liveness ("this chat has something in flight") is the wrong granularity: it
-// renders an unanswered card from an EARLIER turn with live buttons for as long
-// as any new stream runs on the same conversation, and clicking it 404s — which
-// then retires whatever question the new turn is actually blocked on.
-//
-// Two rules:
-//   - an answered question is never expired; the card renders its outcome, and
-//     the generic "no longer active" line would be noise on top of it
-//   - only the LAST unanswered question of a LIVE turn can still be answered
-//
-// That last rule leans on an invariant owned by anton, not by this repo: the
-// `ask_user` tool blocks the turn, so anton never publishes a second question
-// while one is outstanding, and it always retires the outstanding one (answer,
-// cancel, or the server's 300 s timeout) before the turn ends. This repo can
-// neither see nor enforce that cross-repo contract, so an earlier unanswered
-// card is treated as expired rather than trusted to still be answerable.
+// Only the last unanswered question in a live turn is actionable; answered cards retain their
+// result.
+// Anton blocks on ask_user and retires it before another question or turn completion, so earlier
+// unanswered
+// cards are expired even when a later turn in the conversation is live.
 function StepQuestions({ steps, conversationId, conversationLive, onAnswered }) {
   const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
   if (questions.length === 0) return null;
@@ -554,10 +479,8 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
 }
 
 function ArtifactCard({ artifact, onOpen, live = false }) {
-  // This card is an artifact surface like the panel's rows, so it answers to the
-  // same deployment gate. Without it the chat offered a local preview, Export
-  // and Show in Finder for content an org deployment does not serve, while the
-  // panel had already stopped offering them for the very same artifact.
+  // Apply the same deployment gate as the artifact panel so org chat cards do not offer unavailable
+  // local actions.
   const orgMode = useOrgMode();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
@@ -592,28 +515,20 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
 
-  // An action that failed may have failed because the artifact is gone. Ask the
-  // server rather than guess from the error: a 404 detail, an Electron bridge
-  // `{ ok: false }` and a transient network blip are indistinguishable here, and
-  // only the artifacts list can settle it. Best-effort — a failed revalidation
-  // just leaves the card as it was.
+  // Revalidate after action failures: only the artifact list can distinguish deletion from
+  // bridge/network errors.
+  // Failed revalidation leaves the card unchanged.
   const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
   /*
-   * Match the Working folder card's behavior: HTML and text artifacts
-   * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
-   * iframe, text via inline markdown / table / preformatted render, images
-   * from the serve URL. Anything else falls through to the OS handler via the
-   * Electron bridge. In org mode the same question is answered from the
-   * authenticated draft URL instead, which rules images and fullstack apps out.
+   * Desktop previews supported local formats; org mode previews only formats supported by the
+   * authenticated draft URL.
    */
   const isImage = isImageArtifact(artifact);
   const canPreviewInline = canPreviewLocally(artifact);
   const canPreviewDraft = canPreviewOrgDraft(artifact);
-  // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
-  // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
-  // an image, or before the artifact card carries a serveUrl (org mode, or the
-  // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
+  // Fetch thumbnail blobs because CSP blocks loopback image sources; missing serve URLs produce no
+  // thumbnail.
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
@@ -625,14 +540,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     hasDraft: canDownloadOrgDraft(artifact),
   });
   /*
-   * Org-mode destinations are addressed by the server card, through the draft
-   * URL or the shared URL, so a path this client could not canonicalize does
-   * not disable them. Desktop still needs the local path it hands to the OS.
-   *
-   * `deleted` stays in both branches. It is the one term of `canAct` that says
-   * nothing about addressing: a deleted artifact has a perfectly good draft URL
-   * and still cannot be opened, so dropping it here would leave a tombstoned
-   * card looking live and hand the whole guard to handleOpen alone.
+   * Org actions use server URLs and do not need a canonical local path. Both modes must still block
+   * deleted artifacts.
    */
   const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
   const activateLabel = openTarget === 'published'
@@ -640,18 +549,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     : openTarget === 'download'
       ? 'Download'
       : openTarget === 'os' ? 'Open' : 'Open preview';
-  /*
-   * What the card says when it has nowhere to go. Org mode has no local file to
-   * blame, and blaming one is actively wrong there: the card prints its own
-   * server path two lines down. Desktop keeps the path reason it can act on.
-   */
+  /* Org artifacts have no local file to diagnose; use a destination-specific reason there. */
   const noDestinationReason = orgMode && !openTarget
     ? 'This artifact cannot be previewed and has no shared link yet.'
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
+  // Export disabled pending ENG-1988: conversion can corrupt complex documents, and HTML export can
+  // overwrite the source.
   const canExport = false;
   const handleExport = async (fmt) => {
     setExportOpen(false);
@@ -678,35 +581,19 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       setExporting(false);
     }
   };
-  /*
-   * The shared URL stays reachable beside the preview: it is the address a
-   * collaborator gets, and the chat turn is where the artifact was just made.
-   *
-   * `host.openExternal` is async, so the await is what makes the catch reach a
-   * rejected bridge call. Without it the try block returns before the promise
-   * settles: the fallback below never runs on the one failure it exists for,
-   * and the rejection escapes as an unhandled one.
-   */
+  /* Await the bridge promise so rejection reaches the browser fallback. */
   const handleOpenPublished = async () => {
     try { await host.openExternal(artifact.publishedUrl); }
     catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
   };
   const handleOpen = async () => {
-    /*
-     * The branches that need no local file return before the `canAct` check, so
-     * they would survive a deletion. Their buttons are not rendered in that
-     * state, but relying on two conditions in different parts of the file
-     * agreeing is not worth the risk.
-     */
+    /* Check deletion before URL-only branches, which bypass the local-path guard. */
     if (deleted) {
       showStatus('error', 'This artifact was deleted.');
       return;
     }
     if (openTarget === 'preview' && onOpen) {
-      /*
-       * The viewer reads the draft URL in org mode and the local bytes on
-       * desktop, so it opens on either without a canonical path of its own.
-       */
+      /* Preview reads the draft URL in org mode, so no canonical local path is required. */
       onOpen(artifact);
       return;
     }
@@ -716,9 +603,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     if (openTarget === 'download') {
       /*
-       * Org mode, an artifact the draft cannot render and nobody shared: the
-       * authenticated draft URL still streams the file, so the click saves it
-       * instead of dead-ending on "no shared link yet" (ENG-2044).
+       * Unpreviewable, unshared org artifacts can still be downloaded through the authenticated
+       * draft URL.
        */
       handleDownload();
       return;
@@ -773,11 +659,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
   };
   const handleDownload = async () => {
-    /*
-     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
-     * the file by its draft URL and never has such a path, so gating on it
-     * there would refuse the one action that works. `deleted` still applies.
-     */
+    /* Org downloads need the draft URL, not canAct’s local path; deletion still blocks them. */
     if (orgMode ? deleted : !canAct) {
       showStatus('error', orgMode
         ? 'This artifact was deleted.'
@@ -791,13 +673,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     showStatus('ok', 'Downloading…');
   };
   /*
-   * One primary action button instead of an Open/Show-in-Finder pair: what it
-   * does follows what the artifact actually supports — Preview for anything the
-   * in-app modal can render, otherwise Download (web, streams the file) or
-   * Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
-   * file) — never both, and never a generic "Open" that hides which of the
-   * two it's about to do. Org mode reads the same rule off the draft URL, and
-   * an artifact it cannot render keeps the shared page as its one destination.
+   * Choose the primary action from supported destinations; desktop reveal opens the folder, while
+   * web download saves the file.
    */
   const primaryAction = orgMode
     ? (openTarget === 'preview'
@@ -811,24 +688,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
       : host.isWeb
         ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
-        // handleReveal already falls back from the Electron bridge to the
-        // server-side reveal endpoint and surfaces its own error, so this
-        // doesn't gate further on bridge availability the way the old
-        // Open button didn't either.
+        // handleReveal owns the bridge-to-server fallback and error reporting.
         : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
-  /*
-   * Only when the primary button is the preview: otherwise "Open" already is
-   * the shared page and a second button would point at the same place.
-   */
+  /* Avoid a second shared-link button when the primary action already opens it. */
   const showSharedLink = orgMode && published && openTarget === 'preview';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  /*
-   * Whole-card click → preview. The inner buttons (the primary action,
-   * Title) all stopPropagation so their own handlers run instead of
-   * bubbling up to this. Disabled paths fall through to a status toast
-   * instead of opening, mirroring the prior button behaviour. Cursor +
-   * hover lift mark the entire surface as interactive at a glance.
-   */
+  /* Inner actions stop propagation so a card click cannot also invoke their action. */
   return (
     <Card
       as="div"
@@ -851,22 +716,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         )}
       </div>
       <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
           /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
+           * Inline all: unset overrides utility longhands; keep reset properties and hover style
+           * writes inline too.
            */
           style={{
             all: 'unset',
@@ -928,10 +785,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
                     type="button"
                     role="menuitem"
                     onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
+                    // Keep hover writes inline to override all: unset, as on the title button.
                     style={{
                       all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
                       fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
@@ -949,10 +803,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
           </Tooltip>
         )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
+        {/* Offer draft download alongside other org actions, unless Download is already primary. */}
         {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
           <Tooltip content="Save this artifact's file">
             <SmallBtn onClick={handleDownload}>Download</SmallBtn>
@@ -975,10 +826,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   );
 }
 
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
 const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
   return (
     <button
@@ -1004,10 +851,6 @@ function StreamCursor() {
 // components/rail/. The local RailCard that used to live here was
 // removed when ChatView switched to those wrappers.
 
-// ProgressList / WorkingFolder / ContextSection were the legacy
-// inline rail bodies; they're now folded into the rail box wrappers
-// (PhaseProgress / WorkingFolderLive / ContextCard) which are
-// composed via ProgressBox / WorkingFolderBox / ContextBox.
 
 
 // Wait for the sidecar to be answering before telling the user to resend, so
@@ -1026,18 +869,8 @@ async function waitForServerReady(timeoutMs = 8000) {
   return false;
 }
 
-// Mid-conversation provider auth failure (`provider_auth`): the credential the
-// gateway sees is invalid (revoked / rotated / never provisioned / org drift),
-// so chat calls 401.
-//
-// ── ActionCard: the shared shell for inline "actionable error" cards ───────
-// One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
+// Shared action-card layout. buttons accepts { label, onClick, primary, disabled, style };
+// style overrides the base button and an empty list hides the row.
 function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
@@ -1057,10 +890,8 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
                 type="button"
                 onClick={b.onClick}
                 disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
+                // Use theme ink/background colors for contrast; hardcoded white becomes invisible
+                // on dark-mode light buttons.
                 className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
                 style={b.style}
               >{b.label}</button>
@@ -1072,20 +903,10 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   );
 }
 
-// ── AllowanceExhaustedCard: the free monthly grant, not a drained wallet ───
-// ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
-// free-bucket model on an org that has NEVER topped up, so this user has not
-// spent money — they used the monthly grant, and it resets. Two things follow,
-// and the old shared out-of-credits card got both wrong: the reset date is a
-// genuinely free way forward (hiding it while asking for money is the defect),
-// and "unlock" is literally true, because non-free models need a wallet this
-// org doesn't have.
-//
-// The date is formatted here, not server-side: only the client knows the
-// viewer's timezone, and parsing it on the server shifts the day for some
-// users. Anything unusable — absent, malformed, or already past on a reloaded
-// conversation — degrades to "next month" rather than rendering "Invalid Date"
-// or a stale month.
+// included_allowance_exhausted applies to free-grant orgs that have never topped up; show the free
+// reset path.
+// Format reset dates in the viewer’s timezone, falling back to next month for absent, invalid, or
+// past values.
 function formatAllowanceReset(resetAt) {
   if (!resetAt) return 'next month';
   const d = new Date(resetAt);
@@ -1094,37 +915,19 @@ function formatAllowanceReset(resetAt) {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
 }
 
-// ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
-// ENG-1537. The org exceeded requests/tokens per minute; credits cannot lift
-// that ceiling, so this card must never offer a top-up. anton already waited
-// in-turn (up to ~90s) before this rendered, so reaching it means the window
-// hadn't cleared — which is precisely why Retry is time-gated against the
-// gateway's own Retry-After: an immediate retry re-sends a large context into
-// the limiter that just refused it, reproducing the amplification loop the fix
-// removed, only user-initiated.
-//
-// No hint (older gateway, stripped header) → an ungated Retry. Better an
-// honest button than an invented countdown.
-// Longest we will ever disable Retry. The server clamps nothing, and anton
-// cards immediately above its own 60s cap rather than sleeping — so a large
-// hint arrives here as a real value. Ungated it would disable the button for
-// hours (measured: retryAfter=30000 gated for 8.3h), which is indistinguishable
-// from a broken card (ENG-1537 review).
+// Rate limits are independent of credits: offer timed Retry, never top-up. Honor the server
+// deadline,
+// but cap the gate so extreme hints cannot disable Retry for hours. Missing hints leave Retry
+// ungated.
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
 function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
   const readyAt = useMemo(() => {
-    // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
-    // derived from the message's created_at + retryAfter: created_at is
-    // serialised offset-less, so JS parses it as local time — the gate lasts
-    // hours west of UTC and no-ops east of it, and a TZ=UTC suite sees neither.
+    // Use the absolute retry_at instant; message created_at has no offset and would shift the
+    // deadline by timezone.
     if (typeof retryAt !== 'string') return null;
-    // REQUIRE an offset. An offset-less timestamp is what made the original bug
-    // invisible: JS parses "2026-08-12T01:04:55" as LOCAL time, so the gate ran
-    // ~7h long west of UTC and no-opped east of it — and the suite pins TZ=UTC
-    // globally, so no assertion could see either direction. Rejecting the naive
-    // form here turns that whole class of regression into "no gate" rather than
-    // "a wrong gate", and makes it testable in any zone.
+    // Reject offset-less timestamps because JavaScript interprets them in local time; no gate is
+    // safer than a shifted gate.
     if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(retryAt)) return null;
     const at = new Date(retryAt).getTime();
     if (Number.isNaN(at)) return null;
@@ -1160,12 +963,8 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
   );
 }
 
-// For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
-// place via mindshubFinalize (the same step login runs) — no logout. For a
-// **BYOK** provider, only the user can fix their own key, so we point them to
-// Settings instead of dragging them into a MindsHub login. Reconnect is also
-// desktop-only (finalize/login are Electron IPC), so on web we fall back to
-// Settings too.
+// Reprovision managed keys through desktop finalize. BYOK users must fix their key in Settings; web
+// also uses Settings.
 function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -1180,10 +979,8 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
     try {
       let res = await host.mindshubFinalize();
       if (res?.upgradeRequired) {
-        // Two events, not one (ENG-1533). The refusal is the state — countable
-        // here against the other two handlers, which answer it differently (BYOK
-        // on first run, nothing at all on SSO sign-in). The billing open is what
-        // this handler did about it, and joins the paywall funnel.
+        // Track provisioning refusal and billing navigation separately: one records the state, the
+        // other the response to it.
         trackKeyProvisioningRefused('billing_opened');
         trackBillingOpened('key_provisioning_refused');
         host.openExternal(MINDS_BILLING_URL);
@@ -1208,10 +1005,8 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
     }
   };
 
-  // title + body are derived from what this card can actually offer (web-aware),
-  // so they never contradict the buttons shown. We deliberately don't reuse the
-  // server's copy here: it's provider-aware but not web-aware (it can't know the
-  // desktop-only Reconnect is unavailable on web).
+  // Derive copy from available actions; server copy cannot account for desktop-only Reconnect being
+  // unavailable on web.
   const title = done
     ? 'Reconnected'
     : canReconnect ? 'Reconnect to continue'
@@ -1250,46 +1045,21 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 }
 
 /*
- * Legacy model-403 (`model_access_denied` / `model_disabled`): back-compat
- * only. The current gateway never emits a 403 model denial — a wallet that
- * can't pay comes back as 402 `wallet_empty`, which the server maps to
- * `token_limit` and the out-of-credits card renders. These codes only arrive
- * from older pre-wallet gateway/anton versions, so the branch stays. Two
- * flavors, keyed on the structured code:
- *
- * - `model_access_denied` — old gateways sent this when the account couldn't
- *   cover the model, so lead with Top up balance (plus the conditional
- *   Switch to MindsHub Air escape hatch).
- * - `model_disabled` — an admin turned the model off; credits don't unlock
- *   it, so lead with Open Settings (Top up balance stays as a secondary
- *   escape hatch since some old gateways used this code for credit locks).
- *
- * The body is OUR copy, never the server's error string — old gateways word
- * these as access problems, which under pay as you go misdescribes an empty
- * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
- * window.opens on web); Open Settings routes there on both shells.
+ * Preserve legacy model-403 handling: access_denied leads to top-up, while admin-disabled models
+ * lead to Settings.
+ * Keep top-up secondary for disabled codes used by older gateways for credit locks. Current wallet
+ * denials use token_limit.
+ * Use local copy because legacy server wording misdescribes credit failures as access problems.
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
 }) {
-  // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
-  // hold one, else the id-derived form. This card used to call the bare
-  // prettifier, so the row the user had just picked as "MindsHub Air" came back
-  // as "Mindshub air needs credits" — the same model named two ways on one
-  // screen. displayModelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5
-  // Mini) and deliberately lowercases some heads (o4 Mini) — never re-case
-  // those. Only a bare single-token alias ("sonnet") comes back lowercase, and
-  // it reads better capitalized in the title. So capitalize single-word labels
-  // only, leaving anything already spaced/cased untouched.
+  // Use catalog labels consistently with the picker. Capitalize only single-word aliases to
+  // preserve deliberate casing such as o4 Mini.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
-  // One handler for both button rows, so the recorded trigger always matches the
-  // card that was actually rendered (ENG-1533). Both rows offer Top up balance,
-  // but only the `denied` row is a credit denial — the other is the
-  // admin-disabled model, where the top-up is a legacy escape hatch (see the
-  // header comment). Labelling both `model_access_denied` would invent a credit
-  // denial that never happened.
+  // Record the displayed denial code; an admin-disabled model must not count as a credit denial.
   const openBilling = () => {
     trackBillingOpened(denied ? 'model_access_denied' : 'model_disabled');
     host.openExternal(MINDS_BILLING_URL);
@@ -1325,21 +1095,9 @@ export function ModelUnavailableCard({
   );
 }
 
-// Mid-conversation transient provider incident (`provider_overloaded`,
-// ENG-673): the provider (or an upstream it routes to) was overloaded/erroring
-// mid-stream and anton's backoff-retry ran out of time. Unlike the model-403
-// cases this is TRANSIENT, so **Retry** is the primary action (resend the last
-// message).
-//
-// The MindsHub angle depends on how the user is set up (the `reconnectable`
-// flag = "already on MindsHub Cloud"):
-//  - On MindsHub Cloud → the cross-provider failover already applied and the
-//    whole set was down; there's nothing to switch to, so just Retry.
-//  - BYOK/direct → surface MindsHub's failover as the durable fix: informational
-//    in the body, plus a "Set up MindsHub" route to Settings. Deliberately NOT a
-//    raw "Subscribe" button — that would mis-nudge a user who already subscribes
-//    but chose BYOK (the ENG-514 lesson); Settings is where connect / switch /
-//    subscribe are resolved for real.
+// Provider overload is transient, so lead with Retry. Managed users have already exhausted
+// failover;
+// BYOK users may configure MindsHub through Settings, which handles connection/subscription state.
 function ProviderOverloadedCard({
   time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
 }) {
@@ -1373,17 +1131,9 @@ function lastUserTextBefore(visibleMessages, i) {
 }
 
 /**
- * The pending composer redirect for the task on screen, or null.
- *
- * A drain is per-conversation: a reconnected background stream (tailInFlight)
- * can drain task A's queue while the user is looking at task B, and A's text
- * must neither land in B's composer nor be dropped while it waits for A to be
- * opened again. Hence a per-task map rather than one shared slot.
- *
- * The entry carries the drained `attachments` alongside the text for the same
- * reason: the staged-attachment list in App.jsx is app-wide, so files staged at
- * drain time would appear on — and be sent from — whichever conversation is
- * open. They are handed to the parent only when this task's entry is consumed.
+ * Read redirects per task so background drains preserve text/files without placing them in another
+ * conversation.
+ * Stage attachments only when this task consumes its entry.
  */
 export function redirectForTask(redirects, taskId) {
   if (!redirects || !taskId) return null;
@@ -1404,10 +1154,7 @@ export default function ChatView({
   // never sees the EffortSelect pill (Composer defaults `effort` to '').
   effort,
   onEffortChange,
-  // Full catalog for the model picker (ENG-1656: task view can change its
-  // model, not just display it). Falls back to a single-item list of just
-  // the current model when omitted, so existing callers/tests that don't
-  // pass these keep working exactly as before — a flat, unpickable menu.
+  // Without the full catalog, retain a single-item menu showing the current model.
   models,
   modelMeta,
   // Catalog display labels by id (settings.modelLabels), so failure cards name
