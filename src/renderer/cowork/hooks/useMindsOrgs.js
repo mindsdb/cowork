@@ -3,27 +3,10 @@ import { mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
 
 /**
- * The MindsHub organizations this person belongs to, and which one is active in
- * their authenticated Cowork session.
- *
- * Read when the signed-in identity resolves rather than on every menu open. The
- * list comes from Keycloak through the platform host and rarely moves within a
- * session, while the account menu is mounted for the whole of one — a fetch per
- * open would mostly re-answer the same question. `refresh` covers the case that
- * actually changes it, which is a switch.
- *
- * Every failure resolves to no organizations, and that is the resting state
- * too: while the read is in flight, when the person is signed out, and when the
- * installed main process predates these channels. The account menu then renders
- * exactly as it does today. There is no loading affordance for the same reason
- * the workspace selector has none — a group that appeared, flickered and
- * vanished reads worse than one that appears a beat late.
- *
- * Web reads identify a transient failure with `reachable: false`. Retry those:
- * the first request can race authentication settling, and one miss must not hide
- * the organization group for the whole session. The desktop bridge predates the
- * field, so a missing `reachable` is a definite legacy answer, including its
- * intentional empty fallback when an older main process has no such channel.
+ * Read organizations when identity resolves; refresh after switching. Loading, sign-out and legacy
+ * channels return an empty list.
+ * Retry web reachable=false startup failures. A missing reachable is a definitive legacy desktop
+ * answer, including empty fallback.
  */
 
 const NONE = Object.freeze({ orgs: [], activeOrgId: null, subject: null });
@@ -107,12 +90,8 @@ export function useMindsOrgs(accountUser) {
   }, [load]);
 
   /**
-   * Resolves to the result rather than throwing, because a refusal is an
-   * outcome the caller has to render and not an exception it has to translate.
-   * Nothing is applied optimistically: the host decides whether the switch
-   * happened and what the organization list looks like afterwards, so painting
-   * the check on a row it then refuses is how the app ends up disagreeing with
-   * the organization its requests are scoped to.
+   * Return refusals for the caller to display. Apply only the host-confirmed result, never an
+   * optimistic tenant switch.
    */
   const switchOrg = useCallback(async (organizationId) => {
     const mine = generation.current;
@@ -120,11 +99,9 @@ export function useMindsOrgs(accountUser) {
     try {
       const result = await mindshubSwitchOrg(organizationId);
       /**
-       * On web, Keycloak may change the server-side tenant before its forced
-       * token refresh succeeds. Either outcome then carries `reloadRequired`:
-       * old org-scoped caches must be gone before a hard reload reconciles the
-       * session. This runs even after identity change or unmount, because a
-       * responsive shell swap must not cancel a tenant-safety reload.
+       * Keycloak can change tenant before token refresh succeeds. Honor reloadRequired even after
+       * unmount/identity change
+       * so old tenant caches are cleared before reconciling the session.
        */
       if (result?.reloadRequired === true) {
         prepareForOrganizationReload({
@@ -151,9 +128,8 @@ export function useMindsOrgs(accountUser) {
   }, [sub]);
 
   /**
-   * React renders with the new subject before its effect can clear the old
-   * snapshot. Key it here so the previous person's organization names never
-   * survive even that one render while the replacement read is pending.
+   * Hide a prior subject's snapshot during render, before the effect can clear it, to avoid
+   * exposing their organization names.
    */
   const visibleState = state.subject === sub ? state : NONE;
   const activeOrg = visibleState.orgs.find((org) => org.id === visibleState.activeOrgId) ?? null;

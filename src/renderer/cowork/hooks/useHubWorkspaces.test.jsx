@@ -61,9 +61,7 @@ describe('useHubWorkspaces', () => {
   });
 
   it('does not re-read when the identity object is rebuilt for the same person', async () => {
-    // `useAccountUser` returns a fresh object every time it decodes the token,
-    // so depending on the object rather than the subject would re-fetch on any
-    // re-render that re-decoded the same token.
+    // Depend on subject, not the freshly decoded account object, to avoid redundant reads.
     const { result, rerender } = renderHook(({ user }) => useHubWorkspaces(user), {
       initialProps: { user: { ...USER } },
     });
@@ -160,9 +158,7 @@ describe('useHubWorkspaces', () => {
   });
 
   it('retries a failed read instead of staying dark for the session', async () => {
-    // The renderer can mount before the sidecar is listening, which is ordinary
-    // on a cold start. One read per session turned that blip into a control
-    // that never appeared until the app was relaunched.
+    // Retry cold-start reads that race sidecar startup so the control can appear without relaunch.
     apiMock.fetchHubWorkspaces
       .mockRejectedValueOnce(new Error('API /hub/workspaces/ returned 502'))
       .mockResolvedValue(PAYLOAD);
@@ -179,10 +175,8 @@ describe('useHubWorkspaces', () => {
   });
 
   it('retries a 200 that says the hub could not be reached', async () => {
-    // The sidecar reports a failed hop to auth in band, as a 200 carrying
-    // `reachable: false`, not as a thrown status. Keying "settled" off whether
-    // the call threw retried the localhost hop and gave up on the remote one,
-    // which is the half that actually blips.
+    // Treat a 200 response with enabled:true and reachable:false as transient, not just thrown
+    // transport errors.
     apiMock.fetchHubWorkspaces
       .mockResolvedValueOnce({ enabled: true, reachable: false, workspaces: [], activeWorkspaceId: null })
       .mockResolvedValue(PAYLOAD);
@@ -212,9 +206,8 @@ describe('useHubWorkspaces', () => {
   });
 
   it('stops retrying once unmounted', async () => {
-    // Unmount is the one exit from the effect that changes no identity, so the
-    // generation guard only catches it if the cleanup bumps it too. Otherwise a
-    // read still in flight arms a timer the cleanup has already run past.
+    // Unmount must invalidate the generation too, preventing late reads from arming a post-cleanup
+    // retry.
     apiMock.fetchHubWorkspaces.mockRejectedValue(new Error('down'));
 
     const { unmount } = renderHook(() => useHubWorkspaces(USER));
@@ -239,9 +232,8 @@ describe('useHubWorkspaces', () => {
   });
 
   it('drops a failed read that lands after the identity moved on', async () => {
-    // The success path is guarded and so is the failure path: a read that fails
-    // late must not reset the new account's state to dark, and must not start a
-    // retry loop on an identity nobody is looking at any more.
+    // Late failures from a previous identity must neither clear the new state nor restart its retry
+    // loop.
     let rejectFirst;
     apiMock.fetchHubWorkspaces
       .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
@@ -283,8 +275,7 @@ describe('useHubWorkspaces', () => {
   });
 
   it('drops a switch that resolves after the identity moved on', async () => {
-    // The read path was generation-guarded and the write path was not, so a PUT
-    // started under one account could write its result into the next one's menu.
+    // A write started under one account must not update the next account's menu.
     let releaseSwitch;
     apiMock.setActiveHubWorkspace.mockImplementation(
       () => new Promise((resolve) => { releaseSwitch = resolve; }),

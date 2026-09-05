@@ -1,7 +1,5 @@
-// Draft contract, exercised through the hook the composer actually uses:
-// text survives unmount (navigation), stays isolated per surface, and clears
-// on send. The store is asserted through the hook rather than directly because
-// the unmount/remount pairing IS the bug (ENG-1221).
+// Exercise draft persistence and surface isolation through hook unmount/remount, not only store
+// calls.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
@@ -42,9 +40,8 @@ describe('useDraft', () => {
     localStorage.clear();
   });
 
-  // Each test gets a fresh module instance, so the previous one's debounce
-  // timer is still pending and would write its drafts back after the clear
-  // above. `pagehide` flushes and cancels it.
+  // Flush via pagehide before clearing; an old module's pending debounce could otherwise restore
+  // its drafts.
   afterEach(() => {
     window.dispatchEvent(new Event('pagehide'));
   });
@@ -87,7 +84,7 @@ describe('useDraft', () => {
 
     const view = mount(useDraft, 'new');
     act(() => view.result.current[1]('sent text'));
-    window.dispatchEvent(new Event('pagehide')); // draft is now on disk
+    window.dispatchEvent(new Event('pagehide'));
     expect(localStorage.getItem('anton.composerDrafts')).toContain('sent text');
 
     act(() => view.result.current[1]('')); // what handleSend does
@@ -120,16 +117,14 @@ describe('useDraft', () => {
     const view = mount(useDraft, 'task-a');
     act(() => view.result.current[1]('typed before quitting'));
     view.unmount();
-    window.dispatchEvent(new Event('pagehide')); // flush the debounced write
+    window.dispatchEvent(new Event('pagehide'));
 
     // Reload = new module instance reading the persisted keys.
     const reloaded = await load();
     expect(mount(reloaded.useDraft, 'task-a').result.current[0]).toBe('typed before quitting');
   });
 
-  // A new task starts on a `tmp-` id and adopts the server's canonical id on
-  // the first turn's `response.created`, so the key changes under a composer
-  // the user may already be typing in.
+  // Canonical-id adoption changes the draft key while the user may already be typing a reply.
   it('carries a draft across an id change', async () => {
     const { useDraft } = await load();
     const { moveDraft } = await import('../lib/draftStore');
@@ -144,10 +139,8 @@ describe('useDraft', () => {
     expect(mount(useDraft, 'tmp-1735').result.current[0]).toBe('');
   });
 
-  // Every test file that renders a composer needs the module-level store
-  // emptied between tests (ENG-1407). The helper has to leave nothing behind:
-  // a write still armed on the 400 ms debounce would land after the clear and
-  // put the key back on disk.
+  // Clear both store and pending debounce between composer tests so a late write cannot restore a
+  // removed key.
   it('reset empties the store and cancels the pending write', async () => {
     vi.useFakeTimers();
     try {
@@ -158,7 +151,7 @@ describe('useDraft', () => {
       act(() => view.result.current[1]('typed just before the reset'));
 
       __resetDraftsForTests();
-      vi.advanceTimersByTime(1000); // past the debounce the keystroke armed
+      vi.advanceTimersByTime(1000);
 
       expect(localStorage.getItem('anton.composerDrafts')).toBeNull();
       expect(mount(useDraft, 'task-a').result.current[0]).toBe('');

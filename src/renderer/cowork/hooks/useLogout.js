@@ -2,12 +2,8 @@ import { useSyncExternalStore } from 'react';
 import { host } from '../../platform/host';
 import { resetDeviceIdentity } from '../lib/analytics';
 
-// Confirm-dialog copy for signing out — shared by every sign-out entry point
-// (settings Account section, sidebar user menu) so the wording can't drift
-// between them. The message is platform-aware: Electron clears stored
-// credentials on the device, while web only ends the Keycloak browser session
-// (keys live in MindsHub, not on the machine), so the desktop warning about
-// cleared API keys would be false there.
+// Share sign-out copy across entry points; only desktop clears local API keys, while web ends the
+// browser session.
 export const LOGOUT_CONFIRM_COPY = {
   title: 'Sign out of Cowork?',
   message: host.isWeb
@@ -20,36 +16,20 @@ export const LOGOUT_CONFIRM_COPY = {
 // reload — long enough that a healthy main reload wins first (see below).
 export const LOGOUT_RELOAD_FALLBACK_MS = 2500;
 
-/*
- * How long the confirm dialog stays locked shut before it hands the keyboard
- * back, whatever the platform is still doing. Under the 10 seconds a person
- * is asked to wait without a way out.
- *
- * The sign-out this waits on is bounded by its own steps — a Keycloak revoke,
- * a credential clear, the sidecar's DB clear — and none of them is the sidecar
- * restart any more, so on a healthy machine the reply beats this timer and it
- * never fires. It is insurance, not the normal path.
- */
+/* Unlock dismissal after this deadline even if platform sign-out is still running. */
 export const LOGOUT_BUSY_LOCK_MS = 8_000;
 
 /*
- * Shown once the dialog is dismissable but the sign-out has not replied. It
- * says what is still true rather than naming a step, because the renderer
- * cannot see which step main is on and a wrong guess reads worse than none.
+ * The renderer cannot observe main's current logout step; keep pending copy independent of
+ * implementation stages.
  */
 export const LOGOUT_WAIT_NOTE = 'Still signing you out. You can close this — it finishes on its own.';
 
 /*
- * Sign-out state lives in a module store, not in `useState`, because two
- * components mount this hook (the settings Account section and the sidebar
- * user menu) and each used to get its own copy. That was invisible while the
- * dialog was locked shut for the whole sign-out; now that it can be dismissed
- * mid-flight, a second entry point would happily fire a second AUTH_LOGOUT.
- * Same idiom as src/renderer/lib/orgMode.ts.
- *
- * `settling` is "the platform has not answered yet" and drives the spinner.
- * `locked` is "the dialog refuses to close" and is the half with a deadline.
- * Splitting them is what lets the work continue while the person walks away.
+ * Share one in-flight logout across entry points so dismissing a busy modal cannot permit a second
+ * AUTH_LOGOUT.
+ * settling tracks the platform reply; locked separately bounds how long the modal refuses
+ * dismissal.
  */
 let state = { settling: false, locked: false };
 const listeners = new Set();
@@ -113,24 +93,16 @@ async function runLogout() {
     if (ok) {
       resetDeviceIdentity();
     }
-    // Exactly ONE navigation must happen, and on SUCCESS the platform drives
-    // it: Electron main calls webContents.reload(), web's keycloak.logout()
-    // redirects to the end-session endpoint. A renderer reload here would race
-    // and win — cancelling the web redirect (SSO cookie survives → silent
-    // re-auth) or double-reloading Electron into a stuck modal. So we reload
-    // immediately only on REJECTION, where the platform threw before its own
-    // navigation and nothing else will. (ENG-1206)
+    // On success the platform owns navigation. A renderer reload would cancel web logout or
+    // double-reload Electron.
+    // Reload immediately only after rejection, when the platform did not navigate.
     if (!ok) {
       window.location.reload();
       return;
     }
-    // Electron watchdog: main's single reload is all that clears the
-    // "Signing out…" modal, and if it's dropped (intermittently on Windows)
-    // the modal is stuck forever. A healthy main reload tears this timer down
-    // first, so this fires only as recovery, never racing into a double
-    // reload. Web is excluded (a renderer reload would cancel keycloak's
-    // redirect). It covers a reply that arrived and a reload that did not,
-    // which the lock above cannot see.
+    // Recover an Electron reply whose main-process reload was lost; a successful reload destroys
+    // this timer first.
+    // Never use this watchdog on web: it would cancel Keycloak's logout redirect.
     if (host.isElectron) {
       setTimeout(() => window.location.reload(), LOGOUT_RELOAD_FALLBACK_MS);
     }

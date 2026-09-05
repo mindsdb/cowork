@@ -2,14 +2,9 @@ import { useCallback, useState } from 'react';
 import { getDraft, setDraft } from '../lib/draftStore';
 
 /**
- * Composer text that survives unmount. Drop-in for `useState('')`.
- *
- * `key` names the surface the text belongs to (`new`, a conversation id, …);
- * see `lib/draftStore.js`. The store is read, never subscribed to — the
- * composer already re-renders per keystroke from its own state, and a
- * subscription would add a second render for no visible gain.
- *
- * `setText` takes a string or an updater function, like `useState`'s setter.
+ * Surface-keyed composer state backed by draftStore; setText accepts a value or updater like
+ * useState.
+ * Read without subscribing: local state already renders each edit.
  */
 export function useDraft(key) {
   const [state, setState] = useState(() => ({ key, text: getDraft(key) }));
