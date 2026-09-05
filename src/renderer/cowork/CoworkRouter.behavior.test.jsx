@@ -1,11 +1,5 @@
-// Behavior tests over the real route config — the `/c/:id` loader's failure
-// modes, detail-route deep links, and the state↔URL bridge's history — rather
-// than the pure helpers (those are in CoworkRouter.test.jsx).
-//
-// Harness: a `createMemoryRouter(routes)` wrapped in a test `CoworkProvider`
-// whose `shell` is just `<Outlet/>`. Route elements sync URL→state via the
-// spied context handlers; the state→URL bridge lives in the real CoworkLayout.
-// We drive nav via `ctl.setNav` and read `router.state.location` for the URL.
+// Exercise the real route config and URL/state bridge with a memory router and a test context; pure
+// helpers are tested separately.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, waitFor, act, cleanup } from '@testing-library/react';
@@ -47,9 +41,8 @@ function makeHarness(initialNav, opts = {}) {
       activeTaskId: nav.activeTaskId ?? null,
       selectedProjectId: nav.selectedProjectId ?? null,
       selectedScheduleId: nav.selectedScheduleId ?? null,
-      // Mirror AppCore: entering Home/a view resets nav state; opening a
-      // conversation is recorded (the real one hydrates + reattaches); the
-      // detail routes set route + the selected entity id.
+      // Mirror AppCore's navigation handlers while recording conversation opens instead of
+      // hydrating them.
       enterHome: () => { ctl.enterHome(); setNav({ route: 'home' }); },
       enterRoute: (k) => { ctl.enterRoute(k); setNav({ route: k }); },
       openConversation: (id, loaded) => { ctl.openConversation(id, loaded); },
@@ -100,11 +93,8 @@ describe('conversation loader failure handling (ENG-1233 Major 2)', () => {
   });
 
   it('redirects a 404 deep link Home without trapping the dead URL in history', async () => {
-    // RR7 subtlety (ENG-1233 Major 1): a loader redirect fires while still
-    // committed to the origin — the `/c/:id` entry never commits — so
-    // `redirect('/')` pushes `[origin, /]`. Back returns to the origin and the
-    // dead URL is unreachable in either direction. (`replace('/')` would replace
-    // the origin instead and lose it — see the loader comment.)
+    // Loader redirects run before the destination commits: push preserves the origin without adding
+    // the dead URL; replace would lose the origin.
     fetchSessionResult.mockResolvedValue({ status: 'not_found' });
     const { router, ctl } = renderAt(['/projects'], { route: 'projects' });
     await waitFor(() => expect(router.state.location.pathname).toBe('/projects'));

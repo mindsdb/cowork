@@ -1,7 +1,5 @@
-// The composer is a transparent <textarea> over a mirror overlay; the caret
-// drifts off the visible text unless both boxes reserve the same width and
-// wrap identically. happy-dom does no layout, so we lock the source invariant
-// instead: both must suppress the scrollbar.
+// The transparent textarea and mirror must wrap identically to align the caret. happy-dom has no
+// layout, so assert both suppress the scrollbar in source.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

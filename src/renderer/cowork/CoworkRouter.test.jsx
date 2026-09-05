@@ -24,9 +24,7 @@ describe('pathForRoute', () => {
   });
 
   it('keeps a temporary (tmp-) conversation out of the URL (ENG-1233 Major 1)', () => {
-    // `null` = "don't drive the URL": a tmp- id must never be pushed as
-    // `/c/tmp-*` (dead history entry + unrecoverable refresh). The canonical
-    // server id drives the single push instead.
+    // Temporary IDs must not enter history; only the canonical server ID can survive refresh.
     expect(pathForRoute('task', 'tmp-1700000000000')).toBeNull();
   });
 

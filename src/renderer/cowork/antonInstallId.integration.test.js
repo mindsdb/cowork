@@ -1,12 +1,5 @@
-// End-to-end wiring for ENG-1689's join key, with NOTHING mocked between the
-// two modules that must cooperate.
-//
-// api.test.js mocks `./lib/analytics`, so it proves fetchHealth CALLS the
-// setter. analytics.test.js calls the setter directly, so it proves capture()
-// READS it. Neither proves the real modules share one instance of that state —
-// a bundler change, a duplicated module copy, or a re-export through a third
-// file would leave both suites green while the join key is permanently absent
-// in production. Only fetching health and then firing a real event can tell.
+// Keep API and analytics modules real: their unit tests mock the boundary and cannot prove they
+// share the install-ID state used by events.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const hostMock = vi.hoisted(() => ({
