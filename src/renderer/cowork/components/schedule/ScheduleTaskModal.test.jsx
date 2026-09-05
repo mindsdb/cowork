@@ -45,9 +45,8 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  // Regression (ENG-1244): the native datetime-local control renders in
-  // Chromium's locale (ambiguous DD/MM vs MM/DD); a spelled-out-month caption
-  // disambiguates the chosen run time. Tests run with TZ=UTC.
+  // A spelled-out month disambiguates locale-dependent datetime-local input; these tests run in
+  // UTC.
   it('shows an unambiguous named-month caption under the Next run input', () => {
     renderModal();
     setNextRun('2026-08-03T16:37');
@@ -74,7 +73,7 @@ describe('ScheduleTaskModal — S7 fixes', () => {
       target: { value: 'pause me' },
     });
     setNextRun(isoLocal(60 * 60 * 1000));
-    fireEvent.click(screen.getByRole('switch')); // toggle to Paused
+    fireEvent.click(screen.getByRole('switch'));
     fireEvent.click(screen.getByRole('button', { name: /Create/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -95,11 +94,8 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     };
     const { onSubmit } = renderModal({ task });
 
-    // Hydrated as Paused. The design-system Switch renders a role="switch"
-    // element whose state lives in aria-checked, not a native `.checked`
-    // property — read it via jest-dom's toBeChecked().
+    // Read the design-system switch via aria-checked/toBeChecked, not a native checked property.
     expect(screen.getByRole('switch')).not.toBeChecked();
-    // Project control resolved the stored id → shows the project name.
     expect(screen.getByRole('combobox', { name: 'Project' })).toHaveTextContent('Metrics');
 
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
@@ -107,13 +103,11 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     const [payload, id] = onSubmit.mock.calls[0];
     expect(id).toBe('s1');
     expect(payload.enabled).toBe(false);
-    expect(payload.project_id).toBe('proj-metrics'); // id round-trips
+    expect(payload.project_id).toBe('proj-metrics');
   });
 
-  // Regression (ENG-1246): the "No project" catch-all must display its label
-  // (not the "Select…" placeholder) and must submit as no project. It's modeled
-  // with a non-empty sentinel value because Base UI's Select renders the
-  // placeholder for an empty-string value — see Select.test.jsx.
+  // Use a nonempty No project sentinel: Base UI treats empty string as placeholder while submission
+  // must mean no project.
   it('defaults to "No project" and submits it as no project', async () => {
     const { onSubmit } = renderModal();
 
@@ -130,9 +124,7 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(onSubmit.mock.calls[0][0].project_id).toBeNull();
   });
 
-  // Regression (ENG-1245): the edit form no longer owns a destructive Delete,
-  // so its footer can't show a second "Cancel" next to it. Delete moved to the
-  // task overflow menu + a ConfirmModal.
+  // Delete belongs to the task menu and confirmation modal, not the edit footer.
   it('edit-mode footer has no Delete and exactly one Cancel', () => {
     renderModal({ task: {
       id: 's1', title: 'Weekly', prompt: 'summarize', cadence: 'weekly',

@@ -1,9 +1,4 @@
-// Schedule a new task — modal that replaces the previous inline form.
-// Used for both create and edit; pass `task` to enable edit mode.
-//
-// Layout: title (full width) → cadence + next-run (two columns) →
-// project (full width) → status toggle → prompt textarea (full width,
-// the most important field, sits last so it gets the room it needs).
+// Pass task to edit an existing schedule.
 
 import { useEffect, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
@@ -14,13 +9,9 @@ import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
 
-// Sentinel for the "No project" (unassigned) choice in the Project <Select>.
-// It must be a non-empty string: Base UI's <Select.Value> treats an
-// empty-string value as "nothing selected" and renders the placeholder, so an
-// option with value '' shows "Select…" on the closed control even while its
-// item carries a checkmark (ENG-1246). This value never reaches the server —
-// `handleSubmit` resolves it to `project_id: null` (server → general), and it
-// can't collide with a real project path.
+// Use a non-empty No project sentinel because Base UI renders empty values as the placeholder.
+// Translate it to project_id: null (general) before sending; it cannot collide with a project path.
+// ENG-1246.
 const NO_PROJECT = '__no_project__';
 
 function toLocalInput(value) {
@@ -35,13 +26,9 @@ function defaultNextRun() {
   return toLocalInput(new Date(Date.now() + 60 * 60 * 1000).toISOString());
 }
 
-// Unambiguous echo of the datetime-local value. The native <input
-// type="datetime-local"> renders in Chromium's UI locale, which in Electron
-// can disagree with the OS regional format (e.g. shows DD/MM on an en_US
-// machine) — ambiguous for the first 12 days of a month on a control that
-// decides when a task runs (ENG-1244). A spelled-out month removes the
-// ambiguity regardless of what the native control shows. Takes the local
-// "YYYY-MM-DDTHH:mm" string the input holds.
+// Spell out the month because Chromium’s datetime-local locale may differ from the OS and make
+// numeric dates ambiguous.
+// Input is the local YYYY-MM-DDTHH:mm value. ENG-1244.
 function formatNextRunEcho(local) {
   if (!local) return '';
   const d = new Date(local);
@@ -62,9 +49,7 @@ const fieldInput = {
   outline: 'none',
 };
 
-// Selects sit alongside the surface-2 text inputs above, so the trigger
-// carries the same background/radius (Select's own default is the
-// bordered var(--surface) look used in bordered form fields elsewhere).
+// Match Select triggers to adjacent text fields.
 const fieldSelectStyle = {
   background: 'var(--surface-2)',
   borderRadius: 7,
@@ -83,16 +68,11 @@ export default function ScheduleTaskModal({
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
 
-  // Whenever the modal opens (or the editing target changes), reset
-  // form state so reopening doesn't show stale fields from a previous
-  // pass.
   useEffect(() => {
     if (!open) return;
     setError('');
     if (task) {
-      // The server keys the project association by `projectId` (a UUID) and
-      // the form's Project select uses the project PATH as its value. Hydrate
-      // by resolving the stored id back to a path via `projects` (ENG-1255).
+      // Resolve the stored project UUID to the path expected by the Project select. ENG-1255.
       const taskProjectPath = (() => {
         if (task.projectId) {
           const match = projects.find((p) => p.id === task.projectId);
@@ -130,10 +110,8 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
-    // The server keys the project association by `project_id` (a UUID); a
-    // bare name is silently dropped and the schedule falls back to the general
-    // project (ENG-1255). Resolve the selected path → project id via
-    // `projects`. The "No project" sentinel sends null (server → general).
+    // Send the project UUID as project_id; the server silently drops names. No project maps to null
+    // (general). ENG-1255.
     const projectMatch = form.projectPath === NO_PROJECT
       ? null
       : projects.find((p) => p.path === form.projectPath);
@@ -144,9 +122,7 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
       project_id:   projectMatch?.id || null,
-      // Scheduled tasks always use the user's configured default
-      // model — exposing the picker here let people accidentally
-      // pin a stale model id that's no longer valid.
+      // Use the configured default model so schedules cannot retain an obsolete model ID.
       model:        null,
       enabled:      form.enabled,
     };
@@ -164,7 +140,6 @@ export default function ScheduleTaskModal({
       onClose={onClose}
       size="md"
       labelledBy="schedule-modal-title"
-      // Don't dismiss on backdrop click while saving.
       closeOnBackdrop={!busy}
       closeOnEsc={!busy}
     >
@@ -227,8 +202,6 @@ export default function ScheduleTaskModal({
               ariaLabel="Project"
               style={fieldSelectStyle}
               options={[
-                // "No project" is the unassigned mode, not a project — divide
-                // it from the real projects (which map 1:1 to the projects page).
                 { value: NO_PROJECT, label: 'No project' },
                 { separator: true },
                 ...projects.map((p) => ({ value: p.path, label: projectLabel(p) })),
@@ -238,21 +211,13 @@ export default function ScheduleTaskModal({
 
           <div>
             <span className="block font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 tracking-[0.02em] uppercase mb-1.5">Status</span>
-            {/* Block-level `flex` with a fixed height (not `inline-flex`): an
-                inline-flex row sits on a text baseline in the parent's line
-                box, so toggling the label between "Enabled" and "Paused"
-                (different descenders) nudged the line-box height ~1px — and
-                because the modal is vertically centered, that re-centered the
-                whole dialog, reading as a layout shift. A fixed-height block
-                row is baseline-independent, so the toggle never moves anything.
-                The Switch is the sole control — keyboard-operable, with a
-                STABLE aria-label ("Schedule enabled"); aria-checked conveys
-                on/off, so the name must not change with state. The visible
-                Enabled/Paused text is a non-interactive status echo, hidden
-                from assistive tech (the switch already announces state). It's
-                deliberately not a clickable <span> (mouse-only + unassociated)
-                nor a <label> (the Switch's own hidden input would be
-                double-activated). */}
+            {/*
+ * A fixed-height block avoids baseline changes shifting the centered modal when Enabled/Paused
+ * changes.
+ * Keep the Switch’s accessible name stable; aria-checked carries state. The visible status is
+ * non-interactive and aria-hidden
+ * to avoid duplicate announcements or label-driven double activation.
+ */}
             <div className="flex w-fit items-center gap-2 h-[22px] font-[family-name:var(--font-body)] text-[13.5px] text-ink">
               <Switch
                 checked={form.enabled}
@@ -281,9 +246,6 @@ export default function ScheduleTaskModal({
           )}
         </div>
       </ModalBody>
-      {/* Footer is edit/create only — deleting a schedule lives on the task
-          card/detail overflow menu (with its own confirm), not inside this
-          form, so the footer never carries a destructive action. */}
       <ModalFooter align="flex-end">
         <div className="inline-flex gap-2">
           <Button variant="subtle" onClick={onClose} disabled={busy}>
@@ -304,7 +266,6 @@ export default function ScheduleTaskModal({
 }
 
 
-// ── Helpers ──
 
 function emptyForm({ defaultProjectPath }) {
   return {

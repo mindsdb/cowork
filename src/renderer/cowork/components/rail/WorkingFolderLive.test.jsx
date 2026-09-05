@@ -1,12 +1,6 @@
 /*
- * Where a click in the artifacts rail lands, per deployment.
- *
- * The rail is the third surface that renders an artifact body, and it was the
- * only one with no test of its own — lib/artifactSurfaces.test.js asserts that
- * this file asks `artifactOpenTarget`, which a caller passing the wrong answer
- * still satisfies. Replacing `canPreviewDraft` with `false` here left the whole
- * renderer suite green, so the org-mode routing had nothing behind it: a click
- * would go back to the browser tab ENG-2066 is about, or to nothing at all.
+ * Exercise actual rail clicks: merely asserting artifactOpenTarget is called cannot catch passing
+ * it the wrong preview capability.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -14,10 +8,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
-// Async on purpose: the component AWAITS this. A sync `() => true` makes
-// `await x` and `x` indistinguishable, so stripping the await stayed green
-// (review pass 2). With a promise, a dropped await turns `!(Promise)` into
-// false and the failure-path test below catches it.
+// Keep the mock asynchronous; dropping await on a synchronous result would still pass, while
+// Promise truthiness breaks failure handling.
 const downloadArtifactFile = vi.fn(async () => true);
 
 vi.mock('../../api', () => ({
@@ -98,10 +90,7 @@ describe('artifacts rail click in org mode', () => {
   });
 
   it('previews it even once the artifact is shared', async () => {
-    /*
-     * The whole defect: the shared page won the click, so the user was thrown
-     * out of the app to read their own artifact.
-     */
+    /* Prefer in-app draft preview over opening the artifact's shared page. */
     const row = await renderRail(draft({ publishedUrl: SHARED_URL }));
 
     fireEvent.click(row);
@@ -126,11 +115,7 @@ describe('artifacts rail click in org mode', () => {
   });
 
   it('falls back to window.open when the bridge rejects', async () => {
-    /*
-     * host.openExternal is async, so only an awaited call lets the catch see a
-     * rejection. Unawaited, the fallback is unreachable and the rejection is
-     * never handled.
-     */
+    /* Await openExternal so its rejection reaches the fallback catch. */
     openExternal.mockRejectedValueOnce(new Error('bridge gone'));
     const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
@@ -168,9 +153,8 @@ describe('artifacts rail click in org mode', () => {
 
   it('saves a draft the viewer cannot render instead of dying (ENG-2044)', async () => {
     /*
-     * The .docx / .xlsx case that shipped broken: no preview, nothing shared,
-     * no serve URL — but the draft URL streams the bytes. The rail used to
-     * print "This artifact has no servable file yet." for a file on disk.
+     * Nonpreviewable, unpublished documents remain downloadable through their authenticated draft
+     * URL.
      */
     const row = await renderRail(draft({
       ext: '.docx',
@@ -189,10 +173,8 @@ describe('artifacts rail click in org mode', () => {
 
   it('keeps the honest dead end for an unshared fullstack app rather than saving its shell', async () => {
     /*
-     * Self-review finding on ENG-2044: a fullstack app's draft URL points at
-     * `static/index.html`, which is not the app. Offering "Download" there would
-     * hand the user a useless file with a confident label. Autopublish publishes
-     * these on the next turn; until then the existing message is the truth.
+     * A fullstack draft is only static/index.html, not the app; do not offer it as a complete
+     * download.
      */
     const row = await renderRail(draft({
       title: 'Ops Console',
@@ -212,11 +194,8 @@ describe('artifacts rail click in org mode', () => {
 
   it('keeps the kebab honest for a PUBLISHED fullstack app: open, never Download', async () => {
     /*
-     * Review finding on #764: `canDownload` had no test — forcing it true left
-     * the whole suite green. This is the state that catches it: publishedUrl
-     * makes canOpenRemote true, and the backend type makes canDownloadOrgDraft
-     * false, so a regression to !!draftUrl renders a Download row that would
-     * save the app's shell index.html.
+     * Combine a published URL with fullstack type to distinguish remote opening from draft-download
+     * eligibility.
      */
     await renderRail(draft({
       title: 'Ops Console',
@@ -234,9 +213,7 @@ describe('artifacts rail click in org mode', () => {
   });
 
   it('does not label the dead end Download for an unshared fullstack app', async () => {
-    // Same review pass: openLabel keyed off canOpenRemote alone, so the two
-    // states where nothing can be saved read "Download" and then printed the
-    // dead-end message. The label must not promise what the click cannot do.
+    // The action label must not promise Download when the click has no downloadable target.
     await renderRail(draft({
       title: 'Ops Console',
       type: 'fullstack-stateless-app',
@@ -253,9 +230,7 @@ describe('artifacts rail click in org mode', () => {
   });
 
   it('shows the dead-end message when the download itself fails', async () => {
-    // Review pass 2: the transport can reject — expired bearer, offline, a
-    // file deleted server-side. `downloadArtifactFile` resolves false then,
-    // and the row must say so rather than end the click in silence.
+    // A resolved false download result must produce visible failure feedback.
     downloadArtifactFile.mockImplementationOnce(async () => false);
     const row = await renderRail(draft({
       ext: '.docx',
@@ -269,11 +244,7 @@ describe('artifacts rail click in org mode', () => {
   });
 
   it('labels the menu action Download when a tab has nowhere to open', async () => {
-    /*
-     * "Open in new tab" with no serve URL and no shared page was the item that
-     * produced the dead-end message. With only a draft URL the same item now
-     * says what it will do, and does it.
-     */
+    /* A draft-only external action must name and perform its download behavior. */
     await renderRail(draft({
       ext: '.docx',
       path: '/proj/.anton/artifacts/weekly/report.docx',
@@ -289,9 +260,8 @@ describe('artifacts rail click in org mode', () => {
 
   it('shows the dead-end message when the menu Download itself fails', async () => {
     /*
-     * openArtifactExternal is a DIFFERENT call site from the row click —
-     * mutation testing on pass 2 showed stripping ITS await left the suite
-     * green while the row-click guard passed. One failure case per site.
+     * Test rejection at the separate external-menu call site too; row-click await coverage cannot
+     * protect it.
      */
     downloadArtifactFile.mockImplementationOnce(async () => false);
     await renderRail(draft({
@@ -326,13 +296,7 @@ describe('artifacts rail click in org mode', () => {
 
 describe('artifacts rail kebab on a non-org web deployment', () => {
   it('does not offer Download for a fullstack app that has a serve URL', async () => {
-    /*
-     * Review pass 2: `a.serveUrl ||` short-circuited ahead of
-     * canDownloadOrgDraft, so the fullstack-shell exclusion leaked on exactly
-     * this deployment (dev:web, self-hosted, the enterprise container):
-     * serve_url_for is only blanked in org mode, and the app's primary is its
-     * shell static/index.html — saving it reads as the app and is not.
-     */
+    /* A serve URL on non-org web must not bypass the fullstack-shell download exclusion. */
     await renderRail(draft({
       title: 'Ops Console',
       type: 'fullstack-stateless-app',
@@ -351,10 +315,7 @@ describe('artifacts rail kebab on a non-org web deployment', () => {
 });
 
 describe('artifacts rail click on desktop', () => {
-  /*
-   * The org branch must not narrow desktop: a text artifact still previews
-   * from local bytes, with or without a draft URL.
-   */
+  /* Org-mode restrictions must retain desktop text preview from local bytes. */
   beforeEach(() => setOrgMode(false));
 
   it('still previews a text artifact locally', async () => {

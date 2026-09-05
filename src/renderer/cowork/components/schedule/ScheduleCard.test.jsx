@@ -2,12 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ScheduleCard, { taskMenuItems } from './ScheduleCard';
 
-// ENG-1255: the card displays the schedule's project by resolving the stored
-// `task.projectId` (a UUID the server returns as `projectId`) against the
-// `projects` list — the server never sends a project name on the schedule, so
-// the name has to come from the resolved project. These tests pin that
-// resolution: a matching id shows the name (clickable when onOpenProject is
-// given), and an id that can't be resolved shows no project label at all.
+// Resolve the schedule's projectId through projects; the server does not provide a project display
+// name.
 const PROJECTS = [{ id: 'proj-metrics', name: 'Metrics', path: '/work/metrics' }];
 
 const baseTask = {
@@ -31,9 +27,7 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
     );
 
     const link = screen.getByRole('button', { name: 'Metrics' });
-    // The resolved project name surfaces as the link's label; the "Open Metrics"
-    // hover affordance now lives on the ui/Tooltip wrapper (ENG-1152), which
-    // portals its content on hover instead of exposing a native `title`.
+    // Assert the link label; the hover hint is a portaled Tooltip, not a native title.
     expect(link).not.toHaveAttribute('title');
 
     fireEvent.click(link);
@@ -61,9 +55,7 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
   });
 });
 
-// The overflow-menu composition shared by the grid card and list row
-// (ENG-1245). Delete moved out of the edit form into this menu; it must route
-// to the caller's confirm flow (onDelete) rather than deleting inline.
+// Menu Delete must call the parent's confirmation flow rather than delete inline.
 describe('taskMenuItems', () => {
   const handlers = () => ({
     onEdit: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onDelete: vi.fn(),

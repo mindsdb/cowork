@@ -1,15 +1,4 @@
-// Bubble container used by every right-rail section in chat and
-// project views. The same surface, border, radius, and header treatment
-// across both views so they read as one design family.
-//
-// Two visual variants:
-//   default — bubble with a divider between header and body.
-//   slim    — bubble keeps surface + border + radius, but drops the
-//             divider so the header reads as one continuous line above
-//             the body (used for Context per spec).
-//
-// Body always has maxBodyHeight + overflow-y: auto so a long card
-// scrolls inside itself rather than pushing the rail off-screen.
+// Constrain scrolling within the card so long content cannot push the rail off-screen.
 
 import { useState } from 'react';
 import Ico from '../Icons';
@@ -19,11 +8,7 @@ export function RailCard({
   defaultOpen = false,
   slim = false,
   maxBodyHeight = 320,
-  // When true, the header is a plain (non-clickable) label and the
-  // chevron disclosure widget is dropped. The body is always shown
-  // (defaultOpen is implicitly true). Used by the data-vault Connect
-  // panel where the only dismissal affordance should be the × in the
-  // outer wrapper, not a separate collapse control.
+  // Disable collapsing for panels whose outer wrapper owns dismissal; keep the body visible.
   noChevron = false,
   children,
 }) {
@@ -57,8 +42,6 @@ export function RailCard({
         <div
           className="pt-1 px-[14px] pb-[14px] overflow-y-auto"
           style={{
-            // slim drops the divider so the header reads as one
-            // continuous line above the body (Context per spec).
             borderTop: slim ? 'none' : '1px solid var(--line)',
             maxHeight: maxBodyHeight,
           }}
