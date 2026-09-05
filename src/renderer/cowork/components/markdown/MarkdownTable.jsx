@@ -1,7 +1,3 @@
-// Plain styled HTML table for GFM tables. mdb-ai's full version has
-// expand-to-modal + CSV export tied to its conversation API; we keep
-// just the visual half here. Add the modal/export later if needed.
-
 export function MarkdownTable(props) {
   return (
     <div className="my-4 overflow-x-auto">

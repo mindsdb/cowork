@@ -42,9 +42,8 @@ function scratchpadStep(overrides = {}) {
 
 describe('ScratchpadModal — ENG-763 stage 2 fixes for generic tool-call steps', () => {
   it('gives each unrelated tool call its own pad instead of numbering them as steps of one', () => {
-    // Three separate test_tool invocations — NOT three cells of one
-    // session. Before the fix, all three shared _scratchpadTabId: null
-    // and collapsed into one "Untitled" pad, showing "step 1/3" etc.
+    // Separate tool invocations need separate tabs, unlike multiple cells in one scratchpad
+    // session.
     const steps = [
       toolCallStep({ id: 'a', label: 'test_tool', _scratchpadTabId: 'tc_1', _toolUseId: 'tc_1' }),
       toolCallStep({ id: 'b', label: 'test_tool', _scratchpadTabId: 'tc_2', _toolUseId: 'tc_2' }),
@@ -88,10 +87,7 @@ describe('ScratchpadModal — ENG-763 stage 2 fixes for generic tool-call steps'
   });
 
   it('does not show an Args toggle for a tool call with no real arguments', () => {
-    // data only carries our own live-progress bookkeeping field
-    // (one_line_description) — not a real argument. Before the fix,
-    // this rendered a non-empty "Args" toggle whose JSON was just that
-    // internal field.
+    // Internal one_line_description alone must not create an Args toggle.
     render(
       <ScratchpadModal
         open

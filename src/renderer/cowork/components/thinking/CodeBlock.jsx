@@ -1,8 +1,4 @@
-// Theme-aware syntax-highlighted code block. Uses prism-async-light so
-// only the languages we register get bundled. JetBrains Mono throughout.
-//
-// Light: oneLight palette. Dark: vscDarkPlus, with our --surface-2
-// background substituted in so the block matches the modal chrome.
+// Use prism-async-light with explicit languages to limit bundle size.
 
 import { useEffect, useState } from 'react';
 import { PrismAsyncLight as Prism } from 'react-syntax-highlighter';
@@ -41,8 +37,7 @@ function useBodyTheme() {
 export function CodeBlock({ code = '', language = 'python', maxHeight = 360 }) {
   const theme = useBodyTheme();
   const palette = theme === 'dark' ? vscDarkPlus : oneLight;
-  // Override the highlighter's default block bg so the code panel
-  // sits on our token surface (and the rounded corners come from us).
+  // Override the highlighter background with the app surface token.
   const customStyle = {
     margin: 0,
     padding: '12px 14px',

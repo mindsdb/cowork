@@ -1,11 +1,5 @@
-// Scoped highlight.js setup — only the languages we want to support
-// in chat code blocks are registered. Keeping the list curated holds
-// bundle size down (each language module is 1–5 KB gzipped; the full
-// pack is ~250 KB). Unknown languages fall back to plaintext.
-//
-// Token classes emitted by hljs (`.hljs-keyword`, `.hljs-string`, …)
-// are styled in cowork/styles/globals.css under a `.anton-code-block
-// code.hljs` scope so they can't leak into other surfaces.
+// Register only supported languages to limit bundle size; unknown languages remain plaintext.
+// Scope token styles under .anton-code-block code.hljs in globals.css.
 
 import hljs from 'highlight.js/lib/core';
 
@@ -55,9 +49,7 @@ hljs.registerLanguage('html', xml);
 hljs.registerLanguage('yaml', yaml);
 hljs.registerLanguage('yml', yaml);
 
-// Lower-case the lang tag once so callers don't have to. Returns the
-// canonical hljs language name (after alias resolution) for the
-// header label.
+// Resolve aliases to the canonical language name used by the header.
 function resolveLanguage(lang) {
   if (!lang) return null;
   const lower = String(lang).trim().toLowerCase();
@@ -66,10 +58,7 @@ function resolveLanguage(lang) {
   return language ? lower : null;
 }
 
-// Minimal HTML escape for the plaintext fallback. We don't route through
-// `hljs.highlight(..., { language: 'plaintext' })` because the core build
-// doesn't ship a plaintext language module — registering one just to
-// escape three characters isn't worth the extra weight.
+// The core highlight.js build has no plaintext language; escape HTML directly for its fallback.
 function escapeHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -77,11 +66,7 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
-/**
- * Highlight `source` for `lang`. If `lang` isn't registered (or is
- * empty), returns plaintext-escaped HTML so callers can render the
- * raw source safely without branching at the call site. Never throws.
- */
+/** Return escaped plaintext HTML for missing or unsupported languages; never throw. */
 export function highlightCode(source, lang) {
   const resolved = resolveLanguage(lang);
   if (!resolved) {

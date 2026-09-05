@@ -1,6 +1,4 @@
-// Step icon registry. Maps the adapter's `step.icon` string to one of
-// our existing Ico glyphs (Lucide-equivalent), keeping mdb-ai's naming
-// so a verbatim port doesn't need lookups changed.
+// Keep adapter step.icon names aligned with these registry keys.
 
 import Ico from '../Icons';
 
