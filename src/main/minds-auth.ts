@@ -39,52 +39,28 @@ const KEYCLOAK_REALM = 'mindsdb';
 const KEYCLOAK_CLIENT_ID = 'anton-desktop';
 const TOKEN_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
-// Login endpoints for the loopback PKCE flow, derived from the same
-// env-aware base as everything else so the MINDSHUB_LOGIN IPC handler in
-// index.ts never has to hardcode a host.
 export const KEYCLOAK_AUTH_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
 export const KEYCLOAK_TOKEN_URL = TOKEN_URL;
 
-// Keycloak's registration entry into the SAME authorization flow — accepts
-// the identical OIDC params (client, PKCE, state, loopback redirect_uri) but
-// opens on the create-account form instead of the login form. On completion
-// Keycloak redirects to the loopback with a code exactly like sign-in, so
-// sign-up rides the whole existing PKCE machinery (ENG-917).
+// Registration uses the same PKCE callback as sign-in, opening the create-account form first.
 export const KEYCLOAK_REGISTRATION_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/registrations`;
 
-// Sign-up parks mid-flow on Keycloak's VERIFY_EMAIL required action while
-// the user opens their inbox; clicking the emailed link (same browser)
-// resumes the flow and hits the loopback with the code — verified against
-// phasetwo-keycloak 26.5.7. The auth session that resume depends on lives
-// ~30 min server-side (accessCodeLifespanLogin default), so wait exactly
-// that long: shorter forfeits legitimate resumes, longer waits on a session
-// that no longer exists. Past this window the renderer degrades to the
-// "verified? just hit Sign in" path, never a re-registration.
+// Allow 30 minutes for email verification, matching the server’s login-session lifetime.
+// After expiry the renderer offers Sign in rather than repeating registration.
 export const SIGNUP_CALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
 
-// Base label for the MindsHub API key. ENG-440: keys are minted per
-// device — the full name is `hub:anton:<installation_id>` (see
-// antonKeyName). A single fixed name meant whoever logged in last deleted
-// everyone else's key, silently 401-ing the other devices; per-device
-// names let each install own its own key.
+// Name keys per device so another install’s sign-in cannot revoke this machine’s key.
 const ANTON_KEY_NAME = 'hub:anton';
 
-// Per-device key name. Keeping the device id in the name (rather than
-// tracking sessions server-side) fixes the displaced-device bug purely
-// client-side. A cleanup/expiry policy for stale device keys is a
-// deferred follow-up (ENG-440).
+// Device-scoped key name; stale-key cleanup remains separate.
 function antonKeyName(): string {
   return `${ANTON_KEY_NAME}:${getInstallationId()}`;
 }
 
-// Every auth-service / Keycloak request gets a hard deadline. Node's
-// fetch has none by default, so a black-holed connection would hang
-// the onboarding "TESTING LINK…" phase forever with no error to show.
+// Bound auth requests so unreachable endpoints cannot leave onboarding waiting indefinitely.
 const REQUEST_TIMEOUT_MS = 30_000;
 
-// Retry budget for the fresh-signup org race (see ensureActiveOrg):
-// 4 × 3s ≈ 12s, comfortably above the auth-service job's normal latency
-// without stalling a genuinely org-less account's error forever.
+// Allow a brief retry window for asynchronous organization provisioning after signup.
 const ORG_BOOTSTRAP_RETRIES = 4;
 const ORG_BOOTSTRAP_RETRY_DELAY_MS = 3_000;
 
@@ -92,12 +68,8 @@ function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
 }
 
-// Outcome of a refresh-token exchange. The distinction matters (ENG-761):
-// only `invalid_grant` means the session is definitively dead and local
-// state may be destroyed. Everything else (network down at boot, Keycloak
-// 5xx, timeout) is `transient` — the refresh token is still good and MUST
-// be kept, otherwise one network blip at launch permanently signs the
-// user out.
+// Only explicit invalid_grant proves a dead session. Preserve refresh tokens on network errors,
+// timeouts and 5xx.
 export type TokenRefreshResult =
   | { status: 'ok'; token: string }
   | { status: 'no_refresh_token' }
@@ -106,28 +78,14 @@ export type TokenRefreshResult =
   | { status: 'handoff_pending'; token: string }
   | { status: 'transient' };
 
-// Refresh tokens only — no env writes, no server restart. Used during
-// onboarding (e.g. after Stripe checkout, when we re-check roles), from
-// the boot path, and on demand when the renderer asks for the access
-// token.
-//
-// The access token IS the sidecar's gateway credential now, so a successful
-// exchange hands the new one over before returning (see the saveTokens call
-// below). That push is what keeps a running app working past the 10-minute
-// lifetime without a restart.
-//
-// Single-flight: concurrent callers (boot refresh + settings-open check
-// + the scheduled timer) share one Keycloak round-trip. Keycloak may be
-// configured to rotate refresh tokens, so parallel exchanges with the
-// same token are not just wasteful but potentially self-invalidating.
+// Single-flight refresh prevents concurrent exchanges from invalidating rotated tokens.
+// Hand the selected credential to the sidecar before reporting success; do not restart it.
 let _inflightRefresh: Promise<TokenRefreshResult> | null = null;
 let _mindsCredentialSignOutDepth = 0;
 
 /**
- * Fence ordinary credential readiness before logout performs any awaited
- * revoke work. A revoke-only refresh may rotate the persisted refresh token,
- * but it must never hand that credential to the sidecar or reopen the wake
- * barrier while sign-out is in progress.
+ * Fence readiness before awaited sign-out work. A revoke-only refresh may persist rotation,
+ * but must not hand credentials to the sidecar or reopen the wake barrier.
  */
 export function beginMindsCredentialSignOut(): void {
   _mindsCredentialSignOutDepth += 1;
@@ -147,8 +105,8 @@ export function refreshTokensOnly(): Promise<TokenRefreshResult> {
 }
 
 /**
- * Refresh after wake and arm the request barrier before any renderer turn can
- * leave the process with the credential that expired during sleep.
+ * Arm the wake barrier before refreshing so renderer turns cannot use a credential that expired
+ * during sleep.
  */
 export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult> | null {
   if (!getRefreshToken() || !isAccessTokenExpired()) return null;
@@ -156,9 +114,8 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
   beginMindsResumeCredentialGate();
   const resumeCancellationEpoch = _credentialHandoffCancellationEpoch;
   const refresh = (async () => {
-    // A user-supplied key is already the sidecar's selected credential and does
-    // not depend on Keycloak. Release turns after confirming that selection;
-    // refresh the SSO session in the background for account UI continuity.
+    // BYOK is independent of SSO: confirm it for turns, then refresh SSO for account UI in the
+    // background.
     const hasUserSuppliedCredential = await hasUserSuppliedMindsCredential();
     if (resumeCancellationEpoch !== _credentialHandoffCancellationEpoch) {
       return { status: 'superseded' } as const;
@@ -166,11 +123,8 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
     if (hasUserSuppliedCredential) {
       settleMindsResumeCredentialGate(true);
     }
-    // Drain an exchange that started before the machine suspended, the same way
-    // refreshAfterOrgSwitch drains one that started before the org switch. Its
-    // socket died during sleep and its AbortSignal rides a monotonic clock that
-    // does not advance while suspended, so joining it via the single-flight
-    // guard would hold the barrier on a request that cannot answer.
+    // Drain any pre-sleep exchange instead of joining it: its socket may be dead while its
+    // monotonic timeout paused.
     if (_inflightRefresh) await _inflightRefresh;
     if (resumeCancellationEpoch !== _credentialHandoffCancellationEpoch) {
       return { status: 'superseded' } as const;
@@ -186,9 +140,7 @@ export function refreshMindsCredentialAfterResume(): Promise<TokenRefreshResult>
       // handoff keeps the barrier closed across its short retry timer.
     },
     (err) => {
-      // Nothing in the body should reject today, but an armed barrier with no
-      // settle path blocks every later turn for the life of the process, and
-      // `void` would swallow the rejection with it.
+      // A rejected refresh must still settle the barrier or all subsequent turns remain blocked.
       console.warn('[minds-auth] resume refresh failed before it could settle the gate:', err);
       settleMindsResumeCredentialGate(false);
     },
@@ -218,9 +170,8 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       }).toString(),
     });
     if (!res.ok) {
-      // Keycloak reports a dead session as 400 with error=invalid_grant.
-      // Treat ONLY an explicit OAuth error on a 4xx as definitive; any
-      // ambiguity (5xx, non-JSON body, rate limit) keeps the token.
+      // Only an explicit OAuth invalid_grant on 4xx destroys the session; ambiguous responses
+      // preserve it.
       let oauthError = '';
       try { oauthError = String(((await res.json()) as { error?: string })?.error || ''); } catch { /* non-JSON */ }
       if (
@@ -237,10 +188,8 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
         cancelScheduledRefresh();
-        // The session JWT is definitively dead, so replace it in the sidecar.
-        // Re-resolve rather than blindly clearing: a user-supplied mdb_ key is
-        // independent of the dead SSO session and keeps its explicit priority;
-        // without one, the same call clears the expired JWT.
+        // Re-resolve after session death so an independent user-supplied key still wins; otherwise
+        // clear the expired JWT.
         if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
         return { status: 'invalid_grant' };
       }
@@ -252,10 +201,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     const cancelledMidExchange =
       credentialHandoffCancellationEpoch !== _credentialHandoffCancellationEpoch;
     if (getTokenStoreVersion() !== tokenStoreVersion) {
-      // A newer login already owns the store, so this exchange's tokens are the
-      // stale pair and must not overwrite it. Ordered ahead of the write below;
-      // the cancellation fence is not, because these two say opposite things
-      // about who holds the newer tokens.
+      // A newer login owns the token store; discard this exchange before writing.
       if (!cancelledMidExchange && !suppressCredentialHandoff) {
         void settleResumeGateFromSelectedCredential();
       }
@@ -269,22 +215,12 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     }
     const expiresInSeconds = data.expires_in ?? 3600;
     const expiresAt = Date.now() + expiresInSeconds * 1000;
-    // Persist BEFORE the cancellation fence. Keycloak has already rotated the
-    // refresh token and invalidated the one we sent, so returning without
-    // writing hands `endKeycloakSession` a token the IdP rejects: the SSO
-    // session survives sign-out and the next sign-in silently reuses the same
-    // account with no picker. `getRevokeToken` reads the fresh access token
-    // back through `getAccessToken()` on this path.
-    //
-    // Sign-out still has to stop everything AFTER this write — handoff, retry,
-    // timer, gate — which is what the fence below does. Only the write escapes,
-    // because a rotation the IdP performed is already a fact locally.
+    // Persist rotated tokens before the cancellation fence so sign-out can revoke the token the IdP
+    // now recognizes.
+    // The fence still blocks all later handoffs, retries, timers and readiness changes.
     saveTokens(data.access_token, expiresInSeconds, data.refresh_token ?? refreshToken);
     if (cancelledMidExchange) {
-      // Sign-out (or another explicit cancellation) began while this exchange
-      // was in flight, so it captured the pre-bump epoch and `false` for the
-      // suppression flag. Report superseded so no hand-over, retry, timer or
-      // gate settlement escapes the fence.
+      // Cancel any handoff, retry, timer or gate update from an exchange superseded by sign-out.
       return { status: 'superseded' };
     }
     if (suppressCredentialHandoff) {
@@ -292,43 +228,27 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       return { status: 'ok', token: data.access_token };
     }
     const refreshedTokenStoreVersion = getTokenStoreVersion();
-    // The exchange is not usable by a turn until the sidecar has accepted the
-    // selected credential. `syncUsableMindsCredential` intentionally re-resolves
-    // it so a user-supplied mdb_ key still wins over this new session JWT, and
-    // it reports acceptance AND usability rather than acceptance alone.
-    //
-    // Both halves matter. A PUT can land while the value it carried is already
-    // dead — sleep during the loopback call leaves `AbortSignal.timeout` on a
-    // monotonic clock that does not advance, so the push completes on wake with
-    // a JWT that expired hours earlier. Releasing the barrier on `landed` alone
-    // would open it onto exactly that credential. Every sibling release path
-    // (`retryCredentialHandoff`, `settleResumeGateFromSelectedCredential`,
-    // `commitMindsSignIn`, `clearUserSuppliedMindsKey`) already checks both.
+    // Require both an accepted handoff and a currently usable credential; the JWT may expire while
+    // a PUT spans sleep.
+    // Re-resolve the selection so BYOK retains priority.
     const handedOff = await syncUsableMindsCredential();
     if (
       credentialHandoffCancellationEpoch
       !== _credentialHandoffCancellationEpoch
     ) {
-      // Logout or another explicit cancellation already chose the gate state
-      // and queued its own selected credential. This stale hand-over must not
-      // reopen the barrier while that newer operation is still landing.
+      // Do not reopen a gate already superseded by logout or explicit cancellation.
       return { status: 'superseded' };
     }
     if (getTokenStoreVersion() !== refreshedTokenStoreVersion) {
-      // A newer login can overtake us while the loopback PUT is in flight.
-      // Repair whatever that stale PUT may have left in the sidecar before
-      // reporting that the refresh lost the race. Logout is handled by the
-      // cancellation check above and must never enter this repair path.
+      // If a newer login overtook the PUT, restore its selected credential. Cancellation must not
+      // enter this repair path.
       await settleResumeGateFromSelectedCredential();
       return { status: 'superseded' };
     }
     scheduleRefreshAt(expiresAt);
     if (!handedOff) {
-      // Only a sidecar that exists can refuse. Boot refreshes tokens before it
-      // starts one (index.ts), so an unconditional warn-and-retry here fired on
-      // every launch of a signed-in install and buried the real hand-over
-      // failures it exists to surface. `setServerStartedHook` pushes as soon as
-      // the sidecar comes up, so a timer would only race that push.
+      // Retry only refused pushes to an existing sidecar; its start hook handles the no-sidecar
+      // case.
       if (isMindsCredentialSidecarReachable()) {
         console.warn('[minds-auth] fresh credential was not handed to the sidecar — retrying hand-over');
         scheduleCredentialHandoffRetry();
@@ -356,19 +276,9 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
   }
 }
 
-// RP-initiated Keycloak logout. Local clearTokens() is not enough on
-// its own — Keycloak keeps an SSO session cookie in the IdP, so the
-// next "Sign in" silently re-authenticates with the same account.
-// Calling the end-session endpoint revokes the refresh token and
-// kills the IdP-side session so the next login forces a fresh
-// account picker. Must be called BEFORE clearTokens().
-//
-// Hard 3-second timeout: if the IdP is slow or unreachable (the dev
-// gateway has had intermittent outages), the local logout must not
-// hang on the network. Local state cleanup is the user-visible part;
-// the SSO revocation is best-effort.
-// ENG-498: logout passes the token explicitly — the detached revoke chain
-// runs after clearTokens() has wiped the store.
+// End the IdP session so the next sign-in does not silently reuse its cookie.
+// Use the explicit token snapshot after local clearing; bound this best-effort cleanup so sign-out
+// stays responsive.
 export async function endKeycloakSession(refreshToken: string | null = getRefreshToken()): Promise<void> {
   if (!refreshToken) return;
   const controller = new AbortController();
@@ -390,11 +300,7 @@ export async function endKeycloakSession(refreshToken: string | null = getRefres
   }
 }
 
-// ── Active-organization bootstrap ────────────────────────────────
-//
-// Auth-service scopes Hub access to an active organization. Desktop
-// mirrors the web flow here: discover candidate orgs, switch if
-// needed, and refresh so the token carries the chosen org claim.
+// Select an active organization, then refresh the token to carry its claim.
 
 interface OrgRef {
   id: string;
@@ -411,7 +317,6 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
     if (parts.length < 2) return null;
     let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     while (payload.length % 4) payload += '=';
-    // Buffer is fine in the main process (Node); base64 → utf8.
     const decoded = Buffer.from(payload, 'base64').toString('utf-8');
     return JSON.parse(decoded);
   } catch {
@@ -454,14 +359,7 @@ function hasActiveOrgClaim(payload: Record<string, unknown> | null): boolean {
   return Boolean(getActiveOrgFromPayload(payload));
 }
 
-// First source wins on identity, best source wins on the label.
-//
-// The token claim is pushed first and carries no display name — a personal
-// organization arrives as the raw `personal_<userId>` — while
-// `users/<id>/orgs` carries the one auth generated. Dropping the later
-// duplicate outright meant the organization a person is actually in was the
-// one entry guaranteed to show its slug. `name` equal to `slug` is how a
-// source says it had no display name to give.
+// Keep the first identity but accept a later display label; token claims may supply only a slug.
 function pushUniqueOrg(target: OrgRef[], seen: Set<string>, org: OrgRef | null) {
   if (!org) return;
   if (seen.has(org.id)) {
@@ -547,11 +445,7 @@ async function switchActiveOrg(accessToken: string, orgId: string): Promise<bool
   }
 }
 
-// Refresh the access token using the persisted refresh_token. The new
-// token reflects whatever active-organization switch we just performed,
-// and is saved back into the store so subsequent refreshes see the
-// org-aware token. Returns the token string or null — the org-switch
-// loops only care whether they got a usable token.
+// Refresh after switching organizations and return the token carrying the new claim.
 async function refreshAfterOrgSwitch(): Promise<string | null> {
   // An exchange that started before the org switch cannot contain the new
   // claim. Let it settle, then deliberately start a fresh exchange.
@@ -562,12 +456,7 @@ async function refreshAfterOrgSwitch(): Promise<string | null> {
     : null;
 }
 
-// ── The organization pick, on disk ────────────────────────────────
-//
-// `state.json` in the Cowork home, beside the provider preferences. The
-// decisions about the shape live in minds-orgs.ts; this is the file half.
-// Both directions are best-effort: losing the pick costs a ranked default,
-// never a working install.
+// Persist organization preferences in state.json, best-effort; minds-orgs.ts owns the shape.
 
 function readCoworkState(): unknown {
   try {
@@ -593,9 +482,7 @@ function storeOrgPreference(userId: string, orgId: string, chosenByUser: boolean
   }
 }
 
-// The live access token, refreshed once if the cached one has expired. The
-// in-memory token is process-lifetime only, so right after a launch it can be
-// empty while a perfectly good refresh token sits on disk.
+// Refresh an expired or missing in-memory token from the persisted refresh token once.
 export async function freshAccessToken(): Promise<string | null> {
   const cached = getAccessToken();
   if (cached && !isAccessTokenExpired()) return cached;
@@ -615,21 +502,8 @@ export interface EnsureActiveOrgResult {
   activeOrgId?: string | null;
 }
 
-// Puts the access token on the organization this install should mint in, and
-// makes sure it carries an active-organization claim at all.
-//
-// The claim used to be the whole answer: a token that already had one was
-// returned untouched. That is how people ended up minting into
-// their personal organization — whatever they last had active in a console
-// tab decided where their laptop's key went, and nothing on either surface
-// said so. Now the claim is an input rather than the verdict: company
-// organizations rank ahead of personal ones, a pick the person made by hand
-// beats the ranking, and the switch only happens when the answer differs from
-// the claim.
-//
-// That last clause is what keeps this free for the common case. An account
-// with one organization chooses it, finds the claim already names it, and
-// makes no switch and no refresh — the same number of round-trips as before.
+// Select an active-organization claim, preferring a user choice over company-first ranking.
+// Switch and refresh only when the chosen organization differs from the token’s current claim.
 export async function ensureActiveOrg(
   accessToken: string,
   options: { preferOrgId?: string } = {},
@@ -642,13 +516,8 @@ export async function ensureActiveOrg(
   }
 
   let candidates = await listOrgCandidates(accessToken, userId, payload);
-  // Brand-new accounts (ENG-917): the personal org is provisioned
-  // asynchronously (Keycloak REGISTER webhook → auth-service job), so a
-  // user who verifies their email within seconds can land here before it
-  // exists. Retry briefly before declaring the account org-less.
-  // Established accounts always have ≥1 org on the first pass, so this
-  // loop costs them nothing — and a token carrying a claim always contributes
-  // that organization, so it never waits here either.
+  // New signup organizations are provisioned asynchronously; retry briefly before reporting no
+  // membership.
   for (let i = 0; candidates.length === 0 && i < ORG_BOOTSTRAP_RETRIES; i++) {
     await new Promise((r) => setTimeout(r, ORG_BOOTSTRAP_RETRY_DELAY_MS));
     candidates = await listOrgCandidates(accessToken, userId, payload);
@@ -659,27 +528,11 @@ export async function ensureActiveOrg(
 
   const orgs = rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId)));
   const activeOrgId = getActiveOrgFromPayload(payload)?.id ?? null;
-  // `preferOrgId` outranks the stored pick: it is somebody naming an
-  // organization now, rather than the one this install last landed on. It goes
-  // through `chooseMindsOrg` rather than straight to a switch, so it is matched
-  // against a real membership first.
-  //
-  // Nothing is persisted here, deliberately. Making an organization active and
-  // remembering it are two decisions, and this function only makes the first:
-  // its caller can still move the session afterwards, and a preference written
-  // before that settled is what left `state.json` and the live session naming
-  // different organizations (ENG-2199).
-  //
-  // Only a pick a person made is stored at all, by `selectEntitledOrg`, and
-  // only such a row outranks the ranking. Where a sign-in happens to land is
-  // session-only and recomputed next time. The `chosenByUser` check below is
-  // therefore a forward guard rather than a live discriminator: nothing writes
-  // `false` today, and it is what stops the next person who reaches for
-  // "remember where we ended up" retiring the company-first default (ENG-1954)
-  // after a single launch — someone who signed in with only a personal
-  // organization and later joined a company one would stay in Personal for
-  // good, because the entitlement hunt only revises a row when the
-  // organization cannot pay.
+  // Validate an explicit preference against membership and rank it ahead of the stored pick.
+  // Do not persist automatic landings here; selectEntitledOrg records only choices the user
+  // actually made.
+  // Otherwise a first personal-org login can permanently defeat company-first ranking after joining
+  // a company.
   const storedPick = readStoredOrgPreference(userId);
   const chosen = chooseMindsOrg(
     orgs,
@@ -690,9 +543,8 @@ export async function ensureActiveOrg(
     return { token: accessToken, candidates, orgs, activeOrgId };
   }
 
-  // The chosen organization first, then the rest in ranked order. A Keycloak
-  // refusal on the preferred one must still leave the token with some claim,
-  // because everything downstream needs one and none of it cares which.
+  // Try the chosen organization first, then ranked alternatives so a refused switch can still yield
+  // a usable claim.
   const targets = chosen ? [chosen, ...orgs.filter((org) => org.id !== chosen.id)] : orgs;
   for (const target of targets) {
     const ok = await switchActiveOrg(accessToken, target.id);
@@ -711,21 +563,13 @@ export async function ensureActiveOrg(
     }
   }
 
-  // Nothing could be made active. A token that already carried a claim is
-  // still usable: ranking is an improvement on where the key lands, never a
-  // precondition for getting one.
+  // If every switch fails, retain an existing claim; ranking must not prevent an otherwise valid
+  // login.
   return { token: hasClaim ? accessToken : null, candidates, orgs, activeOrgId };
 }
 
-// ── Key listing and revocation ────────────────────────────────────
-//
-// Nothing here mints any more. The desktop presents the user's own session
-// credential, so the only reason to touch `/v1/api-keys/` is to clean up the
-// per-device keys earlier builds left behind: on sign-out, and once on the
-// first launch of a build that no longer mints.
-//
-// The per-device name is still `hub:anton:<installation_id>`, and matching it
-// exactly is still what stops one machine revoking another's.
+// Only list and revoke legacy device keys; the desktop now uses session credentials.
+// Match hub:anton:<installation_id> exactly to avoid revoking other devices.
 
 export interface SelectedOrgResult {
   // The token to present, carrying an active-organization claim. Absent when
@@ -739,24 +583,13 @@ export interface SelectedOrgResult {
   organization?: MindsOrg;
 }
 
-// Lists every API key on the account, following DRF-style `next`
-// pagination so a key is never missed because it fell off the first page.
-// ENG-440: this matters now that we deliberately let keys accumulate per
-// account (the legacy `hub:anton` is kept, per-device keys add up) — a
-// single-page read could miss this device's own prior `hub:anton:<id>`
-// and mint a duplicate under the same name on every re-onboard. A bare
-// array means the endpoint isn't paginated and is already the full list.
-// Best-effort: any failure returns what we have so far so key creation
-// still proceeds.
+// Follow pagination, accepting bare arrays too. On failure return the keys collected so far.
 interface ApiKeyListEntry {
   name?: string;
   prefix?: string;
   created?: string;
   expiry_date?: string | null;
-  // Auth-service DELETE is a soft delete (perform_destroy sets revoked=True
-  // and keeps the row for the audit trail), and the list endpoint does NOT
-  // filter revoked rows — so every consumer here must, or revoked keys are
-  // indistinguishable from live ones.
+  // Auth lists soft-revoked rows; callers must filter them before treating a key as live.
   revoked?: boolean;
 }
 
@@ -794,36 +627,22 @@ async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<v
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    // Best-effort cleanup — a failed delete never blocks the caller — but
-    // a silent failure here is exactly what let the renewal-rollback bug
-    // hide, so at least make it diagnosable. `prefix` is the public
-    // display prefix, not a secret.
+    // Log best-effort deletion failures using only the public prefix, never the secret.
     if (!res.ok) console.warn('[minds-auth] key delete returned', res.status, 'for prefix', prefix);
   } catch {
-    // best-effort cleanup — proceed with the new key creation regardless
+    // best-effort cleanup
   }
 }
 
-// ENG-498: on explicit sign-out, delete THIS device's own key(s) so a
-// retired session doesn't leave a live, mintable credential behind.
-// Exact-name matches only — never the legacy fixed `hub:anton` (a
-// not-yet-upgraded device may still rely on it) and never other
-// devices' keys (that's the ENG-440 silent-revocation bug).
-//
-// listExistingKeys/deleteKeyByPrefix both swallow their own failures
-// (best-effort by design), so a zero-match result is otherwise silent and
-// indistinguishable from "already revoked" — log which case happened at
-// least once so a stuck key is diagnosable. The key NAME is safe to log:
-// it's just `hub:anton:<installation_id>`, not a secret.
+// Revoke only this device’s exact key name, preserving other devices and the legacy shared
+// hub:anton key.
+// Log the outcome so a failed lookup is distinguishable from an already-revoked key.
 async function revokeAntonApiKeys(accessToken: string): Promise<void> {
   const keyName = antonKeyName();
   const existing = await listExistingKeys(accessToken);
   let revoked = 0;
   for (const entry of existing) {
-    // Skip rows auth already soft-revoked: every sign-in's pre-mint cleanup
-    // adds one, so they accumulate — and they list oldest-first, so deleting
-    // them here burns the 5s revoke budget before reaching the one live key
-    // (the newest) that actually needs revoking.
+    // Skip soft-revoked rows so they cannot consume the deadline before reaching the live key.
     if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
       await deleteKeyByPrefix(accessToken, entry.prefix);
       revoked++;
@@ -836,22 +655,12 @@ async function revokeAntonApiKeys(accessToken: string): Promise<void> {
   }
 }
 
-// Bounds the revoke phase of logout. Without this, a black-holed
-// auth-service delays endKeycloakSession by up to 30-90s (list + several
-// sequential deletes, each carrying the 30s timedFetch deadline) — long
-// enough that the IdP SSO session outlives the moment the user already
-// saw "signed out": clicking Sign in during that window silently
-// re-authenticates, the exact bug end-session exists to prevent. On
-// timeout we abandon the revoke and fall through to end-session; the
-// un-revoked key still falls to the server-side TTL.
+// Bound key cleanup so a slow auth service does not delay IdP logout; remaining keys expire
+// server-side.
 const LOGOUT_REVOKE_TIMEOUT_MS = 5_000;
 
-// Detached logout cleanup: revoke this device's key while the session is
-// still valid, then end the IdP session. Ordering matters — end-session
-// first would leave the revoke racing an invalidated session. Both are
-// best-effort; the caller (AUTH_LOGOUT) deliberately does not await this,
-// so failures may not block sign-out. Exported (rather than inlined in
-// the handler) so the ordering is unit-testable.
+// Revoke the device key before ending the IdP session; both are best-effort and detached from local
+// sign-out.
 export async function revokeDeviceKeyAndEndSession(
   accessToken: string | null,
   refreshToken: string | null,
@@ -875,17 +684,8 @@ export async function revokeDeviceKeyAndEndSession(
   }
 }
 
-// Best-effort token for the logout revoke. The common case (valid cached
-// token) is synchronous; an expired token gets ONE refresh attempt bounded
-// by `timeoutMs` so a hung IdP can never stall sign-out. On timeout the
-// caller proceeds without the revoke — the key then falls to the TTL.
-//
-// NOTE: a refresh here may ROTATE the persisted refresh token (Keycloak
-// may be configured to rotate it on exchange — see the _inflightRefresh
-// comment above). Callers composing this with endKeycloakSession must
-// read getRefreshToken() AFTER awaiting getRevokeToken, never before —
-// otherwise they'd hand end-session a refresh token the exchange already
-// superseded.
+// Return a cached token or make one bounded refresh attempt for revocation.
+// Read getRefreshToken only AFTER this returns: the exchange may rotate the persisted token.
 export async function getRevokeToken(timeoutMs = 5_000): Promise<string | null> {
   const cached = getAccessToken();
   if (cached && !isAccessTokenExpired()) return cached;
@@ -904,12 +704,8 @@ export async function getRevokeToken(timeoutMs = 5_000): Promise<string | null> 
   }
 }
 
-// Probes the auth-service `/authenticate/` endpoint, which both
-// validates the bearer token and returns the user's entitlements.
-// Used as a sanity check before POST /api-keys/ so we can distinguish
-// "token isn't accepted at all" from "token is valid but the user
-// can't create LLM keys" — those two failure modes need different
-// recovery UX, and the create endpoint alone can't tell them apart.
+// Check bearer acceptance and entitlements separately so auth failure and missing access get
+// different recovery.
 async function fetchAuthContext(accessToken: string): Promise<{
   ok: boolean;
   status: number;
@@ -921,19 +717,14 @@ async function fetchAuthContext(accessToken: string): Promise<{
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        // mindshub_frontend pins this header so the auth-service can
-        // scope entitlements to the hub product. Without it the
-        // server may return a different (or empty) entitlement set.
+        // Scope authentication to the Hub product, matching mindshub_frontend.
         'X-MindsDB-Product': 'hub',
       },
     });
     let body: any = null;
     try { body = await res.json(); } catch { /* non-JSON */ }
     const ent = body?.entitlements;
-    // Diagnostic: the exact HUB-scoped entitlement set the auth-service
-    // returned. This is what the upgrade gate keys off — log it so a
-    // failing machine tells us "no subscription" vs "wrong product/org"
-    // instead of surfacing a generic error.
+    // Log the Hub-scoped entitlement result to diagnose product or organization mismatches.
     console.log(
       '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
       res.status,
@@ -962,10 +753,7 @@ function normalizeHubEntitlements(entitlements: any) {
   };
 }
 
-// Whether this organization can actually run turns for the user. Formerly this
-// also required `api_keys.create`, because the app had to mint a key here; it
-// presents the user's own credential now, so the ability to create a key says
-// nothing about whether the account can use the product.
+// Check turn access, not api_keys.create; session credentials no longer require minting a key.
 function entitledToUseAnton(entitlements: any): boolean {
   const normalized = normalizeHubEntitlements(entitlements);
   return (
@@ -974,56 +762,22 @@ function entitledToUseAnton(entitlements: any): boolean {
   );
 }
 
-// Held while any path is moving the active organization. The account-menu switch
-// and the entitlement selection both drive the same server-side Keycloak session,
-// and the selection switches more than once — per candidate, then once more to
-// put the session back — so interleaving them leaves the two disagreeing.
-//
-// A promise rather than a boolean because the two contenders want different
-// answers to "someone else is going": a second switch is refused, while a
-// selection waits (ENG-2199).
+// Serialize organization selection and switching across the shared Keycloak session.
+// Selections wait for contention; a second explicit switch is refused.
 let _orgSwitchInFlight: Promise<void> | null = null;
 
-// Pick the organization the presented token will name, and return that token.
-//
-// The active-organization claim is not a nicety: auth's `/v1/authenticate/`
-// answers 401 outright for a JWT that carries no active organization, so a token
-// without one is refused at the gateway on every turn. `ensureActiveOrg` is what
-// guarantees it, and it also decides WHICH organization: company ones ahead of
-// personal, a pick the person made by hand ahead of the ranking.
-//
-// Beyond that, the claim decides whose credits a turn spends, so when the active
-// organization cannot run turns at all we look for one that can rather than
-// leaving the user signed in and unable to send a message. Lacking the
-// entitlement is NOT a sign-in blocker: if no organization qualifies we keep the
-// active one and let the gateway say so at the point of use, which is where the
-// top-up card is raised.
-//
-// `chosenByUser` is the one thing that stops that search. An automatic
-// optimization may pick an organization only when nobody else has: running it
-// over a person's explicit answer moves them out of the organization they just
-// nominated to pay, which is precisely what the picker asked them to decide.
-// It is a separate flag rather than "`preferOrgId` is set" on purpose — that
-// happens to be true of today's only caller, and a future one passing a stored
-// id would silently disable the fallback with nothing failing. This whole
-// function exists because two layers agreed implicitly once already (ENG-2199).
+// Ensure a valid active-organization claim; auth rejects tokens without one.
+// If an automatically selected organization lacks access, try others, restoring the starting org if
+// none qualify.
+// Never override an explicit user choice or block sign-in solely for missing entitlement; the
+// gateway enforces it.
 export async function selectEntitledOrg(
   initialToken: string,
   options: { preferOrgId?: string; chosenByUser?: boolean } = {},
 ): Promise<SelectedOrgResult> {
-  // Wait rather than refuse. Refusing looks tidier but is the worse answer:
-  // `ReconnectCard` escalates any `ok: false` straight to `mindshubLogin()`
-  // (ChatView.jsx), so a moment's contention would put a full browser sign-in in
-  // front of someone whose session was fine.
-  //
-  // Waiting is also correct rather than merely kinder. Once the switch commits
-  // it records its organization as a person's choice, so the run that follows
-  // short-circuits on it instead of hunting them out of it again. The loop
-  // re-checks because another waiter may take the lock first.
-  // Awaited bare: the handle is only ever resolved — it is created two lines
-  // below with no `reject` in scope, and settled in a `finally` — so there is no
-  // rejection here to swallow, and a `catch` would only hide one if that ever
-  // changed.
+  // Wait for a pending switch rather than reporting an auth failure that triggers browser sign-in.
+  // Re-check the lock and reread its committed preference; the lock promise always resolves in
+  // finally.
   while (_orgSwitchInFlight) {
     await _orgSwitchInFlight;
   }
