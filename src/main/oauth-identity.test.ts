@@ -43,14 +43,8 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
   });
 });
 
-// ENG-2240: a PostHog account can belong to several organizations under the
-// same email (unlike Google, where an account is an email), so the
-// organization id is folded into the returned email for dedup, and the
-// organization name - not the connecting person's own name - is returned as
-// `name`, the same convention fetchSupabaseIdentity uses for its own
-// per-organization identity. The organization lookup is a separate,
-// best-effort request from the required user query, routed here by which
-// endpoint path each fetch call carries.
+// PostHog identity must include organization id for dedup and organization name for display.
+// Route the optional organization lookup separately from the required user lookup.
 describe('fetchAccountIdentity — PostHog organization-aware identity', () => {
   function stubPostHogCalls(opts: { user: object; organization?: object; organizationOk?: boolean }) {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
@@ -77,9 +71,7 @@ describe('fetchAccountIdentity — PostHog organization-aware identity', () => {
   });
 
   it('names every organization selected at consent, not just the first', async () => {
-    // ENG-2240 follow-up: PostHog's consent screen lets a user select
-    // several organizations in one authorization (unlike Linear, one grant
-    // = one workspace) - the tile must name all of them.
+    // One PostHog consent grant can include multiple organizations; the tile must name all of them.
     stubPostHogCalls({
       user: { email: 'user@example.com', first_name: 'User', last_name: 'Name' },
       organization: { results: [{ id: 'org-123', name: 'Acme Org' }, { id: 'org-456', name: 'Other Org' }] },
@@ -186,14 +178,8 @@ describe('fetchAccountEmail — Supabase organization fallback', () => {
   });
 });
 
-// ENG-2188: a Linear account can belong to several workspaces under the same
-// email (unlike Google, where an account is an email), so the workspace id
-// is folded into the returned email for dedup, and the workspace name - not
-// the connecting person's own name - is returned as `name`, the same
-// convention fetchSupabaseIdentity uses for its own per-organization
-// identity. The workspace lookup is a separate, best-effort request from the
-// required viewer query, routed here by which GraphQL query each fetch call
-// carries.
+// Linear identity must include workspace id for dedup and workspace name for display.
+// Route the optional workspace query separately from the required viewer lookup.
 describe('fetchAccountIdentity — Linear workspace-aware identity', () => {
   function stubLinearCalls(opts: {
     viewerBody: object;
@@ -249,9 +235,8 @@ describe('fetchAccountIdentity — Linear workspace-aware identity', () => {
   });
 
   it('degrades to bare email instead of failing when the organization query returns GraphQL errors', async () => {
-    // The core resilience case: an unverified/wrong `organization` field
-    // returning HTTP 200 + an errors array must not break the viewer
-    // identity fetch a Linear connection's core functionality depends on.
+    // A GraphQL errors array inside HTTP 200 must not break the required viewer identity when
+    // organization lookup fails.
     stubLinearCalls({
       viewerBody: { data: { viewer: { email: 'user@example.com', name: 'User Name' } } },
       organizationBody: { errors: [{ message: 'Cannot query field "organization" on type "Query".' }] },

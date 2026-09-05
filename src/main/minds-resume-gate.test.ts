@@ -24,9 +24,7 @@ describe('Minds resume credential gate', () => {
     beginMindsResumeCredentialGate();
     const firstWaiter = waitForMindsResumeCredential();
 
-    // A second wake must not replace the gate object. If it does, waiters
-    // parked on the first promise never observe the settle and burn the full
-    // bound before being cancelled, even though the refresh succeeded.
+    // Retain the same gate promise across repeated wakes so existing waiters observe settlement.
     beginMindsResumeCredentialGate();
     settleMindsResumeCredentialGate(true);
 
@@ -34,10 +32,8 @@ describe('Minds resume credential gate', () => {
   });
 
   it('leaves an unarmed gate open when settle reports failure', async () => {
-    // `doRefreshTokens`'s no_refresh_token path and `beginMindsCredentialSignOut`
-    // both settle unconditionally. On an install that never armed a barrier that
-    // must be a no-op: latching blocked with no gate promise cancels every later
-    // MindsHub response immediately, until sign-in or a pasted key.
+    // Settling with no armed gate must be a no-op; latching blocked would cancel all later MindsHub
+    // turns.
     expect(isMindsResumeCredentialGateActive()).toBe(false);
 
     settleMindsResumeCredentialGate(false);
@@ -102,9 +98,8 @@ describe('Minds resume credential gate', () => {
   });
 
   it('releases waiters and stops blocking when the session goes away', async () => {
-    // Sign-out has no resumed credential to wait for, and nothing in the
-    // signed-out state can ever settle the gate true. Leaving it blocked would
-    // cancel every later turn, including direct-provider turns.
+    // Sign-out has no credential that can settle true; leaving the gate blocked would cancel
+    // direct-provider turns too.
     beginMindsResumeCredentialGate();
     const waiting = waitForMindsResumeCredential();
 

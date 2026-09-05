@@ -1,29 +1,8 @@
-// Guards the build-time half of MindsHub host resolution.
-//
-// minds-urls.ts (main) and renderer/lib/mindsUrls.ts are each correct on their
-// own, and each is unit-tested. What broke was the seam between them: both are
-// fed from ONE build input, `minds_api_url`, and when a caller omitted it they
-// fell back to DIFFERENT environments. Only main can see the build kind, so it
-// fell back on that (preview -> staging) while the renderer, which cannot,
-// fell back to production. The app then ran Keycloak against one environment
-// and the session against the other, and login could never succeed. The dev/PR
-// ring shipped that way; staging and prod were fine only because they happened
-// to state the input.
-//
-// No unit test can catch that, because the defect lives in workflow YAML. So
-// this asserts the two properties that make the seam safe: every caller states
-// the input, and the value it states matches the ring it is building for.
-//
-// The shape changed when the installer builds were folded into the per-event
-// pipelines (ENG-1053). There is now one hop: each ring's pipeline calls
-// `build-installers.yml`, which calls the two platform builds. The invariant is
-// unchanged and there are fewer places to state it, so this checks both halves:
-// each ring states the right host, and the aggregator passes it through rather
-// than substituting a value of its own.
-//
-// Deliberately hand-parsed: js-yaml is only present transitively (via
-// electron-builder) and could disappear on any bump, which is not a dependency
-// this guard should own.
+// Check the workflow seam: each ring must pass its intended MindsHub host through the installer
+// aggregator.
+// Main and renderer defaults differ, so omission can split authentication and API environments
+// despite passing unit tests.
+// Hand-parse YAML rather than rely on electron-builder's transitive js-yaml dependency.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -53,10 +32,7 @@ interface CallSite {
   inputs: Record<string, string>;
 }
 
-/** Every `uses: ./.github/workflows/<target>.yml` in a file, with the `with:`
- *  inputs that follow it. Indentation-scoped: `with:` is a SIBLING of `uses:`
- *  (both under the job), and the inputs sit one level deeper, so the block runs
- *  until the line that dedents out of the job. */
+/** Read uses calls and sibling with blocks until job-level dedent; inputs sit one level deeper. */
 function callSites(workflow: string, targets: string[]): CallSite[] {
   const text = readFileSync(`${WORKFLOWS}/${workflow}`, 'utf-8');
   const sites: CallSite[] = [];
@@ -74,8 +50,7 @@ function callSites(workflow: string, targets: string[]): CallSite[] {
       if (!line.trim() || line.trim().startsWith('#')) continue;
       const lineIndent = /^\s*/.exec(line)?.[0].length ?? 0;
       if (lineIndent < indent.length) break; // dedented out of the job
-      // `with:` / `secrets:` / `if:` are siblings of `uses:`, not inputs. A
-      // second `uses:` at this level would be the next job's call.
+// with/secrets/if are siblings of uses, not inputs.
       if (lineIndent === indent.length) {
         if (/^\s*uses:/.test(line)) break;
         continue;
@@ -92,8 +67,7 @@ describe('installer workflows bake an environment', () => {
   const ringSites = RINGS.flatMap((w) => callSites(w, [AGGREGATOR]));
 
   it('finds every ring call site (guards the parser itself)', () => {
-    // Three rings, each reaching the installers exactly once. If this drops, the
-    // parser stopped understanding the YAML and every assertion below went
+    // Assert parser coverage before checking values so a parser regression cannot make these tests
     // vacuous.
     expect(ringSites).toHaveLength(3);
     for (const w of RINGS) {
@@ -137,11 +111,8 @@ describe('installer workflows bake an environment', () => {
   });
 
   it.each([...PLATFORM_BUILDS, AGGREGATOR])('%s requires minds_api_url and gives it no default', (workflow) => {
-    // Required rather than defaulted, on purpose. A default cannot be both
-    // safe and honest here: the only safe value is production (it is what the
-    // renderer falls back to anyway), but then a caller that forgets gets a
-    // signed installer silently pointed at production instead of a red build.
-    // Requiring it turns that into a run that refuses to start.
+    // Require an explicit host: a production default would silently send an omitted non-prod
+    // configuration to production.
     const text = readFileSync(`${WORKFLOWS}/${workflow}`, 'utf-8');
     const block = /^ {6}minds_api_url:\s*\n([\s\S]*?)\n {6}[a-z_]+:/m.exec(text);
     expect(block, `${workflow} must declare a minds_api_url input`).not.toBeNull();

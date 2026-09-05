@@ -1,11 +1,5 @@
-// The two native boundaries the renderer test cannot see.
-//
-// `host.test.ts` stubs the bridge, so it proves the renderer picks the right
-// method — and nothing more. Dropping the "a person chose this" flag in preload
-// or in the IPC handler stays type-correct, keeps `canPickOrganization()` true
-// and leaves the picker on screen, while the entitlement fallback silently
-// overrides the answer again. That is this ticket's original defect, restored
-// at a layer no existing test looks at (ENG-2199).
+// Verify the explicit-choice flag crosses preload and IPC; renderer bridge mocks cannot catch
+// either layer dropping it.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -48,22 +42,14 @@ describe('preload carries the explicit pick', () => {
 
 describe('the finalize IPC handler forwards the flag', () => {
   /*
-   * Read from source rather than executed: `index.ts` registers every handler
-   * in the app at import and pulls in Electron, the server process and the
-   * installer with them. The seam being guarded is one argument crossing one
-   * boundary, and `organizationLabelSurfaces.test.js` already establishes
-   * source reading as how this repo pins a wiring seam a unit test walks past.
+   * Read the argument-forwarding seam from source; importing index.ts initializes unrelated
+   * Electron/server/installer handlers.
    */
   const src = readFileSync(resolve(__dirname, 'index.ts'), 'utf-8');
   const start = src.indexOf('ipcMain.handle(IPC.MINDSHUB_FINALIZE');
   const handler = start < 0 ? '' : src.slice(start, src.indexOf('\n  });', start));
 
-  /**
-   * Just the arguments of the `selectEntitledOrg(...)` call, not everything
-   * after it. Scoping matters: with the wider slice, deleting the forwarding
-   * and leaving any later mention of the name — a comment is enough — left
-   * this green while the flag was being dropped.
-   */
+  /** Scope to selectEntitledOrg arguments so a later mention cannot mask missing flag forwarding. */
   const selectCall = (() => {
     const at = handler.indexOf('selectEntitledOrg(');
     if (at < 0) return '';
