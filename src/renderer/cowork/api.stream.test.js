@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { streamNewSession } from './api';
 
-// Project names are mutable (rename) while ids are not, so the composer
-// sends project_id whenever it has one (ENG-1028). The name stays in the
-// payload for older servers that only understand `project`.
+// Use immutable project_id when available; retain the mutable name for older servers that only
+// accept project.
 
 describe('streamNewSession project identity', () => {
   let bodies;

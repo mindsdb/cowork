@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mutable host mock so tests can flip isWeb (`revealSettingKey` gates on it).
-// In this happy-dom env the real host already reports isWeb=true, so the
-// default matches what the other suites in this file always ran under; only
-// `host` is replaced, every other export passes through.
+// Keep host.isWeb mutable for reveal-key cases and preserve other real exports; web is happy-dom's
+// default.
 const hostMock = vi.hoisted(() => ({
   isWeb: true,
   isElectron: false,
@@ -73,9 +71,8 @@ describe('authFetch organization boundary', () => {
   });
 
   /*
-   * The throw is what stops a caller reading a body scoped to an organization
-   * this document did not start in. Returning the response would let every
-   * existing `!res.ok` branch render the rejection as ordinary data.
+   * Throw before body consumption so a tenant-boundary rejection cannot be handled as ordinary
+   * response data.
    */
   it('refuses to return a response the server marked for reload', async () => {
     hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
@@ -168,11 +165,8 @@ describe('listProjectFiles mutation refresh', () => {
   });
 });
 
-// The `refresh` flag is the whole mechanism behind "a top-up unlocks paid
-// models without restarting the app" (ENG-1001): it's what makes the server
-// bypass its 5-minute MindsHub cache. A typo in the query string would leave
-// the feature silently inert — every call would still return 200, just with
-// the cached `enabled` map — so the URL is worth pinning.
+// Pin refresh=true on the wire: a typo still returns 200 with a stale model-enabled map instead of
+// bypassing the server cache.
 
 describe('fetchRecommendedModels', () => {
   let calls;
@@ -250,7 +244,6 @@ describe('updateSettings', () => {
     expect(body.values.greeting).toBe('a brand new greeting');
     expect(body.values.tone).toBe('formal');
 
-    // No per-key PUT (e.g. /settings/greeting) — that path is what could half-write.
     expect(puts.some((c) => /\/settings\/\w/.test(c.url))).toBe(false);
   });
 
@@ -263,11 +256,8 @@ describe('updateSettings', () => {
   });
 });
 
-// A MindsHub key the user typed must not be stored by the sidecar at all. The
-// Settings form writes it twice from one keystroke — the `minds_api_key` row
-// and the raw value inside the provider card — so both halves have to be
-// diverted. `providers_json` is a plain column nothing encrypts, which makes
-// the second half the one that actually leaves a readable key on disk.
+// Divert typed MindsHub keys from both the setting row and providers_json; the latter is plaintext
+// storage.
 describe('updateSettings — a user-supplied MindsHub key never reaches the server', () => {
   let calls;
 
@@ -313,7 +303,6 @@ describe('updateSettings — a user-supplied MindsHub key never reaches the serv
     expect(body.values.minds_api_key).toBeUndefined();
     // The card survives, masked — the same shape the server returns on read.
     expect(JSON.parse(body.values.providers_json)[0].apiKey).toBe('***');
-    // The clinching assertion: the raw value is nowhere in what we sent.
     expect(put.body).not.toContain('mdb_typed_by_hand');
   });
 
@@ -355,12 +344,8 @@ describe('updateSettings — a user-supplied MindsHub key never reaches the serv
   });
 });
 
-// ENG-1632 tombstones: a `null` in the patch clears the stored row (DELETE)
-// so the server's enabled-aware resolution governs the key again. The DELETEs
-// must run BEFORE the bulk PUT — the PUT repoints providers, and a repointed
-// provider whose old model row survives a failed DELETE misroutes every turn
-// with no retry path (the next save's repoint guard sees a matching provider
-// and never re-attempts the DELETE).
+// Delete cleared model pins before provider PUTs; repointing first can leave stale pins with no
+// later retry trigger.
 describe('updateSettings — tombstones (ENG-1632)', () => {
   let calls;
 
@@ -412,17 +397,14 @@ describe('updateSettings — tombstones (ENG-1632)', () => {
     await expect(
       updateSettings({ planningModel: null, planningProvider: 'minds-cloud' }),
     ).rejects.toThrow(/Failed to save settings/);
-    // The load-bearing assertion: no PUT was issued, so the provider was NOT
-    // repointed — the stored state stays consistent and the retry re-runs the
-    // whole save (guard still true).
+    // A failed tombstone DELETE must prevent provider PUTs, preserving consistency and allowing the
+    // whole save to retry.
     expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/settings/'))).toBe(false);
   });
 });
 
-// ENG-932: `/settings/reveal-key` returns UNMASKED secrets and is
-// loopback-only server-side, so from a hosted browser it can only 403. The
-// gate lives here in the network helper — not just at the ApiKeyInput call
-// site — so a future caller can't reintroduce the doomed request.
+// Gate loopback-only secret reveal in the network helper so future hosted callers cannot issue a
+// guaranteed 403 request.
 describe('revealSettingKey — web gate (ENG-932)', () => {
   let calls;
 
@@ -458,9 +440,8 @@ describe('revealSettingKey — web gate (ENG-932)', () => {
   });
 });
 
-// ─── ENG-1304: history hydration maps config/auth failures to the
-// connect-a-provider card, matching the live-stream path (lib/antonErrors).
-// Before this, reopening a conversation downgraded the card to a raw error.
+// Hydrated config/auth failures must retain the same provider-connection card as live-stream
+// failures.
 describe('fetchSession error hydration (ENG-1304)', () => {
   const conversationMeta = { id: 'c1', title: 'T', project: null };
   const failedTurn = (code, error) => ([
@@ -529,12 +510,7 @@ describe('fetchSession error hydration (ENG-1304)', () => {
   });
 });
 
-// ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
-//
-// MODEL_ROUTER_ID is a renderer-only sentinel (the composer's default,
-// meaning "use this account's Settings"). The server contract is a null/
-// absent `model` field, so it must be translated at the request boundary
-// rather than sent verbatim as the literal string "model-router".
+// Translate the client-only Model Router sentinel to null/absent model at the request boundary.
 describe('streamNewSession — Model Router translation', () => {
   const closedStreamResponse = () => ({
     ok: true,
@@ -571,7 +547,6 @@ describe('streamNewSession — Model Router translation', () => {
   });
 });
 
-// ─── ENG-1656 follow-up: the composer's harness pick reaches the server ──
 describe('streamNewSession — harness pick', () => {
   const closedStreamResponse = () => ({
     ok: true,
@@ -608,9 +583,8 @@ describe('streamNewSession — harness pick', () => {
   });
 });
 
-// A dropped connection mid-stream must carry a code distinct from a stalled
-// tail or a reconnect failure, so chat_turn_failed can tell them apart
-// instead of bucketing every client-side drop as unknown.
+// Give mid-stream disconnects a distinct code from stalled tails and reconnect failures for failure
+// telemetry.
 describe('streamNewSession — network failure reporting', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -631,10 +605,8 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
-// The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
-// than from its five call sites precisely so a sixth added later cannot
-// silently stop reporting it — and that only holds while fetchHealth performs
-// the hand-off, which the analytics-side tests cannot see.
+// Assert fetchHealth hands the install ID to analytics; analytics tests cannot verify this shared
+// fetch boundary.
 describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () => {
   beforeEach(() => {
     setAntonInstallId.mockClear();
@@ -658,9 +630,8 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
   });
 
   it('does NOT clear the id when the server is unreachable', async () => {
-    // Deliberately unlike a version: a machine fingerprint cannot go stale, so
-    // clearing it during a health blip would strand events that could have
-    // carried the join key.
+    // A health blip must retain the machine fingerprint so later events can still carry the join
+    // key.
     globalThis.fetch = vi.fn(async () => {
       throw new Error('ECONNREFUSED');
     });
@@ -674,10 +645,7 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
 
 describe('fetchHealth is not affected by an analytics failure (ENG-1689)', () => {
   it('still reports a healthy server when the analytics setter throws', async () => {
-    // The setter runs inside fetchHealth's try, so without isolation an
-    // exception would fall through to the catch and return status 'offline' —
-    // an analytics fault masquerading as a down server, on the call that gates
-    // boot. Readiness must not depend on a join key.
+    // An analytics setter failure must not make fetchHealth report offline and block boot.
     setAntonInstallId.mockImplementationOnce(() => {
       throw new Error('analytics exploded');
     });
@@ -713,9 +681,8 @@ describe('fetchInFlightList', () => {
     expect(await fetchInFlightList()).toEqual([]);
   });
 
-  // The distinction the stranded-slot self-heal depends on (ENG-1717): a failed
-  // poll must be null, NOT [], so two network blips can't read as two real
-  // "server no longer lists this turn" misses and abort a healthy stream.
+  // Failed in-flight polling returns null, not []; two network failures must not count as confirmed
+  // task disappearance.
   it('returns null when the poll itself fails', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
     expect(await fetchInFlightList()).toBeNull();
@@ -797,9 +764,8 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
   });
 });
 
-// ENG-1919: Stop must never silently report success when the cancel request
-// did not actually reach the server — otherwise the UI shows a stopped task
-// that is still running (and still spending tokens) on the remote worker.
+// A cancel request that never reaches the server must remain a visible failure; the remote task can
+// still be running.
 describe('cancelResponse', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -820,9 +786,8 @@ describe('cancelResponse', () => {
   });
 
   it('reports error (not success) when the request never lands', async () => {
-    // A network failure: fetch rejects, so the cancel flag was never written
-    // and the turn may still be running. The old code returned a fake
-    // {cancelled:false} here, which is the bug.
+    // A network rejection means cancellation was not written; do not return a success-shaped
+    // result.
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     expect(await cancelResponse('conv-a')).toEqual({
       status: 'error', conversation_id: 'conv-a',
@@ -843,11 +808,8 @@ describe('cancelResponse', () => {
 });
 
 /*
- * Which failures `fetchHubWorkspaces` answers and which it re-throws is the
- * whole retry contract, and it cannot be seen from the hook's tests: those mock
- * this module, so a version that swallows everything again keeps them green.
- * A definite answer is answered; a transient one is thrown for the caller to
- * ask again.
+ * Test transient rethrows at the API layer; hook mocks cannot detect this module swallowing
+ * failures and disabling retries.
  */
 describe('fetchHubWorkspaces', () => {
   const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
@@ -856,10 +818,8 @@ describe('fetchHubWorkspaces', () => {
     vi.unstubAllGlobals();
   });
 
-  // Captures the call, because the resolved value alone left the route and the
-  // credential header unpinned: renaming the path or dropping `hubHeaders()`
-  // kept all five cases green, and the header is the only reason the sidecar
-  // forwards anything to auth.
+  // Assert the route and credential header as well as the result so the sidecar can still forward
+  // the request.
   let calls;
   const respond = (res) => {
     calls = [];
@@ -901,9 +861,8 @@ describe('fetchHubWorkspaces', () => {
   });
 
   it('asks the workspaces route and carries the credential in its own header', async () => {
-    // `Authorization` is taken by the loopback token in the desktop shell, so
-    // the caller's JWT has to travel under X-MindsHub-Authorization or the
-    // sidecar has nothing to forward.
+    // Desktop reserves Authorization for the loopback token; send the user's JWT under
+    // X-MindsHub-Authorization.
     hostMock.getAccessToken.mockResolvedValueOnce('jwt-abc');
     respond(jsonRes({ enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null }));
 
@@ -915,10 +874,8 @@ describe('fetchHubWorkspaces', () => {
   });
 });
 
-// /artifacts/status is desktop-only (require_local_tenancy on the server), and
-// usePublish asks for it on every viewer open and every window focus. In org
-// mode each of those logged a 403 — harmless, because the helper already
-// swallows failures, but noise the user reported next to the real comments 401.
+// Skip desktop-only /artifacts/status in org mode; repeated viewer/focus reads otherwise generate
+// expected 403 noise.
 describe('fetchArtifactStatus', () => {
   afterEach(() => { setOrgMode(false); });
 

@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-// Keep this suite independent of test-file execution order. Without a host
-// stub, the happy-dom environment takes the web-auth path and can spend the
-// entire five-second test budget dynamically loading Keycloak before the
-// deliberately tiny idle timer is even armed.
+// Stub the host so Keycloak loading cannot consume the test budget before the short idle timer
+// starts.
 const hostMock = vi.hoisted(() => ({
   isWeb: true,
   isElectron: false,
@@ -17,9 +15,8 @@ vi.mock('../platform/host', async (importOriginal) => ({
 
 import { tailInFlight } from './api';
 
-// A reconnect tail reserves the shared stream slot; if the producer is wedged
-// and no terminal record ever arrives, the tail must give up on its own so the
-// slot is released instead of wedging sends in every conversation (ENG-1717).
+// A wedged reconnect tail must release its shared stream slot without waiting forever for a
+// terminal record.
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -34,13 +31,8 @@ const silentBody = (getSignal) => ({
         err.name = 'AbortError';
         reject(err);
       };
-      // Check `aborted` before subscribing, the way a real reader does — this
-      // was a CI flake. `tailInFlight` arms the idle timer BEFORE awaiting the
-      // fetch, so on a loaded machine the (20ms, in these tests) window can
-      // elapse before the first read() ever runs. Subscribing after the only
-      // abort event left the read pending forever: the tail hung and the test
-      // died on vitest's 5s timeout instead of finishing in ~20ms. The
-      // keepalive test below already guarded for this.
+      // Check aborted before subscribing: the idle timeout can elapse during fetch, before read
+      // starts, leaving no future abort event.
       if (signal.aborted) return abort();
       signal.addEventListener('abort', abort, { once: true });
     }),
@@ -73,9 +65,8 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
   });
 
   it('still times out when the producer is silent but the stream keeps sending keepalives', async () => {
-    // The server drips a `: keepalive` comment every 20s while a producer is
-    // wedged. The idle timer must reset only on real producer frames, not on
-    // these heartbeats — so feed a steady drip of keepalives and no terminal.
+    // Keepalive comments must not reset producer idleness; a wedged server can emit them
+    // indefinitely.
     const enc = new TextEncoder();
     let signal;
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
@@ -85,10 +76,8 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
         status: 200,
         body: {
           getReader: () => ({
-            // A keepalive arrives every 5ms, faster than the 20ms idle window,
-            // so a byte-level timer would be reset on each and never fire. The
-            // read rejects on abort, mirroring a real body reader once the idle
-            // timer trips ctrl.abort().
+            // Keepalives arrive faster than the idle window to expose byte-level resets; the reader
+            // rejects when the controller aborts.
             read: () => new Promise((resolve, reject) => {
               const readSignal = signal;
               const abort = () => {
@@ -205,19 +194,15 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
 
     const onError = vi.fn();
     const onDone = vi.fn();
-    // Short window so the idle timer WOULD fire well within the test if the
-    // finally failed to clear it. tailInFlight returns the controller
-    // synchronously; onDone fires a few microtasks later on the terminal frame.
+    // Use a short idle window to expose missing finally cleanup after the terminal frame; the
+    // controller returns before onDone.
     const ctrl = tailInFlight('conv-1', { idleTimeoutMs: 20, onError, onDone });
 
     await delay(5);
     expect(onDone).toHaveBeenCalledWith('conv-1');
 
-    // Wait PAST the idle window. A dangling idle timer (no finally cleanup)
-    // would fire here and abort the controller; the clear in the finally is
-    // what keeps signal.aborted false. This is the assertion that actually
-    // exercises the cleanup — onError alone stays silent either way, because
-    // the async body already returned before any late timer could report.
+    // Wait beyond the idle window and inspect signal.aborted; onError alone cannot reveal a
+    // dangling timer after the body returns.
     await delay(30);
     expect(ctrl.signal.aborted).toBe(false);
     expect(onError).not.toHaveBeenCalled();
