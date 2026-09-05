@@ -99,10 +99,8 @@ export function useCodeTaskList({
   useEffect(() => {
     if (!currentSession) return;
     const previous = sessionsRef.current.find((item) => item.id === currentSession.id);
-    // The task list already refreshes every five seconds. Do not rebuild the
-    // whole sidebar for event_count/checkpoint/updated_at changes arriving at
-    // stream cadence; only session fields which change its visible state need
-    // an immediate projection.
+    // Project only visible session changes at stream cadence. Event counts/checkpoints/timestamps
+    // can wait for the regular poll instead of rebuilding the sidebar.
     if (previous && !sidebarProjectionChanged(previous, currentSession)) return;
     onSessionsChangeRef.current(
       sessionsRef.current.map((item) => item.id === currentSession.id ? currentSession : item),

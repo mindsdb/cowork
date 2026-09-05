@@ -689,11 +689,8 @@ interface RequestPolicy {
 export async function requestJson<T>(path: string, init?: RequestInit, policy: RequestPolicy = {}): Promise<T> {
   const url = `${getApiOrigin()}/api/v1/coding${path}`;
   const method = (init?.method || 'GET').toUpperCase();
-  // Every write gets a sidecar preflight. Retrying after fetch fails would be
-  // unsafe because the server may already have committed the mutation; making
-  // availability an invariant at this shared boundary gives projects, tasks,
-  // approvals, and future writes the same recovery behavior without replaying
-  // any of them.
+  // Preflight mutations before sending; retrying a failed fetch could repeat a write the server
+  // already committed.
   if (method !== 'GET' && method !== 'HEAD' && policy.ensureService !== false) {
     await ensureCodeService();
   }
@@ -705,9 +702,8 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
   try {
     response = await fetch(url, request);
   } catch (error) {
-    // Reads are safe to repeat. If the desktop sidecar disappeared, ask main
-    // to recover it and retry once. Mutations are deliberately not replayed:
-    // the server may have committed one before the connection dropped.
+    // Recover the desktop sidecar and retry reads once. Never replay mutations after a dropped
+    // connection.
     if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
     const recovered = await serverStart();
     if (!recovered.running) {

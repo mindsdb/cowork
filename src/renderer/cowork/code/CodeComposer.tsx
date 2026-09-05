@@ -56,10 +56,8 @@ function sameQueuedInstructions(left: CodingSession, right: CodingSession): bool
 }
 
 function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): boolean {
-  // CodeView recreates thin action closures as task data arrives, but those
-  // closures are behaviorally identical until one of the session fields below
-  // changes (and selecting another task remounts the composer by key). Ignoring
-  // only those wrappers prevents transcript polling from interrupting input.
+  // Ignore action-wrapper identity until session fields change so transcript polling cannot
+  // interrupt input. Task switches remount the composer by key.
   return left.busy === right.busy
     && left.commands === right.commands
     && left.session.id === right.session.id

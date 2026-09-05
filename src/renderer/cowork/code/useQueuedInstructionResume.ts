@@ -4,10 +4,11 @@ import { codingApi, type CodingSession } from './api';
 import { isActiveStatus } from './presentation';
 
 
-/** Resume a persisted queue after a desktop restart without racing live turns.
- * The server owns normal queue progression; this hook is only the reconnecting
- * safety net, with bounded backoff for transient local/API failures. Each
- * queued instruction is sent at most once until its retry is due. */
+/**
+ * Reconnect safety net for persisted queues after restart; the server owns normal progression.
+ * Retry transient failures with bounded backoff and send each instruction at most once until its
+ * retry is due.
+ */
 export function useQueuedInstructionResume(
   session: CodingSession | null,
   refresh: () => Promise<void>,
