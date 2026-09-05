@@ -2915,11 +2915,8 @@ function AppCore() {
           openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-        // Drain the next queued message now that the single stream slot is
-        // free. Sweeps every task's queue (preferring this task for FIFO
-        // order on its own follow-ups), not just the finishing task's — a
-        // message queued for a different task while this one streamed must
-        // not strand forever at "N queued · waiting for Anton" (ENG-1378).
+        // Release the shared slot and drain across tasks so another task’s queued messages cannot
+        // remain stranded.
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
@@ -2938,11 +2935,8 @@ function AppCore() {
     return true;
   };
 
-  // Drain the next queued message once the single stream slot is free.
-  // Sending is serialized app-wide (anton-core runs one turn at a time),
-  // but queues are per-task — so after a turn ends we must sweep every
-  // task's queue, not just the finishing one. `preferredTaskId` (the
-  // finishing task) is tried first so its own follow-ups keep FIFO order.
+  // Sending is serialized app-wide but queues are per task. Sweep all queues, preferring the
+  // finishing task’s FIFO follow-ups.
   const drainNextQueuedMessage = (preferredTaskId) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
@@ -2957,11 +2951,8 @@ function AppCore() {
     if (!targetTask) return;
     const next = popQueueHead(taskId);
     if (!next) return;
-    // handleSendInTask can reject (answer submit, or attachment resolution).
-    // The item is already popped, so a bare then() would both surface an
-    // unhandled rejection AND silently lose the message + its file. Put it back
-    // on the queue instead — it stays visible as "queued" rather than
-    // vanishing, and handleSendInTask surfaces why it failed.
+    // Restore the popped item on send rejection so its text/files survive and the rejection is
+    // handled.
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
@@ -2973,12 +2964,9 @@ function AppCore() {
   // thus the current handleSendInTask). See the ref declaration above.
   drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
-  // ── Addressing an artifact comment with the agent ──────────────────────
-  // Two callbacks, one decision. The viewer asks which chat a repair belongs to
-  // BEFORE minting the repair record (cowork-server only finishes a handoff in
-  // the turn whose conversation matches the id on it), then hands the prompt
-  // back to be sent. The resolution is carried between the two here so the send
-  // can't pick a different chat than the repair is bound to.
+  // Resolve the repair conversation before creating its record and reuse it for sending; the server
+  // completes
+  // a handoff only in the conversation bound to that record.
   const artifactRepairTargetRef = useRef(null);
 
   const resolveArtifactRepairConversation = useCallback(async (artifact) => {
@@ -3024,11 +3012,7 @@ function AppCore() {
     return true;
   };
 
-  // Submit a data-vault form. Drives a fresh assistant turn from the
-  // cowork agent endpoint instead of the LLM — same SSE stream shape,
-  // same React state machine. The user sees a normal Anton bubble
-  // appear after they submit; under the hood the LLM never read the
-  // values. Mirrors handleSendInTask but wired to streamDataVaultSubmission.
+  // Stream vault submission through the normal turn UI; the LLM never receives the field values.
   const handleSubmitDataVaultForm = ({ formId, formSpec, values, skipped, name, method }) => {
     if (!currentTask) return;
     const id = currentTask.id;
@@ -3040,12 +3024,8 @@ function AppCore() {
     ));
 
     let streamState = initialStreamState();
-    // See handleSendInTask for the rationale — the datavault stream's
-    // `response.created` carries the server-minted id when the client
-    // sent a `tmp-connect-…` tmp id. Adopting it here keeps the local
-    // task keyed against the same id the server is persisting under,
-    // so a subsequent fetchSessions doesn't end up with two rows for
-    // the same conversation.
+    // Adopt response.created IDs here too so temporary vault tasks do not duplicate persisted
+    // conversations on refresh.
     let resolvedId = id;
     const adoptServerId = (sid) => {
       if (!sid || sid === resolvedId) return;
@@ -3062,11 +3042,8 @@ function AppCore() {
       }
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);
-      // Migrate the formStore entry so the DataVaultFormPanel
-      // (which re-subscribes under the new id) and incoming
-      // data-vault-form-patch blocks (keyed to the new id) both
-      // find the form. Without this the panel loses its spec and
-      // the success patch falls through to a bare setForm.
+      // Migrate the form with its task ID so panel subscriptions and incoming patches still find
+      // its spec.
       const existingForm = getDataVaultForm(previousId);
       if (existingForm) {
         const existingFormState = getDataVaultFormState(previousId);
@@ -3095,34 +3072,14 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
-    activeStreamProducedRef.current = false; // fresh stream: no events yet
-    // Same generation guard the other three stream sites carry, in the same
-    // order: generation → release → (`cancelled` bail, where the transport
-    // reports one). It is not enough that "this stream cannot carry ask_user"
-    // — that is a claim about today's server, while onEvent below pushes
-    // through the same `updateLiveStepsAndDrainQueue` and `reduceStream` as
-    // every other site. Two ways a superseded data-vault stream would
-    // otherwise stall the composer:
-    //   (a) its late onEvent overwrites liveStepsRef[cid] with its own steps,
-    //       masking a newer run's pending question — no ask_user needed on
-    //       this stream at all;
-    //   (b) its late onDone/onError deletes the newer run's entry.
-    // Either way the composer stops redirecting, the next send is queued
-    // behind a turn that cannot complete, and it sits there until the
-    // server's 300 s question timeout.
-    //
-    // The counter is deliberately global rather than per conversation: there
-    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
-    // live, and the sole bump site (handleStopStream) explicitly releases the
-    // conversation it just stopped. Making it per conversation would buy
-    // nothing while one-stream-at-a-time holds.
+    activeStreamProducedRef.current = false; // Guard every callback by generation before updating/releasing steps so superseded streams cannot
+// erase a
+// newer run’s question. A global generation matches the single shared stream slot; Stop releases it
+// before reuse.
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamDataVaultSubmission({
       formId,
-      // Pass the local id only when it's a real server id — otherwise
-      // send null so the server mints a fresh canonical id. (The
-      // server has a defensive guard for this too, but skipping the
-      // tmp- id at the wire saves a round-trip's worth of confusion.)
+      // Send null for temporary IDs so the server creates a canonical conversation ID.
       conversationId: id && !String(id).startsWith('tmp-') ? id : null,
       formSpec,
       values,
@@ -3135,13 +3092,8 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
-        // The probe's `data-vault-form-patch` success signal travels
-        // inside the SSE body text, but MarkdownCode can't process it
-        // (the streaming message has complete=false, and the final
-        // assistant message mounts as historical). Detect the terminal
-        // `response.completed` event with status "success" and flip
-        // the form store directly so the DataVaultFormPanel shows the
-        // success state and the user can dismiss the modal.
+        // Apply terminal form success directly: MarkdownCode suppresses incomplete streams and
+        // historical completed mounts.
         if (ev?.type === 'response.completed') {
           const cid = resolvedId || id;
           const currentForm = getDataVaultForm(cid);
@@ -3171,10 +3123,8 @@ function AppCore() {
       onChunk(chunk, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
-        // data-vault-form-patch blocks are delivered as complete deltas —
-        // parse and apply them immediately so the panel can show the
-        // spinner (_is_probing), status updates, and the error card
-        // (form_error) in real-time without waiting for MarkdownCode.
+        // Form patches arrive as complete deltas; apply immediately so probing and error state
+        // update while streaming.
         const patchMatch = /```data-vault-form-patch\n([\s\S]*?)\n```/.exec(chunk);
         if (patchMatch) {
           try {
@@ -3223,11 +3173,8 @@ function AppCore() {
         // against any task while it ran (ENG-1378).
         drainNextQueuedMessage(resolvedId);
       },
-      // No `cancelled` bail here, unlike the other three sites: this
-      // transport's onError takes a message only, with no event/code to
-      // inspect. An abort therefore lands as a plain error — but the
-      // generation guard above already swallows it, because the only thing
-      // that aborts this stream is handleStopStream, which bumps first.
+      // This transport supplies no cancellation code. Stop bumps the generation before aborting, so
+      // its late error is ignored.
       onError(message) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -3251,10 +3198,7 @@ function AppCore() {
   };
 
   const handleCreateProject = async ({ name, _alreadyCreated, _inline }) => {
-    // The new-project modal does the create + anton.md write +
-    // file uploads in one atomic flow; when it calls back here it
-    // sets `_alreadyCreated` so we skip the duplicate POST and just
-    // refresh the projects list + pin the new one as selected.
+    // _alreadyCreated means the modal has completed creation/uploads; avoid a duplicate POST.
     const project = _alreadyCreated
       ? { name }
       : await createProject(name);
@@ -3265,11 +3209,8 @@ function AppCore() {
       selected = latest.find((p) => p.name === project.name) || project;
       setSelectedProject(selected);
     }
-    // `_inline` is set by the home composer's "+ New project" row —
-    // the user is mid-task and shouldn't be teleported to the
-    // projects grid just because they named a project for the
-    // pending prompt. All other call sites (the modal, the projects
-    // grid card) already live on or want to land on /projects.
+    // Inline project creation keeps the user with the pending composer prompt instead of navigating
+    // to Projects.
     if (!_inline) setRoute('projects');
     return selected;
   };
@@ -3298,10 +3239,8 @@ function AppCore() {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      // Merge, never replace: since ENG-2246 these rows carry `messages: []`,
-      // so a wholesale replace blanks the open transcript (ChatView renders
-      // currentTask, and nothing refetches on a `tasks` change), drops
-      // `_streaming` placeholders, and wipes the client-only model pin.
+      // Merge list rows: replacing would erase local messages, streaming placeholders, and model
+      // pins because fetched rows have empty transcripts.
       if (Array.isArray(fresh)) setTasks((prev) => mergeTasksFromServer(fresh, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
@@ -3319,10 +3258,7 @@ function AppCore() {
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
     const task = tasks.find((t) => t.id === taskId);
-    // Fire-and-forget: stop the PTY (if still running) and remove its git
-    // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
-    // tasks don't leave orphaned directories behind. A no-op on web/for
-    // non-claude-code tasks (host.removeCodingTask itself no-ops there).
+    // Remove coding-task PTYs and worktrees so deletion leaves no orphaned directories.
     if (task?.harness === 'claude-code' && task?.projectPath) {
       host.removeCodingTask(taskId, task.projectPath).catch(() => {});
     }
@@ -3334,11 +3270,8 @@ function AppCore() {
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
       setActiveTaskId(null);
-      // Only fall back to home when we're *viewing* the task that
-      // just got deleted — leaving the chat view on a phantom id
-      // would be incoherent. From any other surface (project view,
-      // scheduled, settings, etc.) the user expects to stay where
-      // they were and just see the row disappear from the list.
+      // Only leave the chat view when its displayed task is deleted; deletion elsewhere preserves
+      // navigation.
       if (route === 'task') setRoute('home');
     }
     // Skip the server call for tasks that never got persisted (still
@@ -3360,42 +3293,18 @@ function AppCore() {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
       /*
-        The chat is still on the server, so put the row back rather than leave
-        the sidebar claiming it is gone. Console-only used to mean the user saw
-        a successful delete, deleted it again on the next visit, and only found
-        out on a reload. The access log carried the same ids two and three
-        times over.
-
-        Dropping the tombstone first is what makes the refetch work at all:
-        every consumer of fetchSessions filters through deletedTaskIdsRef, and
-        nothing else ever clears it, so the row would stay hidden for the life
-        of the mount. Same recovery as handleRenameTask above.
-
-        The route is deliberately not restored. The user asked to leave this
-        chat, and yanking them back into it is a bigger surprise than the row
-        reappearing in the list where the toast says to look.
-      */
+       * Remove the tombstone before refetch so a failed deletion restores its row. Preserve the
+       * current route
+       * rather than pulling the user back into the chat.
+       */
       deletedTaskIdsRef.current.delete(taskId);
       const fresh = await fetchSessions().catch(() => null);
       setTasks((prev) => {
         /*
-          fetchSessions resolves `{ error: true }` on a failed list and `[]`
-          for an empty account — treat either as no answer, because
-          replacing the list with one would blank every chat in the
-          sidebar. mergeTasksFromServer, same as
-          every other consumer, keeps streaming messages, model pins and
-          tmp- rows that a wholesale replace would clobber. prev already
-          lost this row to the optimistic filter above, so when the refetch
-          brought nothing back, re-seat the captured task — the toast says
-          the chat is back in the list, and it has to be true.
-        */
-        // Shape-checked rather than truthiness-checked, to say what is meant:
-        // fetchSessions can resolve a non-array error object, and this line
-        // previously excluded it only because `{ error: true }?.length` is
-        // undefined. mergeTasksFromServer shape-guards too (`if
-        // (!Array.isArray(serverTasks)) return local`), so neither form can
-        // blank the sidebar — verified by mutation. This is about intent, not
-        // a latent bug.
+         * Merge valid nonempty results to preserve local transcript/model state. If refetch fails
+         * or is empty,
+         * restore the captured task so the failed-delete toast accurately reports that it is back.
+         */
         const merged = mergeTasksFromServer(Array.isArray(fresh) && fresh.length ? fresh : null, prev);
         if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
         return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
@@ -3412,10 +3321,6 @@ function AppCore() {
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
 
-  // Pending delete-turn confirm payload — null when no modal is open.
-  // The user clicked the trash on the assistant message at this turn
-  // index of the conversation; we open ConfirmModal, then on confirm
-  // hit the API and re-hydrate the chat from the truncated history.
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
   const handleDeleteTurnRequest = (taskId, turnIndex) => {
@@ -3425,10 +3330,8 @@ function AppCore() {
 
   const performDeleteTurn = async (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
-    // If anton is actively streaming a response to the turn being
-    // deleted, stop the stream first so the SSE connection doesn't
-    // keep producing events for a turn that no longer exists. The
-    // silent flag skips the post-cancel session refetch.
+    // Stop the stream before deleting its turn so late events cannot recreate it. Silent stop skips
+    // the session refetch.
     if (activeStreamingTaskIdRef.current === taskId) {
       try { await handleStopStream({ silent: true }); } catch {}
     }
@@ -3522,14 +3425,8 @@ function AppCore() {
       });
       return;
     }
-    // The server cascades a project delete to its conversations (ENG-701),
-    // so tombstone their ids the same way performDeleteTask does for a single
-    // delete. Without this, an in-flight fetchSessions that started before the
-    // delete resolves with stale data, and mergeTasksFromServer's carry-over
-    // re-adds the (now server-deleted) conversations — leaving a "ghost" that
-    // opens but errors on send, until an app restart (ENG-666). Match by name
-    // OR path: the server stamps conv.project = project.name (and project_path
-    // = project.path), so this catches every conversation in the project.
+    // Tombstone cascaded conversations so a pre-delete fetch cannot reinsert them. Match both
+    // project name and path.
     const doomedTaskIds = tasksRef.current
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
@@ -3550,11 +3447,8 @@ function AppCore() {
       );
       return isDeletedProject ? null : current;
     });
-    // If the conversation currently open belonged to this project, clear it —
-    // otherwise currentTask silently falls back to tasks[0] (an unrelated
-    // conversation from another project). Only leave the chat view when we're
-    // actually on it; from the projects view (where deletes usually happen)
-    // the user should stay put — same policy as performDeleteTask.
+    // Clear an active task from the deleted project to prevent fallback to an unrelated task; only
+    // navigate away from chat.
     const liveActiveTaskId = activeTaskIdRef.current;
     if (liveActiveTaskId && doomedTaskIds.includes(liveActiveTaskId)) {
       activeTaskIdRef.current = null;
@@ -3634,21 +3528,15 @@ function AppCore() {
     });
   }, []);
 
-  // Recomputed whenever an enabled schedule's due time or running state
-  // changes — used as the poll effect's dependency below instead of
-  // `scheduled.length`, which stays the same across an edit/pause/resume.
-  // The running flag matters: when "Run now" flips it on, the pending long
-  // timer must be replaced with the tight in-flight cadence.
+  // Restart polling on due-time and running-state changes; schedule count alone misses edits and
+  // Run now.
   const scheduleKey = scheduled
     .filter((s) => s.enabled || s.running)
     .map((s) => `${s.nextRunAt}:${s.running ? 1 : 0}`)
     .join(',');
 
-  // Self-adjusting poll (not a fixed interval): reschedules itself after
-  // every tick based on the freshest `nextRunAt`, so an idle app with
-  // schedules due far in the future stays quiet, while one with something
-  // due soon checks close to that moment. Skipped entirely when there are
-  // no schedules at all — nothing to poll for.
+  // Reschedule from the latest nextRunAt after each tick, keeping distant schedules quiet and
+  // imminent runs responsive.
   useEffect(() => {
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
@@ -3665,10 +3553,8 @@ function AppCore() {
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
-    // The server creates the conversation eagerly and returns its id.
-    // Mark it in-flight locally so reconcileTaskMessages doesn't inject
-    // a spurious "got interrupted" prompt before the 5s poll catches up,
-    // then navigate straight to the new run so the user sees it stream.
+    // Mark the new run immediately so reconciliation cannot call it interrupted before polling
+    // catches up.
     if (result?.conversation_id) {
       markInFlight(result.conversation_id);
       setActiveTaskId(result.conversation_id);
@@ -3697,25 +3583,14 @@ function AppCore() {
 
   const { showDots, accentVariant } = settings;
   const accentCss = ACCENT_VARS[accentVariant] || {};
-  // appStyle + mainBg deliberately transparent so the gravity-field
-  // canvas painted behind the React root is the visible background.
-  // Individual views can supply their own surface (HomeView is fully
-  // transparent — the greeting + composer float over the field;
-  // dense views like Settings get a subtle frosted overlay below).
+  // Transparent shell surfaces expose the gravity-field canvas behind React.
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
 
-  // One shell-owned top inset the content header uses to clear the macOS
-  // traffic lights and the floating open-sidebar button when neither is
-  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
-  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
-  // the space on TOP (not the left) keeps every header's title/crumb aligned
-  // with the body beneath it and uses the full width, instead of shoving the
-  // header right into a lopsided gutter. Both the lights and the hamburger
-  // sit within the top ~44px, so 52 clears them on either platform (web has
-  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
-  // on <main> and consumed by PageHeader / view headers.
+  // Reserve top space for traffic lights and the floating sidebar button when the sidebar does not
+  // cover them.
+  // A shared --titlebar-safe-top inset keeps headers aligned with their body content.
   const contentChromeExposed = sidebarPopout || sidebarCollapsedEffective;
   const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
@@ -3740,10 +3615,8 @@ function AppCore() {
     onNavigate: navigate,
     onSelectTask: selectTask,
     onSelectProject: (p) => {
-      // Drawer → project tap with tasks: show the project's task list
-      // (ProjectsView in detail mode). MobileShell only dispatches here when
-      // there ARE tasks; the empty-project case routes through
-      // onNewTaskInProject instead.
+      // MobileShell opens project details only for projects with tasks; empty projects enter
+      // new-task composition.
       if (p) setSelectedProject(p);
       setRoute('projects');
     },
@@ -3770,10 +3643,6 @@ function AppCore() {
     },
     navTitle: settings.navTitle || null,
     navLogo: settings.navLogo || null,
-    // Mobile has no room for the desktop floating-toggle-row (bottom-right,
-    // over the FAB) — the theme toggle moves into the top bar, opposite the
-    // hamburger, and the coding-mode toggle is dropped entirely rather than
-    // hunting for a second spot.
     theme,
     showThemeToggle: settings.showThemeToggle !== false,
     onToggleTheme: () => {
@@ -3793,18 +3662,14 @@ function AppCore() {
       ...appStyle, ...accentCss,
       display: 'flex', gap: 9, padding: 9,
       position: 'relative',
-      // Make the whole window draggable. Buttons/inputs/textareas stay
-      // clickable via the global `no-drag` rule in globals.css. Scrollable
-      // surfaces, <main>, the composer, etc. opt out below so they don't
-      // intercept drag on their own surface.
+      // Use a window drag region; interactive controls and scrollable/composer surfaces opt out
+      // with no-drag.
       WebkitAppRegion: 'drag',
     }}>
       {/*
-        Sidebar — a docked flex item across the whole desktop + tablet range
-        (≥640). `display: contents` makes the wrapper transparent to the flex
-        layout so Sidebar participates as a direct flex child. Suppressed on
-        isMobile — MobileShell replaces it with a mobile drawer below 640.
-      */}
+ * display: contents lets Sidebar participate directly in the shell flex layout. MobileShell
+ * supplies the mobile drawer.
+ */}
       {/* Narrow-band popout backdrop — dims content behind the slid-in
           sidebar. Same 320ms curve as the drawer so the two read as one
           motion (the old overlay used mismatched 280/380ms durations). */}
@@ -3816,14 +3681,9 @@ function AppCore() {
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
-            // Only opt out of the window drag region while the scrim is
-            // actually up — it's a full-viewport `inset: 0` box, so leaving
-            // it permanently `no-drag` (as when this only fired for the
-            // rare narrow band) killed dragging the whole window the
-            // moment Coding Mode made this common, even while invisible:
-            // Electron computes the drag region from app-region CSS, not
-            // from opacity/pointer-events. Closed, it just inherits the
-            // ancestor `drag` region again.
+            // Use no-drag only while the scrim is open. Electron uses app-region CSS even on
+            // invisible elements,
+            // so a permanent full-window no-drag scrim would disable window dragging.
             WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
@@ -3940,10 +3800,8 @@ function AppCore() {
             if (sidebarPopout) setNavPopoutOpen(false);
             handleSendFromHome(text);
           }}
-          // Hold the tip while the popout drawer is shut: Sidebar sees
-          // collapsed={false} there, but the whole wrapper is translated
-          // off-screen, so its anchor is invisible. The armed state
-          // survives — it opens when the drawer does.
+          // Hold the armed tip until the popout opens; its anchor is off-screen while the drawer is
+          // closed.
           artifactTipOpen={artifactTipOpen && !(sidebarPopout && !navPopoutOpen)}
           onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
@@ -4065,11 +3923,6 @@ function AppCore() {
             project={currentTaskProject}
             model={currentTaskModel}
             onModelChange={(m) => {
-              // Same pattern as handleSwitchToAirAndResend: write the pick
-              // onto the task itself so it's visible immediately (drives
-              // currentTaskModel) and so handleSendInTask's existing
-              // `currentTask.model` fallback picks it up on the very next
-              // send, with no changes needed there.
               if (!currentTask) return;
               setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
             }}
@@ -4118,12 +3971,9 @@ function AppCore() {
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
             onComposerRedirectConsumed={(taskId, attachments) => {
-              // The drained files are staged here, at consumption time, and never
-              // at drain time: `composerAttachments` is app-wide, so staging a
-              // background task's files early would show them as chips on
-              // whatever conversation is open and send them there. The consumer
-              // hands them back because it is the one that knows the redirect was
-              // for the task on screen.
+              // Stage restored files only when their task consumes the redirect; the app-wide
+              // composer could otherwise
+              // send a background task’s files to the visible conversation.
               const back = Array.isArray(attachments) ? attachments : [];
               if (back.length > 0) {
                 setComposerAttachments((prev) => {
@@ -4140,22 +3990,15 @@ function AppCore() {
               });
             }}
             onQuestionAnswered={(result, conversationId, questionId) => {
-              // Keyed off the conversation the card was rendered with, not the
-              // currently-open task — the card knows which conversation it
-              // belongs to and this must not depend on them being the same.
-              // And keyed off the question too: a dead card must not take a
-              // live sibling's interception down with it.
+              // Use the card’s conversation/question IDs; retiring a dead card must not clear
+              // another task or a live sibling question.
               if (!conversationId) return;
               if (result?.status === 'not_found' || result?.status === 'already_answered') {
                 retireLiveQuestion(conversationId, questionId);
                 return;
               }
-              // A retryable failure only clears the card's `busy`: the button
-              // flashes disabled and comes back, so the user believes the click
-              // landed. It did not — the answer was never recorded and the agent
-              // stays blocked until the server's 300 s timeout. The composer path
-              // already surfaces exactly these two statuses with a toast; the
-              // card path must too, and the asymmetry was the defect.
+              // Surface retryable card failures as the composer does; clearing busy alone makes a
+              // lost answer look successful.
               if (result?.status === 'error') {
                 toastManager.add({
                   type: 'danger',
@@ -4271,13 +4114,8 @@ function AppCore() {
             onRunNow={handleRunScheduleNow}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
-              // Scheduled runs create real conversations on the
-              // server, but they may not be in our local recents list
-              // yet (e.g. the run fired while we were on another
-              // device or before this session's last fetch). Refresh
-              // tasks in parallel so currentTask resolves once the
-              // server response lands, and route immediately so the
-              // user sees the navigation happen.
+              // Navigate immediately and refresh in parallel: scheduled runs may not yet exist in
+              // local recents.
               fetchSessions().then((data) => {
                 if (Array.isArray(data)) {
                   setTasks((prev) =>
@@ -4390,10 +4228,8 @@ function AppCore() {
         {/* Mobile (ENG-990): Settings is a full page with accordion nav, not
             a modal. Gated on isMobile; desktop keeps the two-column modal. */}
         {isMobile ? (
-          // Full-page master-detail surface. A fullBleed Modal (Base UI dialog)
-          // brings the focus trap + restore, scroll lock, and Esc dismissal a
-          // hand-rolled <div> can't; SettingsView owns its top bar (contextual
-          // back / title) and scroll body. onClose closes it from the list.
+          // Use Modal for focus trapping/restoration, scroll lock, and Escape; SettingsView owns
+          // the mobile header and body.
           <Modal
             open={settingsOpen}
             onClose={() => setSettingsOpen(false)}
@@ -4481,10 +4317,6 @@ function AppCore() {
           </Modal>
         )}
 
-        {/* Legacy 'connect' kind removed — Connect Apps and Data is now
-            the canonical surface for connector management (route
-            'customize'). UtilitiesView only carries memory / skills /
-            publish now. */}
       </AppShell>
       <SearchModal
         open={searchOpen}
