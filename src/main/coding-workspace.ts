@@ -1,27 +1,6 @@
-// Per-task git worktree isolation for Claude Code tasks (ENG-1656 follow-up).
-// Projects aren't git repos by default — cowork-server never runs `git init`
-// anywhere (they're plain managed folders under ~/.cowork/projects/<name>/).
-// Worktrees require a real repo with at least one commit to branch from, so
-// the first time a repo needs a task worktree, this bootstraps one: `git
-// init -b main`, a .gitignore covering the tool-owned dirs that shouldn't be
-// versioned, and an initial commit. From then on every Claude Code task in
-// that repo gets its own worktree under `<repo>/.claude-mindshub/tasks/
-// <taskId>/` — a real, independent checkout on its own branch, so two
-// concurrent tasks can never step on each other's uncommitted edits.
-//
-// Deliberately NOT `<repo>/.claude/` — this app's own `.claude/` (used
-// elsewhere in this very monorepo, e.g. a `worktrees/` dir of its own)
-// is Claude Code's real per-project state directory; reusing that name
-// for our own tool-owned folder would collide with it. Everything
-// MindsHub/coding-mode-owned lives under the one `.claude-mindshub/`
-// directory instead — the CLI's config dir (`.claude-mindshub/config/`,
-// set as CLAUDE_CONFIG_DIR by coding-terminal.ts) and task worktrees
-// (`.claude-mindshub/tasks/<taskId>/`) side by side.
-//
-// Deliberately keyed by `repoPath`, not "the project" — a project that later
-// links external sub-repos can call ensureTaskWorktree/removeTaskWorktree
-// once per sub-repo for the same taskId; nothing here assumes there's only
-// one repo per project.
+// Create one worktree per task and repo, bootstrapping an initial commit when needed.
+// Keep worktrees and CLI config under .claude-mindshub; .claude belongs to Claude itself.
+// Key by repoPath so a task can span multiple linked repos.
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,11 +8,7 @@ import * as path from 'path';
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
 
-// `.anton/` (project memory/artifacts, shared by Anton AND Hermes despite
-// the name) and `skills/` (symlinks into the global skills store) are both
-// live, harness-shared state — never git-tracked, so `ensureSharedLinks`
-// below can point each worktree back at the one real copy instead of a
-// frozen snapshot from whenever the repo happened to be initialized.
+// Keep .anton/ and skills/ untracked: worktrees link to live shared memory and skills.
 const SHARED_DIRS = ['.anton', 'skills'];
 const GITIGNORE_ENTRIES = ['.anton/', 'skills/', `${MINDSHUB_DIRNAME}/`];
 
@@ -79,9 +54,7 @@ async function ensureRepo(repoPath: string): Promise<void> {
   await git(['init', '-b', 'main'], repoPath);
   ensureGitignoreEntries(repoPath);
   await git(['add', '-A'], repoPath);
-  // --allow-empty: the whole repo may be covered by .gitignore (e.g. a
-  // brand-new project with nothing in it yet) — HEAD still needs to exist
-  // for `git worktree add -b` to have something to branch from.
+  // Even an empty or fully ignored repo needs a HEAD for git worktree add.
   await git(['commit', '--allow-empty', '-m', 'Initial commit (auto-created for Claude Code task isolation)'], repoPath);
 }
 
@@ -97,13 +70,10 @@ function taskBranchName(taskId: string): string {
   return `claude/${taskId}`;
 }
 
-/** Symlink `.anton/` and `skills/` from the worktree back to the real
- *  (project-level) directories, so a Claude Code task sees the exact same
- *  live project memory and skills Anton/Hermes do — not a git snapshot
- *  frozen at whenever the repo was first initialized. Idempotent and
- *  best-effort: skips a dir that doesn't exist yet in the repo (e.g. no
- *  harness has ever run there) and leaves anything already at the link
- *  path alone rather than overwriting it. */
+/**
+ * Link live project memory and skills into the worktree. Skip missing sources and existing
+ * destinations.
+ */
 function ensureSharedLinks(repoPath: string, worktreePath: string): void {
   for (const dir of SHARED_DIRS) {
     const target = path.join(repoPath, dir);
@@ -126,9 +96,10 @@ export interface TaskWorktree {
   isNew: boolean;
 }
 
-/** Get (or lazily create) the worktree for a task in a given repo. Never
- *  throws — a git failure just means the caller falls back to running
- *  directly in `repoPath` (logged by the caller, not here). */
+/**
+ * Get or create the task worktree. The caller handles git failures by falling back to the project
+ * directory.
+ */
 export async function ensureTaskWorktree(repoPath: string, taskId: string): Promise<TaskWorktree> {
   const worktreePath = taskWorktreePath(repoPath, taskId);
   if (fs.existsSync(worktreePath)) {
@@ -142,9 +113,10 @@ export async function ensureTaskWorktree(repoPath: string, taskId: string): Prom
   return { path: worktreePath, isNew: true };
 }
 
-/** Remove a task's worktree and its branch. Best-effort: if git doesn't
- *  know about the worktree (e.g. the repo was deleted/moved), falls back
- *  to a plain recursive delete so a stale directory doesn't linger. */
+/**
+ * Remove the worktree and branch; fall back to recursive deletion if git no longer knows the
+ * worktree.
+ */
 export async function removeTaskWorktree(repoPath: string, taskId: string): Promise<void> {
   const worktreePath = taskWorktreePath(repoPath, taskId);
   try {

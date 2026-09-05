@@ -1,7 +1,4 @@
-// Coding mode (ENG-1656 follow-up): detect a locally-installed `claude` CLI.
-// The actual launch (spawning it, authenticated against MindsHub Inference)
-// lives in coding-terminal.ts, which embeds the session in the app via a
-// real PTY instead of an external terminal window.
+// Detect the installed Claude CLI; coding-terminal.ts launches its embedded PTY.
 import { authHeader } from './server-auth';
 import { getServerPort } from './server-process';
 import { findOnPath } from './uv-paths';
@@ -20,11 +17,7 @@ export async function detectClaudeCode(): Promise<ClaudeCodeDetection> {
   return { installed: resolved !== null, path: resolved };
 }
 
-/** Reveal the persisted MindsHub API key from cowork-server's own settings
- * store (`GET /settings/reveal-key/minds`) — loopback-gated, which a
- * main-process fetch to 127.0.0.1 satisfies. This is the same long-lived
- * `mdb_*` credential cowork-server itself uses to call MindsHub Inference;
- * no separate mint step is needed for the embedded CLI process. */
+/** Read the sidecar’s existing MindsHub key through its loopback-only reveal endpoint. */
 export async function revealMindsApiKey(): Promise<string | null> {
   const port = getServerPort();
   if (!port) return null;
@@ -42,16 +35,7 @@ export async function revealMindsApiKey(): Promise<string | null> {
   }
 }
 
-/** The MindsHub Inference host the stored key was actually minted against
- * (`GET /settings/` → the `minds_url` row) — NOT a hardcoded prod URL.
- * minds-auth.ts mints/renews the key against whatever channel this build
- * is on (dev/preview/stable → staging, prod → prod) and writes both the
- * key and this URL together, so reading them from the same place is the
- * only way they can't drift apart. A build on a non-prod channel sending
- * its staging-minted key to a hardcoded prod host 401s even though the
- * key itself is perfectly valid — confirmed by hand: the exact same key
- * that fails against api.mindshub.ai succeeds against
- * api.staging.mindshub.ai, whichever this setting actually points at. */
+/** Read the host saved with the key: non-prod keys fail against a hardcoded production host. */
 export async function revealMindsBaseUrl(): Promise<string | null> {
   const port = getServerPort();
   if (!port) return null;

@@ -35,9 +35,8 @@ vi.mock('fs', () => ({
   symlinkSync: symlinkSyncMock,
 }));
 
-// execFile's callback signature is (err, stdout, stderr) — succeed by
-// default; individual tests override with mockImplementationOnce to
-// simulate a specific git command failing (e.g. "not a repo").
+// execFile uses (err, stdout, stderr); tests override the successful default for individual git
+// failures.
 function succeed() {
   execFileMock.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: any) => {
     cb(null, '', '');
@@ -113,7 +112,6 @@ describe('coding-workspace', () => {
       expect(gitignore).toContain('node_modules/');
       expect(gitignore).toContain('.anton/');
       expect(gitignore).toContain('.claude-mindshub/');
-      // Original entry isn't duplicated.
       expect(gitignore.match(/\.anton\//g)?.length).toBe(1);
     });
 
