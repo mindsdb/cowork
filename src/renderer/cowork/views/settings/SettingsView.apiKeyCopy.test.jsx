@@ -1,12 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// Regression (ENG-1154 follow-up): the API-key copy button in the Providers
-// list called navigator.clipboard.writeText() directly in a try/catch that
-// swallowed failures — same bug class as the version-details Copy button,
-// in the same file, flagged in review on PR #532. It now goes through the
-// shared `copyText` helper (lib/clipboard) and surfaces a "Couldn't copy"
-// state instead of doing nothing when the write fails.
+// Use the shared clipboard fallback and show failure when copying an API key fails.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -73,10 +68,7 @@ describe('SettingsView — provider API key Copy button', () => {
     expect(screen.queryByRole('button', { name: 'Copied to clipboard' })).toBeNull();
   });
 
-  // Regression (review follow-up on #532): the failure toast used to share
-  // the success toast's 1.5s auto-clear timer, which faded "Couldn't copy"
-  // out while it was still being read. It now persists until the next copy
-  // attempt or blur, same as 'copied' still auto-clearing on its own timer.
+  // Copy failures persist until another attempt or blur; only success uses the auto-clear timer.
   it('does not auto-clear "Couldn\'t copy" on the same timer as a success toast', async () => {
     vi.useFakeTimers();
     try {

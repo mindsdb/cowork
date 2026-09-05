@@ -9,11 +9,6 @@ import { Section, SettingsSectionPanel } from './settingsLayout';
 const CHIP_CLASS = 'py-1.5 px-2.5 rounded-md bg-surface-2 border border-solid border-line';
 const CHIP_LABEL_CLASS = 'text-ink-4 uppercase tracking-[0.06em] text-[9.5px] mr-1.5';
 
-// The Backend settings section: local Python server status, diagnostics, and
-// start/stop/restart controls. Electron-only — unreachable from the nav since
-// ENG-932 (navItemsForHost drops it on web), kept as a defensive fallback.
-// Owns its diagnostics state; server lifecycle is driven through the
-// onStartServer / onStopServer props.
 export default function BackendSection({
   serverOnline = false,
   serverBusy = false,
@@ -80,10 +75,7 @@ export default function BackendSection({
     }
   };
 
-  // Unreachable from the nav since ENG-932 — `navItemsForHost` drops Backend
-  // on web, and `effectiveSection` refuses to resolve to a section the host
-  // doesn't offer. Kept as a defensive fallback for any future caller that
-  // renders a section directly rather than through the nav.
+  // Guard direct callers too; navigation already hides Backend on web.
   if (host.isWeb) {
     return (
       <SettingsSectionPanel>
@@ -103,10 +95,7 @@ export default function BackendSection({
   const startedAt = diag?.lastStartAt
     ? new Date(diag.lastStartAt).toLocaleTimeString()
     : null;
-  // "never started" is wrong for a backend that was still importing when we
-  // stopped waiting for it (the most common failure on a slow machine's first
-  // launch), and equally wrong for one the user deliberately stopped — a
-  // signal kill leaves no exit code, so both used to land on that string.
+  // A missing exit code may mean still importing or intentionally stopped, not never started.
   const exitLabel = exitCodeLabel({
     kind: errorKind,
     exitCode: diag?.lastExitCode ?? null,
@@ -217,11 +206,7 @@ export default function BackendSection({
           {/* Recent log */}
           <div className="border-t border-x-0 border-b-0 border-solid border-line pt-2.5 px-4 pb-[14px]">
             <div className="font-[family-name:var(--font-mono)] text-2xs text-ink-4 tracking-[0.1em] uppercase mb-1.5">Log</div>
-            {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
-                that squeezed a long log into a tiny scroller while the panel
-                had room to spare. Viewport-relative so it scales with the
-                modal (min(820px, 88vh)); still capped + scrollable so a very
-                long log can't push the section controls off-screen. */}
+            {/* Let logs use available modal space while capping overflow so controls remain reachable. */}
             <pre className="m-0 py-2.5 px-3 bg-surface-2 border border-solid border-line rounded-lg font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
           </div>
         </div>

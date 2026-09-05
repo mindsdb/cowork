@@ -11,18 +11,11 @@ import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
-// The Account settings section: the signed-in user card, the MindsHub sign-in
-// pitch when signed out, and sign-out. The account identity and the sign-out
-// sequence live in shared hooks (useAccountUser / useLogout) since the sidebar
-// user menu (ENG-1408) runs the same flows; this section owns only its confirm
-// modal and layout.
 export default function AccountSection({ isSsoConnected = false, ssoError = '', onSsoSignIn }) {
   // Decoded from the JWT, null until loaded.
   const accountUser = useAccountUser(isSsoConnected);
-  // Named from the organization listing rather than from the token, for the
-  // same two reasons as the account menu: the claim carries no display name for
-  // a personal organization, and this row has to follow a switch made in that
-  // menu without waiting for the next sign-in.
+  // Read organization labels from the listing: tokens omit personal display names and lag
+  // account-menu switches.
   const { activeOrg } = useMindsOrgs(accountUser);
   const { loggingOut, waitNote, logout } = useLogout();
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);

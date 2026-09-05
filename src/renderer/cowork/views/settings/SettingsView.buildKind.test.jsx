@@ -1,10 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// The version details panel shows the shell's build kind with its update-ring
-// annotation, so an rc server version on a staging-ring build reads as
-// expected instead of alarming in bug reports. Legacy shells (and web mode)
-// return no buildKind — the row must hide, not show a blank.
+// Show build kind with its update ring; omit the row when older shells or web mode provide no build
+// kind.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),

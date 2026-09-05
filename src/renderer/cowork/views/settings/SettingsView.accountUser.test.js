@@ -26,10 +26,8 @@ describe('accountUserFromToken', () => {
     });
   });
 
-  // The realm issues `activate_organization`. This read named
-  // `active_organization` for its whole life, so the org line in the account
-  // menu and the Organization row in Settings rendered nothing at all —
-  // silently, because both are conditional on the value being there.
+  // The realm claim is activate_organization; a misspelled key silently hides conditional
+  // organization UI.
   it('reads the organization claim the realm actually issues', () => {
     const user = accountUserFromToken(jwt({
       sub: 'user-1',
@@ -40,13 +38,8 @@ describe('accountUserFromToken', () => {
   });
 
   /*
-   * A personal organization's claim name is the raw `personal_<userId>` and the
-   * claim carries no display name for it. Printing that is worse than a generic
-   * label, and rebuilding auth's `<email>'s organization` here would be a third
-   * copy of that rule. The listing supplies the real label; this is the floor
-   * under it, because `activeOrgName` also gates the `Manage organization` row,
-   * so returning nothing drops a navigation affordance too, on every first
-   * paint and whenever that async read fails.
+   * Personal claims lack display names. Use a generic fallback until the listing loads; returning
+   * nothing also hides Manage organization.
    */
   it('never offers the raw personal-organization name as a label', () => {
     const user = accountUserFromToken(jwt({
@@ -63,9 +56,7 @@ describe('accountUserFromToken', () => {
   });
 
   it('uses a display name on the claim when one is there', () => {
-    // A company organization: the claim's own display name is the best label
-    // available, so it wins. Moved off the personal organization, which is the
-    // one case where it does not (see below).
+    // Company claims supply their own display name.
     const user = accountUserFromToken(jwt({
       sub: 'user-1',
       activate_organization: { id: 'org-acme', name: 'acme.example', displayName: 'Acme Corporation' },
@@ -74,12 +65,8 @@ describe('accountUserFromToken', () => {
   });
 
   /*
-   * ENG-2109. This used to assert the claim's display name won for a personal
-   * organization too, which meant that if the realm put auth's generated
-   * `<email>'s organization` in the claim, the account row showed the long
-   * label from the very first paint — and the listing-side fix would not help,
-   * because this value is also the fallback for when the listing never lands.
-   * Both readers now answer the same way.
+   * Personal organizations use the same generic label in claims and listings, including before or
+   * after a failed listing fetch.
    */
   it('prefers Personal over the generated label even when the claim carries it', () => {
     const user = accountUserFromToken(jwt({

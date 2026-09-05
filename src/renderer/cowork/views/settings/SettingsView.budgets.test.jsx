@@ -1,18 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// Regression (ENG-1286, review on PR #636): the "No limit" checkbox wrote
-// `String(spec.unlimited)` — a key that does not exist on BUDGET_FIELDS, so it
-// wrote the literal string "undefined". The feature was dead on arrival and
-// shipped green, because the lib-level tests exercise isBudgetUnlimited /
-// resolveBudgetRestore only with well-formed inputs and nothing rendered the
-// checkbox. Everything downstream then failed quietly rather than loudly:
-// Number('undefined') >= max is NaN >= max is false, so the box re-rendered
-// unchecked; clampBudgets saw NaN and dropped the key, so the save wrote
-// nothing at all.
-//
-// These tests assert the VALUE that reaches setSetting, which is the only
-// thing the bug got wrong.
+// Assert the value reaching setSetting: helper tests with valid inputs cannot catch the checkbox
+// writing a missing field as 'undefined'.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -64,10 +54,7 @@ const baseProps = (settings) => ({
   onDownloadShellUpdate: vi.fn(),
 });
 
-// Matched on the aria-label directly. The checkbox sits inside a <label> that
-// also carries its visible text, so `getByLabelText` matches BOTH the control
-// and the text node, and `getByRole(name:)` misses because the wrapper changes
-// the computed accessible name.
+// Match the aria-label directly; the wrapping label makes label and role queries ambiguous.
 const findNoLimit = () => screen.queryAllByRole('checkbox')
   .find((el) => el.getAttribute('aria-label') === 'No limit');
 const noLimitBox = () => {
@@ -88,7 +75,6 @@ describe('SettingsView — Max tokens per task', () => {
 
     fireEvent.click(noLimitBox());
 
-    // The exact assertion the bug failed: it wrote the string "undefined".
     expect(props.setSetting).toHaveBeenCalledWith(
       'maxTurnTokens', String(BUDGET_FIELDS.maxTurnTokens.max),
     );
@@ -134,18 +120,15 @@ describe('SettingsView — Max tokens per task', () => {
   });
 
   it('sends the natural token count over the wire, never the millions-scaled display value', () => {
-    // The million-scale display is entirely a BudgetNumberField rendering
-    // concern (toDisplayUnits/toNaturalUnits) — settings state, the
-    // diff-for-write payload, and the server's max_turn_tokens column must
-    // never see anything but the real token count. This is the guard rail
-    // that would catch it if that boundary ever leaked.
+    // Million-unit formatting is display-only; settings, write diffs and server values must retain
+    // real token counts.
     const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
     render(<SettingsView {...props} />);
     expandAdvanced();
 
     fireEvent.change(screen.getByLabelText('Max tokens per task'), { target: { value: '2' } });
     const [, written] = props.setSetting.mock.calls.at(-1);
-    expect(written).toBe('2000000'); // NOT '2' — the agent reads real tokens
+    expect(written).toBe('2000000');
 
     const writes = diffSettingsForWrite(
       { maxTurnTokens: written },
@@ -195,7 +178,6 @@ describe('SettingsView — Max tokens per task', () => {
     render(<SettingsView {...baseProps(older)} />);
     expandAdvanced();
     expect(findNoLimit()).toBeUndefined();
-    // …while the two budgets that server DOES have stay visible.
     expect(screen.getByLabelText('Max steps per task')).toBeInTheDocument();
   });
 });
