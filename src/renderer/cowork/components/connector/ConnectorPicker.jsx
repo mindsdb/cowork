@@ -1,14 +1,4 @@
-// Connector picker — modal panel surfaced when the user clicks
-// "Connect". Lists the predefined connectors from the server (each
-// .json in server/connectors/) with a search box at the top.
-//
-// Selection emits the picked connector summary up to the host;
-// rendering the form spec is the host's responsibility (next step
-// will wire that to DataVaultForm).
-//
-// Search is client-side fuzzy match for now (label / aliases /
-// keywords / category / description). When the registry grows we
-// can switch to /connectors/match for the natural-language path.
+// Emit the selected summary to the host, which owns form rendering. Search the catalog client-side.
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
@@ -19,8 +9,7 @@ import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { Alert, Select, Tooltip } from '../ui';
 
-// Category → fallback Ico name when a connector doesn't ship its own
-// flat icon. Keep this map small and obvious; "other" → generic puzzle.
+// Fallback icons for connectors without a flat icon.
 const CATEGORY_ICON = {
   communication: 'mail',
   data:          'database',
@@ -29,10 +18,7 @@ const CATEGORY_ICON = {
   developer:     'code',
 };
 
-// Display name + render order for category sections in the picker.
-// Order is GTM-flow-coherent: top of the funnel down to ops/data.
-// Categories not in this list fall to the bottom under "Other"
-// (alphabetical), so a new category in the JSONs doesn't disappear.
+// Order categories along the GTM funnel; unknown categories remain available under Other.
 const CATEGORY_ORDER = [
   // GTM funnel — top to bottom
   ['crm', 'CRM'],
@@ -81,7 +67,6 @@ function groupByCategory(connectors) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(c);
   }
-  // Within a group: alphabetical by label.
   for (const list of groups.values()) {
     list.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }
@@ -155,8 +140,6 @@ const SECTION_HEADING =
   'font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] '
   + 'uppercase text-ink-3 pt-1 px-0.5 pb-2';
 
-// One titled grid of tiles. `count` is rendered beside the title when given
-// (the Featured section deliberately omits it).
 function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[18px]' }) {
   if (!connectors.length) return null;
   return (
@@ -183,9 +166,6 @@ function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[1
 // and picking one opens the download-the-desktop-app modal instead of a form.
 const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 
-// Its counterpart: what this deployment can actually connect right now. Named
-// for the deployment rather than "Featured" because on cloud it isn't a curated
-// subset — it is the whole of what works here.
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
@@ -194,15 +174,11 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // Category filter + sort. `category === 'all'` is the inclusive
-  // option (default); sort `default` keeps the curated category
-  // grouping, sort `name` flattens to a single alphabetical list.
   const [category, setCategory] = useState('all');
   const [sortBy, setSortBy] = useState('default');
   const inputRef = useRef(null);
 
-  // Load + reset on each open. Cheap call (cached server-side); we
-  // refetch in case new JSONs were dropped in during dev.
+  // Reload the catalog each time the picker opens to pick up connector changes.
   useEffect(() => {
     if (!open) return;
     setLoading(true);
@@ -218,18 +194,14 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
       .finally(() => setLoading(false));
   }, [open, orgMode]);
 
-  // Auto-focus the search input when the picker opens.
   useEffect(() => {
     if (!open) return;
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
-  // Distinct categories present in the loaded list — drives the
-  // Filter-by dropdown. Order: explicit CATEGORY_ORDER first, then
-  // anything else alphabetical (mirrors groupByCategory's logic).
+  // Order available categories consistently with groupByCategory.
   const availableCategories = useMemo(() => {
     const seen = new Set(connectors.map((c) => c.category || 'other').filter(Boolean));
     const known = CATEGORY_ORDER.map(([k]) => k).filter((k) => seen.has(k));
@@ -237,9 +209,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
     return [...known, ...others];
   }, [connectors]);
 
-  // Client-side filter. Substring match across the visible metadata
-  // — label / description / aliases / category — plus the explicit
-  // category dropdown.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return connectors.filter((c) => {
@@ -278,9 +247,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
       maxHeight="min(640px, 86vh)"
       labelledBy="connector-picker-title"
     >
-        {/* Header — title row, then search row, then filter/sort row.
-            All three live in the chrome above the scrollable grid;
-            the grid background (surface-2) provides the visual break. */}
         <div className="flex items-center justify-between pt-[14px] px-4 pb-2 bg-surface shrink-0">
           <h2 id="connector-picker-title" className="s-h3 m-0">Connectors Directory</h2>
           <Tooltip content="Close">
@@ -307,29 +273,20 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              // outline-none, not outline-0: `outline-0` just zeroes the
-              // width, and the UA focus ring uses outline-style:auto whose
-              // width the browser controls — so it kept painting a second,
-              // inner ring inside the wrapper's .focus-within-ring.
+              // Use outline-none: outline-0 still lets the browser’s auto focus ring draw inside
+              // the wrapper ring.
               className="flex-1 min-w-0 border-0 outline-none bg-transparent font-[family-name:var(--font-body)] text-[13.5px] text-ink"
             />
           </label>
         </div>
-        {/* Filter + Sort row — directly under the search so the three
-            "narrow my results" controls (search, filter, sort) read
-            as one cluster. No hard divider line; the body's softer
-            surface-2 plus an inset top shadow handle the break. */}
         <div className="flex items-center gap-2 flex-wrap pt-0 px-4 pb-[18px] bg-surface shrink-0">
           <Select
             variant="pill"
             label="Filter by"
             value={category}
             onValueChange={setCategory}
-            // "All categories" sits at the top, then a hairline
-            // separator, then every category in alphabetical order
-            // by display label. Drop-down ordering is decoupled from
-            // the GTM-curated `availableCategories` order — that one
-            // still drives section ordering inside the body.
+            // Sort filter choices alphabetically, independently of the body’s curated category
+            // order.
             options={[
               { value: 'all', label: 'All categories' },
               { separator: true },
@@ -350,10 +307,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
           />
         </div>
 
-        {/* This deployment's server already scopes the /connectors/specs/
-            response to what auth's catalogue authorizes (currently Google
-            Drive + Gmail) — this note just explains the short list rather
-            than doing any filtering of its own. */}
+        {/*
+ * The server scopes the connector catalog; this note explains the limited list without filtering
+ * it.
+ */}
         {orgMode && (
           <div className="px-4 pb-3 bg-surface shrink-0">
             <Alert variant="info">
@@ -370,17 +327,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
           </div>
         )}
 
-        {/* Body — grid of connector tiles, scrollable.
-            • surface-2 background so tiles (on var(--surface)) sit
-              forward against a quieter base.
-            • boxShadow inset on the top edge gives a soft "tucked
-              under" feel where the body meets the chrome — replaces
-              the hard 1px divider for a cleaner read.
-            • generous padding-top (24px) so the first row of cards
-              has room to breathe under the controls.
-            • `minHeight: 0` is the flexbox gotcha that lets a flex
-              child actually shrink below its content size — without
-              it, `overflowY: auto` never triggers. */}
+        {/* min-height: 0 allows the flex child to shrink so its overflow can scroll. */}
         <div className="flex-1 min-h-0 overflow-y-auto pt-6 px-4 pb-4 bg-surface-2 shadow-[inset_0_8px_16px_-10px_rgba(15,16,17,0.10)]">
           {loading && (
             <div className="p-3 text-ink-3 text-[13px]">
@@ -399,12 +346,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
                 : 'No connectors available yet.'}
             </div>
           )}
-          {/* Body — two modes:
-                • sortBy=default → Featured section first (when not
-                  searching/filtering), then category sections.
-                • sortBy=name    → single flat grid sorted A–Z.
-              The search/category filter shrinks `filtered` first, so
-              both modes operate on the same already-narrowed list. */}
           {sortBy === 'name' ? (
             <div className={GRID}>
               {[...available]
@@ -414,11 +355,8 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
                 ))}
             </div>
           ) : orgMode ? (
-            // Cloud runs only a handful of connectors — too few to be worth
-            // splitting across category sections, where each section would
-            // hold one tile and the same connector would also appear under
-            // Featured. Show all of them as one block instead; the desktop
-            // catalogue below is what gives the directory its body.
+            // Keep the small cloud catalog in one section to avoid singleton groups and duplicate
+            // Featured entries.
             <ConnectorSection
               title={CLOUD_AVAILABLE_TITLE}
               connectors={available}
@@ -426,9 +364,8 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               className="mb-6"
             />
           ) : (
-            // Desktop: Featured on top, then every category. A featured
-            // connector intentionally appears in both — with ~213 connectors
-            // Featured reads as a shortcut, not a duplicate.
+            // Featured connectors also remain in their categories; Featured is a shortcut into the
+            // full catalog.
             <>
               {category === 'all' && !query.trim() && (
                 <ConnectorSection
