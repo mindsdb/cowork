@@ -1738,10 +1738,6 @@ function AppCore() {
   // values on submit.
   const handleModifyConnection = async (connection) => {
     if (!connection?.engine) return;
-    // Connector spec + saved record fetched in parallel — both feed
-    // into the injected form. The spec gives us field shape (types,
-    // labels, descriptions, secret flags); the saved record gives
-    // us the values to pre-fill.
     const [full, savedRaw] = await Promise.all([
       fetchConnector(connection.engine).catch((e) => {
         // eslint-disable-next-line no-console
@@ -1821,15 +1817,8 @@ function AppCore() {
         Object.entries(savedFields).filter(([k]) => !k.startsWith('_'))
       );
 
-      // Pure synthesis — the synthetic method's fields come from
-      // the saved record alone, with NO attribute borrowing from
-      // any spec method. The user's intent: "append a new option,
-      // not append to the attributes of an existing option". So we
-      // build each field from scratch using only what we know
-      // about the saved key — the key name (titlecased into a
-      // human label) and whether it was classified secret on save.
-      // The rendered form is exactly what's in the vault: same
-      // keys, no spec leakage, no surprise fields.
+      // Build synthetic fields only from saved keys and secret flags; borrowing spec attributes
+      // would introduce unsaved fields.
       const niceLabel = (name) => String(name || '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -1853,41 +1842,19 @@ function AppCore() {
 
       let nextSpec;
       if (isMultiMethod) {
-        // Synthesize a NEW method option with id `__edit_current__`.
-        // The original methods stay in the array untouched — the
-        // picker shows the synthetic *plus* every original, so the
-        // user can edit current values OR start fresh on any method.
-        //
-        // `_underlying_method` carries the saved method's real id
-        // through to submit. The form panel reads this and sends it
-        // as the `method` / `auth_method` to the server, so server-
-        // side validation accepts the submit (it sees a real id).
-        // OAuth submit_action / oauth metadata / actions are
-        // inherited from the matched original so the OAuth launch
-        // path still triggers when the original method was OAuth.
-        // When the saved method id no longer matches anything in
-        // the spec (renamed / removed in a connector update), we
-        // still publish the synthetic — `_underlying_method` is
-        // null and the submit falls through the agent's custom
-        // save path, which doesn't validate against the spec's
-        // method list.
+        // Add a separate edit-current method while preserving the original options. If the saved
+        // method no longer
+        // exists in the spec, null _underlying_method routes submission through the agent’s custom
+        // save path.
         const synthMethod = {
           id: '__edit_current__',
           label: 'Currently saved values',
           description: 'Edit the values stored for this connection.',
           fields: syntheticFields,
-          // No `submit_action` / `oauth` / `actions` inherited from
-          // any spec method — the synthetic stands on its own. The
-          // submit goes through the regular agent path; if the user
-          // wants to re-run OAuth (or any other launch flow), they
-          // click "Back to options" and pick the original method,
-          // which still has those affordances.
-          //
-          // Hidden marker — server-side validation rejects unknown
-          // method ids, so on submit the form panel sends the saved
-          // method's real id (resolved through `_underlying_method`)
-          // as the `method` / `auth_method`. Synthetic id stays
-          // local, used only for picker selection + state keying.
+          // Do not inherit OAuth/actions: users can choose the original method to rerun those
+          // flows.
+          // Submit the real _underlying_method ID when present; the synthetic ID is local and fails
+          // server validation.
           _underlying_method: matchedSpecMethod?.id || null,
         };
         nextSpec = {
@@ -1941,11 +1908,7 @@ function AppCore() {
       Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
     }
   };
-  // Cancel a modify-flow task: drop the synthetic chat task we
-  // just created and route back to the Connect Apps and Data page.
-  // Modify tasks are always tmp- (we never persist them server-
-  // side until the user actually saves), so the local cleanup is
-  // sufficient — no `/conversations` DELETE round-trip.
+  // Unsaved modify tasks are local temporary tasks; cancelling needs no server DELETE.
   const handleCancelModify = (taskId) => {
     if (taskId) {
       deletedTaskIdsRef.current.add(taskId);
@@ -1954,11 +1917,6 @@ function AppCore() {
     }
     setRoute('customize');
   };
-  // Disconnect from a modify-flow task: delete the vault entry +
-  // close the task. Confirmation is on the renderer side because
-  // this is destructive and easy to mis-click. After success the
-  // user lands back on the Connect Apps grid where they'd expect
-  // to see the connection gone.
   const handleDisconnectFromModify = async (taskId, engine, name) => {
     if (!engine || !name) return;
     if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
@@ -1987,31 +1945,12 @@ function AppCore() {
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     setRoute('customize');
   };
-  // Picker hands us a summary record (id + label + …). The user
-  // wants to land in a normal chat task — not a separate modal —
-  // so the scratchpad / agent loop is available for any iteration
-  // beyond the initial form. We just skip the LLM round-trip for
-  // *getting* the form: known id → known JSON spec → inject directly
-  // into the form store, and the chat-side DataVaultFormPanel picks
-  // it up. Submission goes through the existing handleSubmitDataVaultForm
-  // path so the agent can probe credentials, retry, etc.
-  //
-  // If the registry lookup fails (network, id not in registry), we
-  // fall back to the chat-agent path so picking a connector is
-  // never a dead end.
-  // Where the user was when they opened the connect flow, so closing the
-  // connect modal BEFORE connecting returns them there (the connectors
-  // panel, or the chat card they came from) instead of stranding them in
-  // the throwaway "Connect X" task the flow spins up (ENG-1534). Keyed by
-  // connect task id (not a single slot) so a second connect/reconnect
-  // started before an earlier one is dismissed doesn't clobber the first
-  // task's origin.
+  // Remember the origin per connect task so dismissing an unfinished form restores its caller.
+  // A single shared slot would lose the origin when connect flows overlap.
   const connectOriginsRef = useRef(new Map());
 
-  // Dismiss a connect form. For a not-yet-connected throwaway connect task,
-  // drop the task and restore the origin route/task; otherwise just clear
-  // the form (existing behavior — e.g. after a successful connect, which has
-  // already turned the task into a real conversation).
+  // Dismiss unfinished temporary connect tasks back to their origin; successful connections keep
+  // their conversation.
   const handleConnectFormDismiss = (taskId) => {
     const origin = connectOriginsRef.current.get(taskId);
     const spec = getDataVaultForm(taskId);
@@ -2087,20 +2026,12 @@ function AppCore() {
     setRoute('task');
 
     if (hasLiteralForm) {
-      // Inject the form spec directly. DataVaultFormPanel reads
-      // from the same store; no LLM ever sees the prompt. We also
-      // stamp the connector id on the spec so the panel can route
-      // OAuth (and any other auth shape) submits through the
-      // connector-aware save endpoint instead of the legacy
-      // datasources path.
+      // Inject known forms directly; _connector_id routes submission through connector-aware
+      // saving, including OAuth.
       const connectSpec = {
         ...full.form,
-        // Stamp the canonical engine slug so server-side code
-        // (datavault_agent: "Trying to connect to **<engine>**…",
-        // probe prompt, vault save path) has a deterministic id
-        // even when the connector JSON's `form` block doesn't
-        // repeat it. Connector JSONs use top-level `id` as the
-        // engine slug; we treat that as the source of truth.
+        // Use the top-level connector ID when the form omits engine so server prompts and vault
+        // saves receive the canonical slug.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
         logo: full.form.logo || full.logo,
@@ -2169,11 +2100,7 @@ function AppCore() {
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
-  // Open the Settings surface. A named section drills straight to it (desktop
-  // and the mobile master-detail alike). A bare open leaves desktop on its
-  // last section (it has no list) but resets the mobile surface to its section
-  // list — hence the isMobile-gated null. Single home for this rule so the
-  // call sites don't each re-spell it.
+  // A bare settings open preserves the desktop section but returns mobile to its section list.
   const openSettings = (section = null) => {
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
@@ -2195,11 +2122,8 @@ function AppCore() {
       return;
     }
     if (key === 'projects') {
-      // Clicking "Projects" in the sidebar should always land on the grid of
-      // all projects, not the previously-selected project's detail. Clearing
-      // here (not in enterRoute) keeps the chat-header crumb path — which
-      // routes through onOpenProject and sets selectedProject AFTER routing —
-      // unaffected.
+      // Clear selection on sidebar navigation only; the chat-header project link sets selection
+      // after routing.
       setSelectedProject(null);
     }
     setWorkspaceMode('cowork');
@@ -2236,11 +2160,8 @@ function AppCore() {
     }
   }, [refreshSchedules]);
 
-  // Detail routes → state (v1). No single-resource loader: resolve the entity
-  // client-side from the fetched list, so refresh / deep-link restore the
-  // selection with no server change.
-  // Returns a promise resolving to `false` when the id isn't in the list (the
-  // route element then replaces the dead URL with `/projects`), else truthy.
+  // Resolve detail IDs from the fetched list. Return false for missing IDs so the route replaces
+  // dead URLs with /projects.
   const enterProjectDetail = useCallback((projectId) => {
     setRoute('projects');
     setConversationError(null);
@@ -2317,17 +2238,10 @@ function AppCore() {
     }
   };
 
-  // Authoritative provider-readiness check, run right before a send.
-  // We can't trust the in-memory `health` here: it's fetched at boot
-  // and on focus, so right after a fresh sign-in (especially a free
-  // account that lands without a key) it can still read stale —
-  // config_ready=true from the previous user, or undefined before the
-  // first fetch lands. Either way the old gate (`config_ready !== false`)
-  // would pass and we'd start a turn against a missing/foreign key,
-  // which is exactly the "it does operations then shows the upgrade
-  // card" bug. Re-fetch /health synchronously so the provider-required
-  // card shows immediately, before any operation runs. Falls back to
-  // the cached value only if the live fetch fails.
+  // Refresh provider readiness before sending: cached health may belong to the prior user or
+  // predate sign-in.
+  // Show configuration recovery before operations begin; fall back to cached health only when the
+  // read fails.
   const ensureProviderReady = useCallback(async () => {
     try {
       const fresh = await fetchHealth();
@@ -2342,13 +2256,8 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
-  // Coding mode (MVP, ENG-1656 follow-up): the task never goes through
-  // anton/`/responses` — it's recorded (harness/model) via a direct
-  // conversation-create call, then ChatView renders a live embedded
-  // terminal (CodingTerminal) for it instead of the normal chat transcript,
-  // running `claude` in a real PTY cwd'd to the project folder. Thrown
-  // errors here surface through the composer's existing inline error UI
-  // (same as any other send failure) — no separate toast plumbing needed.
+  // Coding tasks create a conversation then run a PTY in the project folder instead of /responses.
+  // Throw failures through the composer’s existing inline error handling.
   const launchCodingModeTask = async (text, meta) => {
     let generalProject = projects.find((p) => p.name === 'general');
     const effectiveProject = selectedProject || generalProject;
@@ -2394,11 +2303,8 @@ function AppCore() {
     setRoute('task');
   };
 
-  // Ensure the fallback `general` project exists and return it, or null if it
-  // could not be found or created. Shared by the home and in-chat send paths so
-  // the bootstrap dance (find-by-name → createProject → refetch) lives in one
-  // place. Returns null rather than throwing so a caller can surface an
-  // actionable error instead of sending against a project that isn't there.
+  // Find or create the general project; return null on failure so callers can show an error before
+  // sending.
   const ensureGeneralProject = async () => {
     const existing = projects.find((p) => p.name === 'general');
     if (existing) return existing;
@@ -2456,10 +2362,7 @@ function AppCore() {
       return false;
     }
 
-    // Orphan fallback: if the user hasn't picked a project, route the
-    // task into "general" (server provisions it on startup). If for
-    // any reason it isn't in the projects list yet (e.g. an upgrade
-    // from a build that didn't auto-create it), bootstrap it now.
+    // Bootstrap general if no project is selected and an older install has not provisioned it.
     let generalProject = projects.find((p) => p.name === 'general');
     const requestedProject = meta?.project || selectedProject;
     if (!requestedProject && !generalProject) {
@@ -2488,18 +2391,9 @@ function AppCore() {
     const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
     setComposerAttachments([]);
 
-    // Two-phase send so the new-task experience matches the in-chat
-    // send. Previously we shipped the user message + placeholder in the
-    // very same frame as the route change, which meant the activity
-    // placeholder (filtered out of the chat scroll, only visible in the
-    // rail) flashed in then vanished as soon as the first stream event
-    // replaced it with a still-empty `_streaming` row. Now:
-    //   1. Create an EMPTY task shell + route to it. ChatView mounts
-    //      cleanly with no messages.
-    //   2. On the next animation frame (after the chat view commits),
-    //      add the user message + thinking placeholder, then kick the
-    //      stream. From that point the flow is identical to
-    //      handleSendInTask.
+    // Mount an empty task first, then add the message/placeholder on the next animation frame.
+    // Adding both with the route change makes the thinking indicator flash before the stream
+    // replaces it.
     const newT = {
       id: taskId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
@@ -2517,10 +2411,7 @@ function AppCore() {
       harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
-      // Stamp a client-side timestamp so the Sidebar's sort-by-
-      // updatedAt sees this task as the freshest. Without it, brand-
-      // new tasks would sort to the bottom (no updatedAt) until the
-      // server's first response back-fills the field.
+      // Seed updatedAt so new tasks sort first before the server supplies metadata.
       updatedAt: new Date().toISOString(),
     };
     setTasks((prev) => [newT, ...prev]);
@@ -2569,10 +2460,7 @@ function AppCore() {
       }));
     };
 
-    // Phase 2 — runs after ChatView has mounted with the empty task.
-    // Append the user message + thinking placeholder, then start the
-    // stream. Two RAFs give React a guaranteed paint between phases
-    // (one to commit the route+task, one to commit the empty mount).
+    // Add the message and start streaming after the empty ChatView has mounted and painted.
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -2580,13 +2468,6 @@ function AppCore() {
               ...t,
               messages: withThinkingPlaceholder(
                 [{ role: 'user', content: text, attachments: sendingAttachments }],
-                // New-task path: the placeholder phase is genuinely
-                // "spinning up the conversation" — anton-core has to
-                // boot the LLM session, attach memories, etc. — so
-                // calling it "Creating task…" is more truthful than
-                // "Thinking…". The reply path (handleSendInTask)
-                // uses the default label since the session is
-                // already warm by then.
                 { label: 'Creating task…' },
               ),
             }
@@ -2652,10 +2533,8 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        // Anton sometimes wraps auth failures into a 200 stream that
-        // emits the error as plain assistant text. Detect that case
-        // and replace the assistant turn with the provider_required
-        // card instead of rendering the raw SDK message.
+        // Anton may return auth failures as assistant text in a 200 stream; map them to the
+        // provider-required card.
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -2668,10 +2547,8 @@ function AppCore() {
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          // Count prior assistant turns BEFORE adding the new one so
-          // the persisted index lines up with what mergeConvTurns
-          // expects on reload (the merge walks assistant messages in
-          // the same order and looks up by index).
+          // Count before inserting the new assistant message so the persisted index matches reload
+          // order.
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
@@ -2687,11 +2564,7 @@ function AppCore() {
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
         setActiveTaskId(finalId);
-        // Persist all step data (scratchpad cells, artifacts, timing)
-        // so reopening the conversation restores the Thinking block,
-        // inline artifact cards, and scratchpad tabs. Anton's own
-        // history file doesn't carry step metadata, so this is a
-        // sidecar in localStorage.
+        // Persist step metadata locally for reloads where Anton history omits it.
         if (finalContent && !configErrorInBody) {
           persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
           // If the agent streamed a connect form, open the side panel
@@ -2714,25 +2587,15 @@ function AppCore() {
       },
     });
 
-    // Schedule phase 2 after ChatView has had a chance to mount and
-    // paint with the empty task. Two RAFs is the safest pattern: the
-    // first fires after React commits the route change; the second
-    // fires after the browser has painted that commit. Only then do
-    // we add the user message + thinking placeholder and start the
-    // SSE stream — same shape as handleSendInTask from that point on.
+    // Two animation frames allow the empty task view to paint before adding messages and starting
+    // SSE.
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
     return true;
   };
 
-  // Send inside an existing task
-  //
-  // Answers `true` when the text is on its way — a stream started, or it was
-  // queued behind the turn already running — and `false` when nothing was sent.
-  // Same contract as handleSendFromHome, and the artifact viewer depends on it:
-  // addressing a comment with the agent mints the repair record BEFORE sending
-  // and cancels it on `false`. Without that answer a repair whose prompt never
-  // left the composer sits `queued` forever, polling, showing "Agent is
-  // thinking…" for a turn that will never run.
+  // Return true if sent or queued, false if nothing was sent. Artifact repair callers cancel their
+  // preallocated
+  // repair record on false so it cannot remain queued for a turn that never started.
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
@@ -2774,13 +2637,9 @@ function AppCore() {
       submit: submitAnswer,
     });
     if (answerOutcome.action === 'consumed') {
-      // The text became the answer — but `submitAnswer` sends `{text}` only, so
-      // no file travelled with it. Clearing the staged attachments here would
-      // destroy them: never uploaded, never sent, never mentioned. So leave
-      // them staged for the next real message (a drained queued item's files
-      // have no composer entry of their own, so put them back), and say out
-      // loud that they did not go — silence is the failure this whole path
-      // exists to prevent.
+      // Answers send text only. Preserve attachments for the next message, restore drained files to
+      // the composer,
+      // and tell the user that those files were not sent.
       const orphaned = queuedAttachments ?? composerAttachments;
       if (queuedAttachments != null && queuedAttachments.length > 0) {
         setComposerAttachments((prev) => {
@@ -2802,53 +2661,23 @@ function AppCore() {
       return false;
     }
     if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
-      // Two mechanisms, both already used in this file: a toast so the user
-      // actually sees the failure, and a throw so Composer's handleSend keeps
-      // the typed text instead of clearing it (it only clears after onSend
-      // resolves). The interception stays armed — liveStepsRef is untouched —
-      // so the retry goes to the same question.
-      //
-      // `blocked` (a select-only question) rides the same path on purpose: the
-      // user's text must survive so they can copy it out, and nothing was sent.
+      // Toast the failure and throw so Composer preserves text. Keep interception armed for retry;
+      // blocked select-only answers also preserve text and send nothing.
       toastManager.add({ type: 'danger', title: answerOutcome.message });
       throw new Error(answerOutcome.message);
     }
     if (answerOutcome.release) {
-      // The question is gone. Release the composer and fall through to the
-      // normal send below, so the typed text becomes a message instead of
-      // being silently dropped.
-      //
-      // Retire exactly the question that was answered, never the whole mirror:
-      // a blanket clear would also drop a live sibling question's interception,
-      // and nothing re-arms it while that sibling blocks the turn (see
-      // retireQuestionFromSteps). retireLiveQuestion also rewrites every alias,
-      // which a direct assignment to this one id would not.
+      // Resume normal sending after retiring only the gone question, across all aliases. Other
+      // pending questions must retain interception.
       retireLiveQuestion(id, answerOutcome.questionId);
     }
 
-    // Anton-core can't run two turns in parallel against the same
-    // conversation, so if a stream is in flight (or one is about to
-    // start) for this task we queue the new message and let
-    // onDone/onError drain it.
-    //
-    // The check covers two race conditions:
-    //   1) `activeStreamCtrlRef` is already set — a fully launched
-    //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
-    //      been assigned yet — a previous invocation is mid-await
-    //      (resolving attachments). This holds for ANY task's
-    //      reservation, not just this id: two rapid clicks on the same
-    //      task, or a manual send that lands while a cross-task drain
-    //      (ENG-1378) is between reserving the slot and awaiting
-    //      attachments, both otherwise pass the guard and start a second
-    //      parallel stream against anton-core (which runs one turn at a
-    //      time). The reservation is always cleared on done/error, so a
-    //      broadened guard cannot wedge later sends.
+    // Serialize sends across all tasks. A reserved ID without a controller still owns the slot
+    // while uploading;
+    // checking only the controller would allow another send through during that await.
     if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current) {
-      // Queue with the files attached so a mid-stream send doesn't drop
-      // them. A fresh send takes the composer's attachments and clears
-      // them (the queued item now owns them); a re-enqueued queued item
-      // reuses its own and leaves the live composer untouched.
+      // Transfer fresh composer attachments to the queue; requeued items retain their own files
+      // without clearing the live composer.
       enqueueMessage(
         id,
         text,
@@ -2863,23 +2692,15 @@ function AppCore() {
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
     activeStreamingTaskIdRef.current = id;
-    activeStreamProducedRef.current = false; // fresh stream: no events yet
-    // Cross-client cache: we know this conversation is about to be
-    // mid-stream. Marking immediately (rather than waiting for the
-    // /in-flight-list poll to discover it) means reconcileTaskMessages
-    // never has to lie when another tab opens this conversation.
+    activeStreamProducedRef.current = false; // Mark the reservation immediately so reconciliation sees it before the server poll.
     markInFlight(id);
 
     const disabledForSend = normalizeComposerDisabledConnections(
       opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
     );
 
-    // A drained item's target task may not be the one on screen, so resolve
-    // its project independently rather than reusing the current view's
-    // `currentTaskProject`. Keep the same `|| selectedProject` last-resort
-    // that `currentTaskProject` has, so a project-less task's drained send
-    // resolves the same project a live send to it would (parity — otherwise
-    // even the on-screen task's own follow-up loses the fallback on drain).
+    // Resolve a drained task’s project independently of the visible task, with the same
+    // selectedProject fallback as a live send.
     const taskProject = opts.targetTask
       ? (resolveTaskProject(targetTask, projects) || selectedProject)
       : currentTaskProject;
@@ -2893,41 +2714,28 @@ function AppCore() {
       || taskProject?.path
       || null;
 
-    // A file upload needs a project (uploadAttachments writes the bytes under
-    // one). An existing task with no project — the user never picked a working
-    // folder — would otherwise throw in resolveComposerAttachmentsForSend and
-    // strand the image at "Queued" with the send going nowhere. A home send
-    // already bootstraps `general` in this case; do the same here so an
-    // in-chat attachment send doesn't dead-end where a home send wouldn't.
+    // Uploads need a project; bootstrap general for projectless replies, matching the home-send
+    // path.
     const attachmentsForSend = queuedAttachments ?? composerAttachments;
     if (!taskProjectName && (attachmentsForSend || []).some(isPendingFileAttachment)) {
       const general = await ensureGeneralProject();
-      // Only adopt `general` if it actually exists now. If the bootstrap
-      // failed, leave the project unset so resolveComposerAttachmentsForSend
-      // throws the actionable "Pick a project…" error (surfaced via the toast
-      // below) rather than sending against a project that isn't there.
+      // If bootstrap fails, leave the project unset so attachment resolution raises the actionable
+      // project error.
       if (general) {
         taskProjectName = general.name || 'general';
         taskProjectId = general.id || null;
         taskProjectPath = general.path || null;
       }
     }
-    // opts.modelOverride carries a same-tick model switch (the "Switch to
-    // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
-    // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet. The `selectedModel` fallback is the on-screen model
-    // picker, so only a live send to the task on screen may inherit it; a
-    // drained off-screen task must not pick up whatever model the current
-    // view happens to show — it falls through to the server default instead.
+    // Use explicit overrides for same-tick switches before React state updates. Off-screen queued
+    // tasks must not
+    // inherit the visible composer’s model; they fall back to the server default.
     const taskModel = opts.modelOverride
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
       || null;
-    // Sibling precedence chain to taskModel (ENG-1940): a same-tick
-    // override, else the task's own saved pick, else — only for a live
-    // send to the task on screen — the home composer's current pick.
-    // selectedEffort defaults to '', so the trailing `|| null` collapses
-    // that (and any other falsy pick) to null the same way taskModel's does.
+    // Match model precedence for effort, preserving an explicit empty override and excluding the
+    // visible picker for queued tasks.
     const taskEffort = (opts.effortOverride
       ?? targetTask.reasoningEffort
       ?? (opts.targetTask ? null : selectedEffort))
@@ -2947,11 +2755,7 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       activeStreamingTaskIdRef.current = null;
-      // Make the failure impossible to miss. The inline composer error alone
-      // was easy to overlook, so a file that couldn't upload just sat at
-      // "Queued" with no visible reason (the exact shape of the stuck-upload
-      // report). Surface a toast too, then re-throw so Composer keeps the text
-      // and the staged file for a retry.
+      // Toast upload failures and rethrow so Composer preserves text and staged files for retry.
       toastManager.add({
         type: 'danger',
         title: err?.message || 'Could not send your attachment. Please try again.',
@@ -2967,13 +2771,8 @@ function AppCore() {
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
-            // "Reviving" a task (replying in an existing one) must
-            // bump updatedAt locally — the server only rewrites
-            // _meta.json when the turn completes, but we want
-            // Sidebar's sort-by-updatedAt to move this task to the
-            // top the instant the user hits send. mergeTasksFromServer
-            // keeps the higher of (local, server) updatedAt so a
-            // mid-stream fetchSessions can't regress this.
+            // Bump recency immediately; server timestamps update only at completion, and merging
+            // preserves the newer local value.
             updatedAt: new Date().toISOString(),
           }
         : t,
@@ -2984,13 +2783,8 @@ function AppCore() {
     if (queuedAttachments == null) setComposerAttachments([]);
 
     let streamState = initialStreamState();
-    // `id` is the local task id we started with. If it's a temporary
-    // (`tmp-connect-…`), the server replaces it with a fresh canonical
-    // id and returns the new value via `response.created`. We adopt
-    // that id everywhere the local task is keyed — without this the
-    // server has a real conversation but the client keeps showing
-    // (and persisting in-flight refs against) the tmp- id, and the
-    // next fetchSessions would surface BOTH rows.
+    // Adopt the server ID everywhere a temporary task is keyed so refreshed sessions cannot show
+    // duplicate rows.
     let resolvedId = id;
     const adoptServerId = (sid) => {
       if (!sid || sid === resolvedId) return;
@@ -3041,10 +2835,8 @@ function AppCore() {
       }));
     };
 
-    // If a connect form is active for this conversation, append a
-     // redacted snapshot of its state to the *sent* text so the agent
-     // sees what the user has selected / filled. The on-screen bubble
-     // keeps the original text — Anton-only context, never shown.
+    // Append redacted form/Drive context for Anton while keeping the user’s original text in the
+    // visible bubble.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
     const driveContext = describeGoogleDriveReferenceFiles(driveReference);
