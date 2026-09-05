@@ -43,9 +43,8 @@ export async function fetchAuthenticatedBlob(url) {
 }
 
 /**
- * Download a private file without navigating the browser directly to an API
- * URL, because a native navigation cannot attach the expected-organization
- * header. Electron keeps using its main-process-authenticated URL flow.
+ * Web downloads need the expected-organization header, which native navigation cannot attach.
+ * Electron keeps its main-process-authenticated URL flow.
  */
 export async function downloadAuthenticatedResource(url, filename) {
   if (!url) return false;
@@ -58,8 +57,7 @@ export async function downloadAuthenticatedResource(url, filename) {
 }
 
 /**
- * Open a private web resource from a boundary-checked Blob. The blank popup is
- * created before the fetch awaits so browser click activation is not lost.
+ * Open the blank popup before awaiting fetch to retain click activation.
  * Active same-origin Blob document types download instead of executing.
  */
 export async function openAuthenticatedResource(url, { filename } = {}) {

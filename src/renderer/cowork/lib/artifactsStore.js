@@ -1,24 +1,8 @@
-// Shared artifact-liveness store — one source of truth for "does the artifact
-// behind this card still exist", consumed by the conversation's inline cards.
-//
-// Modeled on lib/skillsStore.js: a module-level cache plus a subscriber set
-// surfaced through useSyncExternalStore, because the app has no React Query or
-// global store. The artifact list App.jsx already holds cannot answer this: it
-// is a system-wide snapshot refreshed on boot, at turn end and on the artifacts
-// route, and never after a delete. Consolidating the two is deliberate debt.
-//
-// Three indices, all the same shape so one matcher (artifactLiveness) serves
-// all of them:
-//
-//   _index       what the server currently lists. `null` while unloaded or
-//                after a failed request — never an empty index, because
-//                "loaded and empty" must not be confused with "unknown".
-//   _tombstones  deleted through this app in this session. Never expires.
-//   _born        created by the agent since the last successful load. EXPIRES
-//                (see _load): an index whose request started after the artifact
-//                existed is authoritative about it either way, and a born entry
-//                that outlived that would permanently mask a deletion made
-//                outside the app.
+// Shared liveness state for chat cards; App’s artifact snapshot does not refresh after every
+// delete.
+// _index=null means unknown, distinct from a loaded empty index. Session tombstones never expire.
+// _born protects new artifacts until a successful index request started after their creation;
+// retaining it longer would mask external deletions.
 
 import { useSyncExternalStore } from 'react';
 
@@ -195,11 +179,8 @@ function _subscribe(notify) {
 }
 
 /**
- * React hook: has this card's artifact been deleted?
- *
- * `false` whenever we are not sure — unloaded index, failed request, card out of
- * the fetched scope, no usable key. getSnapshot returns a boolean, so it is
- * referentially stable by value and cannot loop.
+ * Return false when deletion is uncertain: unloaded/failed index, out-of-scope card, or no usable
+ * key.
  */
 export function useArtifactLiveness(card, { live = false } = {}) {
   return useSyncExternalStore(

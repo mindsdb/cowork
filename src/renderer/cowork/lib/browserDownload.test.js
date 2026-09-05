@@ -24,10 +24,7 @@ afterEach(() => {
 });
 
 describe('downloadFilename', () => {
-  /*
-   * A blob carries no Content-Disposition, so once bytes are fetched rather
-   * than navigated to, this value is the only thing naming the saved file.
-   */
+  /* Blob downloads have no Content-Disposition header; the anchor must carry the filename. */
   it.each([
     ['.anton/anton.md', 'anton.md'],
     ['reports/2026/q1.csv', 'q1.csv'],
@@ -69,12 +66,7 @@ describe('downloadUrl', () => {
 });
 
 describe('downloadBlob', () => {
-  /*
-   * The delay is the whole point of this helper. Firefox and Safari can
-   * truncate or cancel a save that has not started reading the blob by the
-   * time its object URL is revoked, so revoking on the next macrotask is a
-   * silently corrupt download rather than a style choice.
-   */
+  /* Delay revocation until the browser has started the download. */
   it('keeps the object URL alive well past the click', () => {
     const blob = new Blob(['a,b\n1,2\n'], { type: 'text/csv' });
 

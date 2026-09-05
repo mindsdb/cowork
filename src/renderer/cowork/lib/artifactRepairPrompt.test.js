@@ -1,10 +1,5 @@
-// The chat card only appears when the handoff is recognised, so the parser is
-// the whole feature: a false positive turns a real message into a card, and a
-// false negative puts machine identifiers back in the transcript.
-//
-// The sample below is the literal output of `build_agent_repair` in
-// cowork-server (services/artifact_revisions.py) — copied rather than
-// approximated, because the two are only coupled through this shape.
+// Use the literal cowork-server build_agent_repair template; text shape is the only coupling that
+// keeps machine prompts rendered as cards.
 
 import { describe, it, expect } from 'vitest';
 import { parseArtifactRepairPrompt, repairCardState } from './artifactRepairPrompt';

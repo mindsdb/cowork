@@ -1,6 +1,4 @@
-// The store's job is to be careful. Every test here is about a way it could
-// wrongly conclude "deleted": a failed request read as an empty list, an index
-// that predates the artifact, a scope it was never fetched for.
+// Fail open for failed loads, pre-creation snapshots and unfetched scopes.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../api', () => ({
@@ -88,9 +86,7 @@ describe('loading the index', () => {
   });
 
   it('does not read a failed request as an empty list', async () => {
-    // fetchArtifacts() (the non-strict sibling) swallows and returns [], which
-    // would mark every card in the conversation deleted. This is why the store
-    // has its own fetcher.
+    // Use the strict fetcher; swallowing failure as [] would mark every card deleted.
     vi.mocked(fetchArtifactsStrict).mockRejectedValue(new Error('offline'));
     setArtifactsScope(SCOPE);
     await revalidate();
@@ -259,9 +255,7 @@ describe('noteArtifactsFromSteps', () => {
     ]);
 
     expect(artifactDeletedNow(chatCard())).toBe(false);
-    // The Tool step's data must NOT have entered born. Had it, the miss on the
-    // empty index would be shielded and this would read false — so `true` is
-    // what proves the badge filter held.
+    // Expect deletion to prove Tool data did not enter born and suppress the empty-index miss.
     expect(artifactDeletedNow(chatCard({ id: 'nope', slug: '', canonicalPath: '' }))).toBe(true);
   });
 
