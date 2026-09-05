@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { projectLabel, projectLabelByName, projectMatches, projectNamed } from './projectLabel';
 
-/*
- * ENG-1676. `name` is the slug an ASCII allowlist produced, so a Cyrillic or
- * CJK project was created as `untitled-project`. `display_name` holds what the
- * user typed. Every row created before that column exists has it NULL.
- */
+/* display_name preserves user text; legacy rows lack it and must fall back to the slug. */
 describe('projectLabel', () => {
   it('is the typed name when there is one', () => {
     expect(projectLabel({ name: 'untitled-project-2', display_name: 'Мій тестовий проєкт' }))
@@ -28,10 +24,7 @@ describe('projectLabel', () => {
   });
 });
 
-/*
- * The self-review findings: a half-done switch makes the project you can SEE
- * unfindable and unsortable, because search and sort still key on the slug.
- */
+/* Search and sort must follow visible labels as well as storage slugs. */
 const CYRILLIC = { id: 'p1', name: 'untitled-project-2', display_name: 'Мій тестовий проєкт' };
 const LEGACY = { id: 'p2', name: 'reports', display_name: null };
 
@@ -90,12 +83,7 @@ describe('sorting by the label', () => {
   });
 });
 
-/*
- * The slug-string surfaces: `skill.projects` is an array of names, and
- * task/schedule/memory rows carry `projectName`. They hold no project object,
- * so they could not call projectLabel at all -- which is why they kept
- * rendering slugs after every other surface was fixed (ENG-1676, round five).
- */
+/* Slug-string fields need projectLabelByName because they carry no project object. */
 describe('projectLabelByName', () => {
   const LIST = [
     { id: '1', name: 'untitled-project-2', display_name: 'Мій тестовий проєкт' },

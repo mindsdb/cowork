@@ -1,18 +1,6 @@
 /**
- * ENG-1676 — render coverage for the six components the display-name change
- * touched that no existing test file imports.
- *
- * `projectLabelSurfaces.test.js` is a source-inspection guard: it proves the
- * right *lines* exist. It cannot prove the component still mounts, that
- * `projects` actually reaches the JSX, or that the slug stopped being painted.
- * A typo'd import or an unbound identifier passes the surface guard and fails
- * here, which is exactly the gap these tests exist to close.
- *
- * Every test asserts BOTH directions:
- *   1. the display name is on screen  (the fix works)
- *   2. the slug is NOT on screen      (the fix replaced it, rather than
- *                                      rendering both and looking right)
- * Direction 2 is the one that catches a half-applied change.
+ * Render surfaces to catch mount/scope errors that source-presence guards miss.
+ * Assert both that the display name appears and that the slug disappears.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -109,12 +97,8 @@ describe('ENG-1676 render coverage — components no other test mounts', () => {
   });
 
   /**
-   * The seventh, and the one that justifies this file existing. This surface
-   * shipped BROKEN on the branch: the three `projects` references live inside
-   * `MemoryView`, a sibling function that never received the prop, so every
-   * one of them was an unbound `ReferenceError` at runtime. A grep-shaped
-   * "is the identifier in scope" check said it was fine. Mounting it says
-   * otherwise in about a millisecond.
+   * Mount UtilitiesView to prove projects reaches its own scope; sibling-source identifier searches
+   * cannot establish that.
    */
   it('UtilitiesView shows the display name on the project memory heading', async () => {
     const { default: UtilitiesView } = await import('../views/UtilitiesView');

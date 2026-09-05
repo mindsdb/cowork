@@ -1,37 +1,9 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 
-// Anton /v1/responses → ThinkingStep adapter.
-//
-// Anton's SSE stream emits one of three top-level event types:
-//
-//   response.created            — initial; carries response.id + conversation_id
-//   response.in_progress        — wraps everything during work; the
-//                                 actual sub-event is in `thought_role`:
-//                                   thought.scratchpad.start
-//                                   thought.scratchpad.end       (cell input)
-//                                   thought.progress             (phase markers)
-//                                   thought.scratchpad.result    (cell output)
-//   response.output_text.delta  — body text streaming, `delta` field
-//   response.artifact_created   — an artifact this turn produced (any type);
-//                                 carries an `artifact` payload → one card
-//   response.completed | failed — terminal
-//
-// We collapse each scratchpad cell (start → end → progress → result) into
-// a single ThinkingStep. response.artifact_created produces a separate
-// "Artifact" step (card) — the single, deterministic source of artifact
-// cards for every type, emitted by the harness at turn end and replayed
-// identically on reload.
-//
-// Usage:
-//
-//   let state = initialStreamState();
-//   for await (const event of stream) {
-//     state = reduceStream(state, event);
-//   }
-//
-// The reducer is pure — same input = same output, no side effects, no
-// time reads. Callers pass `now` (defaults to Date.now) so tests can
-// inject a clock.
+// Adapt Anton SSE events into conversation and ThinkingStep state.
+// Correlate each scratchpad cell’s events into one step; artifact_created supplies artifact cards
+// in live streams and replay.
+// Callers can inject now for timestamps and set replay to suppress analytics.
 
 export function initialStreamState() {
   return {
@@ -42,13 +14,11 @@ export function initialStreamState() {
     startedAt: null,
     /** ThinkingStep[] in order */
     steps: [],
-    /** Live "train of thought" text that isn't part of the final answer
-     *  (extended-thinking / reasoning deltas). A single ephemeral burst —
-     *  NOT a step, so it never accumulates into the persisted steps list.
-     *  `{ text, startedAt, _isPreamble? } | null`. `_isPreamble` marks
-     *  reclassified narration so the next real reasoning delta replaces
-     *  it instead of appending. Cleared whenever body text starts
-     *  streaming or the turn finishes. */
+    /**
+     * Ephemeral {text, startedAt, _isPreamble?} | null; never persist as a step.
+     * _isPreamble makes the next reasoning delta replace reclassified narration; clear on body text
+     * or turn end.
+     */
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
@@ -61,15 +31,10 @@ export function initialStreamState() {
   };
 }
 
-/** Replace (immutably) the trailing scratchpad step regardless of its
- *  status. The .result event arrives *after* scratchpad_done in some
- *  flows, so requiring in_progress here would silently drop the output.
- *
- *  Use this only as a fallback. When the upstream event carries a
- *  `tool_use_id`, prefer `patchScratchpadStepById` — multi-cell turns
- *  (LLM emits start/end for cells A,B,C upfront then anton dispatches
- *  them sequentially) need result events correlated to their source by
- *  id, otherwise A's result patches step C and the cells appear mixed.
+/**
+ * Accept late results even after scratchpad_done.
+ * Prefer patchScratchpadStepById when tool_use_id exists: queued multi-cell turns cannot safely
+ * patch the last step.
  */
 function patchLastScratchpadStep(steps, patch) {
   if (steps.length === 0) return steps;
@@ -152,24 +117,11 @@ export function truncateLabel(text) {
   return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
 }
 
-/** A tool call is starting mid-turn — compute the currentThought/bodyText
- *  patch for it.
- *
- *  Any answer text that streamed before this tool call was
- *  preamble/narration ("let me check X first…"), NOT the final answer —
- *  the turn isn't over, the model is about to act on a tool result and
- *  keep going (see anton's tool loop). Move that text into the ephemeral
- *  currentThought so it reads as inner dialogue, and reset bodyText so
- *  only the FINAL round's text (the one with no tool call after it) ends
- *  up as the persisted answer. Preserves live streaming: the preamble
- *  still streamed token-by-token into the answer area first; this just
- *  relocates it once we learn it was preamble.
- *
- *  When there's no un-committed answer text, the tool call instead seals
- *  the current burst: currentThought is reset to null so a reasoning
- *  burst that resumes after the tool starts fresh rather than appending
- *  to the pre-tool one (bursts separated by a tool call are distinct).
- *  (ENG-1108) */
+/**
+ * A subsequent tool call proves streamed body text was preamble; move it into currentThought so it
+ * is not persisted as the answer.
+ * With no pending body text, clear the thought so reasoning after the tool starts a fresh burst.
+ */
 function reclassifyPreambleOnToolStart(state, eventTs) {
   const preamble = (state.bodyText || '').trim();
   if (!preamble) return { currentThought: null };
@@ -240,12 +192,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
 
-  // Wall-clock timestamp the server stamped on this event. Live
-  // streams: equals (≈) Date.now() at arrival. Historical replays:
-  // the original moment the event was yielded. Without this, replay
-  // collapses every `now()` to the same JS-tick value and reasoning
-  // / execution durations all read as 0ms. Falls back to the live
-  // clock when an event lacks `at_ms` (older persisted streams).
+  // Use server at_ms so replay preserves reasoning/execution durations; older events fall back to
+  // the injected live clock.
   const eventTs = (typeof event.at_ms === 'number' && Number.isFinite(event.at_ms))
     ? event.at_ms
     : now();
@@ -272,34 +220,9 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.failed') {
-    // Key upgrade-intent signal: the turn was blocked on credits. Fire once
-    // here, on receipt — not in the render path (ChatView), which re-runs every
-    // paint.
-    //
-    // All THREE out-of-credits codes count, because each one is a paywall
-    // impression and they are simply different ways of being out of credits:
-    //   token_limit                   a drained wallet mid-turn (the original
-    //                                 ENG-385 signal)
-    //   included_allowance_exhausted  the free monthly allowance is spent, not
-    //                                 the wallet (ENG-1537). Splitting it out
-    //                                 into its own code would otherwise have
-    //                                 silently dropped it from this metric —
-    //                                 and a never-topped-up org is precisely
-    //                                 the cohort this exists to measure, since
-    //                                 `_enabled_aware_default` steers it onto
-    //                                 the free-bucket model.
-    //   model_access_denied           legacy per-model credit denial (ENG-1533).
-    //                                 It renders its own "needs credits" card,
-    //                                 so it was a paywall impression with no
-    //                                 impression event at all.
-    //
-    // Two codes are deliberately NOT counted. `model_disabled` — an admin
-    // turned the model off, and credits do not unlock it, so it is not upgrade
-    // intent. `rate_limited` — a velocity limit was never upgrade intent, and
-    // counting it would inflate the signal with users who already pay.
-    //
-    // One event carrying `reason` rather than three events, so the impression
-    // stays a single series and keeps this once-per-receipt guarantee.
+    // Record credit-block impressions once on receipt, excluding replay and render paths.
+    // Admin-disabled models and velocity limits are not credit blocks; do not count them as upgrade
+    // intent.
     if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted' || event.code === 'model_access_denied')) {
       try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
@@ -324,11 +247,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
   }
 
-  // Inline artifact card. The harness emits one of these at turn end for
-  // every artifact the turn produced (any type — HTML, dataset, doc,
-  // image…), detected via the artifacts-dir diff, and replays them
-  // identically on reload. This is the single, deterministic source of
-  // artifact cards. Deduped by slug/path so a replay can't double a card.
+  // Dedupe artifact_created by slug/path so replay cannot produce a second card.
   if (type === 'response.artifact_created') {
     const art = (event.artifact && typeof event.artifact === 'object') ? event.artifact : {};
     const key = art.slug || art.file_path || art.path || '';
@@ -345,11 +264,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       startedAt: eventTs,
       completedAt: eventTs,
       data: {
-        // Keep the server card intact. Artifact capabilities and addressing
-        // evolve together (id, draftUrl, artifactKey, access policy,
-        // and future fields); copying a hand-maintained subset here made a
-        // just-created artifact lose edit/review support until the panel was
-        // reloaded from the artifacts endpoint.
+        // Preserve the full server card: evolving capabilities/addressing must remain available
+        // before the next artifact-list reload.
         ...art,
         title: art.title || art.slug || 'Artifact',
         file_path: filePath,
@@ -380,15 +296,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
-  // Inline skill-draft card. The harness emits this at turn end for a skill the
-  // agent BUILT this turn (via skill-creator), detected via the skill-drafts
-  // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets
-  // the user Save or Download it. Self-contained payload (full SKILL.md +
-  // sibling files) so it renders + downloads identically on reload.
-  //
-  // Deduped by slug WITHIN a turn so a replay can't double a card. Across turns
-  // a refined skill re-emits (server diffs SKILL.md content); the chat renderer
-  // shows only the latest turn's card per slug (see latestSkillCardIndexByKey).
+  // Skill drafts are self-contained, user-saved resources, separate from artifacts.
+  // Dedupe slugs within a turn; latestSkillCardIndexByKey selects the newest revision across turns.
   if (type === 'response.skill_created') {
     const sk = (event.skill && typeof event.skill === 'object') ? event.skill : {};
     const key = sk.slug || sk.label || sk.name || '';
@@ -428,14 +337,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // question_id so a /tail replay from seq 0 can't double the card.
   if (type === 'response.ask_user') {
     const key = event.question_id || '';
-    // No id, no card. Everything that retires a question matches on
-    // question_id: the dedupe guard below, the `ask_user_answered` branch, and
-    // App.jsx's composer interception. An id-less question would be both
-    // un-dedupable and un-retirable — stuck at `answer: null` forever, so
-    // `pendingQuestionFor` keeps returning it and the composer stays hijacked
-    // for the life of the live-steps entry. The server always sends an id, so
-    // this is defence in depth; it earns its place because it is the one
-    // malformed payload whose failure mode is permanent rather than cosmetic.
+    // Reject id-less questions: they cannot be deduplicated or retired and would permanently hijack
+    // the composer.
     if (!key) return state;
     // Idempotent: /tail replays from seq 0, so the same question arrives
     // again on every reconnect.
@@ -500,15 +403,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
 
   const role = event.thought_role;
 
-  // New scratchpad cell starts. We push a placeholder step now so the
-  // UI sees activity even before the .end event delivers the input.
-  // Reasoning starts here — it's the time anton spends deciding *what*
-  // code to run, before the runtime actually executes anything.
-  // `tool_use_id` (when the server includes it) is captured on the
-  // step so subsequent end / progress / result events can be
-  // correlated to THIS specific cell. Without that correlation,
-  // multi-cell turns where the LLM queues several scratchpad calls
-  // before any of them runs would patch the wrong step on result.
+  // Show a cell before its input arrives. Capture tool_use_id to correlate later results when
+  // several cells are queued.
   if (role === 'thought.scratchpad.start') {
     const id = `step-${state.steps.length + 1}`;
     const step = {
@@ -522,11 +418,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       reasoningStartedAt: eventTs,
       executionStartedAt: null,
       executionCompletedAt: null,
-      // Server-measured execution duration (ms). Set when the
-      // `scratchpad_done` progress event arrives carrying its
-      // `eta_seconds` field — that's the actual elapsed time
-      // anton's runtime reports, which is more accurate than
-      // diffing event arrival timestamps.
+      // Actual runtime elapsed milliseconds from scratchpad_done.eta_seconds, not event arrival
+      // time.
       executionDurationMs: null,
       data: null,
       output: null,
@@ -628,12 +521,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       result: null,
       _isScratchpad: false,
       _isToolCall: true,
-      // Unlike scratchpad (where the SAME name deliberately groups
-      // multiple cells into one continuing notebook), each tool call is
-      // its own independent invocation — never a "step" of another one.
-      // Keying by tool_use_id gives every call its own pad in
-      // ScratchpadModal instead of collapsing unrelated calls into one
-      // synthetic "Untitled" pad with a misleading "step 1/3" counter.
+      // Group scratchpad cells by notebook, but keep independent tool calls in separate tabs keyed
+      // by tool_use_id.
       _scratchpadTabId: event.tool_use_id || null,
       _toolUseId: event.tool_use_id || null,
     };
@@ -647,11 +536,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (role === 'thought.tool_call.end') {
-    // Narrowed from the old "patch the last in-progress step" fallback:
-    // without a matching _isToolCall step for this exact tool_use_id, this
-    // must be a no-op. A blind fallback could close an unrelated step
-    // (e.g. a scratchpad cell still running in the same turn) if this
-    // tool call's only progress event was ever lost to a race.
+    // Without an exact tool-use match, leave state unchanged; a generic fallback could complete an
+    // unrelated running cell.
     const toolUseId = event.tool_use_id || null;
     if (!toolUseId) return state;
     const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
@@ -666,14 +552,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       completedAt: eventTs,
       output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
       ...(etaSeconds != null ? { executionDurationMs: Math.max(0, Math.round(etaSeconds * 1000)) } : null),
-      // Tool's own verdict (anton ToolOutcome.ok, ENG-1276) — reuses the
-      // same cellStatus/'error' convention ThinkingStep.jsx already
-      // renders for a failed scratchpad cell, rather than inventing a
-      // second failure indicator. undefined/true stay unmarked (rendered
-      // as success) — only an explicit false marks the step failed.
-      // Without this, tool_done firing (unconditional by design, even on
-      // a handler exception) rendered as success everywhere (PR #304
-      // review, anton repo).
+      // tool_done always fires, even on handler failure. Only explicit ok:false marks execution as
+      // failed.
       ...(event.ok === false ? { cellStatus: 'error' } : null),
     };
     return { ...state, steps };
@@ -707,12 +587,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps };
   }
 
-  // ── Hermes reasoning/thinking ────────────────────────────────────
-  // Streaming reasoning text from the model's extended thinking. This is
-  // NOT part of the final answer, so it never becomes a step (ENG-1108) —
-  // it accumulates into the ephemeral `currentThought` burst instead,
-  // which the UI renders as a single live line and drops entirely once
-  // the burst ends or the turn completes.
+  // Reasoning/thinking deltas update only the ephemeral thought, never the persisted answer or
+  // steps.
   if (role === 'thought.progress' && (event.subtype === 'reasoning' || event.subtype === 'thinking')) {
     const text = event.content || '';
     if (!text) return state;
@@ -729,17 +605,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (role === 'thought.progress') {
     const phase = event.phase;
 
-    // anton is deliberately idle, waiting out a velocity rate-limit before
-    // resuming the same step (ENG-1537). Surfaced as an ephemeral live line —
-    // the turn is NOT failing, so it must not look like an error, and it must
-    // not be dropped: a silent 90s pause is indistinguishable from a hang, and
-    // that is how a correct wait gets reported as a freeze. Reuses
-    // `currentThought` rather than adding UI, so the existing working state
-    // carries it and the user never has to type "continue".
-    //
-    // Every other ad-hoc phase falls through to the `return state` at the
-    // bottom of this block and is discarded as noise — which is exactly why
-    // this needs an explicit branch.
+    // Surface a rate-limit wait as live thought, not terminal failure, so a long intentional pause
+    // does not look like a hang.
     if (phase === 'rate_limited') {
       const text = event.message || event.content || 'Rate limited — waiting';
       // A fresh burst, not an append: this interrupts whatever the model was
@@ -791,11 +658,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       return { ...state, steps: stepsTimed };
     }
 
-    // Cell starting — already marked in_progress in .start, but if
-    // somehow we missed .start (out-of-order), upsert a step now.
-    // Either way, mark execution start (reasoning is over). When the
-    // event carries a tool_use_id, target the matching step
-    // explicitly so multi-cell turns don't time the wrong step.
+    // Mark execution start on the matching tool id; upsert if the earlier start event was missed.
     if (phase === 'scratchpad_start') {
       const toolUseId = event.tool_use_id || null;
       const patch = { executionStartedAt: eventTs };
@@ -847,11 +710,8 @@ export function reduceAll(events, initial = initialStreamState(), now = Date.now
 }
 
 /**
- * Parse a chunk of text from an SSE response body into discrete events.
- *
- * Returns { events, remainder } — `remainder` is the trailing partial
- * frame (no blank line yet) that the caller should prepend to the next
- * chunk. Each event has the JSON `data:` line already parsed.
+ * Return parsed JSON events and the trailing incomplete SSE frame as remainder; prepend it to the
+ * next chunk.
  */
 export function parseSSEChunk(buffer) {
   const events = [];

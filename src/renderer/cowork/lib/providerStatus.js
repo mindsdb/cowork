@@ -1,29 +1,9 @@
-// Pure derivations for LLM-provider connectivity state, shared by the Settings
-// LLM Providers rows and the Model Router picker so the two can't drift. No
-// hooks, no JSX — everything here is a function of the persisted status maps
-// plus a little view context, which keeps it directly unit-testable without
-// rendering SettingsView.
+// Shared provider-status derivations for Settings and the Model Router picker.
 
-// The connectivity facts for one provider type.
-//
-//   settled       — the status the UI rests at, with the view overrides applied:
-//                   MindsHub under an active SSO session always reads 'ok' (its
-//                   key lives server-side, so a stale local 'fail' shouldn't
-//                   show); any other provider reflects its persisted last-test
-//                   result once configured; an unconfigured provider has no
-//                   result to show ('untested'). Drives display + structural
-//                   decisions (e.g. whether a row shows its key input).
-//   raw           — the persisted last-test result, ignoring the SSO/configured
-//                   overrides. 'untested' when absent.
-//   failed        — raw === 'fail'. Deliberately keyed off raw, not settled:
-//                   the picker flags a provider by its recorded result.
-//   unconfigured  — carries no usable credential. An active SSO session is
-//                   MindsHub's credential (its key lives server-side), so an
-//                   SSO-connected MindsHub is never unconfigured.
-//   detail        — the persisted status detail string for this type ('' when
-//                   absent). Caller decides whether to gate it on `configured`.
-//   checking      — a recorded failure is being re-verified, so failure UI
-//                   should wait for the fresh result (ENG-1113).
+// settled applies display overrides: active SSO makes MindsHub ok, while unconfigured providers are
+// untested.
+// raw/failed retain the last test verdict; checking postpones failure UI during re-verification.
+// An SSO MindsHub key lives server-side and counts as configured. Callers gate detail visibility.
 export function deriveProviderStatus(type, {
   providerStatus = {},
   providerStatusDetails = {},

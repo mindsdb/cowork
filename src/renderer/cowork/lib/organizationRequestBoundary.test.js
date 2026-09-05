@@ -52,9 +52,8 @@ describe('expectedOrganizationHeaders', () => {
   });
 
   /*
-   * The server answers anything it cannot parse as a UUID with a mandatory
-   * reload, so pinning one of these would reload, pin it again, and reload
-   * again. Sending no header is the recoverable answer.
+   * Invalid UUID headers trigger mandatory reload; omit them to prevent repeatedly pinning a value
+   * that reloads again.
    */
   it.each([
     ['a bare id string', ORG_A],
