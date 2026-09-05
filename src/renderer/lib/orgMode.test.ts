@@ -22,9 +22,9 @@ describe('orgMode store', () => {
       seen += 1;
     });
     setOrgMode(true);
-    setOrgMode(true); // same value — no extra notification
+    setOrgMode(true);
     unsubscribe();
-    setOrgMode(false); // after unsubscribe — not counted
+    setOrgMode(false);
     expect(seen).toBe(1);
   });
 });

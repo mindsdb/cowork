@@ -57,10 +57,8 @@ describe('customTheme — light/dark background split', () => {
     expect(document.body.classList.contains('custom-bg-active')).toBe(false);
   });
 
-  // The window-level background (outside the sidebar) is otherwise hardcoded
-  // per stock theme by .gf-theme-light/.gf-theme-dark (styles.css), which
-  // never reference --bg — so without an inline override here, a custom
-  // background would only ever show up inside the sidebar.
+  // Stock window-background classes do not use --bg; a custom background needs an inline override
+  // outside the sidebar.
   describe('window-level background (outside the sidebar)', () => {
     it('sets an inline body background darker than the picked color', () => {
       applyCustomTheme({ ...DEFAULT_CUSTOM_THEME, bgDark: '#334455' }, 'dark');

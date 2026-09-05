@@ -2,9 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PERSONAL_ORG_LABEL } from '../../shared/minds-orgs';
 
-// Mock the keycloak-js constructor so importing this module never spins up a
-// real client. The returned singleton IS the module's exported `keycloak`, so
-// tests toggle `authenticated` on it to drive the two logout branches.
+// Mock the Keycloak constructor and toggle its exported singleton's authenticated state to test
+// logout without a real client.
 const instance = vi.hoisted(() => ({
   authenticated: false,
   subject: undefined as string | undefined,
