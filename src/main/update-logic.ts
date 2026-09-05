@@ -1,12 +1,4 @@
-// Pure decision logic shared by the installer (installer.ts) and the
-// updaters (server-updater.ts, ui-updater.ts). No fs, no child_process, no
-// electron, no network — every function here maps inputs to a decision, so
-// it can be unit-tested directly (qa.md §5a). The orchestration modules own
-// the I/O and delegate parsing/decisions here.
-//
-// compareVersions and the `uv tool list` parsing used to be duplicated
-// verbatim in installer.ts and server-updater.ts with "keep in sync"
-// comments; this module is now the single copy.
+// Shared pure parsing and update decisions; installer and updater modules own the I/O.
 
 // Pure CalVer helpers from the shared version module (no I/O) — used by the
 // OTA cache-freshness / update-newer decisions below.
@@ -14,21 +6,13 @@ import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 import type { ServerStartErrorKind } from '../shared/server-status';
 import type { UpdateCheckSummary } from '../shared/update-types';
 
-// ---------------------------------------------------------------------------
 // Version comparison
-// ---------------------------------------------------------------------------
 
-// A CalVer segment carrying a PEP 440 rc suffix, e.g. the "1rc2" in
-// 0.26.7.23.1rc2 (the staging pre-release track). Only this exact shape is
-// ordered specially; every other non-numeric segment keeps the historical
-// NaN comparison semantics (load-bearing for '.devN' git-install versions —
-// see parseInstalledVersion).
+// Only NrcM segments get prerelease ordering; retain existing NaN semantics for other nonnumeric
+// segments.
 const RC_SEGMENT = /^(\d+)rc(\d+)$/;
 
-/** Compare dotted versions. <0 if a<b, 0 if equal, >0 if a>b.
- *  Plain numeric segments compare numerically; an `NrcM` segment sorts
- *  before its own base release (X.1rc2 < X.1) and rc numbers order among
- *  themselves, mirroring PEP 440 for the staging rc stream. */
+/** Compare dotted versions numerically, with NrcM before its base release and ordered by rc number. */
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.');
   const pb = b.split('.');
@@ -54,16 +38,13 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-// Versions eligible for "latest on PyPI" selection: plain dotted CalVer with
-// an optional trailing rc suffix. Anything else (dev builds, local versions,
-// epochs) is not something the desktop should auto-update onto.
+// Admit dotted releases and trailing rc versions only; exclude dev/local versions and epochs.
 const SANE_PYPI_VERSION = /^\d+(\.\d+)*(rc\d+)?$/;
 
-/** Pick the newest installable version from a PyPI project JSON.
- *  Stable path (prod builds): trust `info.version`, which PyPI computes
- *  excluding pre-releases. Pre-release path (staging/preview builds): scan
- *  the `releases` map for the PEP 440 maximum across stable AND rc versions,
- *  skipping fully-yanked or empty releases and unparseable version strings. */
+/**
+ * Use info.version for stable builds; scan nonempty, non-yanked parseable releases when rc versions
+ * are allowed.
+ */
 export function selectLatestPypiVersion(input: {
   infoVersion: string | null;
   releases: Record<string, Array<{ yanked?: boolean }>> | null | undefined;
@@ -85,12 +66,10 @@ export function meetsMinVersion(installed: string, min: string): boolean {
   return compareVersions(installed, min) >= 0;
 }
 
-/** Extract the exact anton-agent pin from a wheel's Requires-Dist list.
- *  Staging rc wheels pin `anton-agent==<rc>`; the desktop must re-state that
- *  pin as a DIRECT requirement (`uv tool install ... --with anton-agent==X`)
- *  because uv honors pre-release markers only in direct requirements — left
- *  transitive, an rc pin makes the whole resolution fail. Returns null for
- *  loose constraints (stable wheels), where no direct restatement is needed. */
+/**
+ * Extract an exact Anton pin for direct restatement; uv does not admit transitive rc pins alone.
+ * Return null for loose constraints.
+ */
 export function parseAntonPin(requiresDist: unknown): string | null {
   if (!Array.isArray(requiresDist)) return null;
   for (const entry of requiresDist) {
@@ -101,46 +80,25 @@ export function parseAntonPin(requiresDist: unknown): string | null {
   return null;
 }
 
-/** Extract anton-agent's full version specifier set from a Requires-Dist list
- *  (e.g. `["anton-agent<3,>=2.26.6.30.1", "fastapi>=0.100"]` → `"<3,>=2.26.6.30.1"`).
- *
- *  Distinct return values, all load-bearing for the PyPI anton-only update
- *  check (ENG-1094):
- *   - the specifier string when anton-agent is required with a version bound —
- *     every unmarked `anton-agent` requirement is combined into one comma-joined
- *     conjunction (satisfiesAntonConstraint reads the clause set as an AND);
- *   - `""` when anton-agent is required with NO version bound (any version ok);
- *   - `null` when there is no anton-agent requirement, the input isn't a list,
- *     OR any `anton-agent` requirement carries a PEP 508 environment marker —
- *     the "couldn't safely read the constraint" case, which the check treats as
- *     fail-closed (see satisfiesAntonConstraint) rather than "anything goes".
- *
- *  We deliberately do NOT evaluate environment markers. A marker-qualified
- *  requirement (a different anton bound per python_version / platform, possibly
- *  mutually exclusive across entries) can't be reduced to a single applicable
- *  constraint without a full PEP 508 marker evaluator, and stripping the marker
- *  could offer an anton the installed wheel forbids on THIS interpreter — the
- *  exact resolve-failure loop this check exists to prevent. So the presence of
- *  any marker fails the whole read closed.
- *
- *  Distinct from parseAntonPin, which extracts only the `==` pin the staging rc
- *  stream needs restated on the command line; this returns the whole range so
- *  the updater can prove a candidate anton is permitted before offering it. */
+/**
+ * Return the conjunction of all unmarked Anton bounds, empty string for an unbounded requirement,
+ * or null if unreadable.
+ * Any environment marker makes the whole read fail closed: stripping it could offer a version
+ * forbidden on this interpreter.
+ * Unlike parseAntonPin, this returns the full permitted range.
+ */
 export function parseAntonConstraint(requiresDist: unknown): string | null {
   if (!Array.isArray(requiresDist)) return null;
   const specs: string[] = [];
   for (const entry of requiresDist) {
     if (typeof entry !== 'string') continue;
-    // `anton-agent` (word-boundaried so `anton-agent-foo` can't match), an
-    // optional `[extra]`, then the rest of the line: the specifier plus any
-    // PEP 508 `; environment marker`.
+    // Match the exact package name with optional extras, then capture its specifier and environment
+    // marker.
     const m = entry.match(/^\s*anton-agent(?![A-Za-z0-9_-])\s*(?:\[[^\]]*\])?\s*(.*)$/i);
     if (!m) continue;
     const rest = m[1];
     const semi = rest.indexOf(';');
-    // Any real environment marker fails the whole read closed (see above): we
-    // don't evaluate markers, so acting on a stripped constraint could offer a
-    // forbidden anton. A bare trailing `;` with nothing after it is not a marker.
+    // Fail closed on real environment markers; an empty trailing semicolon is not a marker.
     if (semi !== -1 && rest.slice(semi + 1).trim() !== '') return null;
     let spec = (semi === -1 ? rest : rest.slice(0, semi)).trim();
     // PEP 508 allows the specifier wrapped in parentheses: `anton-agent (>=2)`.
@@ -148,28 +106,16 @@ export function parseAntonConstraint(requiresDist: unknown): string | null {
     specs.push(spec);
   }
   if (specs.length === 0) return null;
-  // Combine every unmarked requirement; bare "" specs (declared with no bound)
-  // drop out, so an all-unbounded set collapses to "" (any version allowed).
   return specs.filter((s) => s !== '').join(',');
 }
 
-// A single PEP 440 comparison clause, e.g. `<3` or `>=2.26.6.30.1`. The version
-// charclass deliberately omits `*`, so a wildcard clause (`==2.*`) fails to
-// parse and the whole constraint fails closed (below) — we never offer an anton
-// we can't prove is allowed.
+// Exclude wildcards so unsupported clauses fail closed rather than offering an unproven version.
 const SPEC_CLAUSE = /^(<=|>=|==|!=|<|>)\s*([0-9A-Za-z.!+]+)$/;
 
-/** Does `version` satisfy an anton-agent specifier set (the string returned by
- *  parseAntonConstraint)? Comparison reuses compareVersions, the same CalVer
- *  ordering the rest of the updater uses.
- *
- *  Fail-closed by design — the whole point is to never install an anton the
- *  installed cowork-server forbids (which a `--with anton-agent==X` reinstall
- *  would then fail to resolve, looping the banner):
- *   - `null` constraint (couldn't be read) → false;
- *   - any clause we can't parse, or an operator we don't implement (`~=`,
- *     wildcards) → false;
- *   - `""` (declared with no bound) → true (any version allowed). */
+/**
+ * Require every clause to match. Null or unsupported operators/wildcards fail closed; empty string
+ * allows any version.
+ */
 export function satisfiesAntonConstraint(version: string, constraint: string | null): boolean {
   if (constraint === null) return false;
   const spec = constraint.trim();
@@ -184,11 +130,8 @@ export function satisfiesAntonConstraint(version: string, constraint: string | n
     switch (op) {
       case '<': {
         if (!(cmp < 0)) return false;
-        // PEP 440: `<V` must NOT match a pre-release of V's own release unless V
-        // is itself a pre-release. compareVersions orders `Vrc1` *before* `V`, so
-        // the bare `cmp < 0` above wrongly admits it — e.g. `2.26.8.9.1rc1` would
-        // satisfy `<2.26.8.9.1`, the very rc someone pins below during an incident.
-        // Exclude a candidate rc whose release equals V, when V is a full release.
+        // PEP 440 <V excludes V’s own prereleases unless V is itself a prerelease; numeric ordering
+        // alone would admit them.
         const vIsPre = /rc\d+$/.test(m[2]);
         const candBase = version.replace(/rc\d+$/, '');
         const candIsPre = candBase !== version;
@@ -199,21 +142,17 @@ export function satisfiesAntonConstraint(version: string, constraint: string | n
       case '>': if (!(cmp > 0)) return false; break;
       case '>=': if (!(cmp >= 0)) return false; break;
       case '==': if (cmp !== 0) return false; break;
-      default: if (cmp === 0) return false; break; // '!='
+      default: if (cmp === 0) return false; break;
     }
   }
   return true;
 }
 
-/** Newest anton-agent version on PyPI that BOTH satisfies cowork-server's
- *  Requires-Dist constraint AND is eligible for this build's stream.
- *
- *  Unlike selectLatestPypiVersion (which trusts `info.version` on the prod
- *  path), this always scans the releases map: anton-agent's own `info.version`
- *  could be a major outside cowork-server's range (a 3.x while the installed
- *  wheel requires `<3`), so the constraint must be applied to every candidate
- *  before taking the max. Pre-releases are excluded unless includePrereleases
- *  (the same stream gate cowork-server uses). Null when nothing qualifies. */
+/**
+ * Scan releases within the server’s Anton constraint and channel stream; info.version may be
+ * outside the permitted major.
+ * Return null when no version qualifies.
+ */
 export function selectLatestConstrainedPypiVersion(input: {
   releases: Record<string, Array<{ yanked?: boolean }>> | null | undefined;
   includePrereleases: boolean;
@@ -231,43 +170,29 @@ export function selectLatestConstrainedPypiVersion(input: {
   return candidates.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best));
 }
 
-// ---------------------------------------------------------------------------
-// `uv tool list` output → installed cowork-server version
-// ---------------------------------------------------------------------------
+// Installed version parsing
 
-/** Parse the cowork-server version out of `uv tool list` stdout.
- *  Strips ANSI escapes first: a forced-color environment (FORCE_COLOR set by
- *  `concurrently` in dev) makes uv emit `\x1b[1mcowork-server v0.1.6\x1b[0m`,
- *  which breaks a start-anchored regex and made verification fail with a
- *  misleading "binary not found". Callers also set NO_COLOR=1; this strip is
- *  the defensive second layer. */
+/** Strip ANSI escapes before parsing uv output, even when the caller also requests NO_COLOR. */
 export function parseInstalledVersion(stdout: string): string | null {
   // eslint-disable-next-line no-control-regex
   const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
   for (const line of clean.split('\n')) {
-    // Dotted release with an optional rc suffix (the staging pre-release
-    // stream). A bare [\d.]+ here once truncated 'X.2rc1' to the phantom
-    // release 'X.2', which both froze rc→rc updates (the phantom compares
-    // above every same-base rc) and made rollback pin a version that does
-    // not exist on PyPI. Local/dev tails ('.dev40+g…') are dropped.
+    // Preserve rc suffixes so X.2rc1 is not mistaken for the nonexistent/higher release X.2. Drop
+    // dev/local tails.
     const match = line.match(/^cowork-server\s+v?(\d+(?:\.\d+)*(?:rc\d+)?)/);
     if (match) return match[1];
   }
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// git ref / ls-remote parsing
-// ---------------------------------------------------------------------------
+// Git reference parsing
 
 /** A 40-hex ref IS a commit — no remote lookup needed. */
 export function isFullCommitSha(ref: string): boolean {
   return /^[0-9a-f]{40}$/i.test(ref);
 }
 
-/** Pick the HEAD commit for `ref` out of `git ls-remote` stdout.
- *  Prefers an exact heads/ or tags/ match; falls back to the first line.
- *  Null when the output has no usable SHA. */
+/** Prefer an exact head/tag ref; fall back to the first usable SHA, or null. */
 export function parseLsRemote(stdout: string, ref: string): string | null {
   const lines = stdout.split('\n').filter(Boolean);
   const pick =
@@ -277,18 +202,17 @@ export function parseLsRemote(stdout: string, ref: string): string | null {
   return sha || null;
 }
 
-// ---------------------------------------------------------------------------
-// direct_url.json → install-source detection
-// ---------------------------------------------------------------------------
+// Installed source detection
 
 export interface VcsInfo {
   commit: string;
   requestedRevision: string;
 }
 
-/** Parse a dist-info direct_url.json into VCS info. Null for a registry
- *  (PyPI) install — no vcs_info — or for malformed/unexpected content.
- *  This null is the git-vs-PyPI channel switch in the updater. */
+/**
+ * Return VCS metadata or null for registry/malformed input; this controls git-versus-PyPI update
+ * routing.
+ */
 export function parseVcsInfo(jsonText: string): VcsInfo | null {
   try {
     const data = JSON.parse(jsonText);
@@ -300,9 +224,7 @@ export function parseVcsInfo(jsonText: string): VcsInfo | null {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Update decisions
-// ---------------------------------------------------------------------------
 
 export interface GitUpdateDecision {
   coworkChanged: boolean;
@@ -310,11 +232,10 @@ export interface GitUpdateDecision {
   needsUpdate: boolean;
 }
 
-/** Git channel: update iff a remote HEAD differs from the installed commit.
- *  A null remote (ls-remote failed / offline) never triggers an update, and
- *  a missing anton VCS record (not a git install) is ignored rather than
- *  treated as changed — offline or partial state must fail safe to
- *  "no update", never to a surprise reinstall. */
+/**
+ * Update only changed resolved git commits. Offline remotes and absent Anton VCS metadata do not
+ * trigger reinstall.
+ */
 export function decideGitUpdate(input: {
   coworkRemote: string | null;
   antonRemote: string | null;
@@ -332,9 +253,10 @@ export type PypiUpdateDecision =
   | { action: 'up-to-date' }
   | { action: 'skip'; reason: 'unknown-installed-version' | 'no-latest-version' };
 
-/** PyPI channel: update iff PyPI has a strictly newer version. Unknown
- *  installed version is an error-ish skip (reported); an unreachable PyPI
- *  is a silent skip (offline is normal). */
+/**
+ * Update only to newer PyPI versions; report unknown installed versions, silently skip unreachable
+ * PyPI.
+ */
 export function decidePypiUpdate(
   currentVersion: string | null,
   latestVersion: string | null,
@@ -373,24 +295,13 @@ export function decideStreamRepair(input: {
   return { action: 'repair', from: input.currentVersion, to: input.latestVersion };
 }
 
-// ---------------------------------------------------------------------------
-// Boot-recovery: is a start failure a broken install?
-// ---------------------------------------------------------------------------
+// Boot recovery
 
-/** Does a failed-start crash log look like a broken/partial Python install —
- *  a missing module or an unimportable name — rather than a runtime or data
- *  failure (a bad Alembic migration, a port clash, missing config)?
- *
- *  Only a broken install is fixable by a clean `uv tool install --reinstall`.
- *  Reinstalling for anything else wastes minutes AND can corrupt an otherwise
- *  healthy venv when the reinstall races a concurrent start (observed: a repair
- *  reinstall fired on an Alembic "database ahead" error, then a post-onboarding
- *  restart spawned python mid-reinstall → spurious ModuleNotFoundError). So the
- *  boot-recovery path gates the reinstall on this returning true.
- *
- *  Matches only the specific import-failure markers CPython emits — not the
- *  bare word "import", which appears in benign frames like
- *  `<frozen importlib._bootstrap>` inside an unrelated (e.g. migration) trace. */
+/**
+ * Recognize explicit Python import failures that reinstall can repair; ignore migration/port/config
+ * failures.
+ * Do not match the bare word import, which also appears in unrelated tracebacks.
+ */
 export function looksLikeBrokenInstall(log: string | null | undefined): boolean {
   if (!log) return false;
   return /\bModuleNotFoundError\b|\bImportError\b|No module named|cannot import name|\(unknown location\)/.test(
@@ -398,32 +309,18 @@ export function looksLikeBrokenInstall(log: string | null | undefined): boolean 
   );
 }
 
-// ---------------------------------------------------------------------------
-// Update-poll apply decision
-// ---------------------------------------------------------------------------
+// Update application
 
 export interface UpdateApplyDecision {
   applyServer: boolean;
   applyUi: boolean;
 }
 
-/** Decide what a boot/periodic update poll should actually apply.
- *
- *  - A **down server** is a recovery case: apply an available server update
- *    regardless of update mode or whether this is the boot check — a newer
- *    build may be what fixes the crash. This is why the boot update check must
- *    not be gated behind a successful server start.
- *  - Otherwise updates auto-apply only on the boot check in `auto` mode; a
- *    `manual` mode or a periodic re-check just surfaces a banner (caller).
- *
- *  UI never force-applies on a down server — a dead backend is a server
- *  problem, and forcing a UI swap + reload mid-recovery adds churn without
- *  fixing anything.
- *
- *  ENG-858: `mode` is no longer a user-facing setting — everyone gets `auto`
- *  unless `UI_UPDATE_MODE=manual` is hand-set in `~/.anton/.env` (support /
- *  QA escape hatch). The parameter and this decision logic are unchanged;
- *  only the Settings UI control that used to feed it was removed. */
+/**
+ * Recover a down server regardless of mode or poll timing. Otherwise auto-apply only during
+ * auto-mode boot checks.
+ * Do not force UI reload for server-down recovery; manual/periodic checks only advertise it.
+ */
 export function decideUpdateApply(input: {
   serverUpdateAvailable: boolean;
   uiUpdateAvailable: boolean;
@@ -442,9 +339,7 @@ export function decideUpdateApply(input: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// On-demand "Check for updates" summary (ENG-671)
-// ---------------------------------------------------------------------------
+// On-demand update summary
 
 /** A confirmed update wins over an error from another channel. With no update,
  * any channel error makes the result inconclusive; both errors imply offline. */
@@ -490,15 +385,9 @@ export function summarizeUpdateCheck(input: {
   return summary;
 }
 
-// ---------------------------------------------------------------------------
-// UI OTA enablement (build-channel / env gate)
-// ---------------------------------------------------------------------------
+// UI OTA enablement
 
-/** Should we serve an activated OTA cache over the app-bundled renderer?
- *  Only when the cache is genuinely NEWER than the bundled renderer: a fresh
- *  install or a shell upgrade ships a newer bundled UI that must win over a
- *  stale cache, and a legacy pre-gate cache (or any unparseable version) is
- *  never considered fresh — so it fails safe to the bundled renderer. */
+/** Serve only valid caches newer than bundled UI; stale or unparseable caches fall back to bundled. */
 export function otaCacheIsFresh(cachedVersion: string | null, bundledVersion: string): boolean {
   const c = parseCalVer(cachedVersion);
   const b = parseCalVer(bundledVersion);
@@ -506,13 +395,10 @@ export function otaCacheIsFresh(cachedVersion: string | null, bundledVersion: st
   return compareCalVer(c, b) > 0;
 }
 
-/** Is a manifest bundle worth announcing/applying? Only when it is strictly
- *  newer than the *effective installed UI* — the newest of the app-bundled
- *  renderer and the raw current-slot cache. This prevents (a) a fresh install
- *  re-downloading the same version it already ships (bundled == manifest), and
- *  (b) a regressed manifest downgrading a newer current cache. Unparseable
- *  manifest → never (can't validate); nothing parseable installed → treat as
- *  newer (first real cache). */
+/**
+ * Require a parseable manifest newer than both bundled and cached UI.
+ * If neither installed version parses, allow the first valid cache.
+ */
 export function uiUpdateIsNewer(
   manifestVersion: string,
   bundledVersion: string,
@@ -525,16 +411,10 @@ export function uiUpdateIsNewer(
   return compareCalVer(m, installed) > 0;
 }
 
-/** Should UI OTA hot-updates run in this build?
- *
- *  Replaces the old hardcoded `OTA_UI_DISABLED = true` constant (ENG-670) with
- *  a channel/env gate so enabling OTA is never a hand-edited source flip:
- *   - an explicit env override wins, for QA/testing: `OTA_UI=on|off`
- *     (also accepts 1/true/enable and 0/false/disable);
- *   - otherwise OTA is ON only for `prod` (release) builds. `preview`/`stable`
- *     (staging) and `dev` keep their bundled branch-under-test UI, so testers
- *     always run the renderer built from the branch;
- *   - an unknown build kind fails safe to OFF — never hot-update blind. */
+/**
+ * Explicit OTA_UI overrides win; otherwise enable only prod, preserving other channels’ bundled UI.
+ * Unknown build kinds disable OTA.
+ */
 export function otaUiEnabled(input: {
   buildKind: string | null | undefined;
   envOverride?: string | null;
@@ -545,37 +425,23 @@ export function otaUiEnabled(input: {
   return input.buildKind === 'prod';
 }
 
-// ---------------------------------------------------------------------------
 // UI OTA manifest
-// ---------------------------------------------------------------------------
 
 export interface UIManifest {
   version: string;
   url: string; // GitHub Release asset download URL
   sha256: string;
-  minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
-  // Optional CalVer of the newest *shell* (installer) published alongside this
-  // manifest (ENG-849). Distinct from `version` (the UI-bundle version): the
-  // publish workflow only emits it on the release path, where an installer
-  // actually ships — so it never falsely advertises a reinstall for a UI-only
-  // publish. Absent → no shell-update notice.
+  minServerVersion?: string; // Optional server floor and shell release version. Shell version is emitted only when an installer
+// ships;
+// absence means no shell-update notice.
   shellVersion?: string;
 }
 
-/** Should a UI bundle be withheld because the running server can't be shown to
- *  satisfy its declared floor? A safety net ON TOP OF the server-first update
- *  coupling — it covers what coupling can't: UI-only passes, pinned/PyPI server
- *  refs that can't roll forward, and publish-order races. Returns a
- *  human-readable reason to skip, or null to allow.
- *
- *  A *declared* floor fails CLOSED — the whole point of a declared constraint is
- *  to protect the user exactly when compatibility is unknown:
- *   - no/absent floor → allow (absence is the explicit opt-out);
- *   - floor present but not CalVer → skip (a floor we can't interpret is not a
- *     licence to ship);
- *   - floor present but the running server version is unknown/unparseable
- *     (server down, /health timeout, older server omits server_version) → skip;
- *   - server older than the floor (by CalVer date/seq, MAJOR ignored) → skip. */
+/**
+ * No floor allows the UI. A declared floor fails closed if invalid, unverifiable or newer than the
+ * running server.
+ * Compare CalVer date/sequence, ignoring major; return a skip reason or null.
+ */
 export function uiServerCompatSkipReason(input: {
   minServerVersion?: string | null;
   serverVersion: string | null;
@@ -592,9 +458,7 @@ export function uiServerCompatSkipReason(input: {
   return null;
 }
 
-/** Validate a fetched latest.json body into a UIManifest, or null.
- *  Field types are checked (not just presence) — this output drives the OTA
- *  download + extract, so nothing non-string may pass as validated. */
+/** Validate manifest field types before they drive download/extraction. */
 export function parseUiManifest(jsonText: string): UIManifest | null {
   try {
     const data = JSON.parse(jsonText);
@@ -602,21 +466,15 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
     if (!isNonEmptyString(data?.version) || !isNonEmptyString(data?.url)) return null;
     if (typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) return null;
     const manifest: UIManifest = { version: data.version, url: data.url, sha256: data.sha256 };
-    // Optional server-compat floor (camelCase or the snake_case the publish
-    // workflow writes). The publisher omits the field entirely when no floor is
-    // intended, so a field that is *present but not a valid non-empty string*
-    // is a malformed constraint — reject the whole manifest rather than silently
-    // treat it as unconstrained (that would be a fail-open hole).
+    // Reject a present but invalid server floor; silently dropping it would make a constrained
+    // bundle unrestricted.
     const msv = data.minServerVersion ?? data.min_server_version;
     if (msv !== undefined && msv !== null) {
       if (!isNonEmptyString(msv)) return null;
       manifest.minServerVersion = msv;
     }
-    // Optional shell (installer) version (ENG-849), accepting the camelCase the
-    // publish workflow writes plus a snake_case / nested `shell.version` form.
-    // Advisory-only — it drives a download-link notice, never a download/extract
-    // — so a malformed value is simply ignored (kept absent), NOT a reason to
-    // reject the whole manifest and break OTA.
+    // Shell version is advisory: accept supported aliases and ignore malformed values without
+    // rejecting UI updates.
     const sv = data.shellVersion ?? data.shell_version ?? (data.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
     if (isNonEmptyString(sv)) manifest.shellVersion = sv;
     return manifest;
@@ -626,17 +484,10 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
 }
 
 export interface InstallerStepPlan {
-  /** macOS needs the Xcode CLT step only for git-channel installs: uv shells
-   *  out to real git there, and Apple's /usr/bin/git shim demands the CLT.
-   *  Wheel installs never touch git, so a stock Mac installs clean. */
+  /** Git-channel macOS installs require CLT; wheel installs do not. */
   needsXcodeStep: boolean;
-  /** Whether the installer includes a git step at all. Only the git channel
-   *  needs git (uv shells out to fetch a git+https source); a pypi install is
-   *  wheels-only, so the git check is omitted entirely rather than shown as a
-   *  passing/warning row a user reads as a scary near-miss. */
+  /** Show the git prerequisite step only for git-channel installs. */
   showGitStep: boolean;
-  /** Whether a missing git aborts the install. Consulted only when the git
-   *  step is shown (git channel); uv cannot fetch git sources without it. */
   gitRequired: boolean;
 }
 
@@ -649,30 +500,17 @@ export function installerStepPlan(platform: string, channel: 'git' | 'pypi'): In
   };
 }
 
-// ---------------------------------------------------------------------------
-// Sidecar start: how long to keep waiting, and what to say when we stop
-// ---------------------------------------------------------------------------
+// Sidecar startup decisions
 
 export type StartWaitStep =
   | { action: 'ready' }
   | { action: 'poll' }
   | { action: 'fail'; kind: Exclude<ServerStartErrorKind, 'not-installed'> };
 
-/** One iteration of the start wait: is the sidecar up, should we keep waiting,
- *  or is it over?
- *
- *  This replaces a flat "give up after N ms" timer, which was wrong in both
- *  directions: a slow-but-healthy machine got killed mid-import, and a sidecar
- *  that died in the first second still made the user wait out the whole timer
- *  to be told nothing useful. Waiting on liveness instead means a slow start
- *  succeeds and a dead one is reported the moment it dies.
- *
- *  Health is evaluated BEFORE liveness on purpose. Both spawn targets normally
- *  wait on python and forward its exit code, so an exit really is the end — but
- *  the two are reported through different channels and can land out of order,
- *  and a launcher that hands off without waiting would look identical to a
- *  crash. Asking "did it answer /health" first means a server that is provably
- *  up is never called dead over a technicality about who its parent was. */
+/**
+ * Check health before launcher liveness: the server may answer after its launcher hands off/exits.
+ * Otherwise fail immediately on child death and bound a live startup by its cap.
+ */
 export function decideStartWait(input: {
   healthy: boolean;
   incompatible?: boolean;
@@ -696,12 +534,10 @@ function formatElapsed(ms: number): string {
   return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
 }
 
-/** The one-line failure the diagnostics panel shows.
- *
- *  Each kind gets its own sentence. They all used to collapse into "Server did
- *  not respond on /health within 15000ms", which described the app's timer
- *  rather than anything that happened to the backend, and read identically
- *  whether the process had crashed instantly or was importing normally. */
+/**
+ * Report the backend’s actual failure kind rather than the same health-timeout message for every
+ * failure.
+ */
 export function startFailureMessage(input: {
   kind: Exclude<ServerStartErrorKind, 'not-installed'>;
   exitCode: number | null;
@@ -722,9 +558,7 @@ export function startFailureMessage(input: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Shell (installer) update notice (ENG-849)
-// ---------------------------------------------------------------------------
+// Shell update notice
 
 const SHELL_DOWNLOADS_BASE = 'https://downloads.mindshub.ai/mindshub-cowork';
 
@@ -739,19 +573,15 @@ export function shellUpdateIsNewer(
   return compareCalVer(latest, installed) > 0;
 }
 
-/** Shell auto-updater phases that mean a user-visible update is in flight, so a
- *  manual "check for updates" must NOT report "up to date". Excludes passive
- *  (idle/checking/disabled), terminal (complete) and failed phases. */
+/** Treat active shell-update phases as pending so a manual check cannot report up to date. */
 export function shellAutoUpdateIsActive(phase: string): boolean {
   return phase === 'available' || phase === 'downloading' || phase === 'ready-to-install';
 }
 
-/** Whether the ENG-849 manual installer notice is the fallback path for a shell
- *  update — i.e. ENG-850 auto-update is NOT the live one. True only when
- *  auto-update is disabled (kill switch / unsupported channel) or has failed
- *  terminally; a recoverable failure still retries through the auto-updater.
- *  When auto-update is enabled and healthy it owns the shell update and surfaces
- *  it itself, so the redundant prod manifest poll can be skipped. */
+/**
+ * Use the manual notice only when auto-update is disabled or terminally failed; recoverable errors
+ * still retry automatically.
+ */
 export function shellManualNoticeIsFallback(
   phase: string,
   recoverable: boolean | undefined,

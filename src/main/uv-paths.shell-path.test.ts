@@ -53,9 +53,7 @@ describe('primeLoginShellPath', () => {
   });
 
   it('puts the resolved shell PATH ahead of the hardcoded package-manager dirs', async () => {
-    // Same ordering concern as the inherited-PATH case: the shell probe
-    // encodes the user's real preference and must not be shadowed by the
-    // Homebrew/MacPorts/Linuxbrew fallback list.
+    // Preserve shell-resolved PATH priority over package-manager fallback directories.
     if (process.platform === 'win32') return;
     vi.mocked(cp.execFile).mockImplementation(((
       _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
@@ -154,10 +152,8 @@ describe('primeLoginShellPath', () => {
   });
 
   it('resolves within a bounded time even if the shell callback never fires at all', async () => {
-    // The empirically-confirmed failure mode: a blocked interactive shell
-    // (stuck on `read`, ignoring SIGTERM) whose execFile callback never
-    // runs. SIGKILL closes most of this, but resolution must not depend
-    // on the child actually dying — a hard timer must win regardless.
+    // A stuck shell can ignore termination and never invoke its callback; the absolute timer must
+    // resolve independently.
     if (process.platform === 'win32') return;
     vi.useFakeTimers();
     try {
@@ -167,7 +163,7 @@ describe('primeLoginShellPath', () => {
 
       const done = primeLoginShellPath();
       await vi.advanceTimersByTimeAsync(10_000);
-      await done; // must not hang — this line is the assertion
+      await done;
 
       // The cache landed on a real value (not stuck at "not yet primed"),
       // so a later call doesn't spawn a second, equally stuck shell.
