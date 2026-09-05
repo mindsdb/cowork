@@ -3,12 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-// The web SPA is served over http with a `/` base and has deep client-side
-// routes (`/c/:id`, `/projects/:id`). A `./`-relative asset ref in the entry
-// HTML resolves against the *route* path, so a deep-route refresh requests e.g.
-// `/c/web-main.tsx` → 404 → blank screen (ENG-1233). Every asset must be
-// root-absolute. (The Electron entry `index.html` is deliberately the opposite:
-// it loads over file://, so it uses `./`.)
+// Web assets need root-absolute URLs for deep routes; Electron's file entry needs relative URLs.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(path.resolve(__dirname, 'index-web.html'), 'utf-8');
 

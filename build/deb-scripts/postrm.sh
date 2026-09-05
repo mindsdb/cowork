@@ -25,26 +25,13 @@ if [ -f "$APPARMOR_PROFILE_DEST" ]; then
   fi
   rm -f "$APPARMOR_PROFILE_DEST"
 fi
-# ─────────────────────────────────────────────────────────────────────────────
-# MindsHub additions below this line. Everything above is electron-builder's
-# after-remove.tpl verbatim — `deb.afterRemove` REPLACES that script rather than
-# adding to it, so dropping it would leave the /usr/bin alternative and the
-# AppArmor profile behind. deb-maintainer-scripts.invariant.test.ts fails if
-# upstream's copy changes.
-# ─────────────────────────────────────────────────────────────────────────────
+# MindsHub additions below this line. Preserve the upstream prefix: afterRemove replaces electron-builder's template.
 
-# Captured before anything below runs — a function definition alone would
-# already have reset it. Everything after this point is best-effort and must
-# not change whether dpkg considers the removal successful.
+# Capture upstream status before anything resets it; cleanup must not change package-removal success.
 upstream_status=$?
 
-# The postinst stages server-credentials.json into the installing user's home.
-# The app deletes it once the values reach the secure store, so it is normally
-# gone by now — but an install that was never launched leaves real OAuth
-# secrets sitting in a home directory after the package is gone.
-#
-# Only on remove/purge: dpkg also calls this with `upgrade`, where the new
-# version's postinst re-stages the file and deleting it here would race that.
+# Remove staged credentials left by an install that never launched.
+# Run only on remove/purge; upgrade cleanup would race the new postinst staging.
 case "${1:-}" in
   remove|purge) ;;
   *) exit "$upstream_status" ;;
@@ -65,9 +52,7 @@ cleanup_cowork_credentials() (
   [ -n "$HOME_DIR" ] && [ -d "$HOME_DIR" ] || exit 0
   command -v runuser >/dev/null 2>&1 || exit 0
 
-  # As the user, for the same reason the postinst stages as the user: root
-  # following a path under a user-writable home would delete through a
-  # pre-planted ~/.cowork-provision symlink.
+  # Delete as the user to avoid root following planted symlinks in a user-owned home.
   runuser -u "$TARGET_USER" -- /bin/sh -c '
         set -u
         dest_dir="$1/.cowork-provision"

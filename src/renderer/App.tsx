@@ -18,20 +18,14 @@ import { deriveBootStatus } from '../shared/boot-status';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
-// Onboarding flow:
-//   loading (welcome orb) → auth (sign in / register / continue without) →
-//   setup (install) → terminal. Agent + theme are not onboarding steps; the
-//   look (arcade ↔ normal) is toggled via the corner controller button.
+// Boot routes through loading, authentication and installation before mounting the workspace.
 type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
 const COWORKER_KEY = 'anton.coworker';
-// Minimum time the welcome orb stays up so it doesn't flash on fast boots.
-// The boot veil only briefly masks the window-show moment (~140ms + ~260ms
-// fade), so the animated orb is on screen almost immediately and stays for
-// roughly this long before routing onward.
+// Keep fast cold boots from flashing the welcome orb.
 const WELCOME_MIN_MS = 1600;
 
 function hasCodeFixture(): boolean {
@@ -85,26 +79,18 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 }
 
 export default function App() {
-  // Code fixtures are a development-only visual QA surface. Let them bypass
-  // first-run/auth routing so interrupted, approval, failure, dense, and
-  // responsive states stay deterministic even on a clean local profile.
+  // Development-only fixtures bypass onboarding so visual QA states are deterministic on a clean
+  // profile.
   const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
   const [coworker] = useState(recallCoworker);
-  // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
-  // setup/install screen (server wasn't up to take the DB write). Consumed once
-  // by handlePostAuth after install. A ref (not state) — it drives a one-shot
-  // side effect, not a render; it also must survive the auth→setup→install page
-  // transitions without re-rendering.
+  // Retain deferred onboarding model writes across setup/install transitions; handlePostAuth
+  // replays them once the server is ready.
   const deferredModelRef = useRef<string[] | null>(null);
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // ENG-749/ENG-2296: progress line under the welcome orb while the loading
-  // screen is held open through a boot-time update, so a download isn't a silent
-  // stall. Derived from the OTA phase, the shell-auto phase, and the manual
-  // shell-reinstall notice (deriveBootStatus) so the overlay never shows the
-  // completion-ish "Almost ready…" while a shell update still needs a relaunch
-  // to take effect.
+  // Include all update channels so the boot overlay cannot imply completion while a shell restart
+  // is pending.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
   const [shellPhase, setShellPhase] = useState<string | null>(null);
   const [manualShellPending, setManualShellPending] = useState(false);
@@ -113,10 +99,7 @@ export default function App() {
     shell: { phase: shellPhase },
     manualShellPending,
   });
-  // No setter needed here — the onboarding corner no longer offers a skin
-  // toggle (light/dark only), but a page already in the 8bit skin (set via
-  // the in-app Settings on a prior visit) still reads it to render in that
-  // style.
+  // Onboarding reads the saved skin but offers only a light/dark toggle.
   const [skin] = useState(loadSkin);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -145,11 +128,8 @@ export default function App() {
     applyArcadePreset(skin);
   }, [theme, skin]);
 
-  // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
-  // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` isn't an OTA phase but the manual shell-reinstall notice
-  // (ENG-849), so route it to the pending flag — never claim completion while a
-  // reinstall is outstanding — rather than the OTA phase (ENG-2296).
+  // Track OTA for the lifetime of the boot gate; shell-available is a separate pending manual
+  // reinstall.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       if (status?.phase === 'shell-available') { setManualShellPending(true); return; }
@@ -157,10 +137,8 @@ export default function App() {
     });
   }, []);
 
-  // Also reflect shell auto-update progress (ENG-2296): the boot line was
-  // previously blind to the shell channel and could claim "Almost ready…" while
-  // a shell relaunch was still pending. Pull once for reload recovery, then
-  // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  // Pull shell state for reload recovery and subscribe to live progress. These host calls are
+  // no-ops on web.
   useEffect(() => {
     let cancelled = false;
     host.getShellAutoUpdate()
@@ -172,10 +150,8 @@ export default function App() {
     return () => { cancelled = true; unsubscribe(); };
   }, []);
 
-  // Recover the manual shell-reinstall notice after an OTA reload drops the
-  // original `shell-available` push, and surface it on old shells that never
-  // push it at all (ENG-1103 manifest fallback in getShellUpdate). Latch-only:
-  // a null result never clears a notice a push already established.
+  // Recover missed manual notices after reload and on old shells. A null pull must not clear a
+  // notice already pushed.
   useEffect(() => {
     let cancelled = false;
     host.getShellUpdate()
@@ -188,43 +164,22 @@ export default function App() {
     if (hasCodeFixture()) return;
     async function init() {
       const started = Date.now();
-      // Whether this browser has booted before is read up front: the web SPA
-      // re-mounts on every refresh, and a returning session shouldn't replay the
-      // artificial welcome floor (ENG-1232). welcomeFloorMs gates purely on
-      // isWeb, so Electron always keeps the floor regardless of this flag (it
-      // rarely re-mounts anyway — only on things like a sign-out reload).
+      // Returning web visits skip the artificial welcome delay; Electron always keeps it.
       const bootedBefore = hasBootedBefore();
-      // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
-      // readSettings() is best-effort there, so a hosted-web /settings/raw 403
-      // (ENG-817) can't abort the gate and strand a configured instance on the
-      // auth screen; config_ready (health) drives the real decision.
-      // hasLocalTermsConsent() is internally try/caught (returns false on any
-      // localStorage error), so calling it outside resolveBootTarget's guard is
-      // safe — it can't throw and escape init() (ENG-848 review note).
-      // ENG-2167: third consent source. On hosted web the first two can never
-      // fire — readSettings degrades to {} and cowork-server has no
-      // ANTON_TERMS_CONSENT — so localStorage was the only one left, and it is
-      // per-browser. Registration already agreed the same Terms and Privacy
-      // Policy. Resolved here rather than inside resolveBootTarget so that unit
-      // stays free of module loading, and never throws (see its doc comment).
+      // Hosted web cannot read raw settings; registration consent avoids repeating consent on each
+      // browser. Resolve the web-only module here, outside the pure boot decision.
       const decision = await resolveBootTarget(
         host,
         hasLocalTermsConsent(),
         await resolveRegistrationConsent(host.isWeb, () => import('./lib/keycloak')),
       );
       const target: Page = decision.target;
-      // Fail-safe for an unresolved mode: treat it as org in the web build. The
-      // opposite default would render desktop-only artifact actions (Share,
-      // Update, the iframe preview) in an org deployment whose /health blipped.
+      // Unknown web tenancy fails closed to org mode, keeping desktop-only artifact actions hidden.
       setOrgMode(decision.orgMode ?? host.isWeb);
-      // ENG-921: record the resolved first screen + ground-truth server-install
-      // state before sign-in, so first-run breakage between download and a
-      // healthy server is measurable (app_installed only fires once the server
-      // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
+      // Record the first screen before sign-in, including installs that never reach a healthy
+      // server.
       void trackBootScreenResolved(target);
-      // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
-      // start — but skip that floor on a web refresh, where it was pure latency
-      // on every reload (ENG-1232).
+      // Skip the welcome floor on returning web visits.
       const floor = welcomeFloorMs({
         isWeb: host.isWeb,
         bootedBefore,
@@ -234,29 +189,16 @@ export default function App() {
       if (floor > 0) {
         await new Promise((r) => setTimeout(r, floor));
       }
-      // Mark this browser "booted" on every boot, including boots that land on
-      // 'auth': the login screen is a place web users sit and refresh, and
-      // gating the flag on the target would replay the floor on every such
-      // refresh — exactly the latency ENG-1232 removes. The only cost is
-      // cosmetic: if the very first boot ever errored to 'auth' (server
-      // unreachable), the next boot skips the floor, which is fine — a second
-      // mount is not a genuine cold start.
+      // Count auth-screen boots too so refreshing the login page does not replay the delay.
       rememberBooted();
       setPage(target);
     }
     init();
   }, []);
 
-  // Common final step for every path that leads to the chat UI:
-  // push any credentials sitting in ~/.cowork/.env into the server DB so
-  // config_ready is true on first mount. Called from both the already-installed
-  // login path and the post-install path so the handshake is never skipped.
+  // Run the settings/model handshake on both existing-install and post-install login paths.
   const handlePostAuth = async () => {
-    // Push .env credentials into the DB, then replay any deferred onboarding
-    // model (see deferredModelRef). Decision extracted to runPostAuthHandshake
-    // so the exhausted-retry transition — route to a retryable error instead of
-    // silently entering the app config-not-ready — is unit-tested without
-    // rendering App (ENG-922, #455 review).
+    // Keep failed model replay retryable; bulk settings sync cannot recover an omitted model write.
     const res = await runPostAuthHandshake({
       readSettings: () => host.readSettings(),
       syncSettingsToDb,
@@ -267,22 +209,14 @@ export default function App() {
     setPage(res.next);
   };
 
-  // After login (SSO or BYOK): consent is recorded and a provider is saved.
-  // Ensure the backend is installed, then run the credential handshake.
-  // `deferredModelLines` is present only when onboarding deferred to setup (the
-  // fresh-install/server-not-up race, ENG-922); stashed for handlePostAuth to
-  // replay once install finishes.
+  // Keep deferred model lines until installation and the post-auth handshake finish.
   const handleAuthComplete = async (deferredModelLines?: string[]) => {
     deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
-    /* The sidecar deliberately keeps running here. `persistOnboarding` has
-     * already written every setting to it over loopback and treats that DB
-     * write as authoritative, so a fresh process would only read back what
-     * this one already holds. Restarting would also throw away the MindsHub
-     * credential, which lives in the sidecar's memory and nowhere else.
-     * `syncMindsCredential` hands it to the replacement before `startServer`
-     * resolves, so the restart buys a stop, a cold start and a re-push, and
-     * changes nothing the user can see. */
+    /*
+     * Keep the sidecar running: onboarding already wrote its authoritative DB settings. Restarting
+     * adds a cold boot and credential handoff without changing the configuration.
+     */
     try {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) {
@@ -354,15 +288,10 @@ export default function App() {
 
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Theme toggle on the onboarding corner. CoworkApp hasn't mounted
-          yet on these pages (no sidebar to host it), so the pre-app flow
-          keeps its own floating corner toggle — namespaced `arcade-*`
-          (arcade.css) so it's independent of the in-app sidebar footer
-          toggle (Sidebar.jsx) that replaced the old shared floating-chrome
-          buttons. Just light/dark here, matching the rest of the app — no
-          8-bit skin toggle button; a page already in the 8bit skin (from a
-          prior visit) still renders in it, there's just no control to
-          switch into/out of it from onboarding. */}
+      {/*
+ * Onboarding owns its theme toggle before CoworkApp mounts. It honors the saved skin but only
+ * switches light/dark.
+ */}
       {isArcadePage && (
         <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
           <button

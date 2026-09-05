@@ -56,30 +56,16 @@ if apparmor_status --enabled > /dev/null 2>&1; then
   fi
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MindsHub additions below this line. Everything above is electron-builder's
-# after-install.tpl verbatim — `deb.afterInstall` REPLACES that script rather
-# than adding to it, so dropping it would cost the /usr/bin symlink, the
-# chrome-sandbox mode Electron needs to start, and the AppArmor profile.
-# deb-maintainer-scripts.invariant.test.ts fails if upstream's copy changes.
-#
-# Keep this block LAST and in a subshell: its early exits then end the block,
-# never the steps above. Note electron-builder text-substitutes dollar-brace
-# NAME placeholders in this file and throws on an unknown one; only `executable`
-# and `sanitizedProductName` are defined. Comments are not exempt, so every
-# other such reference here contains `_` or `:-`, which its matcher skips.
-# ─────────────────────────────────────────────────────────────────────────────
+# MindsHub additions below this line. Preserve the upstream prefix: afterInstall replaces electron-builder's template.
+# Keep best-effort additions last and in a subshell; retain upstream exit status.
+# electron-builder substitutes dollar-brace names even in comments; only executable/sanitizedProductName exist.
+# Other references need an underscore or :- to avoid matching.
 
-# Captured before anything below runs — a function definition alone would
-# already have reset it. Everything after this point is best-effort and must
-# not change whether dpkg considers the install successful.
+# Capture upstream status before any function definition resets it; staging must not change install success.
 upstream_status=$?
 
-# Moves the OAuth credentials out of root-owned /opt, where the app could never
-# delete them, into a private copy in the installing user's home. Without this
-# the plaintext secrets sit world-readable forever and every launch logs a
-# failed cleanup. Never fails the install: if staging doesn't happen, the app
-# still reads the packaged copy via getCandidateStagingPaths()'s fallback.
+# Move credentials out of root-owned /opt so the app can delete them after provisioning.
+# Staging is best-effort; getCandidateStagingPaths retains a packaged-file fallback.
 stage_cowork_credentials() (
   set -u
 
@@ -87,9 +73,7 @@ stage_cowork_credentials() (
     echo "[cowork-postinst] $*" >&2
   }
 
-  # Scope the lookup to THIS package's own file list. A bare /opt/*/ glob would
-  # take the first match in all of /opt — staging, and then deleting, a
-  # same-named file belonging to some other electron app installed there.
+  # Use only this package's file list; an /opt glob could copy and delete another app's credentials.
   SRC_FILE=""
   if [ -n "${DPKG_MAINTSCRIPT_PACKAGE:-}" ] && command -v dpkg-query >/dev/null 2>&1; then
     SRC_FILE=$(dpkg-query -L "$DPKG_MAINTSCRIPT_PACKAGE" 2>/dev/null \
@@ -97,17 +81,13 @@ stage_cowork_credentials() (
       | head -n 1)
   fi
 
-  # No glob fallback on purpose: if the file can't be attributed to this package,
-  # leaving it for the app's own fallback beats touching another package's data.
+  # Do not glob-fallback when ownership cannot be established.
   if [ -z "$SRC_FILE" ] || [ ! -f "$SRC_FILE" ]; then
     log "no server-credentials.json in this package's payload — nothing to stage"
     exit 0
   fi
 
-  # Who to stage for. sudo exports SUDO_USER, pkexec exports PKEXEC_UID. A
-  # PackageKit-backed GUI install (GNOME Software, KDE Discover) runs from a
-  # system daemon and exports neither, as does an unattended or container
-  # install — not an error, but see the note at the bottom.
+  # sudo/pkexec identify an installing user; PackageKit daemons and unattended installs may provide neither.
   TARGET_USER=""
   if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
     TARGET_USER="$SUDO_USER"
@@ -131,11 +111,7 @@ stage_cowork_credentials() (
     exit 0
   fi
 
-  # Staged BY the target user, not by root: root writing through a path under a
-  # user-writable home means a pre-planted ~/.cowork-provision symlink would have
-  # root create, copy, and chown through it. Dropping privileges first removes
-  # that entirely, and makes ownership correct without any chown. umask 077 so
-  # the directory and file are born private rather than narrowed a moment later.
+  # Stage as the target user with umask 077; root writes through user-owned paths could follow planted symlinks.
   if runuser -u "$TARGET_USER" -- /bin/sh -c '
         set -u
         umask 077
@@ -144,17 +120,14 @@ stage_cowork_credentials() (
         mkdir -p "$dest_dir" || exit 1
         cp "$2" "$dest_dir/server-credentials.json"
       ' sh "$HOME_DIR" "$SRC_FILE"; then
-    # Only once a private copy is confirmed: /opt is root-owned, so this is the
-    # one moment anything can remove the world-readable original.
+    # Delete the root-owned original only after confirming a private staged copy.
     rm -f "$SRC_FILE"
     log "staged credentials for ${TARGET_USER} and removed the packaged copy"
   else
     log "failed to stage for ${TARGET_USER} — leaving the packaged copy for the app to read"
   fi
 
-  # KNOWN LIMITATION: for PackageKit-backed GUI installs there is no installing
-  # user to stage for, so the credentials stay world-readable in /opt and the app
-  # logs a failed cleanup on every launch. Tracked as a follow-up.
+  # PackageKit installs may leave credentials world-readable in /opt because no target user is known.
   exit 0
 )
 
