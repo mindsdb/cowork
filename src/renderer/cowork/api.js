@@ -801,8 +801,12 @@ export async function fetchProjects() {
   }
 }
 
-export async function createProject(name) {
-  return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
+// `path` points the project at a folder the user already has, instead of
+// letting the server allocate one under its projects root. Desktop only: the
+// server refuses it on an org deployment and off loopback.
+export async function createProject(name, path) {
+  const body = path ? { name, path } : { name };
+  return req('/projects/', { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
