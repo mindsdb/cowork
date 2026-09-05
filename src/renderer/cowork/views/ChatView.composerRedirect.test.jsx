@@ -25,18 +25,7 @@ const task = (id) => ({
   status: 'idle',
 });
 
-/**
- * Mirrors App.jsx's ownership of the redirect map: the parent holds it,
- * ChatView consumes its own key, and consuming deletes just that key.
- * `mounted` models App's `route === 'task'` conditional mount so a remount can
- * be exercised; `openTaskId` models navigating between conversations.
- *
- * "adopt server id" models App's `adoptServerId`: `moveDraft` carries the draft
- * from the pre-adoption `tmp-` surface onto the id the server minted, then the
- * task is renamed. That pairing is the whole of the rename handling now — the
- * composer's text lives in the per-surface draft store, so nothing else has to
- * be told a rename is not a switch to a different conversation.
- */
+/** Model App's per-task redirect map and task adoption, which moves the draft alongside the task ID. */
 function Harness({ taskId = 't1', onConsumed }) {
   const [redirects, setRedirects] = useState({});
   const [mounted, setMounted] = useState(true);
@@ -92,8 +81,7 @@ function Harness({ taskId = 't1', onConsumed }) {
 
 const composer = () => document.querySelector('textarea');
 
-// The draft store is module-level, so without this each test inherits the
-// previous one's typing (which is what made this file red once ENG-1221 landed).
+// Reset the module-level draft store so tests cannot inherit earlier typing.
 beforeEach(() => { __resetDraftsForTests(); });
 
 describe('redirectForTask', () => {
@@ -127,9 +115,7 @@ describe('ChatView composer redirect', () => {
   });
 
   it('hands the drained files to the parent when it consumes the entry', async () => {
-    // The files ride the same per-task entry as the text: the app-wide staged
-    // list is not keyed by task, so staging them any earlier would put them on
-    // whichever conversation is open.
+    // Redirected files stay task-owned until consumed; the shared staged-file list has no task key.
     const user = userEvent.setup();
     const onConsumed = vi.fn();
     render(<Harness onConsumed={onConsumed} />);
@@ -157,9 +143,7 @@ describe('ChatView composer redirect', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // Task t-other drains while the user is looking at t1 — nothing consumes
-    // it — and then t1 drains too. A single shared slot would have dropped
-    // t-other's text at this point.
+    // Two task drains must not overwrite one global slot.
     await user.click(screen.getByText('fire other redirect'));
     await user.click(screen.getByText('fire redirect'));
     await waitFor(() => expect(composer().value).toBe('queued one'));
@@ -175,9 +159,7 @@ describe('ChatView composer redirect', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // A draft typed in t1. The composer instance is shared across conversations,
-    // but its value comes from the per-surface draft store, so switching swaps
-    // the text rather than carrying it.
+    // The shared composer switches between surface-specific drafts.
     await user.click(composer());
     await user.keyboard('draft for t1');
 
@@ -195,9 +177,7 @@ describe('ChatView composer redirect', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // The invariant the ownership bookkeeping was replaced by: whatever is in
-    // the box after a switch belongs to the task on screen, whichever order the
-    // switch and the drain arrive in.
+    // The composer belongs to the current task regardless of switch/drain ordering.
     await user.click(composer());
     await user.keyboard('draft for t1');
     await user.click(screen.getByText('switch task'));
