@@ -1,16 +1,7 @@
 /* ─── Fonts ──────────────────────────────────────────────────────────────── */
-/* Roboto Mono was previously imported from Google Fonts but (a) it's
-   not actually referenced anywhere in our token system, and (b) the
-   remote @import violates our CSP (style-src 'self' 'unsafe-inline').
-   JetBrains Mono — the actual mono token — is bundled locally below. */
+/* Bundle fonts locally; remote imports violate the renderer CSP. */
 
-/* One Inter file: the variable font. It carries an optical-size axis, so with
-   font-optical-sizing: auto (set on the body below) the browser renders the
-   text letterforms at small sizes and the display letterforms at large sizes
-   automatically — no separate 'Inter Display' faces needed. This is rsms's own
-   recommended setup. The static Inter / InterDisplay faces only matter for
-   browsers without variable-font support, which we don't target (Electron +
-   modern web), so they aren't bundled. */
+/* InterVariable optical sizing covers body and display text; supported browsers do not need static faces. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -26,25 +17,14 @@
   src: url('/fonts/InterVariable-Italic.woff2') format('woff2-variations');
 }
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
-/* ─── Font stack — two families, three jobs ────────────────────────────────
-   Per the design guideline:
-     · Inter          — every surface, display and body. --font-display and
-                        --font-body both resolve to Inter; the display role is
-                        just Inter at a heavier weight and its own tracking.
-     · JetBrains Mono — strings (code, paths, IDs, kbd shortcuts, IDs)
-   Inter is loaded once as the variable font (see above), which optical-sizes
-   itself, so headings and body share one family and stay consistent at every
-   size. All faces are bundled at /fonts/. */
+/* Use Inter for display/body and JetBrains Mono for code, paths, IDs, and shortcuts. Fonts are bundled locally. */
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JetBrainsMono-400.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/JetBrainsMono-500.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JetBrainsMono-700.woff2') format('woff2'); }
 
 :root {
   --font-sans:    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  /* Alias — every component is written with `var(--font-body)`. Without
-     this alias that var resolves to undefined and the browser falls
-     back to its default (Helvetica on macOS), which is exactly the
-     "why is my Inter not showing up" symptom. */
+  /* Keep font-body as an alias for existing component references. */
   --font-body:    var(--font-sans);
   --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -107,14 +87,9 @@
   --space-12: 48px;
 }
 
-/* ─── Light mode (default) ────────────────────────────────────────────────
-   Tokens follow the design guideline (type-and-buttons-light.html). */
+/* Light mode defaults. */
 body, body[data-theme="light"] {
-  /* Tell Chromium which scheme native form controls should render in.
-     Without this, Windows draws <select> dropdown popups with light
-     system chrome regardless of theme — in dark mode the pale option
-     text lands on a white popup and every entry looks disabled.
-     (macOS uses a native NSMenu that ignores CSS, so it never shows.) */
+  /* Set color-scheme so Windows native select popups match the text theme. */
   color-scheme: light;
 
   /* Guideline names — primary token surface for new code */
@@ -124,18 +99,10 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
-     inverts between themes (light: --surface is the *lightest*; dark:
-     --surface-3 is), so the token that lifts the pill above the --surface-2
-     track differs per theme. Light = --surface + the shared elevation shadow;
-     the old --surface-3 (darker than the track here) sank into it. */
+  /* Surface brightness reverses between themes; choose a selected-segment token that lifts above the track. */
   --toggle-selected-bg:     var(--surface);
   --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
-  /* Sidebar surface — a light --surface-2 rail (not the muddier
-     --surface-3): keeps the rail clean and lets the accent-bg active
-     tint read as real teal instead of dirtied grey. The macOS inactive
-     traffic-light circles (~#a8a8a8) are darker than this, so they still
-     read against it. */
+  /* Keep the sidebar light enough for inactive macOS traffic lights to remain visible. */
   --sidebar-bg:   var(--surface-2);
 
   --ink:          #0E0F10;   /* primary text */
@@ -200,9 +167,7 @@ body, body[data-theme="light"] {
   --surface-01:     var(--surface-2);
   --surface-02:     var(--surface-3);
   --surface-03:     var(--surface-2);
-  /* Near-opaque so the macOS inactive traffic lights (light grey)
-     read against the sidebar background. 0.78 was too translucent —
-     the inactive grey blended into the gravity field below. */
+  /* Near-opacity keeps inactive macOS traffic lights readable over the background. */
   --surface-glass:  rgba(255, 255, 255, 0.96);
   --surface-glass-blur: 14px;
   --border-0:       var(--line);
@@ -220,20 +185,14 @@ body, body[data-theme="light"] {
   --glow:           var(--sh-2);
   --shadow-sm:      var(--sh-1);
 
-  /* Frost — remap onto the neutral ink scale. Without this, sidebar/nav
-     text, composer placeholder, and section labels fall through to the
-     raw blue-grey :root hex (#3A464B …), giving light-mode reading text a
-     cold cast the brandbook ink never has. Mirrors the dark-mode block. */
+  /* Map legacy frost colors to neutral ink tokens. */
   --frost-800: var(--ink);
   --frost-700: var(--ink-2);
   --frost-600: var(--ink-3);
   --frost-500: var(--ink-4);
   --frost-400: var(--ink-4);
 
-  /* Stone — remap onto the neutral surface/line scale. Without this, list
-     rows, icon buttons, composer tools, and menu hovers fall through to
-     the raw warm :root hex (#F5F5F4 …), a brown-grey beside the cool
-     brandbook surfaces. Mirrors the dark-mode block. */
+  /* Map legacy stone colors to themed surfaces and borders. */
   --stone-50:  var(--surface);
   --stone-100: var(--surface-2);
   --stone-150: color-mix(in srgb, var(--surface-2) 55%, var(--surface-3) 45%);
@@ -242,13 +201,9 @@ body, body[data-theme="light"] {
   --stone-400: var(--ink-4);
 }
 
-/* ─── Dark mode ──────────────────────────────────────────────────────────
-   Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
-   cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
+/* Dark mode. */
 body[data-theme="dark"] {
-  /* Dark counterpart of the light block's color-scheme — keeps the
-     Windows-drawn <select> popup on dark system chrome so options stay
-     readable instead of looking greyed out. */
+  /* Keep Windows native controls on dark chrome. */
   color-scheme: dark;
 
   --bg:           #080d18;
@@ -257,16 +212,8 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
-  /* Dark keeps the raised-surface approach: --surface-3 already sits
-     *lighter* than the --surface-2 track, so the active pill lifts. */
   --toggle-selected-bg:     var(--surface-3);
   --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
-  /* Sidebar base — a hint of cyan over the surface navy, sized
-     small enough that the panel still reads as part of the same
-     dark family as the rest of the app. The ::before halo at the
-     top adds a brighter pool; the rest of the panel stays close to
-     surface. Tweak the second percentage up/down to push the tint
-     warmer/cooler. */
   --sidebar-bg:   color-mix(in srgb, var(--surface) 97%, var(--accent));
 
   --ink:          #F2F6FF;
@@ -315,8 +262,6 @@ body[data-theme="dark"] {
   --sh-modal:     0 24px 60px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.12);
   --ring:         0 0 0 1px rgba(34, 211, 238, 0.28);
 
-  /* Frost — remap to dark ink tones so sidebar text, nav items,
-     composer placeholder, and section labels stay readable. */
   --frost-800: var(--ink);
   --frost-700: var(--ink-2);
   --frost-600: var(--ink-3);
@@ -347,9 +292,7 @@ body[data-theme="dark"] {
                     0 4px 24px rgba(34, 211, 238, 0.10);
   --shadow-sm:      var(--sh-1);
 
-  /* Light-only neutrals in :root — list rows, icon buttons, composer tools,
-     and menus still reference --stone-* for hovers. Without remaps those
-     stay #F5F5F4 etc., washing out light icons and label text. */
+  /* Remap light-only root tokens so dark hover states remain legible. */
   --stone-50:  var(--surface);
   --stone-100: var(--surface-2);
   --stone-150: color-mix(in srgb, var(--surface-2) 55%, var(--surface-3) 45%);
@@ -357,13 +300,10 @@ body[data-theme="dark"] {
   --stone-300: var(--line-2);
   --stone-400: var(--ink-4);
 
-  /* Primary-tinted chips / nav.primary hover still point at the light
-     --primary-50 ice colour; swap to the dark accent wash. */
+  /* Use dark accent wash for legacy primary-50 references. */
   --primary-50: var(--accent-bg);
 }
 
-/* Emphasis in dark mode: bold is the brightest ink, italics stay italic.
-   ENG-641: removed the neon glow (text-shadow) that made emphasis fluoresce. */
 body[data-theme="dark"] strong,
 body[data-theme="dark"] b {
   color: var(--ink);
@@ -375,8 +315,6 @@ body[data-theme="dark"] em {
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Base micro-interaction: smooth transitions on all interactive elements.
-   Individual rules can override with more specific transition properties. */
 button,
 a,
 [role="button"],
@@ -401,11 +339,8 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Let InterVariable pick its optical size from the font-size — text
-     letterforms at small sizes, display letterforms for large headings. */
   font-optical-sizing: auto;
-  /* No background here — kit's gf-theme-{light,dark} on body controls
-     window-level bg so the gravity-field canvas remains visible. */
+  /* The gravity-field kit controls window background; an opaque body fill would hide the canvas. */
   user-select: none;
 }
 ::selection {
@@ -426,14 +361,9 @@ input, textarea { font-family: inherit; }
 }
 .workspace-mode-panel[hidden] { display: none; }
 .drag-region { -webkit-app-region: drag; }
-/* Default everything to draggable — the window-shell sets drag on the
-   outermost container so the user can pick the window up from any
-   visual surface (sidebar gaps, content panels, the gravity-field
-   bands at the edges, etc.). */
+/* Default window surfaces to draggable; interactive areas must opt out below. */
 
-/* Form controls + interactive surfaces explicitly opt OUT so clicks,
-   text selection, and scrolling work. The composer + chat area + modals
-   are real interactive surfaces; everything else stays draggable. */
+/* Opt out of dragging wherever clicks, text selection, or scrolling are required. */
 button,
 input,
 textarea,
@@ -451,21 +381,13 @@ a[href],
 .field-input,
 .field-textarea,
 .field-group,
-/* Any surface that needs to receive wheel/scroll events. Without this,
-   the cowork shell's outer `-webkit-app-region: drag` swallows wheel
-   events and the inner overflow:auto element never sees the scroll. */
+/* Electron drag regions swallow wheel events; scrollable surfaces must opt out. */
 .scroll-clean,
 [data-scroll="true"] {
   -webkit-app-region: no-drag;
 }
 
-/* ─── Accessibility utilities ────────────────────────────────────────────
-   .sr-only — content visible only to assistive tech. Standard W3C
-   pattern: zero-sized, clipped, and unselectable, so the node stays in
-   the accessibility tree (announced by screen readers, discoverable by
-   heading/landmark navigation) but never renders pixels or steals
-   layout. Use for headings/labels/instructions that don't have a
-   visible counterpart on the page. */
+/* Accessibility: keep content in the accessibility tree without visible layout. */
 .sr-only,
 .anton-code-block-copy-label {
   position: absolute;
@@ -479,14 +401,7 @@ a[href],
   border: 0;
 }
 
-/* ─── Scrollbars ───────────────────────────────────────────────────────────
-   Theme-aware. `color-mix` against --ink lets the same rule work in
-   light + dark — without it the hard rgba(0,0,0,…) thumb was nearly
-   invisible on the navy dark surface and the chat would seem to
-   sport a "default ugly" scrollbar.
-   Firefox uses scrollbar-width / scrollbar-color (the only two
-   tunable properties); Chromium uses ::-webkit-scrollbar pseudo-
-   elements. We set both so styled scrollbars hit every engine. */
+/* Theme scrollbar colors through ink; supply both Firefox and Chromium styling. */
 .scroll-clean {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent;
@@ -502,9 +417,6 @@ a[href],
 .scroll-clean::-webkit-scrollbar-track { background: transparent; }
 .scroll-clean::-webkit-scrollbar-corner { background: transparent; }
 
-/* Home "connect a provider" card (ENG-991): one row on desktop; stacks to a
-   column under the mobile breakpoint so the text + buttons aren't crushed
-   onto a single line on narrow viewports. */
 .home-connect-card {
   width: 100%;
   max-width: 640px;
@@ -524,13 +436,7 @@ a[href],
   .home-connect-card__actions > * { flex: 1; }
 }
 
-/* Project action menus normally reveal with hover. Keep the same compact
-   controls, but make them discoverable for keyboard users and devices that
-   cannot hover (touch phones, tablets, and coarse-pointer convertibles).
-   A trigger a view withholds on purpose (the General project has no kebab)
-   is never rendered; these guards keep the override off any trigger that is
-   in the DOM but taken out of the accessibility tree or out of flow, so a
-   deliberately hidden control can never be revived by a media query. */
+/* Reveal action menus for keyboard/touch access without reviving intentionally hidden controls. */
 .project-action-trigger:focus-visible {
   opacity: 1 !important;
   pointer-events: auto !important;
@@ -540,11 +446,7 @@ a[href],
     opacity: 1 !important;
     pointer-events: auto !important;
   }
-  /* The drawn control keeps its 22-26px desktop size; a centred transparent
-     overlay lifts the tappable area to the 44px minimum the rest of the mobile
-     shell uses. The card's pin and kebab sit 34px apart, so the two overlays
-     meet 12px out from each centre — past the 13px glyph box by a hair, and
-     never over the neighbour's icon. */
+  /* Enlarge hit areas without overlapping neighboring pin/kebab targets. */
   .project-action-trigger { position: relative; }
   .project-action-trigger::after {
     content: '';
@@ -562,10 +464,6 @@ a[href],
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-/* Moved from runtime-injected <style> tags (DataVaultFormPanel,
-   CommentsPanel, CommentsToolbar, HomeView) — plain keyframes with no
-   Base UI data-attribute dependency never needed JS injection; they
-   just belong here with every other keyframe in the app. */
 @keyframes dvf-appear {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0)   scale(1); }
@@ -600,9 +498,7 @@ a[href],
 }
 
 /* ─── Streaming text fade-in ─────────────────────────────────────────────── */
-/* Word-level: words fade in as they stream. React keeps existing spans
-   (keyed by index) so only newly appended words animate. ENG-641: opacity
-   only, blur removed. */
+/* Animate newly appended word spans; existing keyed spans retain their state. */
 @keyframes stream-word-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -611,8 +507,6 @@ a[href],
   animation: stream-word-fade 0.18s ease-out both;
 }
 
-/* Block-level (code, tables, blockquotes, hrs): fade in on first appearance;
-   text elements use the word-level animation above. Opacity only (ENG-641). */
 @keyframes stream-block-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -628,11 +522,7 @@ a[href],
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 
-/* WCAG 2.3.3 Animation from Interactions — users with vestibular
-   sensitivity get every infinite/looping animation halted (state still
-   reaches its end value so the UI stays informative). One-shot
-   transitions/entrance animations are left untouched so the UI doesn't
-   feel broken. */
+/* Reduced motion stops looping animations while preserving their informative state. */
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
   .proj-shimmer,
@@ -645,9 +535,6 @@ a[href],
   }
 }
 
-/* Projects-page skeleton card — soft horizontal shimmer over the
-   placeholder boxes while the projects list loads. Driven via the
-   `proj-shimmer` className on each placeholder shape. */
 @keyframes proj-shimmer {
   0%   { background-position: -240px 0; }
   100% { background-position: 240px 0; }
@@ -703,16 +590,11 @@ a[href],
   transition: background .12s, color .12s;
   cursor: pointer;
 }
-/* Make the SVG icon a passthrough for pointer events — events fire on the
-   button rect, not on the icon's stroke alone. Without this, hovering the
-   transparent fill of an outline icon escapes the button and the hover
-   state never triggers. */
+/* Let the button receive pointer events across the whole icon box. */
 .icon-btn > svg { pointer-events: none; }
 .icon-btn:hover { background: var(--stone-150); color: var(--text-strong); }
 .icon-btn.active { background: var(--stone-200); color: var(--text-strong); }
 
-/* Lightweight hover utilities for inline-styled buttons that only need
-   a tinted background on hover without a full component class. */
 .hover-tint { transition: background .12s, color .12s; }
 .hover-tint:hover { background: color-mix(in srgb, var(--ink) 5%, transparent) !important; }
 .hover-tint-text:hover { color: var(--ink) !important; }
@@ -729,42 +611,28 @@ a[href],
   width: 100%; max-width: var(--composer-max-width, 640px);
   background: var(--surface-0);
   border: 1px solid var(--border-01);
-  /* Calmer composer (ENG-787 move 03): larger radius so it reads as a
-     friendly surface rather than an input box, and the shared token
-     shadow instead of a bespoke double-drop. */
   border-radius: var(--r-xl);
   box-shadow: var(--sh-1);
   transition: border-color .15s, box-shadow .15s;
 }
 .composer-wrap.focused {
-  /* Quiet focus: the border simply shifts to the accent — no 3px teal
-     glow ring. Keeps the resting shadow so focusing doesn't jump. */
   border-color: var(--accent);
   box-shadow: var(--sh-1);
 }
-/* In-fence indicator — caret sits inside a fenced code block. Subtle
-   accent-tinted inner stripe on the left edge plus a soft body wash, so
-   it layers under the focus ring rather than competing with it. Toggled
-   from React based on `fenceCtxAt(value, caretPos) !== null`. */
+/* Mark when the caret is inside a fenced block without replacing the focus signal. */
 .composer-wrap.in-fence {
-  /* The inset accent stripe is the meaningful "caret is inside a fence"
-     signal; pair it with the shared token shadow (move 03) rather than
-     the old bespoke double-drop. */
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
     var(--sh-1);
 }
 .composer-wrap.focused.in-fence {
-  /* Quiet focus + the fence stripe: accent border, no 3px glow ring. */
   border-color: var(--accent);
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
     var(--sh-1);
 }
-/* Font, line-height, and padding MUST match the textarea exactly — both
-   consume the same custom properties from .composer-input-shell so any
-   change propagates to both automatically. */
+/* Textarea and overlay must share font, line-height, and padding from composer-input-shell. */
 .composer-textarea {
   width: 100%; border: 0; outline: 0; resize: none;
   background: transparent;
@@ -772,52 +640,29 @@ a[href],
   font-size: var(--composer-font-size);
   line-height: var(--composer-line-height);
   color: var(--text-strong);
-  /* The pixel-aligned highlight overlay (.composer-textarea-overlay) sits
-     behind this textarea and renders the *visible* text in colour (plain text,
-     inline-code, fence markers, and /skill-name mentions). So the textarea's
-     own glyphs must be invisible — fill transparent — while the caret stays
-     visible via caret-color. Without this the opaque textarea text covers the
-     overlay and every token reads as flat ink. */
+  /* Hide textarea glyphs while retaining the caret: the aligned overlay supplies visible text. */
   -webkit-text-fill-color: transparent;
   caret-color: var(--text-strong);
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
-  /* Hide the scrollbar to match the overlay. A classic space-consuming
-     scrollbar (Windows/Linux) would narrow the textarea once it overflows,
-     wrapping lines earlier than the full-width overlay and drifting the caret
-     off the visible text. Both must reserve zero. */
+  /* Both layers must reserve zero scrollbar width or their wrapping and caret positions diverge. */
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 .composer-textarea::-webkit-scrollbar { display: none; }
-/* Placeholder must opt back IN to a visible fill (the rule above made all
-   textarea glyphs transparent). */
+/* Restore visible placeholder fill after hiding input glyphs. */
 .composer-textarea::placeholder { color: var(--frost-500); -webkit-text-fill-color: var(--frost-500); }
 
-/* Source-mode highlight overlay.
-   The textarea is the real input — the overlay sits behind it and
-   mirrors its content with the same font, padding, line-height and
-   wrapping rules so each char lines up pixel-for-pixel. The textarea
-   is z-stacked above with a transparent background so the overlay
-   shows through. We DO NOT change font-weight/style or add per-span
-   padding/margin — any of that would change wrapping and the overlay
-   would drift out of alignment. */
+/* The overlay mirrors the real textarea. Never change span metrics: weight, padding, or margins would break alignment. */
 .composer-input-shell {
   position: relative;
   width: 100%;
-  /* Single source of truth for the metrics the textarea and overlay
-     must share. Surface variants (chat-floating-composer, etc.) override
-     these vars on their own .composer-input-shell scope so both children
-     stay coupled — never set font-size/line-height/padding directly on
-     the textarea or overlay. */
+  /* Override shared composer metrics on the shell, never separately on textarea or overlay. */
   --composer-font-size: var(--text-md);
   --composer-line-height: 1.5;
   --composer-padding: 16px 18px 4px;
 }
-/* Font, line-height, and padding MUST match the textarea exactly — both
-   consume the same custom properties from .composer-input-shell so any
-   change propagates to both automatically. */
 .composer-textarea-overlay {
   position: absolute;
   inset: 0;
@@ -829,23 +674,16 @@ a[href],
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  /* `auto` (not hidden) so programmatic scrollTop sync works — user
-     interaction is already blocked by pointer-events:none. Hide the
-     scrollbar visually so the overlay doesn't show one alongside the
-     textarea's. */
+  /* Use auto so programmatic scrollTop synchronization works; hide only the scrollbar. */
   overflow: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* The overlay is now the VISIBLE text layer (the textarea's fill is
-     transparent). Plain text renders in the normal ink; segment classes
-     (.overlay-inline-code / -fence-marker / -slash-mention) tint their runs. */
   color: var(--text-strong);
   background: transparent;
   border: 0;
   user-select: none;
   z-index: 0;
-  /* Cap text rendering twiddles — we want the overlay and textarea
-     to lay text out identically. */
+  /* Match text layout between the overlay and textarea. */
   -webkit-font-smoothing: inherit;
   text-rendering: inherit;
   tab-size: inherit;
@@ -855,39 +693,26 @@ a[href],
   z-index: 1;
   background: transparent;
 }
-/* Fence-marker line — full-width tint of the ``` line itself,
-   accent-coloured text so the marker reads as syntax-significant
-   even while the textarea text sits on top. */
 .overlay-fence-marker {
   color: color-mix(in srgb, var(--accent) 75%, var(--ink));
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-/* Fence body — subtle wash that runs from end of opener to start of
-   closer, no border (would shift wrapping). */
+/* Do not add borders to fence runs; they would shift wrapping. */
 .overlay-fence-body {
   background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
-/* Inline `code` — narrow tinted run on a single line. No padding,
-   no border — they'd shift char position. The text below stays
-   readable through the wash because the textarea sits above. */
+/* No padding or border on inline code; overlay character positions must remain unchanged. */
 .overlay-inline-code {
   background: color-mix(in srgb, rgb(232, 132, 110) 16%, transparent);
   color: color-mix(in srgb, rgb(232, 132, 110) 70%, var(--ink));
   border-radius: var(--r-sm);
 }
-/* Skill mention (/skill-name) — plain text (no backticks, no chip), coloured a
-   little darker than the brand accent so it reads as a mention. COLOUR ONLY:
-   no padding/weight/border/background (they'd shift char widths and break the
-   overlay's char-for-char alignment with the textarea). */
+/* Color only: skill mentions must not change character metrics relative to the textarea. */
 .overlay-slash-mention {
   color: color-mix(in srgb, var(--accent) 82%, #000);
 }
 .composer-textarea-overlay::-webkit-scrollbar { display: none; }
 
-/* WCAG 2.3.3 Animation from Interactions — users who prefer reduced
-   motion shouldn't see the Copy button hover/focus colour ease or the
-   composer focus-ring transition. Static state changes still apply;
-   only the transition timing is removed. */
 @media (prefers-reduced-motion: reduce) {
   .anton-code-block-copy,
   .composer-wrap,
@@ -907,14 +732,7 @@ body[data-theme="light"] .overlay-inline-code {
   color: color-mix(in srgb, rgb(168, 76, 60) 70%, var(--ink));
 }
 
-/* WCAG 1.4.6 / Windows High Contrast — when the user opts into a
-   stronger contrast preference, bump the overlay washes so the
-   fence markers, fenced bodies, and inline-code regions remain
-   distinguishable behind the (transparent-color) textarea text.
-   Light theme uses a darker accent / coral wash; dark theme leans
-   on a brighter accent / coral tint. The textarea text itself is
-   unchanged — it always inherits the regular --ink tokens which
-   already meet 4.5:1 against the composer background. */
+/* Increase code/fence wash contrast when requested while retaining the regular text ink. */
 @media (prefers-contrast: more) {
   .overlay-fence-marker {
     color: color-mix(in srgb, var(--accent) 90%, var(--ink));
@@ -975,12 +793,6 @@ body[data-theme="light"] .overlay-inline-code {
 }
 button.meta-pill { cursor: pointer; }
 button.meta-pill:hover { background: var(--surface-0); border-color: var(--border-01); color: var(--text-strong); }
-/* Send button — single shared treatment across the home composer
-   ("create new task") and the in-task chat composer. The legacy
-   --primary-700 token didn't have a dark-mode partner and read as
-   the wrong colour on dark, so the home and chat send buttons
-   diverged. Routing through --accent gives both surfaces the same
-   theme-adaptive look. */
 .send-btn {
   width: 30px; height: 30px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
@@ -991,10 +803,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled {
-  /* Dormant, not dead: the composer is its page's primary action, so the
-     send button keeps a quiet accent wash at rest (the home page would
-     otherwise show zero accent). Deliberately weaker than the armed
-     solid-accent state so it doesn't read as clickable. */
   background: var(--accent-bg);
   color: color-mix(in srgb, var(--accent) 60%, transparent);
   cursor: not-allowed;
@@ -1073,9 +881,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   overflow: auto;
 }
 
-/* Two-pane variant — connectors list on the left, credentials /
-   connect form on the right. Used when the workflow renders inside
-   the Connect Apps and Data page (no left-rail subnav needed). */
 .customize-two-pane {
   height: 100%;
   display: grid;
@@ -1085,8 +890,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-heading {
-  /* Was a Times New Roman serif — the one heading off the Inter system.
-     Now on the display font so it reads as part of the app (ENG-1038). */
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -1208,7 +1011,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-home-card.active {
-  /* Selected = accent border only (ENG-791: no bespoke double-ring). */
   border-color: var(--accent);
   background: var(--accent-bg);
 }
@@ -1554,7 +1356,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-directory-card {
-  /* Variant C — aligned to the canonical interactive card (ENG-791). */
   padding: 18px 20px;
   border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
@@ -1786,11 +1587,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
 
-/* ─── Page header ──────────────────────────────────────────────────────────
-   Page headers now render via components/collection/PageHeader (title + trail
-   shapes, with the shell's titlebar-safe inset baked in). The old
-   .page-header / .page-title classes were retired in the ENG-1038 header
-   consolidation. */
 
 /* ─── Coming soon tooltip ────────────────────────────────────────────────── */
 [data-coming-soon] {
@@ -1817,15 +1613,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 [data-coming-soon]:hover::after { opacity: 1; }
 
-/* ─── Button system (per brandbook) ──────────────────────────────────────
-   `.btn` is the shared shape; each `<Button variant>` adds a modifier class
-   (`.btn.primary`, `.btn.danger`, …). Light mode follows the brandbook fill
-   grammar (accent-fill primary, surface + hairline default, quiet-red
-   danger); dark mode keeps the outline + glow signature, so several variants
-   carry `body[data-theme="dark"]` overrides. Variants lean on the --fg / --glow
-   custom properties so shared :hover / :focus rules serve every variant.
-   `.btn-primary` remains as a legacy alias; `.btn-secondary` / `.btn-ghost`
-   were removed once nothing rendered them. */
+/* Button variants share shape and hover/focus rules through fg/glow properties.
+Retain btn-primary for legacy callers that omit btn. */
 
 .btn {
   --fg:    var(--ink);
@@ -1877,10 +1666,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   pointer-events: none;
 }
 
-/* Default (neutral / secondary) — the quiet, most-used button. Light mode
-   follows the brandbook: a surface fill with a hairline border (no harsh
-   ink outline) and a gentle surface hover. Dark mode keeps the base
-   outline + glow look for now. */
 body:not([data-theme="dark"]) .btn.default {
   background: var(--surface);
   border-color: var(--line);
@@ -1897,10 +1682,6 @@ body:not([data-theme="dark"]) .btn.default:active {
   box-shadow: var(--sh-1);
   transform: translateY(0.5px);
 }
-/* Dark: the base .btn's `currentColor` border resolves to bright --ink,
-   which made neutral buttons (Run now / Pause) read far too loud. Give
-   them the same quiet surface + hairline treatment as light, in dark
-   tokens — no glow ring on hover. */
 body[data-theme="dark"] .btn.default {
   background: var(--surface);
   border-color: var(--line);
@@ -1919,13 +1700,10 @@ body[data-theme="dark"] .btn.default:active {
   transform: translateY(0.5px);
 }
 
-/* Primary — the prominent accent-fill CTA (brandbook). Light mode is an
-   opaque accent fill with contrasting ink; dark mode is a luminous accent
-   glass so it still reads as "made of light" against the dark UI. */
 .btn.primary {
   --glow:  var(--accent-glow);
   font-weight: 600;
-  /* Apply .btn shape if the consumer omitted it (legacy callers used .btn-primary alone) */
+  /* Supply the full shape for legacy callers that use btn-primary without btn. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1936,10 +1714,6 @@ body[data-theme="dark"] .btn.default:active {
   background: var(--accent-solid);
   color: var(--accent-solid-ink);
   border: 1px solid var(--accent-solid);
-  /* Solid fill with the shared subtle shadow at rest; the accent ring +
-     glow halo appears on hover, matching every other variant's hover
-     signature (no inset/3d drop shadow). Dark mode overrides this with
-     the luminous-glass treatment below. */
   box-shadow: var(--sh-1);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -1966,7 +1740,6 @@ body[data-theme="dark"] .btn.default:active {
 .btn.primary[aria-disabled="true"] {
   cursor: not-allowed; opacity: 0.55; pointer-events: none;
 }
-/* Dark: luminous accent glass (mirrors the dark solid CTA). */
 body[data-theme="dark"] .btn.primary {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
@@ -1985,13 +1758,7 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--glow);
 }
 
-/* Busy variant — used while the button is awaiting an async result
-   (e.g. a connection probe in the data-vault form). Reads as
-   "locked but still alive": no dim opacity, gentle accent pulse on
-   the surface + a soft halo that breathes. The base .btn-primary
-   :disabled rule above bottoms out at 0.55 opacity, which makes a
-   busy button read as broken; this rule wins on specificity (two
-   classes) and overrides both opacity and pointer-events. */
+/* Busy styling must override disabled opacity/pointer events so an active operation does not look unavailable. */
 @keyframes btn-busy-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
@@ -2007,27 +1774,19 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   pointer-events: none;
   opacity: 1;
   animation: btn-busy-pulse 1.4s ease-in-out infinite;
-  /* The keyframe paints a soft halo via box-shadow; ensure the
-     button has its own border-radius mask so the halo follows the
-     pill shape rather than overflowing as a square. */
   will-change: filter, box-shadow;
 }
 @media (prefers-reduced-motion: reduce) {
   .btn.primary.is-busy {
     animation: none;
-    /* Static visual cue when motion is reduced — slightly elevated
-       brightness so the disabled / busy distinction is still
-       readable without movement. */
+    /* Retain a static busy cue under reduced motion. */
     filter: brightness(1.04);
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant (Cancel, dismiss,
-   quiet toolbar actions). */
 .btn.subtle {
   --fg:   var(--ink-3);
   --glow: rgba(199, 210, 229, 0.18);
-  /* Flat at rest — genuinely borderless, no resting shadow. */
   box-shadow: none;
   border: 1px solid transparent;
 }
@@ -2037,9 +1796,6 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
 }
 
-/* Tinted — branded secondary: a faint accent wash with a soft accent
-   border (not a full-strength outline) and a quiet hover with no glow
-   ring. This is the register the sidebar "New task" CTA uses. */
 .btn.tinted {
   --fg:   var(--accent);
   --glow: var(--accent-glow);
@@ -2053,13 +1809,7 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   text-shadow: none;
 }
 
-/* (The former `solid` variant was retired — it had become a redundant,
-   drift-prone duplicate of the filled `primary`. Use `variant="primary"`.) */
 
-/* Danger — destructive. Light mode follows the brandbook: quiet at rest
-   (red label on a surface fill with a hairline border), reddening on hover.
-   The escalated .danger.primary is the solid-red "delete permanently" step.
-   Dark mode keeps the outline + glow signature for now. */
 .btn.danger {
   --fg:   var(--danger);
   --glow: rgba(248, 113, 113, 0.45);
@@ -2085,9 +1835,7 @@ body:not([data-theme="dark"]) .btn.danger:focus-visible {
   box-shadow: 0 0 0 1px var(--danger), 0 0 0 4px rgba(248, 113, 113, 0.35);
 }
 
-/* danger-solid — escalated destructive: a solid red fill. Reach for it on the
-   deliberate confirm step (e.g. a confirmation dialog), not every delete
-   affordance. Light = opaque red; dark = luminous red glass. */
+/* Use danger-solid for explicit destructive confirmation. */
 .btn.danger-solid { font-weight: 600; }
 body:not([data-theme="dark"]) .btn.danger-solid {
   background: var(--danger);
@@ -2100,8 +1848,6 @@ body:not([data-theme="dark"]) .btn.danger-solid:hover {
   border-color: color-mix(in srgb, var(--danger) 88%, var(--ink));
   box-shadow: 0 0 0 1px var(--danger), 0 0 18px rgba(248, 113, 113, 0.30);
 }
-/* Dark: luminous red glass for the escalated destructive; plain .btn.danger
-   keeps the base red outline + glow. */
 body[data-theme="dark"] .btn.danger-solid {
   background: color-mix(in srgb, var(--danger) 15%, transparent);
   color: var(--danger);
@@ -2147,11 +1893,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 }
 
 /* ─── Type scale (per guideline) ─────────────────────────────────────── */
-/* Tracking loosened off the old Josefin-tuned values (was -0.025/-0.02/-0.015/-0.01):
-   Inter's variable opsz axis already tightens large sizes, so the inherited
-   negative tracking stacked into cramped display type. Now on the "loose" scale —
-   near-neutral, only a whisper of tightening at the top, H3 sits at 0.
-   Operable text (=0) and .t-special branding are unaffected. */
+/* Keep tracking near neutral: Inter optical sizing already tightens display text. */
 .s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.010em; font-weight: 600; color: var(--ink); }
 .s-h1          { font-family: var(--font-sans); font-size: var(--text-2xl); line-height: 1.15; letter-spacing: -0.007em; font-weight: 600; color: var(--ink); }
 .s-h2          { font-family: var(--font-sans); font-size: var(--text-xl);  line-height: 1.2;  letter-spacing: -0.004em; font-weight: 600; color: var(--ink); }
@@ -2227,18 +1969,12 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 /* Compact size */
 .field-input.sm { height: 28px; padding: 4px 10px; font-size: var(--text-sm); border-radius: var(--r-sm); }
 
-/* Input group (ENG-1035) — a wrapper that carries the field chrome (border/bg/
-   radius/padding come from the shared `.field-input` rule above) so leading/
-   trailing adornments sit inside the same box as the control. The inner input
-   sheds its own chrome; the focus ring lands on the wrapper, not the input, so
-   the rounded surface stays intact (WCAG 2.4.7, same approach as
-   `.focus-within-ring`). With no adornments, `Input` renders a plain
-   `.field-input` as before — this path is opt-in. */
+/* The input-group wrapper owns chrome and focus; adorned inputs must not paint a second surface. */
 .field-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px; /* mirrors `.field-input` */
+  height: 34px;
 }
 .field-group:hover {
   border-color: var(--line-2);
@@ -2247,17 +1983,14 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   border-color: var(--accent);
   box-shadow: var(--ring);
 }
-/* Keyboard focus gets the stronger 1px ring, matching `.field-input:focus-visible` (WCAG 2.4.7). */
 .field-group:focus-within:has(.field-input:focus-visible) {
   box-shadow: 0 0 0 1px var(--accent);
 }
-/* Disabled dims the whole box (border + adornments), not just the inner input. */
 .field-group:has(.field-input:disabled) {
   opacity: 0.55;
   cursor: not-allowed;
 }
-/* The wrapper owns the disabled dim; keep the inner input at full opacity so
-   the two don't compound (`.field-input:disabled` also sets 0.55). */
+/* Only the wrapper dims disabled groups; inner opacity would compound. */
 .field-group > .field-input:disabled {
   opacity: 1;
 }
@@ -2269,20 +2002,16 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   border: 0;
   background: transparent;
 }
-/* Inner input never paints its own ring — the wrapper owns focus feedback. */
 .field-group > .field-input:focus,
 .field-group > .field-input:focus-visible {
   box-shadow: none;
 }
-/* Adornments — quiet, non-interactive glyphs/labels by default; interactive
-   children (e.g. a password reveal button) bring their own styling. */
 .field-group__addon {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
   color: var(--ink-3);
 }
-/* Compact size — mirrors `.field-input.sm`. */
 .field-group.sm {
   height: 28px;
   padding: 4px 10px;
@@ -2290,26 +2019,17 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   font-size: var(--text-sm);
 }
 
-/* ─── Card system (ENG-791) ─────────────────────────────────────────────
-   One card look for the whole app. Compound modifiers (matching the existing
-   .card.flat / .card.compact convention) let the <Card> primitive build a
-   class string like "card interactive selected cozy". The single hover/active
-   animation is ELEVATION ONLY — lift + soft shadow, neutral border. Accent is
-   reserved for the selected state, never hover.
-
-   Semantic aliases over the themed primitives. Declared on `body` (NOT :root)
-   so the inner var()s resolve against body's per-theme --surface/--line/--sh-*
-   — a :root declaration would resolve them where those primitives don't exist
-   (→ invalid) and every card would fall back to transparent/no-shadow. */
+/* Card hover uses neutral elevation; accent marks selection.
+Declare aliases on body so theme variables resolve there, not on root where they are unavailable. */
 body {
-  --card-radius:        var(--r-12);   /* 12px — the one card radius        */
-  --card-radius-row:    var(--r-8);    /* 8px  — dense list-row radius       */
+  --card-radius:        var(--r-12);
+  --card-radius-row:    var(--r-8);
   --card-pad-y:         14px;
-  --card-pad-x:         16px;          /* canonical interactive list/grid pad */
+  --card-pad-x:         16px;
   --card-surface:       var(--surface);
   --card-border:        var(--line);
-  --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
-  --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
+  --card-shadow-rest:   var(--sh-1);
+  --card-shadow-hover:  var(--sh-2);
   --card-lift:          -1px;
   --card-transition:    border-color .15s ease, box-shadow .15s ease,
                         transform .15s ease, background-color .15s ease;
@@ -2326,45 +2046,39 @@ body {
 .card.flat     { box-shadow: none; }
 .card.compact  { padding: 16px; }
 .card.snug     { padding: 12px; }
-.card.cozy     { padding: var(--card-pad-y) var(--card-pad-x); } /* interactive list/grid default */
+.card.cozy     { padding: var(--card-pad-y) var(--card-pad-x); }
 .card.pad-none { padding: 0; }
 
-/* When the card element is a <button>, neutralize the UA button styling. */
+/* Reset native button styles when a card renders as button. */
 button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 
-/* Interactive — the single hover/active animation. */
 .card.interactive { cursor: pointer; transition: var(--card-transition); }
 .card.interactive:hover  { box-shadow: var(--card-shadow-hover); transform: translateY(var(--card-lift)); }
 .card.interactive:active { box-shadow: var(--card-shadow-rest); transform: translateY(0); }
 .card.interactive:focus-visible { outline: none; box-shadow: var(--ring), var(--card-shadow-rest); }
 
-/* Selected/active — accent is the selection cue; persists under hover. */
 .card.selected,
 .card.selected:hover { border-color: var(--accent); }
 .card.selected.tinted { background: var(--accent-bg); }
 
-/* Glass variant — keeps the backdrop blur, adopts the shared shell. */
 .card.glass {
   background: var(--surface-glass);
   -webkit-backdrop-filter: blur(var(--surface-glass-blur));
   backdrop-filter: blur(var(--surface-glass-blur));
 }
 
-/* Dashed empty-state / dropzone variant. */
 .card.dashed {
   background: transparent;
   box-shadow: none;
   border: 1px dashed var(--line-2);
 }
-.card.dashed.interactive:hover {   /* drop-target CTA keeps an accent cue */
+.card.dashed.interactive:hover {
   transform: none;
   box-shadow: none;
   border-color: var(--accent);
   color: var(--accent);
 }
 
-/* Interactive list ROW — flat, borderless, bg-on-hover. Its own element class
-   (rows are not .card surfaces). Selected reads as a firmer surface, not accent. */
 .card-row {
   border: 0;
   background: transparent;
@@ -2378,7 +2092,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
 .card-row:focus-visible { outline: none; box-shadow: var(--ring); }
-/* Grouped row — a faint accent resting tint marks it as a distinct unit. */
 .card-row.grouped        { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .card-row.grouped:hover  { background: var(--surface-2); }
 
@@ -2389,8 +2102,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   .customize-directory-card:active { transform: none; }
 }
 
-/* Bubble — floating glassy container; slightly translucent so the
-   gravity-field shows behind. Radius slightly tighter than .card. */
 .bubble {
   background: var(--surface-glass);
   -webkit-backdrop-filter: blur(var(--surface-glass-blur));
@@ -2400,7 +2111,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   box-shadow: var(--sh-2);
 }
 
-/* Eyebrow — uppercase mono label sitting above headings (per guideline) */
 .eyebrow {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -2411,7 +2121,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   display: inline-block;
 }
 
-/* Hairline divider */
 .divider {
   height: 1px; width: 100%;
   background: var(--line);
@@ -2419,8 +2128,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   margin: 0;
 }
 
-/* ─── Anton sidebar (per anton-sidebar-{dark,light} guideline) ────────────
-   Token-driven; dark mode adds the cyan halo + glow on emphasis. */
+/* Sidebar. */
 
 .anton-sidebar__chrome {
   display: flex;
@@ -2451,10 +2159,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 body[data-theme="dark"] .anton-sidebar__wordmark {
   text-shadow: 0 0 14px var(--accent-glow);
 }
-/* A flat custom background reads as a mistake next to a glow/gradient tuned
-   for the stock theme's palette — set by applyCustomTheme whenever a custom
-   bg is active (any skin, not just the 8-bit halo below, which is already
-   skin-scoped away from Custom). */
+/* Suppress stock decorative gradients when applyCustomTheme supplies a custom background. */
 body.custom-bg-active .anton-sidebar__wordmark,
 body.custom-bg-active .mshell__drawer-title {
   text-shadow: none;
@@ -2463,20 +2168,9 @@ body.custom-bg-active .app-sidebar::before {
   background: none;
 }
 
-/* Cyan halo at the top of the sidebar — only in dark mode. */
-/* No decorative halo in the default dark skin: the sidebar's accent
-   voice is the tinted New-task button now — an atmospheric cyan pool
-   behind it just muddied the wash-on-wash. The 3% cyan --sidebar-bg
-   tint keeps the panel in the family. (The 8-bit skin draws its own
-   fainter halo — self-contained in skin-8bit.css.) */
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
-/* Onboarding "Get to know Cowork" card.
-   Light: the layered inset-highlight shadow from the design spec, on a
-   white surface that reads as a raised card against the grey sidebar.
-   Dark: the #FFF inset blows out, so swap to an elevated surface with a
-   crisp ring + soft drop shadow and only a whisper of top highlight. */
 .onboarding-card {
   background: var(--surface-0);
   border-radius: var(--r-lg);
@@ -2494,15 +2188,10 @@ body[data-theme="dark"] .onboarding-card {
     0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
 }
 
-/* Collapsible sidebar tracker header — hover affordance in CSS (not React
-   state) so it can't get stuck and costs no re-render. Base lives here too
-   so the button's inline styles don't out-specify the :hover rule. */
+/* Keep base styles in CSS so inline declarations cannot override hover feedback. */
 .onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
 .onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
-/* Checklist step rows. Ink-tinted hover works on any card background
-   (darkens in light mode, lightens in dark). Done rows collapse their
-   description and reveal it again on hover via the 0fr→1fr grid idiom. */
 .onboarding-step-row { background: transparent; transition: background 140ms ease; }
 .onboarding-step-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .onboarding-step-desc {
@@ -2515,10 +2204,7 @@ body[data-theme="dark"] .onboarding-card {
 .onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
 .onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
 
-/* First-artifact tip buttons — the tip sits on an inverted ink surface,
-   so the shared Button variants get an on-ink skin here. body-prefixed
-   to outrank the theme-keyed `.btn.default` / `.btn.primary` rules
-   above (same specificity, later in source). */
+/* Outrank theme-keyed button variants so the tip remains legible on its inverted surface. */
 body .first-artifact-tip .btn {
   border: 0;
   box-shadow: none;
@@ -2552,16 +2238,12 @@ body .first-artifact-tip .btn.primary:active {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   box-shadow: none;
 }
-/* Rest-state shadows: the shared block above is 0-2-1 and loses to the
-   theme-keyed variant rules (0-3-1), so kill the shadow at variant
-   specificity. Focus ring comes last so it wins the source-order tie. */
+/* Match variant specificity for resting shadows; keep focus last to win source-order ties. */
 body .first-artifact-tip .btn.default,
 body .first-artifact-tip .btn.primary { box-shadow: none; }
 body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surface); }
 
-/* First-artifact tip arrow — a rotated square poking out of the popup's
-   anchor-facing edge. Base UI positions it along the popup edge and stamps
-   data-side; we supply the perpendicular offset per side. */
+/* Base UI sets arrow side/position; supply the perpendicular offset. */
 .first-artifact-tip-arrow {
   width: 10px; height: 10px;
   background: var(--ink);
@@ -2572,8 +2254,6 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .first-artifact-tip-arrow[data-side="top"]    { bottom: -5px; }
 .first-artifact-tip-arrow[data-side="bottom"] { top: -5px; }
 
-/* New task CTA wrapper — the button itself is the tinted variant,
-   full width (<Button variant="tinted" block size="lg">). */
 .workspace-mode-switcher {
   padding: 0 10px 8px;
 }
@@ -2590,28 +2270,15 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 }
 
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
-/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
-   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
-   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
-   icons below it and its ⌘N past the nav badges. Tighten the horizontal
-   padding 16→10 so the CTA's content and shortcut line up exactly with the
-   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
+/* Align CTA contents and shortcut with the narrower nav-row gutter, overriding standard large-button padding. */
 .anton-sidebar__cta-wrap .btn.lg {
   padding-left: 10px;
   padding-right: 10px;
-  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
-     reads as part of the same rail, not a heavier element above it. The label
-     weight is set on the span in Sidebar.jsx. */
   font-size: 13px;
-  /* Match the nav rows' box exactly — same 30px height and var(--r) radius as
-     .app-sidebar .nav-item (the standard .btn.lg is a taller 36px). The CTA
-     keeps its tinted colors but reads as the same size and shape as the menu
-     options below it, not a heavier element above them. */
   height: 30px;
   border-radius: var(--r);
 }
 
-/* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
   position: relative;
   display: flex;
