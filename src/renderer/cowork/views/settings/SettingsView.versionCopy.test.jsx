@@ -1,14 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-// Regression (ENG-1154): the "Copy" button under Settings → Updates →
-// Version details called navigator.clipboard.writeText() directly, without
-// awaiting it, so it flipped to the "Copied" success state even when the
-// write failed. It also bypassed the shared `copyText` helper (lib/clipboard)
-// that every other copy-to-clipboard button in the app uses, which matters
-// because this Electron shell's setPermissionRequestHandler denies the
-// `clipboard-sanitized-write` permission raw navigator.clipboard needs —
-// only the helper's document.execCommand('copy') fallback actually works.
+// Await the shared copy helper before showing success; Electron denies raw clipboard writes,
+// requiring the helper's execCommand fallback.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -75,10 +69,8 @@ describe('SettingsView — version details Copy button', () => {
     expect(screen.queryByRole('button', { name: /^Copied$/ })).toBeNull();
   });
 
-  // Regression (review follow-up on #532): the failure state used to share
-  // the success state's 1.5s auto-clear timer, fading "Couldn't copy" out
-  // while it was still being read. It now persists until the next copy
-  // attempt, blur, or the details panel being hidden.
+  // Copy failure persists until another attempt, blur or hiding details; it must not use the
+  // success timer.
   it('does not auto-clear "Couldn\'t copy" on the same timer as success, but clears on blur', async () => {
     vi.useFakeTimers();
     try {
@@ -98,12 +90,7 @@ describe('SettingsView — version details Copy button', () => {
     }
   });
 
-  // Regression (review follow-up on #532): unlike the API-key copy button,
-  // this button's failure text IS its own label — with no live region, a
-  // screen reader has no guarantee it announces a focused button's label
-  // changing out from under it. The button is wrapped in role="status" so
-  // the "Couldn't copy" label change gets announced the same way the
-  // API-key pill's does.
+  // A status region announces a focused button's changing failure label.
   it('wraps the button in a live region so the failure text is announced', async () => {
     copyText.mockResolvedValueOnce(false);
 

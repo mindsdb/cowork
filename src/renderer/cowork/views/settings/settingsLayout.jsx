@@ -3,11 +3,7 @@ import Ico from '../../components/Icons';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 
-// Layout mode for the settings surface. Desktop (default) renders the
-// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
-// a full page with accordion navigation, where each section flows naturally
-// so the whole page scrolls. SettingsSectionPanel reads this to drop its
-// flex-fill / internal scroll / sticky footer on mobile.
+// Mobile sections use natural page scrolling instead of desktop panel fill/internal scrolling.
 export const SettingsLayoutContext = createContext({ mobile: false });
 
 // A titled card shared by settings pages. Keeping it in the canonical layout
@@ -49,12 +45,8 @@ export function SettingsGroup({ title, children, collapsible = false, defaultCol
 
 export function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
-  // A section whose sole control is a Switch or ToggleGroup is compact enough
-  // to keep the desktop "title left / control right" row on wider mobile
-  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
-  // selects, color pickers, the generic field wrapper — stay stacked. The
-  // row only re-forms above ~440px (see the media query); the narrowest
-  // phones still stack everything.
+  // Only a sole Switch/ToggleGroup can share a row with its title on wider phones; full-width
+  // controls stay stacked.
   const kids = Children.toArray(children);
   const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
   return (
@@ -78,14 +70,9 @@ export function Section({ title, subtitle, notice, children }) {
 export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
   if (mobile) {
-    // Natural flow so the whole detail page scrolls (no internal scroll or
-    // width cap). A sticky full-bleed bottom bar carries the action: the Save
-    // footer when the section has one (always reachable on a long page instead
-    // of buried at the end), or a quiet "saves automatically" note when it
-    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
-    // to save" next to sections with a Save button (ENG-990 QA).
-    // Bleed past the .settings-detail 14px gutter to the screen edges;
-    // opaque bg so scrolling content is masked behind the bar.
+    // Keep Save or autosave status sticky and full-width on mobile. Bleed through the 14px gutter
+    // with an
+    // opaque background so scrolled content does not show behind it.
     const barClass =
       'sticky bottom-0 z-[1] flex items-center flex-wrap ' +
       'mt-4 mx-[-14px] mb-0 pt-3 px-[14px] pb-[calc(12px+env(safe-area-inset-bottom,0px))] ' +
