@@ -1,70 +1,24 @@
-// Single source of truth for WHERE the cowork-server backend (and the
-// anton agent it depends on) are installed from. Both the installer and
-// the auto-updater import this so they can never disagree about the
-// source — the bug that previously let the PyPI updater clobber a
-// git-branch install.
-//
-// Default: install from git, branch `main`, for BOTH cowork-server and
-// anton. A developer (or the parent `minds` repo) can point either at a
-// feature branch / tag / commit via env vars while iterating; a release
-// flips the channel to the published PyPI wheel.
-//
-//   COWORK_SERVER_CHANNEL   git | pypi            (default: git; prod-kind
-//                           builds fall back to pypi — see _channelForBuildKind)
-//   COWORK_SERVER_MIN_VERSION  version floor      (pypi channel; release builds
-//                           bake the latest published version — getMinServerVersion)
-//   COWORK_SERVER_REF       branch|tag|sha        (default: main)  — git channel
-//   ANTON_REF               branch|tag|sha        (default: main)  — git channel
-//   COWORK_SERVER_PACKAGE   literal uv spec       (escape hatch; wins over all)
-//   ANTON_PACKAGE           literal uv spec       (local path / spec for anton;
-//                           only honoured when COWORK_SERVER_PACKAGE is also set.
-//                           Requires backend/core_api/pyproject.toml [tool.uv.sources]
-//                           to be updated to { path = "../../core_agent" } first —
-//                           otherwise uv aborts with "conflicting URLs".)
-//
-// On the `pypi` channel anton comes from the published wheel's pinned
-// dependency, so ANTON_REF is ignored there.
+// Shared install-source resolution for setup and updates. See README’s install-source
+// configuration.
+// Explicit package overrides take precedence; PyPI otherwise uses the wheel’s anton dependency.
 
-// buildKind is imported eagerly (not lazy-`require`d). It has to be: buildKind()
-// memoizes its result, so tests must drive it via `vi.mock('./cowork-home')` —
-// and vitest only intercepts a static ESM import, not a dynamic require. A lazy
-// require here would bypass the mock and pull the real (electron-dependent)
-// module. server-source.test.ts mocks cowork-home, so this import never pulls
-// electron under test; in production server-source only runs in the Electron
-// main process anyway.
+// Use an ESM import so vi.mock can intercept cowork-home without loading Electron.
 import { buildKind } from './cowork-home';
 import { CHANNELS } from './channels';
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
-// export const COWORK_SERVER_BRANCH = 'main';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
 export const ANTON_PACKAGE = 'anton-agent';
 
-// Static fallback floor for the PyPI channel. Release builds bake the
-// latest published version at build time (BUILD_COWORK_SERVER_MIN_VERSION,
-// resolved by getMinServerVersion) so a fresh install starts from a
-// known-good release; this constant only backstops builds with no baked
-// value. Either way it is a floor, not a pin — the auto-updater keeps
-// moving installs to newer releases as they publish.
+// Static version floor for builds without a baked release version; the updater may install newer
+// releases.
 export const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 export type Channel = 'git' | 'pypi';
 
-// Channel fallback keyed off the build kind: every PACKAGED kind installs
-// cowork-server from PyPI — an immutable, versioned, yankable artifact that
-// never needs git (or the Xcode CLT on macOS). prod follows the stable
-// stream; preview/stable follow the rc pre-release stream (staging now
-// publishes rc wheels, so the old "staging has no PyPI releases" reason is
-// gone). Only unpackaged dev (buildKind 'dev') stays on git, and it runs
-// cowork-server from the sibling source dir via `uv run` anyway, so the
-// install channel never applies there.
-//
-// A developer who supplies a SPECIFIC backend ref automatically selects the
-// git channel. COWORK_SERVER_CHANNEL remains the explicit override when a
-// caller intentionally wants different behavior.
-//
-// Same defensive shape as _refForBuildKind: any failure resolves to '' so
-// the caller falls through to 'git'.
+// Packaged channels use PyPI; dev and explicit backend refs use git unless the channel is
+// overridden.
+// On identity resolution failure, return empty so the caller falls back to git.
 function _channelForBuildKind(): string {
   try {
     const kind = buildKind();
@@ -76,10 +30,7 @@ function _channelForBuildKind(): string {
 
 export function getChannel(): Channel {
   const configuredChannel = process.env.COWORK_SERVER_CHANNEL || _buildVal('BUILD_COWORK_SERVER_CHANNEL');
-  // A server ref is an explicit request for that source revision. Treat it as
-  // a git install unless the caller explicitly selected a channel; otherwise a
-  // packaged preview silently ignores its feature ref, installs the ordinary
-  // PyPI sidecar, and the new UI receives 404s for its feature routes.
+  // An explicit backend ref implies git unless the caller explicitly selects another channel.
   const configuredRef = process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF');
   const raw = (configuredChannel || (configuredRef.trim() ? 'git' : '') || _channelForBuildKind() || 'git').toLowerCase();
   return raw === 'pypi' ? 'pypi' : 'git';
@@ -94,9 +45,7 @@ export function getMinServerVersion(): string {
   );
 }
 
-// Build-time baked refs (written by scripts/gen-build-channel.mjs via
-// prebuild:main). The file is gitignored and only exists after a build — in
-// dev mode the Makefile-exported env vars take priority anyway.
+// Generated build refs are absent before a build; runtime environment overrides take precedence.
 function _buildVal(key: string): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -107,27 +56,15 @@ function _buildVal(key: string): string {
   }
 }
 
-/** CalVer display version baked at build time. Falls back to app.getVersion()
- *  (package.json SemVer) when no build-time value is available. Use this
- *  instead of app.getVersion() everywhere the user-facing version is shown
- *  (About panel, IPC, settings). */
+/** Prefer the baked CalVer for display, falling back to app.getVersion when unavailable. */
 export function getAppDisplayVersion(): string {
   const { app } = require('electron') as typeof import('electron');
   return _buildVal('BUILD_APP_VERSION') || app.getVersion();
 }
 
-// Fallback cowork-server git ref keyed off the build kind, used only when neither
-// COWORK_SERVER_REF nor a baked ref is present. Safety net: a stable/preview build
-// whose baked BUILD_COWORK_SERVER_REF came out empty would default to `main` and
-// install a server missing the branch's routes (e.g. staging-only OAuth endpoints
-// → a bare 404). The ref comes from the canonical table (CHANNELS[kind].serverRef)
-// so it can't drift; we return only a NON-'main' ref (forcing 'main' would
-// needlessly flip getInstallSpec's `overrides` on).
-//
-// getCoworkRef() ONLY, never getAntonRef(): anton must keep deferring to
-// cowork-server's own [tool.uv.sources] pin, else a fallback would swap it for
-// anton@staging-HEAD, which can mismatch the server. Defensive: buildKind() may
-// throw (see channels.ts); any failure resolves to '' → caller uses 'main'.
+// Use the channel’s non-main server ref when no explicit or baked ref exists; failure falls back to
+// main.
+// Do not apply this to Anton: its default must defer to the server’s own dependency pin.
 function _refForBuildKind(): string {
   try {
     const ref = CHANNELS[buildKind()].serverRef;
@@ -144,9 +81,7 @@ export function getCoworkRef(): string {
   );
 }
 
-// No build-kind fallback here — the default (ANTON_REF empty → 'main') is what
-// lets getInstallSpec defer to cowork-server's own [tool.uv.sources] anton pin.
-// See _refForBuildKind and getInstallSpec for why applying it here is unsafe.
+// Keep Anton’s default unchanged so getInstallSpec can defer to the server’s dependency pin.
 export function getAntonRef(): string {
   return (process.env.ANTON_REF || _buildVal('BUILD_ANTON_REF') || 'main').trim() || 'main';
 }
@@ -154,13 +89,10 @@ export function getAntonRef(): string {
 export interface InstallSpec {
   /** Positional argument to `uv tool install`. */
   package: string;
-  /** Requirement lines to force via a uv overrides file (`UV_OVERRIDE`).
-   *  Used to repoint cowork-server's `[tool.uv.sources]` anton-agent pin at a
-   *  different ref/path. An override REPLACES the requirement, so it wins over
-   *  the sources pin cleanly — no "conflicting URLs" abort like a bare `--with`,
-   *  and, unlike `--no-sources-package`, it is understood by every uv version we
-   *  ship against (older uv builds reject that flag). Empty on the default path.
-   *  Materialized into a temp file by `writeUvOverrides` in uv-paths.ts. */
+  /**
+   * UV_OVERRIDE requirements replace the server’s source pins without conflicting URLs.
+   * writeUvOverrides materializes the file; older uv versions do not support --no-sources-package.
+   */
   overrides: string[];
   channel: Channel;
 }
@@ -176,14 +108,8 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
     return { package: explicit, overrides, channel: getChannel() };
   }
 
-  // Explicit refs come only from the updater's git paths — updating, rolling
-  // back, or repairing a tool venv that IS a git install (detected via
-  // direct_url.json). Those must yield a git spec even on a pypi-channel
-  // build: the updater is source-aware and follows the INSTALLED source,
-  // never the build channel. Otherwise a pypi-default build would migrate
-  // every existing git install to the wheel on its first update poll, and a
-  // failed update's rollback would reinstall the same wheel instead of the
-  // pinned prior commit — turning a bad update into an outage.
+  // Updater-supplied refs describe an existing git install, even in a PyPI-default build.
+  // Honor them for both updates and rollback instead of silently migrating the installed source.
   const explicitRefs = Boolean(opts?.coworkRef || opts?.antonRef);
 
   if (!explicitRefs && getChannel() === 'pypi') {
@@ -194,22 +120,9 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
 
-  // By default (ANTON_REF=main), let cowork-server's own `[tool.uv.sources]`
-  // pin decide which anton-agent to pull — that is the version cowork-server
-  // requires, and it keeps cowork-server's pyproject identical across the
-  // main/staging branches (so merging staging → main never drags an anton ref
-  // along).
-  //
-  // For a non-default ANTON_REF (e.g. a staging build pinning anton@staging),
-  // we repoint the ref from HERE rather than in cowork-server. A bare
-  // `--with anton-agent @ git+...` is NOT an override: uv treats it as a
-  // *second* URL requirement alongside the sources pin and aborts with
-  // "Requirements contain conflicting URLs for package `anton-agent`". Feeding
-  // the same requirement through a uv OVERRIDE instead replaces the sources
-  // pin outright and resolves cleanly — and, crucially, overrides are honoured
-  // by every uv version (the per-package `--no-sources-package` flag is not:
-  // older uv builds reject it with "unexpected argument", which broke installs
-  // on machines carrying a stale uv).
+  // Default Anton to the server’s own source pin. For explicit refs use UV_OVERRIDE, not a
+  // competing --with URL.
+  // Overrides also work on older uv versions that lack --no-sources-package.
   const overrides =
     antonRef === 'main'
       ? []
