@@ -1,14 +1,5 @@
-// Google Picker, run the same way oauth-service.ts runs the OAuth
-// handshake: a one-off loopback server serves the picker page, the OS
-// default browser opens it, and we wait for the page to post back the
-// user's selection. Embedding the Picker inside Electron's own webContents
-// doesn't work — Google's sign-in step (needed the first time the widget
-// has no session cookie for the account) is blocked by the same
-// disallowed-embedded-user-agent policy that already makes the OAuth PKCE
-// flow above use a real browser instead of a BrowserWindow. Running the
-// Picker in the OS browser sidesteps that entirely, and the user's normal
-// browser usually already has an active Google session, so there's often
-// no sign-in prompt at all.
+// Serve Google Picker through a temporary loopback server in the OS browser.
+// Google blocks its sign-in flow inside Electron webContents.
 
 import * as http from 'http';
 import * as crypto from 'crypto';
@@ -33,11 +24,7 @@ export interface DrivePickerResult {
 // takes longer than typing credentials on a login form.
 const PICKER_TIMEOUT_MS = 5 * 60 * 1000;
 
-// Real Drive file ids only ever match this shape. `fileIds` comes from the
-// renderer bridge (IPC.OAUTH_PICK_DRIVE_FILES) and ends up interpolated
-// into an inline <script> on the picker page (see pickerPage below) — the
-// IPC handler validates against this before calling openDrivePickerFlow,
-// rather than trusting the caller.
+// Validate IPC file IDs before embedding them in the picker page’s inline script.
 const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 export function isValidDriveFileIds(fileIds: unknown): fileIds is string[] | undefined {
@@ -51,13 +38,7 @@ export function cancelCurrentDrivePicker(): void {
   _activeAttempt?.cancel();
 }
 
-/**
- * Opens the Google Picker in the OS default browser and resolves with the
- * files the user selected there. `fileIds`, when provided, pre-navigates
- * the picker to those specific files (Picker's `setFileIds`, GA Jan 2025)
- * for faster consent — e.g. when the user pasted a Drive link and we
- * already know which file they mean.
- */
+/** Open Picker in the OS browser; optional fileIds preselect files for consent. */
 export async function openDrivePickerFlow(
   accessToken: string,
   apiKey: string,
@@ -65,12 +46,7 @@ export async function openDrivePickerFlow(
   accountEmail: string,
   fileIds?: string[],
 ): Promise<DrivePickerResult> {
-  // A second picker session (e.g. the composer's picker still open when
-  // the user separately opens connection-details' "Select files") would
-  // otherwise silently overwrite _activeAttempt, orphaning the first
-  // session's server/browser tab with no way to cancel it. Only one
-  // picker session can usefully be in flight at a time, so cancel
-  // whichever one is already running before starting a new one.
+  // Cancel any prior attempt before replacing it so its loopback server is not orphaned.
   _activeAttempt?.cancel();
 
   let port: number;
@@ -81,20 +57,11 @@ export async function openDrivePickerFlow(
   }
 
   const state = base64UrlEncode(crypto.randomBytes(16));
-  // The page served below embeds `accessToken` in plain text. The state
-  // check alone isn't enough to keep it single-serve — it stays valid for
-  // the whole PICKER_TIMEOUT_MS window, so without this flag the token-
-  // bearing HTML could be re-fetched (e.g. from browser history, since
-  // state rides in the URL) any number of times before the server closes.
+  // Serve token-bearing HTML only once; the URL state remains valid for the entire picker timeout.
   let stateConsumed = false;
 
-  // Set by the picker page's load-timeout signal (see pickerPage below) when
-  // the widget hasn't reached a terminal action within a few seconds — most
-  // often because the browser's active Google account doesn't match
-  // accountEmail. That alone isn't proof of failure (a slow-but-successful
-  // load looks identical from the page's point of view), so it must never
-  // resolve/reject the flow by itself — it only upgrades the message if the
-  // flow *later* genuinely times out, via buildPickerFailureReason below.
+  // A slow load only changes the eventual timeout message; it must not fail a picker that may still
+  // succeed.
   let suspectedAccountMismatch = false;
 
   let rejectResult: ((err: Error) => void) | null = null;
@@ -122,18 +89,9 @@ export async function openDrivePickerFlow(
 
         if (url.pathname === '/result' && req.method === 'POST') {
           let body = '';
-          // The loopback port is reachable by any local process, and a
-          // page open in the user's browser can POST here too (a
-          // no-cors fetch still sends the request — it just can't read
-          // the response). Until `state` below has been checked, we
-          // have no idea whether a given request came from the tab we
-          // opened, so nothing in this handler may reject()/resolve()
-          // the flow before that check passes — only respond with a
-          // plain HTTP error and keep waiting. Attaching this listener
-          // (regardless of what it does) is what keeps an aborted
-          // request's 'error' event from throwing and crashing the
-          // Electron main process — it doesn't need to reject the flow
-          // to do that.
+          // Before validating state, return HTTP errors without settling the flow: any local
+          // process or page can POST here.
+          // Keep an error listener attached so aborted requests cannot crash the main process.
           req.on('error', () => {
             try { res.statusCode = 400; res.end('Bad request.'); } catch {}
           });
@@ -155,20 +113,13 @@ export async function openDrivePickerFlow(
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end('{"ok":true}');
-            // A non-terminal signal — the widget hasn't settled yet, this
-            // only records a suspicion for later. Must return before the
-            // resolve/reject calls below: the flow stays open so a user who
-            // was just slow, or whose widget was fine all along, can still
-            // finish normally.
+            // Record the load warning without settling; a slow picker can still succeed.
             if (payload.signal === 'suspected-account-mismatch') {
               suspectedAccountMismatch = true;
               return;
             }
-            // The picker page reports `error` when Google's own widget hit an
-            // error (google.picker.Action.ERROR) — most commonly the browser's
-            // active Google account not matching the connected account. Reject
-            // rather than resolve so the caller gets a reason instead of an
-            // empty (indistinguishable-from-cancelled) file list.
+            // Reject widget errors with a reason; an empty successful list would look like
+            // cancellation.
             if (payload.error) {
               reject(new Error(payload.error));
               return;
@@ -194,10 +145,8 @@ export async function openDrivePickerFlow(
     },
   };
 
-  // Unlike oauthConnect's auth URL, this URL has no meaning to paste into
-  // an already-open browser manually — it's only useful if openExternal
-  // actually launches something, so a launch failure should surface
-  // immediately rather than silently waiting out the full PICKER_TIMEOUT_MS.
+  // Surface browser-launch failures immediately; otherwise this local URL would wait out the picker
+  // timeout.
   try {
     await shell.openExternal(`http://127.0.0.1:${port}/?state=${state}`);
   } catch (e: any) {
@@ -224,28 +173,19 @@ export async function openDrivePickerFlow(
   }
 }
 
-// Only upgrades a genuine timeout (never a cancellation or an in-widget
-// Action.ERROR, which already carry their own specific reason) — matching on
-// the timeout's own wording rather than a separate error code keeps this a
-// pure, directly testable function instead of threading a reason-kind enum
-// through raceWithTimeout for one caller.
+// Upgrade only timeout messages, leaving cancellation and widget errors unchanged.
 export function buildPickerFailureReason(rawReason: string, suspectedAccountMismatch: boolean, accountEmail: string): string {
   if (!suspectedAccountMismatch || !/timed out/i.test(rawReason)) return rawReason;
   return `${rawReason} This is usually caused by ${accountEmail} not being the active Google account in this browser — switch to that account, close the tab, and try again.`;
 }
 
-// JSON.stringify doesn't escape `<`, so a value containing `</script>`
-// would close the inline <script> below early and let whatever follows
-// execute on this page (which holds the access token). Replacing every `<`
-// with its unicode escape is a no-op for JSON parsing but makes that
-// impossible.
+// Escape < as Unicode so interpolated JSON cannot break out of the token-bearing script via
+// </script>.
 function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-// accountEmail is interpolated directly into the static HTML markup below
-// (not just the inline <script>), so it needs HTML escaping on top of the
-// script-breakout escaping jsonForScript does for the values embedded there.
+// Values embedded in static markup also need HTML escaping, separately from script-safe JSON.
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }

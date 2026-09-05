@@ -1,6 +1,4 @@
-// Dependency-light HTTP GET for the updater. Kept out of ui-updater.ts so it (and
-// its tests) don't transitively pull electron/keytar — which fail to load on
-// Linux CI without libsecret (ENG-749 review). Node built-ins only.
+// Use Node built-ins so updater HTTP tests do not require Electron or keytar.
 
 import * as https from 'https';
 import * as http from 'http';
@@ -15,10 +13,8 @@ export function isLoopbackUrl(u: string): boolean {
   }
 }
 
-// `timeoutMs` is a per-socket inactivity timeout; `absoluteTimeoutMs` is a hard
-// wall-clock deadline for the whole operation (spanning redirects), so a
-// trickle-fed response can't reset the inactivity timeout forever and hang the
-// boot poll (ENG-749).
+// Keep an absolute deadline across redirects; socket inactivity timeouts alone allow endless
+// trickle responses.
 export function httpsGet(
   url: string,
   timeoutMs = 10000,
@@ -58,7 +54,6 @@ export function httpsGet(
         }
         const mod = isHttp ? http : https;
         const req = mod.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
-          // Follow redirects (GitHub releases use 302)
           if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
             doGet(res.headers.location, redirects + 1);
             return;
