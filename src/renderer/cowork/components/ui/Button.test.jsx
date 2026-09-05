@@ -48,7 +48,7 @@ describe('Button', () => {
     await user.click(screen.getByRole('button', { name: 'Go' }));
     expect(onClick).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole('button', { name: 'Frozen' }));
-    expect(onClick).toHaveBeenCalledTimes(1); // unchanged
+    expect(onClick).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Frozen' })).toBeDisabled();
   });
 

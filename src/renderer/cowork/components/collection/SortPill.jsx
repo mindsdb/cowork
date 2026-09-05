@@ -1,11 +1,4 @@
-// Pill-shaped dropdown for sort options. Each consumer supplies its
-// own `options` list ([{id, label}]); the kit doesn't try to canonical
-// across views because the actual sort keys vary (Projects uses
-// recent/name/most-active; Artifacts uses newest/name; Scheduled uses
-// next-run/name; Connect Apps uses recent/name).
-//
-// Click-outside + Escape close the menu, matching every other popover
-// in the app.
+// Callers supply their own [{ id, label }] sort options.
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
@@ -56,7 +49,6 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
           position: 'absolute', top: 'calc(100% + 4px)', left: 0,
           minWidth: 160, zIndex: 20,
           background: 'var(--surface)',
-          // No border — floats on --sh-popup alone (ENG-790).
           borderRadius: 8,
           boxShadow: 'var(--sh-popup)',
           padding: '4px 0',

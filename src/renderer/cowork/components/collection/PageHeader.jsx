@@ -2,28 +2,9 @@ import { Fragment } from 'react';
 import { cn } from '../../lib/cn';
 import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 
-// The one page-header for every main view. Two shapes so depth and placement
-// read the same everywhere:
-//
-//   • title    top-level collection pages (Projects, Live Artifacts, Connect
-//              Apps and Data, Scheduled, Tasks, Skills) — a display-font title,
-//              optional eyebrow + subtitle, and a right-aligned `actions` slot.
-//   • trail    drill-down surfaces (a schedule, a project, a skill) — pass
-//              `crumbs` and/or `current`, or `onBack` for a "← label" link.
-//
-// Both shapes own the titlebar-safe inset: paddingTop honours
-// --titlebar-safe-top (set on <main> by the shell) so the header drops below
-// the macOS traffic lights + the floating open-sidebar button when the sidebar
-// isn't docked over that corner, falling back to the normal padding via max().
-// Reserving the space on top (rather than the left) keeps the title/crumb left-
-// aligned with the body beneath it instead of pushing it into a lopsided gutter.
-//
-// Styling note: this is on the target stack (Tailwind utilities + `cn`, token
-// colours from tailwind.config), not inline styles. Neither shape draws a
-// divider — the header floats above the body. The one value that stays inline
-// is `subtitleBottom`, a caller-supplied dynamic number. cva isn't used here —
-// the two shapes are structural, not style-variants-on-one-element; cva stays
-// for the ui/ primitives (Button, Badge, …) where it fits.
+// title is for collections; trail uses crumbs/current or onBack for drill-down views.
+// Reserve --titlebar-safe-top vertically so traffic lights clear the header without misaligning it
+// with the body.
 export function PageHeader({
   // title shape
   title, subtitle, eyebrow, subtitleBottom,
