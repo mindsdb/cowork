@@ -113,9 +113,8 @@ describe('UtilitiesView memory editor targeting', () => {
     }));
   });
 
-  // Regression: the editor stayed open when the sidebar moved, so the save
-  // guard read another member's capability and refused a member's edit to
-  // their own slot.
+  // Leave the editor when sidebar selection changes, so the save guard cannot read another member's
+  // capabilities.
   it('leaves the editor when the sidebar moves to another members slot', async () => {
     render(<UtilitiesView kind="memory" />);
 
