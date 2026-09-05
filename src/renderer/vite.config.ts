@@ -8,48 +8,30 @@ import { isSpaNavigation } from './web-spa-fallback';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
-// App display version resolution (baked into __APP_VERSION__ at build time):
-//
-//   1. VITE_APP_VERSION env var — set by CI for prod builds. prod-build-deploy.yml
-//      creates a CalVer tag (e.g. v2.26.7.1.1) and passes it to build-installers.yml
-//      as app_version, which lands here via the build step's env.
-//      Result: clean version like "2.26.7.1.1".
-//
-//   2. git describe --tags — used by staging and dev builds (no explicit
-//      version passed). Requires fetch-depth: 0 in CI so tags are available.
-//      On a tagged commit: clean version. On an untagged commit (typical for
-//      staging): includes distance and short SHA, e.g. "2.26.6.30.1-3-g1a2b3c4".
-//
-//   3. package.json — last resort when git tags aren't available (e.g. Docker
-//      builds or repos without tags). Currently "2.0.7" (stale, not maintained).
+// Display version precedence: VITE_APP_VERSION, git describe, then package.json.
+// CI needs full history for untagged commit distances; keep this aligned with
+// gen-build-channel.mjs.
 const explicitAppVersion = (process.env.VITE_APP_VERSION || '').trim();
 let appVersion = explicitAppVersion.replace(/^v/, '') || pkg.version;
 if (!explicitAppVersion) {
   try {
     appVersion = execSync('git describe --tags --match "v[0-9]*"', { cwd: __dirname, encoding: 'utf-8' }).trim().replace(/^v/, '');
-  } catch { /* no tags or not a git repo — falls back to package.json */ }
+  } catch {  }
 }
 
-// Bake the git commit hash into the bundle so it's available at runtime
-// for diagnostics. Falls back gracefully outside a git repo.
+// Embed the commit for diagnostics; tolerate builds without git.
 let gitHash = '';
 try {
   gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname, encoding: 'utf-8' }).trim();
-} catch { /* not a git repo or git not available */ }
+} catch {  }
 
-// Two build targets share this config:
-//   - electron (default): outputs to dist/renderer/, entry index.html → main.tsx,
-//     packaged by electron-builder.
-//   - web (BUILD_TARGET=web): outputs to dist/renderer-web/, entry index-web.html
-//     → web-main.tsx, served by the FastAPI host when ANTON_SERVE_SPA=1.
-//
-// Default behavior is unchanged when BUILD_TARGET is unset, so existing
-// `npm run build` and `npm run dev` paths are byte-identical to before.
+// Default builds Electron into dist/renderer; BUILD_TARGET=web uses index-web.html and
+// dist/renderer-web.
 const IS_WEB = process.env.BUILD_TARGET === 'web';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 
-// `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
+// Electron starts the sidecar after Vite; startup ECONNREFUSED is expected.
 const logger = createLogger();
 const logError = logger.error;
 logger.error = (msg, options) => {
@@ -61,11 +43,8 @@ logger.error = (msg, options) => {
   logError(msg, options);
 };
 
-// History-API fallback for the web dev server: rewrite client-side navigations
-// to the web entry so `/`, `/c/:id`, `/projects`, `/connect`, … all boot the
-// SPA. The rewrite decision lives in `isSpaNavigation` (web-spa-fallback.ts) so
-// it's unit-tested; see there for the `Accept: text/html` rationale and why we
-// don't treat a dotted last segment as a file (ENG-1233).
+// Rewrite HTML navigations through isSpaNavigation so deep routes load the web entry.
+// See web-spa-fallback.ts for Accept-header and dotted-route handling.
 const webSpaFallback = {
   name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
@@ -78,12 +57,8 @@ const webSpaFallback = {
 
 export default defineConfig({
   plugins: [
-    // React Compiler (React 19) — auto-memoizes components and handlers at
-    // build time, cutting cascade re-renders (e.g. one Sidebar state change
-    // re-rendered 68 components before, 12 after). Components it can't
-    // prove safe are skipped, so it degrades gracefully.
-    // plugin-react v6 (oxc) dropped the `babel` option; the compiler now
-    // rides @rolldown/plugin-babel with the exported preset.
+    // React Compiler skips components it cannot prove safe. plugin-react v6 removed babel support,
+    // so run the compiler through @rolldown/plugin-babel.
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback] : []),
@@ -96,10 +71,7 @@ export default defineConfig({
   },
   root: __dirname,
   envDir: path.resolve(__dirname, '../..'),
-  // Electron loads over file:// so it needs a relative base; the web SPA is
-  // served over http and now has deep client-side routes (`/c/:id`), where a
-  // relative base would resolve assets against the route path and 404. Absolute
-  // root is the correct SPA base (ENG-1233).
+  // Electron file loads need relative assets; web deep routes need a root-absolute base.
   base: IS_WEB ? '/' : './',
   build: {
     outDir: path.resolve(

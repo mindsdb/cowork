@@ -1,17 +1,5 @@
-// Host platform abstraction for the cowork SPA.
-//
-// The cowork renderer ships in two shells:
-//   - Electron (preload exposes window.antontron — full bridge)
-//   - Web (vite SPA served by FastAPI — no bridge)
-//
-// Every cowork/* file MUST go through this module instead of touching
-// `window.antontron` directly. This is enforced by a lint guard
-// (`npm run check:cowork-purity`), which runs in CI.
-//
-// Web fallbacks are intentionally narrow: methods that have a sensible
-// browser equivalent (openExternal → window.open) work; OS-level shell
-// operations (openPath) return { ok: false, reason: 'unsupported' }
-// so call sites can branch / hide affordances.
+// cowork/* must access Electron's bridge through this module (enforced by check:cowork-purity).
+// Browser equivalents work on web; OS-only operations report unsupported so callers can hide them.
 
 import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
@@ -20,9 +8,7 @@ import { parseCalVer, compareCalVer } from '../../shared/version';
 
 const ANTON_SERVER_PORT = 26866;
 
-// The release manifest (same URL main's ui-updater defaults to). Hardcoded on
-// purpose: the renderer-side shell check exists precisely for shells too old to
-// tell us the manifest URL over the bridge (ENG-1103).
+// Hardcoded for older shells that cannot report the release manifest URL over the bridge.
 const SHELL_MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
 type Bridge = typeof window extends { antontron?: infer T } ? T : never;
@@ -33,10 +19,8 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Static deployment capability. The user's opt-in is intentionally owned by
-// the renderer and stored per device; this flag only answers whether this
-// shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
-// remains unavailable until a future cloud capability is deliberately added.
+// Deployment capability only; renderer opt-in is separate and per device. Hosted web does not offer
+// Code.
 export const codeModeAvailable: boolean =
   isElectron && bridge.codeModeAvailable === true;
 
@@ -58,11 +42,8 @@ export function isMac(): boolean {
 
 // ---- API origin / OAuth redirect ---------------------------------------
 
-// Where the cowork SPA addresses its FastAPI backend.
-//   Electron (file:// or app://) → loopback at the port main resolved for
-//     THIS OS user and handed us via preload (ENG-439). Falls back to the
-//     legacy fixed port only if the bridge didn't supply one.
-//   Web (http(s)://...)          → same origin (FastAPI serves the SPA).
+// Electron uses main's resolved loopback port, with a legacy-port fallback. Web uses the same
+// origin.
 export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
@@ -73,10 +54,7 @@ export function getApiOrigin(): string {
   return window.location.origin;
 }
 
-// Endpoint an outbound Code runtime connects to. In packaged Electron this
-// matches getApiOrigin(); in Vite development the renderer itself lives on
-// :5173, so use the actual sidecar port instead of handing a runtime the UI
-// dev-server address. Hosted Code uses the current HTTPS origin.
+// Code runtimes need the sidecar address in Vite development, not the renderer's :5173 origin.
 export function getCodeControlPlaneOrigin(): string {
   if (isElectron) {
     if (typeof bridge.codeControlPlaneOrigin === 'string') {
@@ -93,8 +71,6 @@ export function getCodeControlPlaneOrigin(): string {
           return configured.origin;
         }
       } catch {
-        // Fall through to the private local sidecar. The connection UI will
-        // explain that loopback cannot be reached by another computer.
       }
     }
     const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
@@ -103,15 +79,8 @@ export function getCodeControlPlaneOrigin(): string {
   return getApiOrigin();
 }
 
-// True when the FastAPI backend the SPA talks to lives on THIS machine
-// (loopback). The deciding factor for "can I open a server-side file
-// path locally?" — a server-returned filesystem path is only openable
-// via the OS shell when the server is the local one. When the desktop
-// app is pointed at a REMOTE Anton server, those paths live on that box,
-// so callers must fetch the file over HTTP (the artifact `serveUrl`)
-// instead of `openPath`. (Web's window.location.origin can itself be
-// localhost in dev — callers still gate on `isElectron` since the web
-// shell has no `openPath` regardless.)
+// Only open server filesystem paths locally when both isElectron and isLocalBackend are true.
+// Remote backends require fetching the artifact serveUrl; their paths belong to another machine.
 export function isLocalApiOrigin(): boolean {
   try {
     const origin = getApiOrigin();
@@ -123,22 +92,15 @@ export function isLocalApiOrigin(): boolean {
   }
 }
 
-// In Electron, OAuth runs through a loopback server spawned by main —
-// there is no fixed redirect URI to register, so this returns null and
-// callers should use oauthConnect() for the IPC PKCE flow instead.
-//
-// In web, OAuth must use a server-side redirect — this returns the
-// stable callback URL the FastAPI backend exposes for that integration.
+// Electron OAuth uses oauthConnect() with a dynamic loopback redirect. Web uses the stable server
+// callback.
 export function getOAuthRedirectUri(integration: string): string | null {
   if (isElectron) return null;
   return `${getApiOrigin()}/api/v1/oauth/callback/${integration}`;
 }
 
-// ---- Server lifecycle ---------------------------------------------------
-//
-// In Electron, main owns the FastAPI subprocess and exposes start/stop/info.
-// In web, the FastAPI process IS the host — start/stop are meaningless;
-// info reports the live origin so UI can render "running" state correctly.
+// Server lifecycle: main owns Electron's subprocess; web start/stop are no-ops because FastAPI is
+// the host.
 
 export interface ServerInfo {
   running: boolean;
@@ -324,8 +286,7 @@ export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => v
   return () => {};
 }
 
-// Main-window hide/minimize (false) and show/restore/focus (true). The web
-// build has no window to hide, so it never fires and stays visible.
+// Main-window visibility events do not fire on web, which remains visible.
 export function onWindowVisibility(cb: (visible: boolean) => void): () => void {
   if (isElectron && typeof bridge.onWindowVisibility === 'function') {
     return bridge.onWindowVisibility(cb);
@@ -335,9 +296,7 @@ export function onWindowVisibility(cb: (visible: boolean) => void): () => void {
 
 // ---- File drop / clipboard ---------------------------------------------
 
-// In Electron, dropped files expose an OS path via webUtils. In web, the
-// File object never has a real filesystem path — return null so callers
-// can fall back to upload-by-content.
+// Web File objects lack an OS path; return null so callers upload content instead.
 export function getPathForFile(file: File): string | null {
   if (isElectron && typeof bridge.getPathForFile === 'function') {
     try {
@@ -381,16 +340,13 @@ function normalizeBuildKind(value: unknown): VersionInfo['buildKind'] {
     : null;
 }
 
-/** Structured version facts for the unified version display (ENG-213). The
- *  renderer resolves the effective UI version as `ui ?? __APP_VERSION__`. */
+/** Effective UI version is ui ?? __APP_VERSION__. */
 export async function getVersionInfo(): Promise<VersionInfo> {
   if (isElectron && typeof bridge.getUIVersion === 'function') {
     const v = await bridge.getUIVersion();
     if (v && typeof v === 'object') {
-      // Normalize across shell versions (an OTA renderer can run on an older
-      // installed shell). Legacy shells return `ui: 'bundled'` (a sentinel,
-      // not a version) and omit `source`. Treat that sentinel as null, and
-      // when `source` is absent infer OTA only if a real UI version is present.
+      // Older OTA hosts report ui: "bundled" and omit source; infer OTA only from a real UI
+      // version.
       const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
       const source: VersionInfo['source'] =
         v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
@@ -400,19 +356,12 @@ export async function getVersionInfo(): Promise<VersionInfo> {
   return { app: '', ui: null, source: 'web', buildKind: null };
 }
 
-// ---- Onboarding -------------------------------------------------------
-//
-// The cowork SPA mounts the same arcade onboarding screens (TermsScreen
-// → SetupScreen → OnboardingScreen) under both shells. Electron handlers live in main and
-// touch ~/.anton/.env directly. Web handlers are FastAPI endpoints in
-// `server/routes/settings.py` that mirror the IPC shapes 1:1, so the
-// React pages are shell-agnostic once they go through `host.*`.
+// Onboarding pages use host.* in both shells; web settings endpoints mirror the Electron IPC
+// shapes.
 
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string> || {}) };
-  // Web: attach the Keycloak token as a Bearer header so the ingress auth
-  // subrequest validates the caller (mirrors cowork/api.js authFetch). Electron
-  // injects the loopback token in main, so nothing is added there.
+  // Web ingress requires the Keycloak Bearer token. Electron main injects its loopback token.
   if (isWeb) {
     const token = await getAccessToken();
     if (token) {
@@ -434,8 +383,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
-    // Preserve the HTTP status on the error so callers can distinguish the
-    // expected loopback-gate 403 (ENG-817) from real failures (4xx/5xx/network).
+    // Preserve status so callers can distinguish expected loopback-gate 403s from real failures.
     const err = new Error(detail) as Error & { status?: number };
     err.status = res.status;
     throw err;
@@ -443,10 +391,8 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
-// A hosted browser can never use `/settings/raw`: it's restricted to loopback
-// (403) and refused outright in org mode (501). Both are expected, and the DB is
-// the authoritative store, so reads/writes degrade instead of aborting boot.
-// Any other status is a real error and must propagate.
+// Hosted /settings/raw rejects loopback-only access (403) and org-mode access (501).
+// Only these expected refusals degrade to DB persistence; propagate other errors.
 function isExpectedRawGateStatus(e: unknown): boolean {
   const status = (e as { status?: number }).status;
   return status === 403 || status === 501;
@@ -482,8 +428,7 @@ export async function restartServer(): Promise<void> {
   if (isElectron && typeof bridge.restartServer === 'function') {
     await bridge.restartServer();
   }
-  // Web deployments don't need a restart — the server reads .env on
-  // each request in that context.
+  // Web reads .env per request, so it needs no restart.
 }
 
 export interface InstallStatus {
@@ -501,16 +446,13 @@ export async function checkInstall(): Promise<InstallStatus> {
 export async function checkConfigured(): Promise<{
   configured: boolean;
   provider: string;
-  // Electron is desktop by definition, so the bridge path leaves this false.
   orgMode?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
-  // Web: read config_ready from /health — the SAME signal the in-app chat gate
-  // uses — so onboarding-vs-app routing can't disagree with the chat gate.
-  // `orgMode` separates a hosted org deployment from an authenticated
-  // standalone one; config_ready can't express that.
+  // Use /health config_ready, matching the chat gate. orgMode separately identifies hosted org
+  // deployments.
   const h = await fetchJson('/api/v1/health/') as {
     config_ready?: boolean;
     provider?: string;
@@ -523,13 +465,8 @@ export async function checkConfigured(): Promise<{
   };
 }
 
-// Hold here until main reports the boot sequence has settled — the sidecar start
-// decision plus the boot-time update poll (ENG-749). The caller stays on the
-// loading screen across this await, so a boot update can't first flash the chat
-// UI in a server-down state. The renderer deliberately races no timeout of its
-// own: main resolves on the poll's real completion (see boot-gate.ts), and a
-// shorter renderer cap could release the gate mid-reinstall. Web has no bridge →
-// resolves at once; `.catch` guards an IPC-level rejection.
+// Wait for main's complete boot/update decision to avoid flashing a server-down chat screen.
+// Do not race a renderer timeout: it could release the gate during a reinstall.
 export async function awaitBootReady(): Promise<void> {
   if (!(isElectron && typeof bridge.awaitBootReady === 'function')) return;
   await Promise.resolve(bridge.awaitBootReady()).catch(() => {});
@@ -550,12 +487,8 @@ export async function validateProvider(
   });
 }
 
-// ---- Setup-screen install lifecycle (Electron-only) -------------------
-//
-// The Setup page subscribes to a streaming install of the anton CLI +
-// python deps. On web there is no install — the FastAPI host running
-// this code IS the install — so each subscriber fires synthetic
-// "done" events synchronously and start/cancel are no-ops.
+// Electron streams CLI/dependency installation. Web is already installed, so subscribers complete
+// synchronously.
 
 export interface InstallStep {
   id: string;
@@ -579,9 +512,6 @@ export function onInstallProgress(cb: (steps: InstallStep[]) => void): () => voi
   if (isElectron && typeof bridge.onInstallProgress === 'function') {
     return bridge.onInstallProgress(cb);
   }
-  // Web: synthesise a single completed step so the steps panel renders
-  // something meaningful instead of staying empty during the brief
-  // pass-through.
   queueMicrotask(() => cb([{ id: 'server', label: 'Server is running', status: 'done' }]));
   return () => {};
 }
@@ -598,8 +528,7 @@ export function onInstallDone(cb: () => void): () => void {
   if (isElectron && typeof bridge.onInstallDone === 'function') {
     return bridge.onInstallDone(cb);
   }
-  // Brief delay so the "installing" frame has a chance to render — the
-  // user sees a beat of motion instead of the page snapping past Setup.
+  // Allow the installing frame to render before completing.
   const id = setTimeout(cb, 600);
   return () => clearTimeout(id);
 }
@@ -651,20 +580,9 @@ export interface ShellUpdate {
   downloadUrl?: string;
 }
 
-// Resolve the shell (installer) update notice.
-//
-// New shells (ENG-849): pull the last-known status from main. The notice is
-// normally pushed via onUpdateStatus('shell-available'), but an OTA reload
-// re-mounts the renderer and drops that push; re-pulling on mount re-surfaces a
-// pending reinstall.
-//
-// Old shells (ENG-1103): a shell that predates the getShellUpdate bridge never
-// pushes or serves the notice, so a user stranded on it would never be told a
-// newer app version exists — even while their UI keeps hot-updating over OTA.
-// This code rides that OTA bundle, so on those shells we fall back to a
-// renderer-side check: fetch the manifest ourselves and compare shellVersion
-// against the installed app version. New shells never take this path (they have
-// the bridge), so there's no double-notify. Web has no shell → null.
+// Re-pull main's shell-update notice after OTA remounts lose the original push.
+// Older shells lack the bridge, so compare their installed version with the manifest in the
+// renderer.
 export async function getShellUpdate(): Promise<ShellUpdate | null> {
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
@@ -676,14 +594,9 @@ export async function getShellUpdate(): Promise<ShellUpdate | null> {
   return null;
 }
 
-// Renderer-side shell-update check for old shells (ENG-1103). Fetches the
-// release manifest directly (the CSP in index.html allows the manifest host)
-// and reports a reinstall only when the published shell is strictly newer by
-// CalVer than the installed app version — failing closed on any fetch error,
-// missing/absent shellVersion, or a non-CalVer version (e.g. a dev/SemVer
-// build). No installer URL is returned: computing the exact per-platform link
-// needs the build kind, which an old shell doesn't expose, so the Download
-// action falls back to the downloads site.
+// Old shells compare only valid CalVer shell versions; fetch/parse failures report no update.
+// Use the downloads site because these shells cannot expose the build kind needed for an installer
+// URL.
 async function shellUpdateFromManifest(): Promise<ShellUpdate | null> {
   try {
     const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
@@ -775,11 +688,8 @@ export async function installShellAutoUpdate(): Promise<boolean> {
   return false;
 }
 
-// On-demand check for a newer UI, server, or shell version. Detection only —
-// never applies; call applyUpdate() (UI/server) or download the installer
-// (shell). Electron-only: the web app has no updater (hosted instances update
-// via redeploy, ENG-852), so it resolves to a benign "up to date" and the
-// Settings control is hidden there.
+// Detection only; applying UI/server updates or downloading a shell installer is separate. Web
+// updates by redeploy.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
     const reply = await bridge.checkForUpdate();
@@ -787,12 +697,8 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
       return reply;
     }
 
-    // An OTA-updated renderer can still be hosted by an older Electron shell,
-    // whose UI_UPDATE_CHECK reply predates the unified UI/server/shell summary.
-    // Normalize that UI-only shape so Settings does not mistake a missing `ok`
-    // field for a failed check. The old reply cannot report shell updates, so
-    // merge the renderer-side manifest result as well; otherwise a manual check
-    // would override the mount-time notice and incorrectly say "up to date."
+    // Normalize older UI-only replies and merge the renderer shell check, or manual checks can
+    // erase a reinstall notice.
     const uiUpdateAvailable = !!reply?.updateAvailable;
     const summary: UpdateCheckSummary = {
       ok: true,
@@ -837,10 +743,8 @@ export interface OAuthConnectResult {
   token_type?: string;
 }
 
-// Electron: spawns a loopback PKCE flow via the main process and
-// returns the resulting tokens.
-// Web: not supported — callers should use getOAuthRedirectUri() and a
-// server-side redirect flow instead.
+// Electron uses main's loopback PKCE flow. Web callers use getOAuthRedirectUri() with server-side
+// redirects.
 export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnectResult> {
   if (isElectron && typeof bridge.oauthConnect === 'function') {
     return bridge.oauthConnect(opts);
@@ -883,31 +787,18 @@ export interface DrivePickerResult {
   failed?: FailedDrivePick[];
 }
 
-// Electron-only: opens the Google Picker in the OS default browser (not
-// embedded — Google's sign-in step gets blocked inside Electron the same
-// way raw OAuth would) and resolves once the user picks files there or
-// cancels. Needed because drive.file alone only grants the app access to
-// files it created itself — the Picker is how a user grants access to
-// existing files without widening the OAuth scope. `fileIds`, when
-// known (e.g. from a pasted Drive link), pre-navigates the picker to
-// those files for faster consent. `projectName`, when passed, tags any
-// newly-picked files as belonging to that project (see DrivePickerFile);
-// omit it for connection-details' "Pick files" button, which has no
-// project context.
-// Web: cancels the in-flight pick (hides its widget and resolves it) — a
-// settled call's finish() already no-ops, so calling this is always safe.
+// Electron opens Google Picker in the OS browser because Google blocks embedded sign-in.
+// Picker grants access to existing drive.file resources without widening OAuth scope.
+// fileIds preselect known files; projectName associates new grants with a project.
+// cancelDrivePicker also cancels and resolves the web widget; settled calls are safe.
 let webPickerCancelPrevious: (() => void) | null = null;
 
 const GOOGLE_API_SRC = 'https://apis.google.com/js/api.js';
 
-// How long a picker may sit without reporting anything before it is treated
-// as stuck. Deliberately far above any real pick: it can only ever be a
-// backstop, never a deadline (see its use below).
+// Backstop for silent failures, not a normal interaction deadline.
 const PICKER_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
 
-// Same shape check Electron runs before its own pick
-// (drive-picker-service.ts's DRIVE_FILE_ID_RE) — kept in step so one public
-// pickDriveFiles() does not validate on one shell and not the other.
+// Keep file-ID validation aligned with main/drive-picker-service.ts.
 const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 function validDriveFileIds(fileIds: string[] | undefined): boolean {
@@ -915,10 +806,7 @@ function validDriveFileIds(fileIds: string[] | undefined): boolean {
   return Array.isArray(fileIds) && fileIds.every((id) => typeof id === 'string' && DRIVE_FILE_ID_RE.test(id));
 }
 
-// Narrow shapes for the parts of Google's Picker SDK this file touches. The
-// SDK ships no types of its own and is reached through `window`, so without
-// these every call below would be `any` — and this module's one sanctioned
-// `any` is the platform-bridge cast at the top of the file.
+// Local types cover the untyped Google Picker SDK surface used here.
 interface GooglePickerDoc {
   id: string;
   name: string;
@@ -962,10 +850,7 @@ function googleApiWindow(): GoogleApiWindow {
   return window as unknown as GoogleApiWindow;
 }
 
-// Google's Picker SDK, loaded once into the SPA's own page. Cached per page
-// load; a REJECTED load is deliberately NOT cached, so a transient network
-// failure can be retried by picking again instead of poisoning the picker for
-// the rest of the session.
+// Cache the Picker SDK per page; discard rejected loads so transient failures remain retryable.
 let googlePickerSdk: Promise<void> | null = null;
 
 function loadGooglePickerSdk(): Promise<void> {
@@ -975,8 +860,7 @@ function loadGooglePickerSdk(): Promise<void> {
     const loadPickerModule = () => {
       const gapi = googleApiWindow().gapi;
       if (!gapi) { unreachable(); return; }
-      // api.js only bootstraps the loader — the picker module itself is a
-      // second, separate fetch that can fail on its own.
+      // api.js only bootstraps the loader; fetching the picker module can fail separately.
       gapi.load('picker', {
         callback: () => resolve(),
         onerror: () => reject(new Error('Google Picker could not be loaded.')),
@@ -1004,13 +888,9 @@ function loadGooglePickerSdk(): Promise<void> {
   return googlePickerSdk;
 }
 
-// Persist the grant. The drive.file scope only covers files this app created
-// itself, so a connection's `_picked_files` list is the record of what else
-// the user explicitly granted — and it is what the agent's own prompt is
-// built from (cowork-server's picked_files_by_project). Mirrors Electron's
-// savePickedFiles (main/picked-files.ts), including its rule: a failure here
-// means NOTHING was persisted, so the caller must not report the pick as
-// successful or the UI shows files as granted that the server never recorded.
+// Persist explicit file grants before reporting success: _picked_files feeds cowork-server's
+// project prompts.
+// Failure means the grant was not recorded and must not appear successful.
 async function persistPickedFiles(
   engine: string, name: string, files: DrivePickerFile[], projectName?: string,
 ): Promise<DrivePickerFile[]> {
@@ -1030,13 +910,7 @@ async function persistPickedFiles(
   return (merged?.files as DrivePickerFile[]) || files;
 }
 
-// Web equivalent of the Electron flow above. The Picker renders as an in-page
-// overlay in this same, already-authenticated document — it is never a
-// top-level navigation to a Google domain — so everything here is a normal
-// fetch() carrying the caller's own Bearer header. That removes every failure
-// mode the previous popup handoff had: a browser-blocked popup, a click
-// activation that expired during an await, and a header-less navigation whose
-// token had to be smuggled through an opaque server-side ticket.
+// Render Picker in the authenticated page so requests carry Bearer headers without popup handoffs.
 async function pickDriveFilesWeb(
   engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string,
 ): Promise<DrivePickerResult> {
@@ -1056,14 +930,8 @@ async function pickDriveFilesWeb(
   try {
     await loadGooglePickerSdk();
   } catch (err) {
-    // Deliberately ok:false, where Electron and the replaced picker page both
-    // reported a load failure as ok:true with no files. That is not a change
-    // of intent — both of those rendered a visible "Could not load Google
-    // Picker" card of their own first, so the user still saw the failure and
-    // the ok:true only avoided reporting it twice. This flow has no page of
-    // its own to show anything on, so ok:true here would mean the user clicks
-    // "add files" and silently nothing happens. Returning the reason is what
-    // preserves the old behaviour the user actually experienced.
+    // Report load failures here: unlike the former picker page, this widget has no separate error
+    // surface.
     return { ok: false, reason: (err as Error)?.message || 'Could not load the file picker.' };
   }
 
@@ -1078,15 +946,8 @@ async function pickDriveFilesWeb(
       resolve(result);
     };
 
-    // Backstop for the one failure the callback below cannot see. When the
-    // widget's iframe renders a static Google 403 (usually an active-account
-    // mismatch) there is no picker JS inside it, so PICKED/CANCEL/ERROR never
-    // fire and this promise would otherwise never settle. The popup flow this
-    // replaces survived that only because the user could close the window;
-    // in-page there is nothing to close, so the wait has to be bounded here.
-    // There is no Action.LOADED, so a widget the user is simply still
-    // browsing is indistinguishable from a stuck one — hence a bound far
-    // longer than any real pick rather than a tight one.
+    // A static Google 403 iframe emits no callback, leaving the promise pending.
+    // There is no LOADED event to distinguish it from active browsing, so use a generous backstop.
     const stuckTimer = setTimeout(() => {
       try { widget?.setVisible(false); } catch { /* already disposed */ }
       finish({
@@ -1094,8 +955,7 @@ async function pickDriveFilesWeb(
         reason: `Google Picker did not respond — the browser’s active Google account may not match ${account}.`,
       });
     }, PICKER_STUCK_TIMEOUT_MS);
-    // A newer pick supersedes one still on screen — same intent the popup
-    // flow had, without the window bookkeeping.
+    // A new pick supersedes the visible picker.
     webPickerCancelPrevious?.();
     let widget: { setVisible(visible: boolean): void } | undefined;
     webPickerCancelPrevious = () => {
@@ -1122,15 +982,11 @@ async function pickDriveFilesWeb(
           }));
           finish({ ok: true, files, newFiles: files });
         } else if (data.action === picker.Action.CANCEL) {
-          // Matches Electron's own /result handler: a Cancel click is a
-          // successful pick of nothing, never an error.
+          // Cancel succeeds with no files, matching Electron.
           finish({ ok: true, files: [], newFiles: [] });
         } else if (data.action === picker.Action.ERROR) {
-          // Without this branch an in-widget error settles nothing and the
-          // pick hangs forever. Overwhelmingly this is an active-account
-          // mismatch: the widget renders under whichever Google account is
-          // ambient in the browser, not the one this token is scoped to, and
-          // 403s. Same diagnosis the replaced picker page reported.
+          // Settle widget errors; account/token mismatch commonly produces a 403 without PICKED or
+          // CANCEL.
           finish({
             ok: false,
             reason: `Google Picker could not open — the browser’s active Google account may not match ${account}.`,
@@ -1138,8 +994,6 @@ async function pickDriveFilesWeb(
         }
       });
 
-    // Pre-navigate to specific files when the caller already knows them (e.g.
-    // a pasted Drive link) — the caller's own value, no server round trip.
     if (fileIds && fileIds.length > 0) {
       builder.addView(new picker.DocsView(picker.ViewId.DOCS).setFileIds(fileIds));
     }
@@ -1153,7 +1007,6 @@ async function pickDriveFilesWeb(
 
   if (!picked.ok || !picked.newFiles?.length) return picked;
 
-  // Persisted BEFORE success is reported — see persistPickedFiles.
   try {
     const merged = await persistPickedFiles(engine, name, picked.newFiles, projectName);
     return { ok: true, files: merged, newFiles: picked.newFiles };
@@ -1188,19 +1041,15 @@ export function onOAuthRefreshError(
   return () => {};
 }
 
-// Tears down any in-flight loopback OAuth listener so the renderer's
-// "Cancel login" button can abort the flow without waiting for the
-// 5-minute server timeout.
+// Cancel the loopback OAuth listener immediately instead of waiting for its five-minute timeout.
 export async function oauthCancel(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancel === 'function') {
     await bridge.oauthCancel();
   }
 }
 
-// ── MindsHub onboarding bridge ──────────────────────────────────
-// See main/index.ts for the rationale on the login/refresh/finalize
-// split. Web shells return failure — MindsHub PKCE only runs in
-// Electron; the web shell uses Keycloak redirect auth instead.
+// MindsHub PKCE is Electron-only; web uses Keycloak redirect auth.
+// See main/index.ts for the login/refresh/finalize split.
 
 export interface MindsHubLoginResult {
   ok: boolean;
@@ -1217,9 +1066,8 @@ export async function mindshubLogin(): Promise<MindsHubLoginResult> {
   return { ok: false, reason: 'MindsHub login bridge is Electron-only.' };
 }
 
-// Sign-up through Keycloak's registration form, same loopback PKCE flow
-// as mindshubLogin (ENG-917). The promise stays pending through the
-// email-verification pause — resolve may arrive many minutes after call.
+// Registration uses login's PKCE flow; its promise may remain pending for minutes during email
+// verification.
 export async function mindshubSignup(): Promise<MindsHubLoginResult> {
   if (isElectron && typeof bridge.mindshubSignup === 'function') {
     return bridge.mindshubSignup();
@@ -1235,20 +1083,15 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
 }
 
 /**
- * Commit MindsHub as the provider.
- *
- * `chosenByUser` says a person answered the organization question, as opposed
- * to an id coming from anywhere else; main refuses to move the session off an
- * organization carrying that flag. It is a second argument rather than an
- * inference from `organizationId` on purpose — see selectEntitledOrg (ENG-2199).
+ * chosenByUser distinguishes an explicit organization choice from an inferred id; main must
+ * preserve that choice.
  */
 export async function mindshubFinalize(
   organizationId?: string,
   chosenByUser?: boolean,
 ): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
-  // An explicit pick goes through the method whose presence proves the shell
-  // can carry it. Falling back to `mindshubFinalize(id, true)` would look like
-  // it worked and silently drop the flag on an older main process.
+  // Use the capability-specific method: older shells silently drop the chosenByUser argument to
+  // finalize.
   if (isElectron && organizationId && chosenByUser && canPickOrganization()) {
     return bridge.mindshubFinalizeChosen!(organizationId);
   }
@@ -1259,26 +1102,16 @@ export async function mindshubFinalize(
 }
 
 /**
- * Whether this shell can be told that a person chose the organization.
- *
- * Renderer bundles update over the air while `src/main/**` only arrives in a
- * new installer, so a newer renderer runs against an older main process as a
- * matter of course. That shell drops the `chosenByUser` argument, and its
- * entitlement fallback then overrides the pick — the exact defect ENG-2199
- * fixes. Asking the question beats making a promise the shell cannot keep, so
- * the onboarding picker is not offered when this is false.
+ * OTA renderers may run against older main processes that discard explicit organization choices.
+ * Hide the picker unless the shell can preserve chosenByUser.
  */
 export function canPickOrganization(): boolean {
   return isElectron && typeof bridge.mindshubFinalizeChosen === 'function';
 }
 
 /**
- * Hand a user-supplied MindsHub key to the main process, or clear it with ''.
- *
- * Electron only, and the caller has to know that: main is where the OS keychain
- * and the sidecar hand-over live, so there is nothing on web to route it to.
- * `supported: false` is how a web caller learns to fall back to writing the key
- * as an ordinary setting, which is still what the web deployment does.
+ * Store or clear the MindsHub key in Electron main, which owns keychain and sidecar hand-over.
+ * Web reports supported: false so callers can save an ordinary setting.
  */
 export async function mindshubSetUserKey(
   key: string,
@@ -1293,11 +1126,8 @@ export async function mindshubSetUserKey(
 // ---- MindsHub organizations ---------------------------------------------
 //
 /**
- * Which MindsHub organization this session presents. Electron delegates to the
- * installed main process; web uses the existing Keycloak browser session. An
- * Electron renderer must never fall through to the web implementation because
- * renderer bundles update over the air while `src/main/**` only arrives in a
- * new installer.
+ * Electron must not fall through to Keycloak web organization handling when an older shell lacks
+ * the bridge.
  */
 
 export type { MindsOrg } from '../../shared/minds-orgs';
@@ -1344,10 +1174,8 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
         };
       } catch (error) {
         /**
-         * The resting shape, not a throw. Every caller treats "no organizations"
-         * as the state before the read lands, and the one on the onboarding path
-         * has no error branch to fall into — a rejection there strands sign-in on
-         * the validating screen with nothing on it.
+         * Return the empty resting shape: onboarding has no rejection path and would otherwise
+         * strand sign-in.
          */
         console.warn('[host] could not read the MindsHub organizations', error);
       }
@@ -1371,8 +1199,8 @@ export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchM
         return await bridge.mindshubSwitchOrg(organizationId);
       } catch (error) {
         /**
-         * A refusal is something the menu renders, so it has to arrive as a
-         * value. Throwing past the toast leaves the row looking untouched.
+         * Return refusals as values so callers display the error instead of leaving the row
+         * apparently untouched.
          */
         console.warn('[host] could not change the MindsHub organization', error);
         return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
@@ -1420,9 +1248,7 @@ export async function mindshubGetCachedToken(): Promise<string | null> {
   return null;
 }
 
-// Subscribe to MindsHub session-state changes pushed from the main
-// process (login, silent refresh, logout, session death). Returns an
-// unsubscribe function; no-op in the web shell.
+// Electron session-state changes; returns an unsubscribe function. Web is a no-op.
 export function onMindsHubAuthChanged(
   cb: (payload: { authenticated: boolean }) => void,
 ): () => void {
@@ -1432,9 +1258,8 @@ export function onMindsHubAuthChanged(
   return () => {};
 }
 
-// Where the refresh token is stored: macOS keychain (true) or a plaintext
-// file under ~/.cowork (false). Electron-only — the web shell has no local
-// token store, so both wrappers no-op to a safe default.
+// Electron reports keychain vs plaintext token storage; web has no local store and returns the safe
+// default.
 export async function getKeychainPref(): Promise<boolean> {
   if (isElectron && typeof bridge.getKeychainPref === 'function') {
     return (await bridge.getKeychainPref()).enabled;
@@ -1457,12 +1282,8 @@ export async function getAccessToken(): Promise<string | null> {
   return kcGetToken();
 }
 
-// Signs the user out. On Electron: clears the persisted refresh token and
-// strips provider/auth keys from ~/.anton/.env (the main process re-routes the
-// UI via webContents.reload()). On web: ends the Keycloak browser session via
-// its end-session endpoint, which redirects the tab and — with
-// onLoad:'login-required' — forces a fresh login. The keycloak import stays
-// behind host.ts so cowork/ never touches the bridge directly (check:cowork-purity).
+// Electron clears the refresh token and provider/auth keys, then reloads via main.
+// Web ends the Keycloak session and redirects to fresh login.
 export async function logout(): Promise<void> {
   if (isElectron && typeof bridge.logout === 'function') {
     await bridge.logout();
@@ -1472,7 +1293,6 @@ export async function logout(): Promise<void> {
   await kcLogout();
 }
 
-// Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
   isElectron,

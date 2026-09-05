@@ -1,20 +1,6 @@
-// Dev-server history-API fallback predicate (ENG-1233), factored out of
-// vite.config.ts so it can be unit-tested without booting Vite.
-//
-// In `BUILD_TARGET=web` dev, Vite's default HTML serving picks `index.html`
-// (the Electron entry, which crashes in a plain browser). We instead rewrite
-// client-side navigations to the web entry so `/`, `/c/:id`, `/projects`,
-// `/connect`, … all boot the SPA and react-router renders the right view.
-//
-// The signal is the `Accept` header, matching the standard history-API
-// fallback: only a top-level browser navigation sends `Accept: text/html`;
-// sub-resource requests (CSS/JS/images/ES modules) never do, so they fall
-// through to Vite untouched. We deliberately do NOT infer "this is a file"
-// from a trailing `.ext` — route segments can legitimately contain dots (a
-// project addressed by name, e.g. `/projects/acme.io`), and an extension check
-// would misroute those to a 404 on refresh. This is the connect-history-api-
-// fallback `disableDotRule`; production nginx makes the same call via on-disk
-// `try_files`.
+// Route HTML navigations to the web entry; Vite otherwise serves the Electron entry. Use Accept:
+// text/html and preserve asset requests. Do not infer files from dots: routes such as
+// /projects/acme.io must survive refresh.
 
 export interface SpaFallbackRequest {
   url?: string;
