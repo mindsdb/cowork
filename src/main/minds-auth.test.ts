@@ -3,9 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// minds-auth transitively loads token-store / cowork-home, which touch
-// electron's `app` at module init. Stub it so the module imports under the
-// node test env (vi.mock intercepts these static imports).
+// Stub Electron before token-store/cowork-home read app during module initialization.
 vi.mock('electron', () => ({
   app: {
     isPackaged: false,
@@ -13,10 +11,8 @@ vi.mock('electron', () => ({
   },
 }));
 
-// fs exports are non-configurable ESM namespace bindings, so vi.spyOn can't
-// wrap them. Mock the module instead: delegate to the real fs, but let a test
-// force renameSync to fail N times (simulating a Windows share-mode lock) and
-// record the writeFileSync options (to assert no `mode` is passed).
+// Mock the fs module because ESM exports cannot be spied on; delegate real I/O while controlling
+// rename locks and recording write options.
 const control = {
   renameFailCode: null as string | null,
   renameFailTimes: 0,
@@ -43,12 +39,8 @@ vi.mock('fs', async (importActual) => {
   };
 });
 
-// Point the config home at a temp dir and stub the install check, so the
-// writeMindsKeyToEnvAndRestart test can exercise the non-fatal .env path without
-// touching the real home or the server. (The writeEnvFileAtomic tests pass
-// explicit paths and don't hit these.)
-// Hoisted: token-store reads coworkHome() at module load, before a plain const
-// would initialize, so the holder must exist during the mock-hoist phase.
+// Use a temporary config home and stub installation to avoid the real profile/server.
+// Hoist the holder because token-store reads coworkHome during module initialization.
 const homeHolder = vi.hoisted(() => ({ home: '', env: '', state: '', antonInstalled: false }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => homeHolder.home,
@@ -63,9 +55,7 @@ vi.mock('./cowork-home', () => ({
 vi.mock('./installer', () => ({
   checkInstallStatus: async () => ({ antonInstalled: homeHolder.antonInstalled }),
 }));
-// Stub the server lifecycle so the installed-path test can run past the early
-// return without touching a real server. isServerRunning=false short-circuits
-// the DB-sync block, so the test needs no network mock.
+// Stub server lifecycle; isServerRunning=false bypasses DB sync and network access.
 vi.mock('./server-process', () => ({
   stopServer: async () => {},
   startServer: async () => {},
@@ -74,9 +64,7 @@ vi.mock('./server-process', () => ({
   getServerPort: () => 26866,
 }));
 
-// Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
-// writeEnvFileAtomic must write atomically (never truncate the user's other
-// creds) and ride out a transient lock on the rename instead of throwing.
+// Atomic writes must preserve unrelated credentials and retry transient Windows rename locks.
 import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
 
 let dir: string;
@@ -150,10 +138,8 @@ describe('writeEnvFileAtomic', () => {
   });
 
   it('sweeps a STALE orphaned .env.tmp-* but spares a fresh sibling', async () => {
-    // A hard kill between writeFileSync and rename can leave a temp holding the
-    // full plaintext key; a stale one must be cleaned, but a concurrent writer's
-    // fresh temp must survive (the age threshold is what lets the sweep and the
-    // random suffix coexist).
+    // Delete abandoned plaintext temp files without removing a concurrent writer's fresh temp; age
+    // distinguishes them.
     const stale = path.join(dir, '.env.tmp-9999-deadbeef');
     fs.writeFileSync(stale, 'ANTON_MINDS_API_KEY=leaked\n');
     fs.utimesSync(stale, new Date(0), new Date(0)); // backdate → stale
@@ -170,9 +156,8 @@ describe('writeEnvFileAtomic', () => {
 
 describe('commitMindsSignIn — .env failure handling', () => {
   it('is non-fatal on the installed path (the settings sync carries the config)', async () => {
-    // The wedge: a locked .env aborted the whole sign-in. With the
-    // server installed, the settings PUTs re-establish everything this file
-    // holds, so an exhausted-retry write must not propagate.
+    // With the server installed, settings PUTs recover credentials even if .env retries are
+    // exhausted; sign-in must continue.
     homeHolder.antonInstalled = true;
     control.renameFailCode = 'EPERM';
     control.renameFailTimes = Infinity;

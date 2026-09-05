@@ -1,26 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 
-// minds-auth transitively imports server-process, which statically imports
-// `electron`. In the node test env `electron` resolves to a path string, so
-// stub it before importing the module under test.
+// Stub Electron before minds-auth's transitive imports; Node otherwise receives Electron's
+// executable path string.
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', getVersion: () => '0.0.0-test', isPackaged: false },
   shell: { openExternal: vi.fn() },
   BrowserWindow: class {},
 }));
 
-// Isolate the refresh logic from disk/keychain: the token store is the
-// unit boundary here — we assert WHICH store transitions the refresh
-// outcome drives (save on ok, clear on invalid_grant, neither on
-// transient), not how the store persists them.
+// Mock token persistence to test refresh-driven save/clear/no-change decisions without touching
+// disk or keychain.
 vi.mock('./token-store', () => ({
   saveTokens: vi.fn(),
   getRefreshToken: vi.fn(),
   clearTokens: vi.fn(),
   getTokenStoreVersion: vi.fn(),
-  // A successful refresh hands the new token to the sidecar, which reads it
-  // back from here. Omitting it makes that call reject unhandled rather than
-  // fail a test, which reads as four mystery errors on an otherwise green run.
+  // The successful refresh handoff rereads the token store; stub that read to avoid unrelated
+  // unhandled rejections.
   getAccessToken: vi.fn(),
   isAccessTokenExpired: vi.fn(() => false),
 }));
@@ -66,12 +62,8 @@ const jsonResponse = (status: number, body: unknown) => ({
   json: async () => body,
 });
 
-// ─── ENG-761 regression: refresh outcomes must be distinguished ──────
-//
-// The pre-fix code collapsed every failure to `null`, and the boot path
-// treated any falsy result as "refresh token expired" — clearing tokens
-// and stripping env credentials. One network blip at launch permanently
-// signed the user out. These tests pin the outcome taxonomy.
+// Distinguish transient refresh failure from invalid credentials so a startup network blip cannot
+// permanently sign the user out.
 describe('refreshTokensOnly outcome mapping', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -131,15 +123,12 @@ describe('refreshTokensOnly outcome mapping', () => {
     const result = await pending;
     expect(result).toEqual({ status: 'ok', token: 'at-new' });
     expect(clearTokens).not.toHaveBeenCalled();
-    // Next refresh armed at expiry - 60s.
     expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
   });
 
   it('persists a rotated refresh token when sign-out lands mid-exchange', async () => {
-    // The exchange starts BEFORE sign-out, so it captured the pre-bump epoch and
-    // false for the suppression flag. Keycloak still rotates the refresh token
-    // and invalidates the one we sent, so dropping the response would hand
-    // end-session a token the IdP rejects and leave the SSO session alive.
+    // A refresh started before sign-out can still rotate the token; retain its reply so end-session
+    // does not use the now-invalid predecessor.
     (getAccessToken as Mock).mockReturnValue('stale-access-token');
     (isAccessTokenExpired as Mock).mockReturnValue(true);
     let releaseRefresh!: (response: unknown) => void;
@@ -182,9 +171,8 @@ describe('refreshTokensOnly outcome mapping', () => {
   });
 
   it('releases the resume barrier when a restarted sidecar takes the credential', async () => {
-    // The server-start hook is the one landing path that used to push without
-    // settling, so a sidecar restarting mid-handoff left turns held and
-    // cancelled until the backed-off retry next came round.
+    // A restarting sidecar must settle the server-start credential handoff instead of holding turns
+    // until a later retry.
     beginMindsResumeCredentialGate();
     const held = waitForMindsResumeCredential();
 
@@ -240,7 +228,6 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(result).toEqual({ status: 'invalid_grant' });
     expect(clearTokens).toHaveBeenCalledTimes(1);
     expect(saveTokens).not.toHaveBeenCalled();
-    // Dead session — no retry timer left armed.
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -306,7 +293,6 @@ describe('refreshTokensOnly outcome mapping', () => {
   });
 
   it('converges to signed-in when the retry timer fires after connectivity returns', async () => {
-    // First attempt: network down → transient, retry armed.
     const fn = vi.fn()
       .mockImplementationOnce(async () => { throw new Error('network down'); })
       .mockImplementation(async () => jsonResponse(200, { access_token: 'at-after-retry', expires_in: 300, refresh_token: 'rt-2' }));
@@ -316,9 +302,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(first.status).toBe('transient');
     expect(saveTokens).not.toHaveBeenCalled();
 
-    // Retry fires well before the 60-second expiry buffer is exhausted and
-    // succeeds — the session recovers without an
-    // app restart (the pre-fix timer never retried after a failure).
+    // Retry within the expiry buffer so a transient failure can recover without restarting the app.
     await vi.advanceTimersByTimeAsync(9_999);
     expect(fn).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -566,9 +550,8 @@ describe('refreshTokensOnly outcome mapping', () => {
 
     await expect(refresh).resolves.toEqual({ status: 'superseded' });
     await expect(turnGate).resolves.toBe(false);
-    // Twice: the refresh's own hand-over, then the repair that re-resolves what
-    // the newer login left behind. The repair's `false` is what keeps the gate
-    // shut, so a superseded refresh cannot release a turn onto a stale value.
+    // The second handoff repairs state after the newer login. Its false result must keep the gate
+    // closed to stale credentials.
     expect(syncUsableMindsCredential).toHaveBeenCalledTimes(2);
   });
 
