@@ -1,25 +1,9 @@
-// Collapsible (Disclosure) — a labeled header that toggles a collapsible panel.
-//
-// Built on Base UI's Collapsible for correct <button>/`aria-expanded`
-// semantics, panel mount/unmount, and enter/exit height animation.
-// Consolidates the ~6 bespoke chevron + `aria-expanded` + show/hide toggles
-// across the app (ThinkingBlock, SettingsView Section, MobileShell,
-// WorkingFolderLive, OnboardingChecklist, Composer) — ENG-1151.
-//
-//   <Collapsible title="Advanced">…</Collapsible>
-//   <Collapsible title={<Eyebrow>Details</Eyebrow>} defaultOpen>…</Collapsible>
-//   <Collapsible open={open} onOpenChange={setOpen} title="Controlled">…</Collapsible>
-//
-// The chevron and height animation are driven by Base UI's own state
-// attributes (`data-panel-open` on the trigger, `data-starting/ending-style`
-// on the panel) via Tailwind variants — no JS style mutation, no extra CSS.
-
 import { Collapsible as BaseCollapsible } from '@base-ui/react/collapsible';
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-// Lucide directly (like Menu/Select) so the primitive stays free of the product icon set.
+// Keep the primitive independent of the product icon set.
 function Chevron() {
   return (
     <ChevronDown
@@ -32,9 +16,7 @@ function Chevron() {
 }
 
 export interface CollapsibleProps {
-  // Header content (left side of the trigger row).
   title: ReactNode;
-  // Panel content, revealed when open.
   children: ReactNode;
   // Controlled open state; pair with onOpenChange.
   open?: boolean;
@@ -42,9 +24,8 @@ export interface CollapsibleProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
-  // Hide the default chevron (e.g. when the header supplies its own affordance).
   hideChevron?: boolean;
-  // Layout-only escape hatches (appended via cn) — never a style treatment.
+  // Layout-only classes; use the component API for visual treatment.
   className?: string; // Root
   triggerClassName?: string; // header button
   panelClassName?: string; // inner content wrapper (padding/spacing)
@@ -74,9 +55,8 @@ export function Collapsible({
         className={cn(
           'group flex w-full cursor-pointer items-center justify-between gap-2',
           'rounded-md border-0 bg-transparent py-1.5 text-left',
-          // Base UI marks disabled with data-disabled (it keeps the trigger
-          // focusable), NOT the native `disabled` attr — so `disabled:` would
-          // never match. Drive the disabled affordance off data-disabled.
+          // Base UI keeps disabled triggers focusable and emits data-disabled instead of a native
+          // disabled attribute.
           'text-ink-2 hover:text-ink data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
           triggerClassName,
         )}
@@ -84,11 +64,10 @@ export function Collapsible({
         <span className="min-w-0 flex-1">{title}</span>
         {!hideChevron && <Chevron />}
       </BaseCollapsible.Trigger>
-      {/* Base UI publishes the measured height as `--collapsible-panel-height`
-          and flags enter/exit with data-starting/ending-style, so height
-          animates both ways; it also defers unmount until the animation ends.
-          Note: `overflow-hidden` is a permanent clip box — an adopter nesting a
-          non-portaled popover/tooltip inside the panel should portal it out. */}
+      {/*
+ * Portal nested popovers and tooltips: overflow-hidden clips the panel throughout its height
+ * animation.
+ */}
       <BaseCollapsible.Panel
         className={cn(
           'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 ease-out',
