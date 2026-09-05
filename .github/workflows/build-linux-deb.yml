@@ -1,18 +1,8 @@
 name: Build Linux deb
 
-# One workflow, parameterized by arch, called once per architecture by the
-# orchestrator (build-installers.yml) — each call lands on a native runner
-# because keytar (and any other native module) cannot be cross-compiled, so
-# amd64 and arm64 are built and rebuilt against Electron on their own arch.
-#
-# Deliberately NOT a matrix inside this file: the caller needs one
-# artifact-name output per arch, and matrix job outputs overwrite each other
-# (last completed job wins), so each arch gets its own workflow_call instead.
-#
-# Kept in step-for-step parity with build-macos-pkg.yml /
-# build-windows-installer.yml: same credential set, same install-channel and
-# version-floor resolution, same COWORK_BUILD_KIND guard, same VITE_ vars
-# (enforced by renderer-build-env.invariant.test.ts).
+# Build each architecture natively because keytar cannot cross-compile.
+# Use separate calls: matrix outputs are last-writer-wins, but callers need an artifact name per architecture.
+# renderer-build-env.invariant.test.ts checks build-env parity with macOS and Windows.
 
 on:
   workflow_call:
@@ -108,7 +98,6 @@ permissions:
 
 jobs:
   build:
-    # Native runner per arch — see the header comment.
     runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 60
     outputs:
@@ -128,7 +117,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # gen-build-channel.mjs (prebuild:main) needs tags for git describe.
+          # Fetch tags for gen-build-channel.mjs version discovery.
           fetch-depth: 0
 
       - name: Setup Node
@@ -175,14 +164,11 @@ jobs:
           "
 
       - name: Write build config (controls which cowork data home the app uses)
-        # node (not echo) so the value is JSON-escaped rather than interpolated
-        # into the string literal.
+        # Serialize through JSON.stringify so build kind cannot alter the JSON structure.
         run: |
           node -e 'require("fs").writeFileSync("build-config.json", JSON.stringify({ buildKind: process.env.BUILD_KIND }))'
 
-      # The precedence rule (explicit channel > feature server_ref selects git
-      # > packaged kinds use PyPI) lives in scripts/resolve-server-channel.mjs,
-      # which mirrors getChannel() in src/main/server-source.ts under test.
+      # Resolve source through the drift-tested scripts/resolve-server-channel.mjs.
       - name: Resolve install channel
         id: channel
         env:
@@ -195,12 +181,7 @@ jobs:
           echo "channel=$CH" >> "$GITHUB_OUTPUT"
           echo "Install channel: $CH (build_kind=$COWORK_BUILD_KIND)"
 
-      # PyPI-channel builds bake the latest published cowork-server version
-      # as the install floor: every fresh install starts from a release that
-      # existed (and was presumably healthy) at build time, while the
-      # auto-updater still moves installs forward as new versions publish.
-      # Failing the build on a PyPI outage is deliberate — better than
-      # shipping an unknown floor.
+      # Bake the current published version as an install floor; fail on lookup failure rather than ship an unknown floor.
       - name: Resolve cowork-server version floor (pypi channel only)
         if: steps.channel.outputs.channel == 'pypi'
         id: server_floor
@@ -222,10 +203,7 @@ jobs:
       - name: Build Linux deb (unsigned)
         run: npm run dist:linux
         env:
-          # Both refs come from the same input so a staging build pins staging
-          # cowork-server AND staging anton. server-source.ts overrides anton's
-          # source at install time via --no-sources-package + --with, so this
-          # does not require any per-branch pin in cowork-server's pyproject.
+          # Pin server and Anton from the same input; server-source.ts overrides Anton at install time.
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
           ANTON_REF: ${{ inputs.anton_ref }}
           COWORK_SERVER_CHANNEL: ${{ steps.channel.outputs.channel }}
@@ -233,9 +211,7 @@ jobs:
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
-          # Activates the build-time channel guard in gen-build-channel.mjs:
-          # fail the build if this kind and VITE_MINDS_API_URL target different
-          # environments (e.g. preview baked against the prod API).
+          # Enable the guard against mismatched build kind and API origin.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
 
       - name: Compute artifact name

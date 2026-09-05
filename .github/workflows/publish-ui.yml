@@ -1,11 +1,7 @@
 name: Publish UI Bundle
 
 on:
-  # Primary path: the auto-release workflow calls this AFTER it creates the
-  # canonical CalVer tag, passing the exact release version — so the UI bundle
-  # and the prod app installer always publish the SAME version. This replaces
-  # the old `push: main` + git-describe path, which raced tag creation and
-  # could publish a version that differed from the released app.
+  # Publish after the canonical CalVer tag exists so the OTA bundle matches the installer version.
   workflow_call:
     inputs:
       version:
@@ -19,12 +15,10 @@ on:
     secrets:
       RELEASES_TOKEN:
         required: true
-      # Baked into the OTA bundle at build time (see "Build renderer"). Required
-      # so a caller fails before a release starts; dispatch/tag triggers skip
-      # workflow_call secret validation, so the build step rejects empty too.
+      # Validate the token for workflow callers and again at build time for dispatch/tag triggers.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: true
-  # Manual re-publish / backfill. Leave version empty to derive from git describe.
+  # Manual backfill may derive version from git describe.
   workflow_dispatch:
     inputs:
       version:
@@ -35,7 +29,6 @@ on:
         description: 'Minimum cowork-server CalVer this UI requires (e.g. 2.26.7.6.1) — leave empty for no constraint / to use package.json minServerVersion'
         required: false
         type: string
-  # Explicit UI-only release tag.
   push:
     tags:
       - 'ui-v*'
@@ -49,9 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so the fallback `git describe` (manual dispatch with no
-          # version) can reach the nearest CalVer tag. The normal path receives
-          # the exact release version from the auto-release job, so no describe.
+          # Full history supports git describe when manual dispatch omits the version.
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -61,10 +52,7 @@ jobs:
 
       - run: npm ci
 
-      # Resolve the version BEFORE building so it can be baked into the renderer
-      # bundle's __APP_VERSION__ — otherwise Vite falls back to its own git
-      # describe and a workflow_dispatch override (or the release version) never
-      # reaches the running bundle, only latest.json.
+      # Resolve version before building so __APP_VERSION__ matches the published manifest.
       - name: Determine version
         id: version
         env:
@@ -92,17 +80,11 @@ jobs:
           echo "Publishing UI version: $VER"
 
       - name: Build renderer
-        # Bake the resolved version into __APP_VERSION__ (matches latest.json and
-        # the prod installer). The PostHog token MUST be injected here: the OTA
-        # bundle overwrites the installer's renderer, so a missing token ships an
-        # empty key and silently disables analytics. Do not remove.
+        # Inject the PostHog token into OTA too: it replaces the installer's renderer and would otherwise disable analytics.
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
-          # Explicit prod target (defense-in-depth). This workflow only publishes
-          # the prod bundle and the renderer already falls back to api.mindshub.ai
-          # (mindsUrls.ts); pinning it fails loudly if reused for a non-prod
-          # channel. Keycloak/console derive from this base.
+          # Pin prod explicitly; this workflow publishes only the production OTA bundle.
           VITE_MINDS_API_URL: https://api.mindshub.ai
         run: |
           if [ -z "${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN}" ]; then

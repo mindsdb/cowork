@@ -1,12 +1,6 @@
 name: Dev - Build and Deploy on PR
 
-# THE pull-request pipeline. Everything a PR triggers lands in this one run tree:
-# unit tests, the web SPA image, the per-PR environment, and — when the PR asks for
-# them by label — the signed desktop installers.
-#
-# It used to be three separate runs on the same event (this file, tests-unit.yml,
-# and dev-build-installer.yml), so "did this commit pass" had three answers in three
-# places and the installers finished with nobody told.
+# PR pipeline: tests, SPA, optional preview environment, and label-gated installers.
 
 on:
   pull_request:
@@ -19,28 +13,14 @@ defaults:
   run:
     shell: bash
 
-# Cancel any existing runs of this workflow on the same branch/pr
-# We always want to build/deploy/test a new commit over an older one
 concurrency:
   group: ${{ github.workflow_ref }}
   cancel-in-progress: true
 
 jobs:
-  # One gate answering "should the cluster-side pipeline run at all", for two
-  # reasons that were previously handled in different places or not at all.
-  #
-  # FORK PRs. This repo is PUBLIC and `mdb-dev` is a pod inside the newdev cluster
-  # with IRSA into the build/ECR account, so without a guard a pull request from
-  # any GitHub account executes its own code there. Fork PRs get no secrets and a
-  # read-only token, but the runner itself is the prize: cloud credentials, a
-  # network position inside the cluster, and a tool cache later internal jobs
-  # reuse. GitHub's first-time-contributor approval does not cover anyone with a
-  # merged PR.
-  #
-  # PROMOTION PRs. A `staging` -> `main` PR promotes commits the staging pipeline
-  # already built. This cannot be a trigger filter: for `pull_request`, GitHub's
-  # `branches` filters match the pull request's BASE branch, and the only lever on
-  # the head branch is a job-level conditional.
+  # Fork PRs must never execute on mdb-dev: the runner has cloud credentials and cluster access.
+  # Run trusted-hosted tests separately. Skip staging-to-main promotion builds already covered by staging;
+  # head-branch filtering requires a job condition because pull_request branches filters only the base.
   gate:
     runs-on: ubuntu-latest
     outputs:
@@ -77,14 +57,11 @@ jobs:
           fi
 
   run-unit-tests:
-    # Deliberately ungated: ubuntu-latest, no secrets, so a fork contributor gets
-    # the CI that matters to them.
+    # Fork PRs still run tests on a hosted runner without secrets.
     uses: ./.github/workflows/tests-unit.yml
     secrets: inherit
 
   workflow-lint:
-    # actionlint, the caller/callee permission check, and a zizmor audit, shared
-    # with every other service repo. Ungated for the same reason as the tests.
     permissions:
       contents: read
     uses: mindsdb/github-actions/.github/workflows/workflow-lint.yml@main
@@ -104,11 +81,7 @@ jobs:
     secrets: inherit
 
   pr-env-comment:
-    # Only when an environment actually exists — `build-deploy` succeeding does not
-    # mean one does, since the rollout is skipped without the `deploy` label.
-    #
-    # This repo is PUBLIC, so the shared reusable drops the runbook link and the
-    # notes by itself; the hosts stay because they are what a reviewer came for.
+    # Post the environment link only when rollout actually produced an environment.
     needs: [gate, build-deploy]
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' }}
     permissions:
@@ -120,11 +93,7 @@ jobs:
       status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
     secrets: inherit
 
-  # Installers, per platform, by label. Not only a build-cost question: the
-  # upload jobs carry no `if:` of their own, so a platform's label is also what
-  # stops `upload-installer-to-s3.yml` — which runs on `mdb-prod` — writing a
-  # preview build into the production installer bucket and posting its public
-  # URL on the PR. So every platform opts in, linux included.
+  # Every platform requires a label: its upload job publishes to the production bucket on mdb-prod.
   build-installers:
     needs: [gate]
     if: >-
@@ -135,30 +104,20 @@ jobs:
     uses: ./.github/workflows/build-installers.yml
     with:
       build_kind: preview
-      # A PR build tests staging. Stating it keeps main and the renderer on one
-      # environment; leaving it to the default splits them and login can never
-      # succeed.
+      # PR installers target staging in both main and renderer; mixed origins break login.
       minds_api_url: https://api.staging.mindshub.ai
-      # Kept for machines already carrying a GIT install of cowork-server (the
-      # updater is source-aware). Fresh installs follow the PyPI rc stream that
-      # build_kind implies.
+      # Retain the git ref for existing source-aware installs; fresh preview installs use the PyPI rc stream.
       server_ref: staging
       anton_ref: staging
       server_channel: pypi
       macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
       windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
-      # Stated rather than left to default:true — an omitted platform input
-      # publishes on every push. One label covers both arches.
+      # Set explicitly: an omitted default-true input would publish without a label.
       linux_amd64: ${{ contains(github.event.pull_request.labels.*.name, 'build-linux-deb') }}
       linux_arm64: ${{ contains(github.event.pull_request.labels.*.name, 'build-linux-deb') }}
     secrets: inherit
 
-  # The installers are the deliverable on a desktop PR, and they used to land in an
-  # S3 bucket whose URL was written only into a job summary. Put them in front of
-  # the reviewer.
-  #
-  # Split in two because a `uses:` job cannot have steps: this composes the link
-  # list (either platform may be absent), the next posts it.
+  # Compose installer links before the separate comment workflow; a uses job cannot also have steps.
   compose-installer-links:
     needs: [build-installers]
     if: ${{ !cancelled() && needs.build-installers.result == 'success' }}
@@ -198,9 +157,8 @@ jobs:
     with:
       heading: "Installers built"
       env-name: preview
-      # Not an environment: no service table, no default-tag note.
       standard-links: false
-      # Its own marker, so it rolls independently of the environment comment.
+      # Separate marker so installer links update independently of the environment comment.
       marker: pr-installer-artifacts
       links: ${{ needs.compose-installer-links.outputs.links }}
     secrets: inherit
