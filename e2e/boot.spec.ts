@@ -4,18 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// Boot smoke (qa.md §5c Tier-2): the real main process + bundled renderer
-// launch, a window opens, React mounts, and nothing crashes. Deliberately
-// does NOT assert on any specific screen's content — with a clean HOME the
-// app lands on the terms/onboarding flow, but that UI is free to change.
-//
-// A fresh temp HOME gives a deterministic first-run state: no ~/.anton/.env
-// (no DEV_MODE redirect to a dev server, no consent, no keys), no ui-cache,
-// and the test can never read or write the developer's real profile.
+// Smoke-test the real main process and bundled renderer without depending on a particular first-run
+// screen.
+// Use a temporary HOME to exclude developer credentials, DEV_MODE redirects and cached UI.
 
-// The only benign console error on first boot: the health probe against the
-// not-yet-installed server. Broader patterns (e.g. "Failed to load resource")
-// would mask real 404s/missing chunks — the regressions this smoke exists for.
+// Allow only the missing-server health probe; broad network-error patterns could hide broken
+// renderer chunks.
 const BENIGN_CONSOLE = [/ERR_CONNECTION_REFUSED/i];
 
 let app: ElectronApplication;
@@ -31,9 +25,8 @@ test.afterEach(async () => {
 test('app boots: window opens, React mounts, no uncaught errors', async () => {
   tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-e2e-'));
   tmpUserData = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-e2e-user-data-')));
-  // ELECTRON_RUN_AS_NODE leaks from IDE-spawned shells (VS Code sets it) and
-  // makes the launched binary behave as plain Node — Electron then rejects
-  // Playwright's --remote-debugging-port and the launch dies. Always strip.
+  // Strip inherited ELECTRON_RUN_AS_NODE so Electron accepts Playwright's debugging flags instead
+  // of running as Node.
   const { ELECTRON_RUN_AS_NODE: _stripped, ...cleanEnv } = process.env;
   app = await electron.launch({
     args: [path.resolve('dist/main/main/index.js'), `--user-data-dir=${tmpUserData}`],
@@ -42,9 +35,8 @@ test('app boots: window opens, React mounts, no uncaught errors', async () => {
       HOME: tmpHome, // clean-slate profile (macOS/Linux)
       USERPROFILE: tmpHome, // (Windows)
       COWORK_DEV_HOME: path.join(tmpHome, '.cowork-e2e'),
-      // app.setName() intentionally chooses the shared dev profile. Suppress
-      // that identity side effect so Playwright's unique user-data-dir remains
-      // authoritative and the smoke can run beside an open development app.
+      // Suppress app.setName so it cannot replace Playwright's isolated user-data-dir with the
+      // shared dev profile.
       COWORK_BUILD_KIND: 'prod',
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
     },

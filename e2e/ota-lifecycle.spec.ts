@@ -13,21 +13,9 @@ import {
   type OtaFixture,
 } from './helpers/ota-fixture';
 
-// Live OTA lifecycle (ENG-670). Drives the REAL Electron main process through
-// the paths the checklist calls out — serve gate, freshness/no-downgrade,
-// legacy-cache handling, post-update + boot rollback, quarantine, and the
-// server-compat withhold — against a LOCAL fixture manifest (COWORK_OTA_MANIFEST_URL),
-// so nothing is ever published to the production release channel.
-//
-// Why this works unpackaged: OTA is forced on via OTA_UI=on (build-channel gate
-// bypass); the serve gate + boot self-heal run in createWindow regardless of
-// packaging; and the check/apply IPC handlers are registered unconditionally
-// (setupIPC), so window.antontron.{checkForUpdate,applyUpdate} drive the real
-// updater — including the health-checked reload + rollback. The periodic poll
-// (initUpdater) is gated to packaged builds and deliberately does NOT run here,
-// keeping each scenario isolated to exactly the code under test.
-//
-// Requires `npm run build` first (launches dist/main + bundled dist/renderer).
+// Exercise real OTA apply/rollback against a local fixture manifest. Requires npm run build.
+// OTA_UI=on enables unpackaged updater paths; packaged-only periodic polling stays off so scenarios
+// remain isolated.
 
 const MAIN = path.resolve('dist/main/main/index.js');
 
@@ -84,7 +72,6 @@ function readRejectedVersion(cacheDir: string): string | null {
 
 async function poll(fn: () => boolean, timeoutMs: number, intervalMs = 300): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
-  // Date.now in a test file is fine (this is not a workflow script).
   while (Date.now() < deadline) {
     if (fn()) return true;
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -107,9 +94,8 @@ async function launch(sb: Sandbox, manifestUrl?: string): Promise<Page> {
       HOME: sb.home, // clean profile: no real ~/.cowork*/.env → DEV_MODE stays off
       USERPROFILE: sb.home,
       COWORK_DEV_HOME: path.join(sb.home, '.cowork-e2e'),
-      // Keep app.setName() from replacing the unique --user-data-dir with the
-      // shared development profile. OTA_UI explicitly enables the OTA paths
-      // this unpackaged lifecycle suite exercises.
+      // Keep app.setName from replacing the isolated user-data-dir; OTA_UI enables unpackaged OTA
+      // paths.
       COWORK_BUILD_KIND: 'prod',
       OTA_UI: 'on', // force the build-channel gate on for this unpackaged build
       ...(manifestUrl ? { COWORK_OTA_MANIFEST_URL: manifestUrl } : {}),
@@ -137,9 +123,8 @@ const checkUpdate = (page: Page) =>
   page.evaluate(() => (window as unknown as { antontron: { checkForUpdate: () => Promise<CheckResult> } }).antontron.checkForUpdate());
 const applyUpdate = (page: Page) =>
   page.evaluate(() => (window as unknown as { antontron: { applyUpdate: () => Promise<boolean> } }).antontron.applyUpdate());
-// Fire the apply without awaiting its result — the health-checked reload
-// navigates the window (destroying this JS context), so we assert on the
-// main-process side effects (disk state / the reloaded document) instead.
+// Apply destroys this renderer context during reload, so assert main-process disk state and the
+// replacement document.
 const fireApply = (page: Page) =>
   page.evaluate(() => { void (window as unknown as { antontron: { applyUpdate: () => Promise<boolean> } }).antontron.applyUpdate(); });
 
@@ -159,7 +144,6 @@ test.describe('OTA lifecycle (live)', () => {
   test.skip(process.platform !== 'darwin', 'cache-path assertions assume the macOS userData layout');
   test.skip(!NEWER, `BUILD_APP_VERSION is not CalVer ("${BUNDLED}") — the freshness gate can't be exercised; rebuild from a tagged checkout so a CalVer bakes in`);
 
-  // ── Serve gate ──────────────────────────────────────────────────────────
 
   test('serves a fresh unconstrained cache newer than the bundled renderer', async () => {
     sandbox = makeSandbox();
@@ -185,7 +169,6 @@ test.describe('OTA lifecycle (live)', () => {
     await expect(page.locator('#ota-fixture')).toHaveCount(0);
   });
 
-  // ── Boot self-heal (rollback + quarantine) — item A (boot) ───────────────
 
   test('boot self-heal: a hanging activated bundle rolls back to bundled and is quarantined', async () => {
     test.setTimeout(90_000);
@@ -205,7 +188,6 @@ test.describe('OTA lifecycle (live)', () => {
     expect(fs.existsSync(path.join(sandbox.cacheDir, 'current'))).toBe(false);
   });
 
-  // ── Post-update apply + health check — item A (post-update) ──────────────
 
   test('applies + serves a healthy bundle from the manifest (post-update success)', async () => {
     test.setTimeout(90_000);
@@ -237,7 +219,6 @@ test.describe('OTA lifecycle (live)', () => {
     await expect(page.locator('#ota-fixture')).toHaveCount(0); // recovered to bundled
   });
 
-  // ── Server-compat withhold — item B ──────────────────────────────────────
 
   test('withholds a bundle whose min_server_version the running server cannot satisfy', async () => {
     sandbox = makeSandbox();
@@ -248,9 +229,8 @@ test.describe('OTA lifecycle (live)', () => {
     await waitForBridge(page);
 
     const checked = await checkUpdate(page);
-    // The public bridge returns the unified UI/server/shell summary. A
-    // compatibility reason is intentionally internal, so assert the observable
-    // contract: the UI is withheld and cannot be applied or staged.
+    // The public bridge hides compatibility reasons; assert the observable withheld/apply/stage
+    // contract.
     expect(checked.uiUpdateAvailable).toBe(false);
 
     // The apply path withholds too, and never creates a cache slot.
@@ -258,7 +238,6 @@ test.describe('OTA lifecycle (live)', () => {
     expect(fs.existsSync(path.join(sandbox.cacheDir, 'current'))).toBe(false);
   });
 
-  // ── Quarantine holds, then clears when the manifest advances ─────────────
 
   test('quarantine skips the failed version until the manifest advances', async () => {
     sandbox = makeSandbox();
