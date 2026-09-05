@@ -68,16 +68,10 @@ import {
   removeCodingTask,
 } from './coding-terminal';
 
-/* Re-hand the MindsHub credential to every sidecar that comes up.
- *
- * The sidecar holds it in memory only, so a process that just started holds
- * nothing: an auto-update, the sidebar's stop/start, and the installer's first
- * start all leave a signed-in user with `config_ready: false` until something
- * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first.
- *
- * It settles the resume barrier too: a sidecar restarting mid-handoff is
- * exactly when a turn is parked waiting for one. */
+/*
+ * Register before any startup path: every sidecar start needs its in-memory credential restored.
+ * Also settle the wake barrier after a successful handoff.
+ */
 setServerStartedHook(handOffMindsCredentialToStartedSidecar);
 
 function getAntonEnvPath(): string {
@@ -108,13 +102,7 @@ function clearStoredProviderState(): void {
   }
 }
 
-/** Read DEV_MODE from the Cowork config home's .env (coworkEnvPath()).
- *  Returns 'live', 'full', or null.
- *
- * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
- * dev-server flow, `DEV_MODE=full` to force the bundled renderer
- * and skip OTA updates.
- */
+/** DEV_MODE=live uses Vite; full uses the bundled renderer and skips OTA; unset permits OTA. */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
@@ -122,12 +110,7 @@ function getDevMode(): string | null {
   return val; // 'live' or 'full'
 }
 
-/** Read UI_UPDATE_MODE from the Cowork config home's .env. Defaults to 'auto'.
- *
- * ENG-858: this is now an env-only escape hatch, not a user-facing setting —
- * there is no Settings UI control for it. It exists for support (pin a user
- * to manual if a bad version ships) and QA (version-pinning during testing);
- * everyone else gets forced auto-apply at boot. */
+/** UI_UPDATE_MODE is a support/QA environment override; normal users auto-apply updates at boot. */
 function getUpdateMode(): 'auto' | 'manual' {
   const vars = readEnvFile();
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
@@ -140,25 +123,14 @@ function shellAutoUpdateEnabled(): boolean {
   return shellAutoUpdateEnabledFor(buildKindStrict(), vars.SHELL_AUTO_UPDATE_ENABLED);
 }
 
-// Resolves once the boot-time server start has settled (server up, or
-// decided-not-to-start because it isn't installed). serverConfigured() awaits
-// this instead of polling, so cold-boot routing waits exactly as long as the
-// real startup takes — uvicorn cold start included — rather than a fixed cap.
-// Assigned synchronously in app.whenReady() so it exists before the renderer's
-// init() can call through to checkConfigured().
+// Assign before renderer initialization; routing awaits the real sidecar start decision, including
+// failures/skips.
 let bootServerSettled: Promise<void> = Promise.resolve();
 
-// Resolves once the boot-time update poll has settled (applied a server/UI
-// update and reloaded, or decided nothing needs applying). The renderer awaits
-// this via BOOT_AWAIT_READY before leaving the loading screen (ENG-749). Defaults
-// to resolved so paths that never start the updater don't strand the gate.
+// The loading screen awaits the boot update poll; resolve immediately on paths without an updater.
 let bootUpdateSettled: Promise<void> = Promise.resolve();
 
-// Ask the running server for its readiness. Reads `config_ready` from /health —
-// the SAME signal the in-app chat gate uses (settings.config_status) — so
-// routing and the chat gate read one identical value and cannot disagree.
-// Returns null when the server can't be reached/answered, so the caller falls
-// back to the .env heuristic.
+// Read the same config_ready health field as the chat gate; null permits the offline .env fallback.
 async function serverConfigured(): Promise<{
   configured: boolean;
   provider: string;
@@ -198,23 +170,14 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
   /*
-   * A sign-out in flight is a definite answer, and it comes before both reads
-   * below. Sign-out now replies and reloads while its sidecar restart is still
-   * running, so the reloaded page can reach a sidecar that has not stopped yet
-   * and hear `config_ready: true` from it — which would route the person who
-   * just signed out straight back into the app.
+   * While sign-out’s restart is pending, ignore stale sidecar readiness so reload cannot route back
+   * into the app.
    */
   if (isSignOutRoutingActive()) return { configured: false, provider: '' };
-  // config_ready from /health is authoritative and is the SAME signal the
-  // in-app chat gate uses — defer to it so routing and the chat gate can't
-  // disagree. (The old .env any-key check could pass here while config_ready
-  // was false, stranding the user on "Connect a provider" with no recovery.)
+  // Health config_ready is authoritative; keep boot routing aligned with the chat gate.
   const fromServer = await serverConfigured();
   if (fromServer) return fromServer;
-  // Server genuinely unreachable: fall back to the .env heuristic so a
-  // configured user isn't needlessly bounced to onboarding. Provider strings
-  // mirror the server's config_status vocabulary so the IPC value isn't
-  // path-dependent.
+  // Use .env only when health is unreachable, retaining the server’s provider vocabulary.
   if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
@@ -228,10 +191,8 @@ async function runtimeMindsCredentialRequirement(): Promise<boolean | null> {
   return configured?.mindsRuntimeCredentialRequired ?? null;
 }
 
-// Map a server-updater notification onto the UI update-status shape the renderer
-// already consumes, so a server download shows progress on the loading screen and
-// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
-// their own channel and must never leave the UI stuck in a spinner.
+// Forward only busy server-update phases to the UI progress channel; errors must not leave a
+// spinner active.
 function serverPhaseToUiStatus(
   payload: Record<string, unknown>,
 ): { phase: string; version?: string } | null {
@@ -300,10 +261,7 @@ function ensureDefaultProject() {
   }
 }
 
-// ─── Icons ───────────────────────────────────────────────────
-// Channel-aware: non-prod builds show their badged icon (icon-<kind>.png) in the
-// window/dock/taskbar, not the prod icon. Selection logic (+ fallback) lives in
-// app-icon.ts so it's unit-tested; here we only resolve the assets dir.
+// Use channel-badged runtime icons; app-icon.ts owns selection and fallback.
 function getIconPath(): string {
   const assetsDir = app.isPackaged
     ? path.join(process.resourcesPath, 'assets')
@@ -314,12 +272,7 @@ function getIconPath(): string {
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
-// Pulls the desktop app back to the foreground after a browser-based
-// flow (OAuth sign-in/connect, MindsHub login, the Drive Picker) hands
-// control back to us — the OS default browser is frontmost after the
-// redirect, and without this the user is left on the "you can close
-// this tab" page with no indication the app already picked up the
-// result.
+// Return focus to the app after browser-based OAuth/Picker completion.
 function focusMainWindow() {
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -331,11 +284,9 @@ function focusMainWindow() {
   } catch {}
 }
 
-// One-shot self-heal for the boot OTA load: if the activated bundle's main
-// frame fails to load (missing/corrupt assets), roll it back and fall to the
-// app-bundled renderer. Uses `.on()` (not `.once()`) so benign subframe /
-// ERR_ABORTED events don't consume the listener before a real main-frame
-// result; disarms on the first relevant main-frame outcome or a timeout.
+// Rollback failed main-frame OTA loads. Ignore subframe/ERR_ABORTED events without consuming the
+// listener.
+// Disarm on the first relevant result or timeout.
 function armOtaBootSelfHeal(win: BrowserWindow) {
   let done = false;
   const disarm = () => {
@@ -348,10 +299,8 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   const recover = (why: string) => {
     disarm();
     console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
-    // Fire-and-forget: rollbackUI records the quarantine synchronously before
-    // its first await, and the bundled renderer we load below doesn't depend on
-    // the async cache shuffle. Swallow a rejected cleanup so it can't become an
-    // unhandled rejection and take down the main process mid-self-heal.
+    // Quarantine is synchronous; bundled loading need not await cache cleanup, whose failure must
+    // not crash the app.
     void rollbackUI().catch((err) => console.error('[main] UI rollback failed', err));
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
@@ -376,19 +325,13 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    // 640 is the floor of the tablet popout band (see lib/breakpoints.js):
-    // it lets the window shrink far enough to reveal the off-canvas sidebar
-    // popout, but never into the phone layout (< 640), whose MobileShell top
-    // bar would collide with the embedded traffic lights. The web build has
-    // no minimum and no traffic lights, so it keeps the phone layout safely.
+    // Keep Electron above the phone breakpoint so MobileShell does not collide with embedded
+    // traffic lights.
     minWidth: 640,
     minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    // Embed the macOS traffic lights inside the sidebar header. Coordinates
-    // are window-relative; the sidebar floats with ~9px outer padding so
-    // x:18 / y:22 places the lights inside the chrome row with a small gap
-    // from the sidebar's top-left.
+    // Position macOS traffic lights within the padded sidebar header.
     trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 24 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
@@ -411,14 +354,9 @@ function createWindow() {
     },
   });
 
-  // Inject the server's bearer token into every request the renderer makes to
-  // the loopback API — including browser-initiated loads (images, iframes and
-  // their relative sub-resources, downloads) that can't carry an Authorization
-  // header from renderer JS, and requests that follow a 307 trailing-slash
-  // redirect (Chromium strips the header on those; this re-adds it on the
-  // redirected request). Done at the network layer so it's uniform and the
-  // token never reaches the renderer. Scoped to our loopback server's origin
-  // so it can't leak elsewhere. No-op when the server runs without auth.
+  // Inject bearer auth only for our loopback origin, including browser loads and redirects that
+  // strip headers.
+  // Keep the token out of renderer JavaScript.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     (details, callback) => {
@@ -455,11 +393,8 @@ function createWindow() {
     },
   );
 
-  // Renderer loading priority:
-  // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
-  // 2. Standard Vite dev (VITE_DEV=1) → dev server
-  // 3. DEV_MODE=full → always use bundled renderer, skip OTA cache
-  // 4. Production → OTA cached bundle or bundled fallback
+  // Prefer live/Vite development, then forced bundled mode, otherwise the active OTA bundle or
+  // bundled fallback.
   if (devMode === 'live') {
     const port = process.env.VITE_RENDERER_PORT || '5173';
     console.log(`[main] DEV_MODE=live — loading from http://localhost:${port}`);
@@ -488,12 +423,8 @@ function createWindow() {
     });
   }
 
-  // Right-click editing menu. Electron ships no default context menu, so
-  // without this, right-click → Cut/Copy/Paste does nothing anywhere
-  // (the app menu only provides the keyboard accelerators). Wire a
-  // minimal editing menu for any editable field or text selection so
-  // pasting an API key by right-click works — the onboarding/settings
-  // screens are the most paste-heavy surface in the app.
+  // Electron has no default editing context menu; install one for editable fields and selected
+  // text.
   mainWindow.webContents.on('context-menu', (_event, params) => {
     const { isEditable, editFlags, selectionText } = params;
     if (!isEditable && !selectionText) return;
@@ -509,10 +440,7 @@ function createWindow() {
     Menu.buildFromTemplate(template).popup({ window: mainWindow! });
   });
 
-  // Grant the renderer access to the microphone so the Web Speech API
-  // (composer voice input) can capture audio. Other permissions stay
-  // denied. Pair with NSMicrophoneUsageDescription in Info.plist and
-  // the audio-input entitlement so the OS prompt actually fires.
+  // Allow microphone only; pair with the macOS usage description and audio-input entitlement.
   mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
     // 'audioCapture' isn't in Electron's Permission union but some
     // Chromium builds emit it for the Web Speech API. Cast through
@@ -543,12 +471,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    // Start the boot-veil fade only now that the window is actually visible.
-    // (A parse-time CSS animation would finish while the window is still
-    // hidden behind `show:false`, so the black cover would be gone before the
-    // first frame the user sees.) The welcome orb is already rendered by now,
-    // so we only need a brief mask over the show moment — then fade quickly
-    // into the animated orb. A long black hold reads as a hung/broken screen.
+    // Begin the boot-veil fade only after show; a parse-time animation would finish while the
+    // window was hidden.
     setTimeout(() => {
       mainWindow?.webContents
         .executeJavaScript(
@@ -573,24 +497,15 @@ function createWindow() {
   });
 }
 
-// How long boot routing waits for the sidecar to be handed its credential.
-// Routing is held across this (see the boot sequence), so it is sized to cover
-// a Keycloak refresh plus a loopback PUT and no more; overrunning it costs a
-// misrouted launch, not a broken one, and the refresh timer pushes again.
+// Bound the boot credential handoff to one refresh plus PUT; refresh retries can repair a timed-out
+// handoff.
 const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
 
-// How long signing in waits for a previous sign-out's sidecar restart before
-// pressing on. Long enough to cover an ordinary restart, short enough that a
-// pathological start does not read as a hung sign-in; overrunning it costs a
-// slower sign-in, not a broken one (see the finalize handler).
+// Wait briefly for sign-out’s restart before sign-in; commitMindsSignIn also ensures a live
+// sidecar.
 const SIGN_OUT_FLUSH_SIGN_IN_WAIT_MS = 30_000;
 
-// IPC handlers
-// The full MindsHub sign-out, as a named function because two callers run
-// it: the AUTH_LOGOUT handler below, and the one-time migration off a
-// minted device key at boot. The sequence lives in `sign-out.ts`, which can
-// be tested; the ordering inside it is load-bearing and is explained there
-// step by step.
+// Share sign-out between IPC and legacy-key migration; sign-out.ts owns the sequence.
 async function performMindsSignOut() {
   beginMindsCredentialSignOut();
   beginSignOutRouting();
@@ -599,22 +514,15 @@ async function performMindsSignOut() {
   } finally {
     endMindsCredentialSignOut();
     /*
-     * The routing latch outlives the awaited half deliberately. This resolves
-     * as soon as the credentials are gone, while the sidecar restart is still
-     * running, and it is the reload from that moment that must not read
-     * `config_ready` off a sidecar on its way down. Bounded by the start cap
-     * so a wedged start cannot latch the app into "unconfigured" for good, and
-     * 'idle' comes back immediately when there was no restart to wait for.
+     * Keep routing latched until sign-out’s restart settles, beyond the earlier credential-clear
+     * reply.
+     * Bound it by the start cap so a failed restart cannot leave the app permanently unconfigured.
      */
     void awaitSignOutSidecarFlush(SERVER_START_CAP_MS).finally(endSignOutRouting);
   }
 }
 
-/*
- * Everything the sign-out sequence needs, wired once. The sequence itself and
- * the ordering rationale live in `sign-out.ts`, which can be tested; these are
- * the real implementations it drives.
- */
+/* Wire real dependencies for the shared sign-out sequence. */
 function mindsSignOutDeps(): SignOutDeps {
   return {
     getRevokeToken,
@@ -652,12 +560,7 @@ function mindsSignOutDeps(): SignOutDeps {
   };
 }
 
-/*
- * Reads `config_ready` back off the restarted sidecar for the flush's
- * diagnostic. Bounded twice over, the way the inline version was: the fetch
- * aborts at 3s and the race gives up at 3.5s, so a sidecar that is still
- * starting cannot hold the flush open.
- */
+/* Bound flush-health diagnostics with both fetch abort and a wall-clock race. */
 async function probeConfigReady(): Promise<boolean | null> {
   const healthPort = getServerPort();
   const healthRes = await Promise.race([
@@ -714,10 +617,8 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
-    // startServer is also the health-aware ensure path. Do not short-circuit on
-    // isServerRunning(): an adopted sidecar can disappear without an exit
-    // event, leaving that synchronous flag stale until startServer re-probes
-    // it. If a start is already in progress, startServer awaits it.
+    // Always call startServer’s health-aware ensure path; an adopted process can die without
+    // updating its cached flag.
     const result = await startServer();
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
@@ -733,11 +634,8 @@ function setupIPC() {
   // why the backend is offline.
   ipcMain.handle('server:get-diagnostics', () => getServerDiagnostics());
 
-  // PKCE OAuth — opens a one-shot loopback server + the user's
-  // default browser. Pure bridge: callers are responsible for any
-  // persistence (token storage, env writes). MindsHub onboarding
-  // goes through the dedicated `mindshub:*` handlers below so the
-  // env file only gets touched once the user picks an LLM path.
+  // Generic OAuth only exchanges tokens; callers own persistence. MindsHub finalization uses
+  // dedicated handlers.
   ipcMain.handle(IPC.OAUTH_CANCEL, () => {
     cancelCurrentOAuth();
     return true;
@@ -817,10 +715,8 @@ function setupIPC() {
       }
       focusMainWindow();
 
-      // Fetch account email — needed as keychain key and for the vault
-      // record's display name. The token exchange already succeeded at
-      // this point, so retry once on a transient failure rather than
-      // forcing the user to redo the whole consent flow.
+      // Retry a transient identity lookup once rather than repeating an already-completed consent
+      // flow.
       let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
       for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
@@ -862,10 +758,7 @@ function setupIPC() {
         },
       );
       if (!saveRes.ok) {
-        // Roll back the keychain write from above (a no-op if this
-        // connector has none, e.g. supports_refresh: false) — otherwise a
-        // live refresh token is orphaned in the OS keychain with no vault
-        // record ever pointing at it.
+        // Remove the keychain token if vault creation fails so no live refresh token is orphaned.
         try { await deleteRefreshToken(engine, accountEmail); } catch {}
         return { ok: false, reason: `Failed to save connection (${saveRes.status}).` };
       }
@@ -899,38 +792,23 @@ function setupIPC() {
     if (newFiles.length === 0) {
       return { ok: true, files: await getPickedFiles(engine, name), newFiles: [] };
     }
-    // The picker's PICKED callback firing doesn't guarantee Google actually
-    // completed the per-file grant — confirm each file is readable with the
-    // token we just minted before persisting it, so a broken grant surfaces
-    // immediately instead of silently sitting in the list until Anton hits
-    // a 403 on it later.
+    // Verify Picker grants are readable before persisting; PICKED alone does not prove access.
     const { verified, failed } = await verifyPickedFiles(access.accessToken, newFiles);
-    // Tag each newly-verified file with the project it was picked for
-    // (e.g. from the composer or a project's Project files rail) so the
-    // Project files display can scope to just that project — untagged
-    // (no projectName passed) when picked from connection-details, which
-    // has no project context. merge_picked_files unions this with
-    // whatever projects an already-picked file was tagged with before.
+    // Tag new picks with their project; server merging unions existing project memberships.
     const tagged = projectName
       ? verified.map((f) => ({ ...f, projects: [projectName] }))
       : verified;
     let files: PickedFile[];
     if (tagged.length > 0) {
       const saveResult = await savePickedFiles(engine, name, tagged);
-      // Persistence failing here must surface as a real failure — the
-      // renderer would otherwise show these files as granted/attached
-      // when the server never actually recorded the grant, so a reload
-      // later silently loses them.
+      // Surface persistence failure so the renderer cannot report an unrecorded grant as attached.
       if (!saveResult.ok) return { ok: false, reason: saveResult.reason, failed };
       files = saveResult.files;
     } else {
       files = await getPickedFiles(engine, name);
     }
-    // `files` is the connection's full accumulated grant (every file ever
-    // picked) — correct for CustomizeView's "everything this app can
-    // access" list, but callers that want "what did the user just pick in
-    // THIS session" (e.g. attaching to the current message) need `tagged`
-    // on its own, not the merged history.
+    // Return both accumulated grants and this session’s picks; attachment callers need only the
+    // latter.
     return { ok: true, files, newFiles: tagged, failed };
   });
 
@@ -945,14 +823,9 @@ function setupIPC() {
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
-    // The refresh_token is the only thing that actually revokes the whole
-    // grant with the provider — revoking an access_token (what
-    // cowork-server's own revoke() does, since the vault never holds
-    // refresh_token) only invalidates that one short-lived token, leaving
-    // the underlying authorization standing indefinitely. Electron is the
-    // only place that ever holds the real refresh_token, so this has to
-    // happen here, before it's deleted from the keychain. Gated on
-    // supports_revoke — false means silently skip, local cleanup only.
+    // Revoke the refresh token before deleting it locally; access-token revocation alone leaves the
+    // provider grant live.
+    // Skip remote revocation when the connector declares supports_revoke=false.
     try {
       const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
       if (refreshToken) {
@@ -965,11 +838,8 @@ function setupIPC() {
           const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
-            // Some providers' revoke endpoints require the app's own
-            // client_id/client_secret alongside the token (e.g. Supabase's
-            // JSON-body /v1/oauth/revoke) rather than the generic RFC-7009
-            // form-encoded `token=` shape — fetch credentials the same way
-            // the connect flow above does, best-effort.
+            // Load app credentials for providers whose revoke request requires them; local cleanup
+            // remains best-effort.
             let clientId = '';
             let clientSecret = '';
             try {
@@ -999,20 +869,9 @@ function setupIPC() {
     return { ok: true };
   });
 
-  // ── MindsHub onboarding ──────────────────────────────────────
-  // Logging in via Keycloak doesn't yet decide the user's LLM —
-  // free users hit a paywall and may bail to BYOK. So login only
-  // refreshes in-memory tokens + persists the refresh token to disk
-  // (for next-launch silent refresh); writing ~/.anton/.env is
-  // deferred to `mindshub:finalize` (or to host.saveSettings on the
-  // BYOK path).
-  // Shared by MINDSHUB_LOGIN and MINDSHUB_SIGNUP — the same loopback PKCE
-  // exchange against Keycloak; only the browser entry point (login vs
-  // registration form) and the callback patience differ. `anton-desktop`
-  // is the only Keycloak client in the realm that allows loopback
-  // (127.0.0.1) redirect URIs — `public-client` returns HTTP 400 for
-  // those. Pulling org context into the token is handled post-auth by
-  // ensureActiveOrg() in minds-auth.ts.
+  // Share PKCE between login and signup; defer provider configuration to finalize or BYOK settings.
+  // Use anton-desktop for loopback redirects; ensureActiveOrg supplies post-auth organization
+  // context.
   const runMindsAuthFlow = async (authUrl: string, callbackTimeoutMs?: number) => {
     const result = await oauthConnect({
       clientId: 'anton-desktop',
@@ -1063,30 +922,16 @@ function setupIPC() {
     return { ok: false, reason: `Token refresh failed (${result.status}).` };
   });
 
-  // Commit MindsHub as the LLM provider. The gateway takes the user's own
-  // access token: auth's `/v1/authenticate/` picks its branch from the token's
-  // shape and accepts a Keycloak JWT as readily as an `mdb_` key, provided the
-  // JWT carries an active-organization claim. selectEntitledOrg is what
-  // guarantees that claim, and picks an organization that can actually run
-  // turns when the active one cannot.
-  //
-  // Nothing is minted and nothing is written: the token goes to the sidecar's
-  // runtime holder, and the refresh timer keeps handing over a fresh one.
-  // Renderer only calls this on the paid-user / Minds-as-LLM path.
+  // Select an active-organization JWT, then hand it to the sidecar’s runtime holder.
+  // Refresh keeps it current; no device key is minted.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string, chosenByUser?: boolean) => {
     const token = getAccessToken();
     if (!token) {
       console.error('[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
-    // `chosenByUser` travels separately from the id because the id alone does
-    // not say who decided. Today only the onboarding picker sends one, but a
-    // caller that later passes a remembered id must not inherit "a person just
-    // answered this" along with it (ENG-2199).
-    // Compared strictly rather than coerced: this flag's whole job is to
-    // suppress a fallback, so anything but a real `true` off the wire must not
-    // arm it. Today's renderer sends a boolean or nothing, so this is the
-    // contract written down rather than a hole being closed.
+    // Treat chosenByUser as a strict boolean separate from the ID; a remembered ID is not a new
+    // user choice.
     const selected = await selectEntitledOrg(token, {
       preferOrgId: organizationId,
       chosenByUser: chosenByUser === true,
@@ -1096,17 +941,9 @@ function setupIPC() {
       return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
     }
     /*
-     * Let a sign-out's sidecar restart land before handing this user's
-     * credential over. Signing a second user in right after the first signed
-     * out is the ordinary case (a tester, a shared machine), and since the
-     * sign-out reply no longer waits for the restart, that restart can still
-     * be running here. Its `stopServer` would take down the sidecar this
-     * credential was just pushed to, and `commitMindsSignIn` reports nothing
-     * when it bails, so sign-in would look fine and no turn would work.
-     *
-     * Bounded and non-fatal: `commitMindsSignIn` ensures a live sidecar itself
-     * and queues on the same lifecycle tail, so a start that runs to its cap
-     * costs a slower sign-in rather than a broken one.
+     * Await a prior sign-out restart before handing over another user’s credential.
+     * This wait is bounded; commitMindsSignIn still ensures a live sidecar under the lifecycle
+     * queue.
      */
     const flushWait = await awaitSignOutSidecarFlush(SIGN_OUT_FLUSH_SIGN_IN_WAIT_MS);
     if (flushWait === 'timeout') {
@@ -1124,10 +961,7 @@ function setupIPC() {
     return { ok: true, organization: selected.organization };
   });
 
-  // The organizations this person belongs to, company ones first, and which
-  // one their token names. Read here rather than in the renderer because the
-  // renderer cannot reach Keycloak: auth's ingress names console origins in
-  // its CORS allowlist and no Cowork host is among them.
+  // Read organizations in main because Keycloak’s CORS policy does not admit the Cowork renderer.
   ipcMain.handle(IPC.MINDSHUB_LIST_ORGS, () => listMindsOrgs());
 
   // Move this install to another organization: switch the session, mint and
@@ -1148,10 +982,8 @@ function setupIPC() {
   ipcMain.handle(IPC.MINDSHUB_SET_USER_KEY, async (_evt, rawKey: unknown) => {
     const key = typeof rawKey === 'string' ? rawKey.trim() : '';
     try {
-      // Both helpers report whether the sidecar actually took the value. Say so
-      // rather than reporting a bare success: the renderer diverts the key out
-      // of the settings write on the strength of this answer, so a silent
-      // `ok: true` on a failed hand-over is how the key ends up stored nowhere.
+      // Report actual sidecar acceptance; otherwise the renderer may believe a key was saved when
+      // no store holds it.
       const handedOver = key
         ? await setUserSuppliedMindsKey(key)
         : await clearUserSuppliedMindsKey();
@@ -1165,12 +997,8 @@ function setupIPC() {
     }
   });
 
-  // Authoritative "am I signed in?" read. The in-memory token is
-  // process-lifetime only, so right after a launch (or after a missed
-  // refresh window — laptop slept past the timer) it can be empty while
-  // a perfectly valid refresh token sits on disk. Refresh on miss so the
-  // Settings account card reflects the real session instead of showing
-  // an authenticated user as signed out (ENG-761).
+  // Refresh on a missing/expired in-memory token so startup or sleep does not misreport a persisted
+  // session as signed out.
   ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => freshAccessToken());
 
   ipcMain.handle(IPC.AUTH_LOGOUT, performMindsSignOut);
@@ -1232,10 +1060,8 @@ function setupIPC() {
     return true;
   });
 
-  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
-  // When enabled the refresh token lives in the macOS keychain; otherwise
-  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
-  // any existing token to the chosen store.
+  // Legacy keychain preference bridge; token-store.ts owns the current platform-specific storage
+  // behavior.
   ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
     const vars = readEnvFile();
     // Default is enabled; only false when explicitly set to 'false'.
@@ -1368,10 +1194,8 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
-    // `ui` is the OTA-activated bundle version, or null when running the
-    // renderer bundled with the installer. The renderer resolves the effective
-    // UI version (falling back to its own baked __APP_VERSION__) and shows the
-    // source tag; here we just report the raw facts.
+    // Report the OTA version or null; the renderer falls back to its baked version and displays the
+    // source.
     const uiVersion = getCachedVersion();
     return {
       app: getAppDisplayVersion(),
@@ -1390,11 +1214,8 @@ function setupIPC() {
   registerUpdateHandlers(() => mainWindow);
 }
 
-// One-time purge of the on-disk HTTP cache, gated by app version. Older builds
-// let Electron cache settings/stream responses to Cache_Data, leaving plaintext
-// API keys (incl. rotated ones) on disk (ENG-462). Secret-bearing responses now
-// send Cache-Control: no-store, but keys already cached must be cleared — so do
-// it once per version (on upgrade / first install), not on every launch.
+// Purge old HTTP cache once per app version to remove credentials cached by older builds.
+// Current secret responses use no-store, which cannot remove existing cached entries.
 async function purgeHttpCacheOnUpgrade(): Promise<void> {
   try {
     const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
@@ -1421,11 +1242,8 @@ app.whenReady().then(async () => {
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
-  // A machine that slept past the refresh timer wakes with an expired
-  // in-memory token and a timer that fired into the void. Refresh on
-  // resume so the session is live again before the user looks at it
-  // (ENG-761 — the Windows-sleep flavour of "signed in but shows
-  // signed out"). powerMonitor is only usable after app ready.
+  // Refresh after resume because sleep can outlast the token and timer; powerMonitor requires app
+  // readiness.
   powerMonitor.on('resume', () => {
     void refreshMindsCredentialAfterResume();
   });
@@ -1435,11 +1253,8 @@ app.whenReady().then(async () => {
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
 
-  // Guard the two environment axes against silent disagreement: the build kind
-  // (data home / branch) must target the API host the canonical channel model
-  // says it should. A mismatch means a build was wired to talk to the wrong
-  // backend (e.g. a preview build pointed at the prod API) — log it loudly
-  // rather than let it write to the wrong environment unnoticed.
+  // Report channel/API mismatches so a misconfigured non-prod build cannot silently target
+  // production.
   {
     const c = checkChannelConsistency(buildKind(), MINDS_API_HOST);
     if (!c.ok) {
@@ -1475,10 +1290,7 @@ app.whenReady().then(async () => {
       ? 'Show Logs in Explorer'
       : 'Show Logs in File Manager';
 
-  /* Built on every platform so Windows/Linux users also get the Help
-     menu (Documentation + log access). The macOS-only app-name submenu
-     leads the bar on Mac; elsewhere a minimal File menu carries Quit,
-     which the app menu would otherwise have owned. */
+  /* Expose Help on every platform; use an app menu on macOS and File/Quit elsewhere. */
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac
       ? [{
@@ -1487,12 +1299,8 @@ app.whenReady().then(async () => {
             {
               label: 'About MindsHub Cowork',
               click: async () => {
-                // Unified headline = release week of the newest hot-updated
-                // component (UI + server + agent); the App shell is shown
-                // separately since it updates via a different channel.
-                // Per-component versions go in credits as a lightweight
-                // diagnostics readout. Mirrors the Settings → Updates panel
-                // (ENG-213).
+                // Use the newest UI/server/agent release week as the headline; report shell and
+                // component versions separately.
                 const shell = getAppDisplayVersion();
                 const uiOta = getCachedVersion(); // OTA bundle version, or null when bundled
                 const uiEffective = uiOta || shell;
@@ -1556,10 +1364,10 @@ app.whenReady().then(async () => {
         {
           label: revealLogsLabel,
           click: () => {
-            /* showItemInFolder needs the file to exist; before the server
-               has ever started there's no log yet, so fall back to opening
-               the logs directory itself. getServerLogPath() is now a pure
-               getter, so ensure the directory exists before opening it. */
+            /*
+             * Reveal Logs needs an existing path; before the first server start, create and open
+             * the logs directory.
+             */
             const logPath = getServerLogPath();
             if (fs.existsSync(logPath)) {
               shell.showItemInFolder(logPath);
@@ -1597,13 +1405,8 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Boot-time server start. If cowork-server is installed, start it
-  // in the background. If not, skip — the renderer's boot flow will
-  // route to the setup screen which handles installation.
-  //
-  // `bootServerSettled` is resolved the moment the start decision is made
-  // (server up, failed, or skipped) — before the slow OTA update checks — so
-  // checkConfigured() can await the real readiness without polling.
+  // Resolve bootServerSettled after startup succeeds, fails or is skipped, before slower OTA
+  // checks.
   let resolveBootServer: () => void = () => {};
   bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
@@ -1621,16 +1424,8 @@ app.whenReady().then(async () => {
       bootUpdateDone();  // no boot poll on this path — don't strand the gate
       return;
     }
-    // If MindsHub SSO tokens are stored, silently refresh before the Python
-    // server starts — it reads .env at boot and needs a valid JWT.
-    //
-    // ENG-761: destroy local auth state ONLY on a definitive
-    // `invalid_grant` from Keycloak. The old code cleared tokens (and
-    // stripped env credentials) on ANY falsy refresh — so a network
-    // blip at launch (Windows boots the app before the network is up)
-    // permanently signed the user out. A transient failure now keeps
-    // everything; minds-auth retries on its own timer and the next
-    // successful refresh broadcasts the signed-in state to the UI.
+    // Refresh persisted SSO at boot. Only invalid_grant clears auth; transient failures retain
+    // tokens and retry.
     const existingRefresh = getRefreshToken();
     if (existingRefresh) {
       const outcome = await refreshTokensOnly();
@@ -1657,28 +1452,18 @@ app.whenReady().then(async () => {
 
     let result = await startServer();
     if (!result.ok) {
-      // The server is installed but won't boot. Two self-heal paths, tried in
-      // order; each rebuilds the venv with a clean --force --reinstall on the
-      // source it was installed from, then we retry start once.
+      // Repair unsupported Python, then broken install signatures; reinstall from the original
+      // source and retry start.
       console.error(`[server] start failed (${result.reason}); attempting recovery`);
 
-      // 1. Venv stranded on an unsupported Python (a pre-3.12 install an
-      //    in-place update loaded newer 3.12+ code into) — crashes at import
-      //    time. Recreating it re-selects a supported interpreter.
       const recreated = await recreateVenvIfUnsupportedPython();
       if (recreated) {
         console.log('[server] recreated venv on a supported Python; retrying start');
         result = await startServer();
       }
 
-      // 2. Venv on a supported Python but still dead — a corrupt or partially
-      //    written environment (e.g. an interrupted upgrade left a dependency
-      //    as a bare namespace package that ImportErrors at startup). A clean
-      //    reinstall repairs it. Gated on the crash signature: repairServerInstall
-      //    only reinstalls when the captured stderr looks like a broken install,
-      //    so a migration/port/config failure never triggers a pointless (and
-      //    potentially env-corrupting) reinstall. Skip when we just recreated:
-      //    that already did a --force --reinstall.
+      // Reinstall only for a broken-environment crash signature, not migration/port/config errors.
+      // Skip when interpreter recreation already performed a clean install.
       const failureLog = getServerDiagnostics().recentLog;
       if (!result.ok && !recreated && await repairServerInstall(failureLog)) {
         console.log('[server] repaired the server environment; retrying start');
@@ -1693,86 +1478,44 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
-    /* One-time migration off a minted device key.
-     *
-     * Every build that minted one wrote it to `~/.cowork/.env`, so that line is
-     * the marker for an install that has not made this transition. Signing out
-     * IS the migration: it revokes this device's minted keys while the session
-     * still names the organization they were minted in, clears every stored
-     * copy, and routes the user to sign in again on their session credential.
-     *
-     * The marker has to be that `.env` line and not anything the sidecar
-     * reports. A credential has already been handed over by the time this runs:
-     * the post-start hook pushes after every successful start, including the
-     * `startServer()` above. Once it has, the sidecar answers `minds_api_key` as
-     * set whether or not a row exists, so a marker read from there would find
-     * the live credential rather than the leftover it is looking for. */
+    /*
+     * Use the legacy .env key as the migration marker and sign out to revoke/clear it.
+     * The sidecar’s settings cannot distinguish stored legacy keys from the runtime credential
+     * already handed over.
+     */
     const migrating = Boolean(readEnvFile()['ANTON_MINDS_API_KEY']);
     if (migrating) {
       console.log('[minds-auth] this install still holds a minted device key — signing out to migrate');
       try {
         await performMindsSignOut();
-        /*
-         * Boot keeps waiting for the restart, unlike the IPC path. Only the
-         * IPC path has a dialog on screen to release; here the next steps
-         * hand the sidecar its credential and release boot routing, and both
-         * need the sidecar this restart is bringing up rather than the one it
-         * is taking down.
-         */
+        /* Boot must await sign-out’s restart before handing off credentials and releasing routing. */
         await awaitSignOutSidecarFlush(SERVER_START_CAP_MS);
       } catch (err) {
         console.warn('[minds-auth] migration sign-out failed; will retry next launch', err);
       }
-      // The marker is the `.env` line, and `performMindsSignOut` scrubs it
-      // best-effort — it logs a failed write and presses on. So confirm the
-      // line is actually gone rather than assuming the sign-out removed it: if
-      // it survived, this runs again on the next launch, and every launch after
-      // that, signing the user out each time with nothing saying why.
+      // Verify the legacy .env marker was actually removed; a failed best-effort scrub would repeat
+      // sign-out every launch.
       if (readEnvFile()['ANTON_MINDS_API_KEY']) {
         console.error('[minds-auth] migration ran but ANTON_MINDS_API_KEY is still in .env — it will retry next launch');
       }
     }
 
-    // Hand the sidecar its MindsHub credential BEFORE releasing boot routing.
-    //
-    // It holds that value in memory and nothing persists it, so every start
-    // needs this — a launch, an auto-update, a crash restart. Without it the
-    // sidecar comes up with no credential and `config_ready` reads false.
-    //
-    // The ordering is the load-bearing part. `serverConfigured()` awaits
-    // `bootServerSettled` and then reads `config_ready` straight away, and
-    // `resolveBootTarget` consults it BEFORE it ever reaches `awaitBootReady()`
-    // — so releasing the gate first means the renderer reads "unconfigured" and
-    // routes a perfectly signed-in user into onboarding while this push is
-    // still in flight.
-    //
-    // Gated on there being a credential to hand over, NOT on a refresh token: a
-    // user running on a key they supplied by hand has one in the keychain and no
-    // Keycloak session at all, and gating on the session left those installs
-    // unconfigured after every restart.
-    //
-    // Bounded, because routing now waits on it: a Keycloak that hangs must cost
-    // a few seconds of boot, not the app. `pushMindsCredential` carries its own
-    // 10s timeout, and both halves report failure rather than throwing.
+    // Hand off credentials before releasing bootServerSettled, which routing reads before
+    // awaitBootReady.
+    // Include BYOK installs without a Keycloak session; bound the refresh/PUT so an unavailable IdP
+    // cannot hang boot.
     if (!migrating) {
       await Promise.race([
         establishMindsCredential(refreshTokensOnly),
         new Promise<void>((resolve) => setTimeout(resolve, BOOT_CREDENTIAL_TIMEOUT_MS)),
       ]);
     }
-    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
-    // A constrained OTA cache that booted bundled (fail-closed) is re-verified
-    // and, if compatible, swapped in by the updater's boot check after the
-    // server-update pass — see settleConstrainedCache in updater.ts.
+    resolveBootServer();  // Release routing before OTA checks; the updater later re-verifies any constrained cache after
+// server updates.
 
-    // Wire the update checker regardless of whether the server booted. A
-    // server that can't start is the case that MOST needs an update — a newer
-    // build may be exactly what fixes the crash — so the boot check must not be
-    // gated behind a successful start. When the server is down, the poll
-    // applies an available server update even in manual mode (recovery, not a
-    // routine update); a healthy server still honors the auto/manual env hatch.
-    // maybeUpdateServer rolls back automatically if the new version also fails
-    // its health probe, so this can't strand a previously-working install.
+    // Start update checks even when the sidecar failed to boot. A server-down update is recovery,
+    // including in manual mode.
+    // Healthy installs retain their update preference and failed updates roll back.
     setUpdateNotifier((payload) => {
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       // Mirror progress onto the UI status channel so the loading screen and
@@ -1861,15 +1604,9 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
-  // An auto-mode shell update installs itself as the app goes down, outside
-  // the update-maintenance gate that the in-app "Restart now" install enters.
-  // The download only stages the payload (Windows: the NSIS installer on disk;
-  // macOS: Squirrel.Mac fetches it into ShipIt's area) — the bundle swap runs
-  // later: on Windows in electron-updater's `app.once('quit')` handler, on
-  // macOS via ShipIt once this process terminates. Both are strictly after this
-  // before-quit drain, so waiting for any in-flight UI/server apply to finish
-  // here keeps the installer's file swap from overlapping it. Bounded like the
-  // server stop below so a wedged apply can't pin the quit indefinitely.
+  // Drain UI/server applies before quit-triggered shell installation swaps files outside the
+  // maintenance gate.
+  // Bound the wait so a wedged apply cannot prevent quitting.
   const applyDrained = await Promise.race([
     awaitUpdateMaintenanceIdle().then(() => true),
     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
@@ -1877,22 +1614,15 @@ async function drainServerForQuit(): Promise<void> {
   if (!applyDrained) {
     console.warn('[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
   }
-  // Hard ceiling so a wedged python can't pin the quit indefinitely.
-  // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
-  // this window, but a misbehaving OS-level process delay could push
-  // past it; if so we'd rather quit than leave the user waiting on the
-  // dock icon. Both numbers end early the moment the child exits, so a
-  // healthy quit is still immediate.
+  // Bound quit beyond the normal stop escalation; do not let an OS-level delay keep the app open
+  // indefinitely.
   const stopped = await Promise.race([
     stopServer().then(() => true),
     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
   ]);
 
-  // stopServer lost the race. The usual reason is that a start still holds
-  // the lifecycle lock — a sidecar that is still importing can hold it for
-  // the whole start cap, far longer than this ceiling — so the polite stop
-  // never even ran. Quitting here would leave that python behind to bind the
-  // port unsupervised. Reap it directly, without the lock, still bounded.
+  // If a start still holds the lifecycle lock, the queued stop may never run before quit. Reap
+  // directly, still bounded.
   if (!stopped) {
     console.warn('[server] stop did not finish before the quit ceiling; force-reaping the sidecar');
     await Promise.race([
@@ -1907,18 +1637,9 @@ app.on('window-all-closed', async () => {
   app.quit();
 });
 
-// Block the quit until the python child has actually exited. Earlier
-// this was `void stopServer()` — fire-and-forget — which meant
-// Electron exited (often within milliseconds of SIGTERM) before the
-// python had time to respond. The child got reparented to launchd
-// (PPID=1) and kept running, holding port 26866. The next launch's
-// new python couldn't bind, fell back to talking to the orphan, and
-// since the orphan's cwd was inside a now-deleted bundle directory,
-// every chat completion crashed in `os.getcwd()` with [Errno 2].
-//
-// `event.preventDefault()` defers the quit; we re-call `app.quit()`
-// after the drain finishes. Guarded by `_quitDrained` so the second
-// invocation skips the deferral and the app exits cleanly.
+// Defer quit until the server drain finishes so its orphan cannot retain the port or a deleted
+// bundle cwd.
+// Re-enter app.quit afterward; _quitDrained prevents a second deferral.
 app.on('before-quit', (event) => {
   if (_quitDrained) return;
   event.preventDefault();

@@ -8,12 +8,8 @@ function fakeResponse(ok: boolean, body: unknown = {}, status = ok ? 200 : 400):
 
 describe('getPickedFiles', () => {
   beforeEach(() => {
-    // authHeader() transitively calls cowork-home.ts's buildKind(), which
-    // touches Electron's `app.isPackaged` unless COWORK_BUILD_KIND short-
-    // circuits it first — `app` isn't available/mocked in this node-env
-    // test, so without this every call here throws (silently swallowed by
-    // getPickedFiles' own try/catch, masking the fetch-mock assertions
-    // below with a false-negative empty array).
+    // Set build kind before authHeader reaches Electron through cowork-home; otherwise swallowed
+    // import errors can mimic empty results.
     process.env.COWORK_BUILD_KIND = 'dev';
   });
 
@@ -84,9 +80,7 @@ describe('savePickedFiles', () => {
     expect(result).toEqual({ ok: true, files: merged });
   });
 
-  // Regression: this used to silently return the (unpersisted) input list
-  // on failure, so the caller couldn't tell the PATCH never landed and
-  // reported success to the renderer anyway.
+  // A failed PATCH must not return the unpersisted input as if saving succeeded.
   it('returns ok:false (not the unpersisted input) on a non-ok response', async () => {
     const fetchMock = vi.fn().mockResolvedValue(fakeResponse(false, {}, 500));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
