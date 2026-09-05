@@ -1,33 +1,12 @@
 /** @type {import('tailwindcss').Config} */
-//
-// Cowork — Tailwind config.
-//
-// We don't use Tailwind for the existing app surfaces (those rely on
-// inline styles + globals.css). Tailwind is wired in here so that
-// components ported from mdb-ai (Markdown stack, ThinkingBlock, etc.)
-// can use their utility classes verbatim, and so future migration of
-// existing surfaces to Tailwind can happen incrementally.
-//
-// Two important calls:
-//
-//   1. corePlugins.preflight = false — Tailwind's "preflight" CSS reset
-//      would aggressively reset buttons / lists / etc. That'd clobber
-//      everything we already have inline-styled. Utilities still work;
-//      we just skip the reset.
-//
-//   2. theme.extend.colors — bound to CSS variables from globals.css so
-//      `bg-surface`, `text-ink`, `border-line`, etc. follow the active
-//      light/dark theme without needing Tailwind's own dark-mode flag.
-//      The body[data-theme="dark"] selector in globals.css already
-//      flips the var values; Tailwind utilities just read them.
-//
+// Keep preflight disabled to preserve existing element styling.
+// Colors read globals.css variables, which body[data-theme] switches for light/dark.
 export default {
   content: [
     './src/renderer/index.html',
     './src/renderer/**/*.{js,jsx,ts,tsx}',
   ],
-  // Mirror our globals.css `body[data-theme="dark"]` switch so any
-  // explicit `dark:` utility variants resolve correctly.
+  // Match globals.css body[data-theme] for explicit dark variants.
   darkMode: ['selector', 'body[data-theme="dark"]'],
   corePlugins: {
     preflight: false,
@@ -35,30 +14,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Surfaces
         bg:         'var(--bg)',
         surface:    'var(--surface)',
         'surface-2':'var(--surface-2)',
         'surface-3':'var(--surface-3)',
 
-        // Inks (text)
         ink:        'var(--ink)',
         'ink-2':    'var(--ink-2)',
         'ink-3':    'var(--ink-3)',
         'ink-4':    'var(--ink-4)',
         'ink-5':    'var(--ink-5)',
 
-        // Lines
         line:       'var(--line)',
         'line-2':   'var(--line-2)',
 
-        // Accent
         accent:     'var(--accent)',
         'accent-2': 'var(--accent-2)',
         'accent-3': 'var(--accent-3)',
         'accent-bg':'var(--accent-bg)',
 
-        // Status
         danger:     'var(--danger)',
         'danger-bg':'var(--danger-bg)',
         'danger-border':'var(--danger-border)',
@@ -75,16 +49,10 @@ export default {
         'success-border':'var(--success-border)',
         'success-text':'var(--success-text)',
 
-        // Semantic aliases (ENG-1381). Key `surface-glass` → `bg-surface-glass`,
-        // key `sage-500` → `text-sage-500` — resolved values in globals.css.
-        // (`muted` dropped — unused; `strong` added by ENG-1481 when its inline
-        // styles convert and give it a className usage to verify against.)
         'surface-glass':'var(--surface-glass)',
         'sage-500':     'var(--sage-500)',
 
-        // Aliases for mdb-ai's class names so a verbatim port works.
-        // mdb-ai uses text-text-primary, bg-surface-01, border-border-02.
-        // Map these to our nearest tokens.
+        // Map mdb-ai class names to existing theme tokens.
         'text-primary': 'var(--ink)',
         'text-secondary':'var(--ink-2)',
         'text-faint':   'var(--ink-4)',
@@ -100,7 +68,6 @@ export default {
         mono:    ['"JetBrains Mono"', 'monospace'],
       },
       fontSize: {
-        // Design-system type scale (from globals.css tokens)
         '2xs':  'var(--text-2xs)',
         'xs':   'var(--text-xs)',
         'sm':   'var(--text-sm)',
@@ -110,8 +77,6 @@ export default {
         'xl':   'var(--text-xl)',
         '2xl':  'var(--text-2xl)',
         '3xl':  'var(--text-3xl)',
-        // mdb-ai uses text-detail, text-body, text-small. Map to px sizes
-        // close to ours so the ports don't look out of place.
         detail: ['11px',   { lineHeight: '1.4' }],
         body:   ['14.5px', { lineHeight: '1.55' }],
         small:  ['12.5px', { lineHeight: '1.4' }],
@@ -127,12 +92,10 @@ export default {
         '10': 'var(--space-10)',
         '12': 'var(--space-12)',
       },
-      // Card-system tokens (ENG-791) — so Tailwind-styled cards can use
-      // `rounded-card` / `shadow-card` instead of arbitrary `rounded-[8px]`
-      // or hardcoded hex. Bound to the same CSS vars as the .card classes.
+      // Use the same CSS variables as the legacy .card classes.
       borderRadius: {
-        card:       'var(--card-radius)',      // rounded-card      → 12
-        'card-row': 'var(--card-radius-row)',  // rounded-card-row  → 8
+        card:       'var(--card-radius)',
+        'card-row': 'var(--card-radius-row)',
       },
       boxShadow: {
         'sh-1':       'var(--sh-1)',
@@ -142,18 +105,12 @@ export default {
         card:         'var(--card-shadow-rest)',
         'card-hover': 'var(--card-shadow-hover)',
       },
-      // The fade+scale a floating popup plays on open/close, driven by
-      // Base UI's data-open / data-closed attributes — named generically
-      // (not Menu-specific) so any Base UI popover skinned this way can
-      // reuse it instead of redefining its own.
       keyframes: {
         'scale-in':  { from: { opacity: 0, transform: 'scale(0.97)' }, to: { opacity: 1, transform: 'scale(1)' } },
         'scale-out': { from: { opacity: 1, transform: 'scale(1)' },    to: { opacity: 0, transform: 'scale(0.97)' } },
-        // Task-mode chip entrance (ENG-1594) — softer scale, springier curve.
         'chip-in':   { from: { opacity: 0, transform: 'scale(0.95)' }, to: { opacity: 1, transform: 'scale(1)' } },
-        // Plain opacity fades for content appearing/leaving inside an
-        // already-open popup (e.g. the Combobox footer slot) — no scale, so
-        // the popup's own geometry doesn't appear to move twice.
+        // Use opacity only inside an open popup so content changes do not animate its geometry
+        // again.
         'fade-in':   { from: { opacity: 0 }, to: { opacity: 1 } },
         'fade-out':  { from: { opacity: 1 }, to: { opacity: 0 } },
       },

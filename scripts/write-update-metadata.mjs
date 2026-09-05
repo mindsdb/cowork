@@ -24,12 +24,8 @@ if (platform !== 'mac' && platform !== 'windows') {
 const blockmapIndex = process.argv.indexOf('--blockmap-output');
 if (blockmapIndex !== -1) {
   const blockmapOutput = resolve(value('--blockmap-output'));
-  // electron-builder v26 dropped the app-builder Go binary (`app-builder-bin`);
-  // blockmap generation now lives in pure JS inside app-builder-lib. Reuse its
-  // own implementation so this post-sign blockmap is byte-format identical to
-  // the one electron-builder emits pre-sign — gzip + separate output file
-  // mirrors createBlockmap() in app-builder-lib's differentialUpdateInfoBuilder.
-  // Deep-import path is coupled to the pinned electron-builder major version.
+  // Use electron-builder's own post-sign blockmap format. This deep import is coupled to the pinned
+  // major version.
   const require = createRequire(import.meta.url);
   const { buildBlockMap } = require('app-builder-lib/out/targets/blockmap/blockmap.js');
   await buildBlockMap(artifact, 'gzip', blockmapOutput);
@@ -38,8 +34,7 @@ if (blockmapIndex !== -1) {
 const bytes = readFileSync(artifact);
 const sha512 = createHash('sha512').update(bytes).digest('base64');
 const name = basename(artifact);
-// JSON-quoted strings are valid YAML scalars and prevent filenames from
-// changing the metadata structure.
+// JSON quoting produces valid YAML scalars without allowing filenames to alter its structure.
 const yaml = [
   `version: ${JSON.stringify(version)}`,
   'files:',

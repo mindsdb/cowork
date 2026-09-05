@@ -1,6 +1,3 @@
-// Hand-written declarations for write-download-manifest.mjs so the manifest
-// contract test in src/shared/download-manifest.test.ts can import it under
-// `npm run typecheck:test`.
 export type DownloadChannel = 'prod' | 'stable';
 
 export interface DownloadManifest {
