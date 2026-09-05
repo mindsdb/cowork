@@ -1,14 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { IPC } from './ipc-channels';
 
-// Contract guard: channel strings are the main↔renderer wire protocol.
-// A duplicate value silently routes two features onto one handler; a renamed
-// value breaks any renderer (including an OTA-updated one running against an
-// older main process) that still sends the old name. Renames must be treated
-// as breaking changes, not refactors.
-//
-// The preload↔host bridge-shape check (qa.md §5a.5) needs an `electron` mock
-// and lands with the Phase 3 renderer work.
+// IPC strings are a versioned wire contract: duplicate values collide, and renames break mixed
+// OTA/main versions.
 describe('IPC channel contract', () => {
   const entries = Object.entries(IPC);
 
@@ -25,9 +19,8 @@ describe('IPC channel contract', () => {
   });
 
   it('locks the full channel map (a rename here is a breaking protocol change)', () => {
-    // If this snapshot fails, you renamed/removed a channel. That breaks any
-    // renderer bundle still sending the old name (OTA UI can lag the main
-    // process). Add new channels freely; treat renames as migrations.
+    // Snapshot changes to existing names require migration; OTA renderer and main can run different
+    // versions.
     expect(IPC).toMatchSnapshot();
   });
 });

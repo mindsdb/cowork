@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { isMindsBaseUrl, mindsServesOpenAiCompatible, endpointHost } from './minds-endpoint';
 
-// Routing is decided here, so every branch gets a case only it can satisfy.
-// Getting this wrong sends a prompt meant for a machine on the user's own
-// network to a hosted gateway instead.
+// Each routing branch needs a discriminating case so local-model prompts cannot be sent to a hosted
+// gateway.
 describe('isMindsBaseUrl', () => {
   it('recognises MindsHub public hosts', () => {
     expect(isMindsBaseUrl('https://api.mindshub.ai/v1')).toBe(true);

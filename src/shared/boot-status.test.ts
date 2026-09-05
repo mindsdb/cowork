@@ -59,10 +59,8 @@ describe('deriveBootStatus', () => {
   });
 
   describe('manual shell-reinstall notice pending (ENG-849 fallback, ENG-2296)', () => {
-    // The manual notice fires only when shell auto-update is disabled or
-    // terminally failed, so the shell snapshot reads disabled/failed and the
-    // phase set alone would miss the outstanding reinstall. The regression: OTA
-    // reloading while a manual reinstall is pending used to show "Almost ready…".
+    // A manual reinstall remains pending even when shell auto-update reads disabled/failed; OTA
+    // reload must not show Almost ready.
     it('OTA reloading + manual notice → "Finishing update…", not "Almost ready…"', () => {
       const out = deriveBootStatus({ ota: { phase: 'reloading' }, manualShellPending: true });
       expect(out).toBe('Finishing update…');

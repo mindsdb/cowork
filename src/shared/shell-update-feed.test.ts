@@ -43,10 +43,7 @@ describe('shellUpdaterCacheDirName', () => {
   });
 });
 
-// The updater channel baked into app-update.yml names the manifest the client
-// fetches; it must equal the fixed name the publish pipeline writes
-// (`latest.yml` / `latest-mac.yml`), never a per-build value derived from the
-// version.
+// app-update.yml's channel must name the fixed published manifest, not a version-derived filename.
 describe('SHELL_UPDATE_CHANNEL + withAppUpdateChannel', () => {
   it('is a fixed, ring-stable channel matching the published manifest name', () => {
     expect(SHELL_UPDATE_CHANNEL).toBe('latest');
@@ -75,7 +72,6 @@ describe('SHELL_UPDATE_CHANNEL + withAppUpdateChannel', () => {
     const fixed = withAppUpdateChannel(manifest);
     expect(fixed).toContain('channel: latest');
     expect(fixed).not.toContain('channel: 306');
-    // Other lines are left intact.
     expect(fixed).toContain('url: https://downloads.mindshub.ai/mindshub-cowork/updates/stable/windows');
     expect(fixed).toContain('updaterCacheDirName: anton-updater-stable');
   });
@@ -108,11 +104,8 @@ describe('resolveWindowsPublisherNames', () => {
   });
 });
 
-// Guards the signer pin: prove the pinned publisherName satisfies
-// electron-updater's own signature matching (builder-util-runtime's parseDn) for
-// the subject the client actually observes, and REJECTS both a foreign signer
-// AND a near-match with the same short CN but a different identity. Runs in CI
-// without Windows.
+// Use electron-updater's parseDn to test the real signer pin, including foreign and near-match
+// identities, without requiring Windows.
 describe('windows publisher pin (electron-updater parseDn semantics)', () => {
   const require = createRequire(import.meta.url);
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -145,18 +138,15 @@ describe('windows publisher pin (electron-updater parseDn semantics)', () => {
   });
 
   it('rejects a near-match: same short CN but a distinct identity', () => {
-    // A cert whose CN is the bare "Mindsdb" (not our full "Mindsdb, Inc.") under
-    // an unrelated org. The dropped comma-truncated fallback would have admitted
-    // this; the exact-CN pin does not.
+    // A bare Mindsdb CN under another organization must not match the full Mindsdb, Inc. signer
+    // pin.
     expect(accepts(pin, 'CN=Mindsdb, O=Unrelated Company, C=US')).toBe(false);
     expect(accepts(pin, 'CN="Mindsdb", O="Unrelated Company"')).toBe(false);
   });
 });
 
-// Guards the Blocking config finding: electron-builder 26's schema rejects
-// win.publisherName but accepts it on the publish provider config (where the
-// generated app-update.yml reads it). If this contract ever changes, eligible
-// Windows builds would fail validateConfiguration before packaging — catch it here.
+// Validate publisherName at the publish-provider location accepted by electron-builder's schema;
+// win.publisherName is invalid.
 describe('electron-builder publisherName config contract (v26 schema)', () => {
   const require = createRequire(import.meta.url);
   /* eslint-disable @typescript-eslint/no-var-requires */
