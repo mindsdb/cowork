@@ -1,7 +1,3 @@
-/* Artifact workspace -------------------------------------------------------
-   The canvas stays dominant; editing/review controls occupy one quiet rail.
-   These classes intentionally use app tokens so Desktop and web themes share
-   contrast and spacing without a second palette. */
 .artifact-mode-tabs {
   display: inline-flex;
   align-items: center;

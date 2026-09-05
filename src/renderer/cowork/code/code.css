@@ -8,10 +8,7 @@
   flex-direction: column;
   color: var(--ink);
   background: transparent;
-  /* Code output is working material: prompts, paths, errors, tool output,
-     diffs, and explanations should all be directly selectable. Interactive
-     primitives keep their own select-none treatment where dragging would
-     conflict with operating the control. */
+  /* Keep code/output text selectable; interactive controls opt out only where selection conflicts with gestures. */
   -webkit-user-select: text;
   user-select: text;
 }
@@ -39,7 +36,6 @@
 .code-status-dot.is-danger,
 .code-task-status.is-danger .code-status-dot { background: var(--danger); }
 
-/* Route-specific session history inside the canonical Cowork sidebar. */
 .code-sidebar-sessions { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .code-sidebar-nav { padding-top: 1px; padding-bottom: 10px; }
 .code-sidebar-sessions__label { min-height: 28px; padding: 2px 18px 5px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -97,7 +93,6 @@
 .code-sidebar-archived > summary span { margin-left: auto; font: 9px var(--font-mono); }
 .code-sidebar-archived .code-sidebar-session-row { opacity: .78; }
 
-/* Compact task context, shared by new and existing tasks. */
 .code-taskbar {
   min-height: 54px;
   padding: max(14px, var(--titlebar-safe-top, 0px)) 28px 14px;
@@ -144,8 +139,6 @@
 
 .code-loading { display: flex; flex: 1; min-width: 0; min-height: 0; align-items: center; justify-content: center; gap: 9px; padding: 24px; color: var(--ink-3); font-size: 13px; }
 
-/* New Code task shares Cowork Home's centered hero + composer composition.
-   The code glyph and operational metadata provide the mode distinction. */
 .code-new-task { container: code-new-task / inline-size; flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 32px 40px 68px; display: flex; align-items: center; justify-content: center; }
 .code-new-task__content { width: 100%; max-width: var(--code-measure); }
 .code-new-task__intro { max-width: var(--code-measure); margin: 0 auto 17px; padding: 0 13px; }
@@ -274,8 +267,6 @@
 .code-start-readiness.is-attention { color: var(--warning-text); }
 .code-start-readiness.is-attention .code-start-readiness__icon { color: var(--warning); }
 
-/* Conversation is the stable primary object. The review surface only enters
-   the flex row when explicitly opened. */
 .code-workspace { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .code-conversation { container: code-conversation / inline-size; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; background: transparent; }
 .code-notices { z-index: 1; display: grid; flex: none; gap: 7px; width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 2px auto 0; }
@@ -343,7 +334,6 @@
 .code-task-outcome.is-danger { border-color: var(--danger-border); }
 .code-task-outcome.is-danger .code-task-outcome__icon { color: var(--danger); background: var(--danger-bg); }
 
-/* Approval is causally docked between the conversation and composer. */
 .code-approval { width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 0 auto 8px; padding: 12px; display: flex; flex: none; gap: 11px; border: 1px solid var(--warning-border); border-radius: var(--r-lg); background: var(--warning-bg); color: var(--warning-text); box-shadow: var(--sh-1); }
 .code-approval__signal { width: 28px; height: 28px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: var(--r); background: color-mix(in srgb, var(--warning) 15%, transparent); }
 .code-approval__content { min-width: 0; flex: 1; }
@@ -387,7 +377,6 @@
 .code-mention-menu button { min-height: 43px; grid-template-columns: 20px minmax(0, 1fr); }
 .code-mention-menu button code { text-align: center; }
 
-/* One discoverable palette for MindsHub skills and agent-native commands. */
 .code-command-palette { position: absolute; z-index: 24; right: 0; bottom: calc(100% + 7px); left: 0; max-height: min(430px, 56vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--surface-0); box-shadow: var(--sh-3); }
 .code-start-composer > .code-command-palette { top: calc(100% + 8px); bottom: auto; }
 .code-command-palette__search { min-height: 41px; padding: 7px 10px; display: flex; flex: none; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); color: var(--ink-4); }
@@ -414,7 +403,6 @@
 .code-command-palette__view:focus-visible { background: var(--surface-3); color: var(--ink-2); outline: none; }
 .code-command-palette__empty { padding: 28px 14px; color: var(--ink-4); text-align: center; font-size: 11px; }
 
-/* A task-owned shell survives panel unmounts and Code/Cowork navigation. */
 .code-terminal { position: relative; min-height: 160px; max-height: 520px; flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--surface-0); }
 .code-terminal__resize { position: absolute; z-index: 2; top: -4px; right: 0; left: 0; height: 8px; cursor: row-resize; }
 .code-terminal__resize::after { position: absolute; top: 3px; left: 46%; right: 46%; height: 2px; border-radius: 2px; background: transparent; content: ''; transition: background .12s ease; }
@@ -497,7 +485,6 @@
 .code-rename-field { display: grid; gap: 6px; }
 .code-rename-field > span { color: var(--ink-3); font-size: 10.5px; font-weight: 620; }
 
-/* Projects are a first-class Code destination, not another sidebar tree. */
 .code-projects-view { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 56px 48px 72px; }
 .code-projects-view__header { width: min(900px, 100%); margin: 0 auto 24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .code-projects-view__header h1 { margin: 0; color: var(--text-strong); font: 600 28px/1.15 var(--font-display); letter-spacing: -.012em; }
@@ -521,9 +508,6 @@
 .code-projects-table__empty { min-height: 170px; padding: 28px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ink-4); text-align: center; font-size: 11.5px; }
 .code-projects-table__empty.is-error { color: var(--danger); }
 
-/* First-class developer-tool connections. The collection follows Projects'
-   calm, row-based management pattern: providers are the stable hierarchy and
-   concrete accounts appear only when they exist. */
 .code-connectors-view { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 56px 48px 72px; }
 .code-connectors-list { width: min(900px, 100%); margin: 0 auto; border-top: 1px solid var(--line); }
 .code-connector-provider { border-bottom: 1px solid var(--line); }
@@ -555,8 +539,6 @@
 .code-connector-account__state.needs-attention { color: var(--warning); }
 .code-connector-account:has(.needs-attention) .code-connector-account__rail { background: var(--warning); }
 
-/* Project settings are quiet, editable rows. Details stay folded until the
-   user chooses to configure one folder or review a playbook update. */
 .code-project-settings { padding: 4px 18px 18px; }
 .code-project-field { padding: 14px 0 16px; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
 .code-project-field > span { color: var(--ink-3); font-size: 11px; font-weight: 620; }
@@ -702,17 +684,13 @@
 .code-project-defaults__body textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .code-project-defaults__body p { margin: -2px 0 0; color: var(--ink-4); font-size: 9.5px; }
 
-/* The app-level display toggle occupies the bottom-right corner. At the
-   narrow end of the docked-sidebar band, reserve that corner for it; while
-   an inline review panel is open, the panel itself owns the edge. */
+/* Reserve the corner for the display toggle when no review panel owns that edge. */
 @media (min-width: 900px) and (max-width: 1100px) {
   .code-composer { padding-right: 54px; }
 }
 body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; }
 
-/* Responsive decisions follow the working pane, not only the window. A
-   docked sidebar and an open review inspector can make the conversation
-   compact while the outer window is still wide. */
+/* Use pane width: sidebar and review panels can leave a compact conversation inside a wide window. */
 @container code-conversation (max-width: 700px) {
   .code-composer__hint { display: none; }
   .code-composer__actions { gap: 5px; }
@@ -730,7 +708,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-start-task-button { flex: none; }
 }
 
-/* Contextual, resizable review surface. */
 .code-review-scrim { display: none; }
 .code-review { position: relative; width: var(--code-review-width); flex: 0 0 var(--code-review-width); min-width: 340px; min-height: 0; display: flex; flex-direction: column; border: 0; border-left: 1px solid var(--line); background: var(--surface); }
 .code-review__resize { position: absolute; z-index: 2; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; }
@@ -891,8 +868,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-inline-form { display: flex; align-items: center; gap: 7px; }
 .code-inline-form > :first-child { min-width: 0; flex: 1; }
 
-/* Recovery is a choice between environments, not a generic confirmation.
-   Keep the machine identity, consequence, and selection in one scan line. */
 .code-recovery-options { display: grid; gap: 8px; }
 .code-recovery-option {
   width: 100%; display: grid; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 11px;
