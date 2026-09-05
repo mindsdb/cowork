@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as http from 'http';
-// Renamed to avoid colliding with the `net` import from 'electron' below —
-// this one is the real loopback TCP socket used for the idle-connection
-// test; that one is the mocked Electron net.fetch used everywhere else.
+// Use a distinct name for the real TCP socket module; Electron net below is mocked.
 import * as nodeNet from 'net';
 
 vi.mock('electron', () => ({
@@ -81,11 +79,6 @@ describe('oauthConnect', () => {
     expect(exchangeBody).toContain('code=the-code');
   });
 
-  // ─── GitHub regression: classic OAuth apps return form-urlencoded ───
-  // bodies from /login/oauth/access_token unless the request asks for
-  // JSON. Without this header the exchange threw "Unexpected token 'a',
-  // \"access_tok\"... is not valid JSON" and the caller never saw
-  // pkceResult.ok, so the window-refocus step never ran either.
   it('uses a provider-specific localhost redirect host', async () => {
     const nextAuthUrl = captureAuthUrl();
     net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
@@ -126,10 +119,8 @@ describe('oauthConnect', () => {
     expect((exchangeInit.headers as Record<string, string>).Accept).toBe('application/json');
   });
 
-  // ─── ENG-761 regression: a dead exchange must FAIL, visibly ─────────
-  // The browser has already shown "You're authorized!" by the time the
-  // exchange runs. Pre-fix, the exchange had no timeout — a black-holed
-  // connection hung the sign-in forever with zero feedback.
+  // Bound the token exchange even after the browser says authorization succeeded; a dead connection
+  // must not hang sign-in.
   it('maps an exchange timeout to an actionable reason', async () => {
     const nextAuthUrl = captureAuthUrl();
     net.fetch = vi.fn(async () => {
@@ -176,17 +167,13 @@ describe('oauthConnect', () => {
 
   it('honors a caller-supplied callback timeout (ENG-917 signup window)', async () => {
     captureAuthUrl(); // swallow the browser open; never fire the callback
-    // The default window is 3 minutes — this resolving in milliseconds
-    // proves the per-flow override reached the timeout race.
+// A millisecond timeout proves the per-flow override replaced the three-minute default.
     const result = await oauthConnect({ ...OPTS, callbackTimeoutMs: 120 });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/timed out/i);
   });
 
-  // A mismatched-state hit no longer tears the whole attempt down (see the
-  // fixed-port stray-callback fix below) — it's answered on its own and the
-  // server keeps listening, so it can't be used to abort someone else's
-  // legitimate, still-in-flight authorization.
+  // Ignore mismatched-state requests without ending the legitimate authorization attempt.
   it('answers a callback whose state does not match without failing the flow', async () => {
     const nextAuthUrl = captureAuthUrl();
     net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
@@ -204,11 +191,8 @@ describe('oauthConnect', () => {
   });
 
   it('answers a same-length forged state without failing the flow (exercises the byte compare, not just the length check)', async () => {
-    // The state comparison uses crypto.timingSafeEqual, which throws on a
-    // length mismatch rather than comparing — this pins that the real
-    // path (mismatched bytes at equal length, the actual state param's
-    // length) is also tolerated, not just the differently-sized
-    // 'forged-state' case above.
+    // Test equal-length mismatched bytes too: timingSafeEqual throws on length mismatch, which
+    // exercises a different path.
     const nextAuthUrl = captureAuthUrl();
     net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
     const flow = oauthConnect(OPTS);
@@ -244,20 +228,9 @@ describe('oauthConnect', () => {
     expect(result).toMatchObject({ ok: true, access_token: 'at', refresh_token: 'rt' });
   });
 
-  // ─── Supabase multi-org regression: a fixed-port reconnect must not ───
-  // land on a stale keep-alive connection from a PRIOR attempt.
-  //
-  // Browsers pool/reuse HTTP/1.1 keep-alive connections per host:port.
-  // For a fixed-port provider (redirectPort set), reconnecting the same
-  // connector reuses the same port — and `server.close()` (called after a
-  // successful attempt) only stops *new* connections; it deliberately
-  // leaves an already-open connection alive. A later attempt's real
-  // redirect could land on that stale connection, hitting the FIRST
-  // attempt's handler (and its `state`) instead of the new one's — a
-  // confusing "state mismatch" on an otherwise perfectly correct callback.
-  // Confirmed live: the *received* state matched the new attempt's own
-  // authorize request exactly, but was checked against the previous
-  // attempt's `state`.
+  // Fixed-port reconnects must not reuse a prior attempt's keep-alive socket.
+  // server.close stops new connections but leaves existing ones able to route callbacks to the old
+  // state handler.
   it('does not let a keep-alive connection from a completed attempt serve the next attempt on the same fixed port', async () => {
     const agent = new http.Agent({ keepAlive: true });
     try {
@@ -272,9 +245,8 @@ describe('oauthConnect', () => {
       const resultA = await flowA;
       expect(resultA.ok).toBe(true);
 
-      // Real teardown timing: oauthConnect closes the server ~300ms after
-      // resolving, not synchronously — this is the exact window in which a
-      // pooled keep-alive connection could otherwise get reused.
+      // Wait for delayed teardown; the real flow closes its server after resolution, leaving a
+      // brief reuse window.
       await new Promise((r) => setTimeout(r, 400));
 
       net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-2' }) })) as unknown as typeof net.fetch;
@@ -282,9 +254,7 @@ describe('oauthConnect', () => {
       const authUrlB = await nextAuthUrl();
       const stateB = authUrlB.searchParams.get('state') as string;
 
-      // Same Agent instance as request A — if the connection were reused,
-      // this would be routed to attempt A's already-superseded handler
-      // (still checking against stateA) instead of attempt B's server.
+      // Reuse the same Agent so a leaked pooled socket would reach the prior state handler.
       const responseB = await hitCallback(authUrlB, { code: 'code-b', state: stateB }, { agent });
       expect(responseB.status).toBe(200);
       const resultB = await flowB;
@@ -294,18 +264,8 @@ describe('oauthConnect', () => {
     }
   });
 
-  // ─── Supabase multi-org regression, part 2: an idle connection that ───
-  // never sent a request must not survive teardown either.
-  //
-  // `Connection: close` + destroying the socket after a response only
-  // cleans up connections that actually completed a request/response cycle.
-  // A browser can also open a connection to an origin speculatively (e.g. a
-  // preconnect) and hold it open without ever sending a request over it —
-  // that socket is still tracked as "open" by the server and wouldn't be
-  // touched by a per-response cleanup at all. If the browser later reuses
-  // that idle socket for the NEXT attempt's real callback, it would still
-  // land on the superseded server. `closeServer()` must force-close every
-  // connection it's tracking on teardown, not just ones that responded.
+  // Force-close speculative idle sockets too; per-response cleanup cannot catch connections that
+  // never sent a request.
   it('destroys an idle connection that never sent a request when the server tears down', async () => {
     const nextAuthUrl = captureAuthUrl();
     net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
@@ -331,10 +291,8 @@ describe('oauthConnect', () => {
     expect(idleSocket.destroyed || idleSocket.closed).toBe(true);
   });
 
-  // ─── ENG-761: no two live loopback attempts ─────────────────────────
-  // A retry (double-click, second sign-in surface) used to leave the
-  // previous attempt's server listening; whichever tab the user finished
-  // decided which promise won.
+  // A retry must retire the previous loopback attempt so the user cannot complete two competing
+  // authorizations.
   it('cancels a dangling previous attempt when a new one starts', async () => {
     const nextAuthUrl = captureAuthUrl();
     const first = oauthConnect(OPTS);
@@ -345,7 +303,6 @@ describe('oauthConnect', () => {
     expect(firstResult.ok).toBe(false);
     expect(firstResult.reason).toMatch(/cancelled/i);
 
-    // Clean up the second attempt.
     const secondUrl = await nextAuthUrl();
     cancelCurrentOAuth();
     const secondResult = await second;
@@ -353,11 +310,8 @@ describe('oauthConnect', () => {
     expect(secondUrl.searchParams.get('state')).toBeTruthy();
   });
 
-  // ENG-761 regression: a cancel landing while oauthConnect is still
-  // awaiting shell.openExternal used to reject codePromise before
-  // Promise.race subscribed — an unhandled rejection, which crashes the
-  // Electron main process into the error dialog. (Vitest fails the run
-  // on unhandled rejections, so this test guards the crash itself.)
+  // Cancel while openExternal is pending; rejecting before Promise.race subscribes must not cause
+  // an unhandled-rejection crash.
   it('resolves cleanly when cancelled during the browser-open gap', async () => {
     let releaseOpen!: () => void;
     const openExternal = shell.openExternal as ReturnType<typeof vi.fn>;

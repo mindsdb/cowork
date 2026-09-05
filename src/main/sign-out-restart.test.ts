@@ -7,12 +7,7 @@ import {
   type SignOutFlushDeps,
 } from './sign-out-restart';
 
-/*
- * The flush runs without anyone awaiting it, which is the whole point of the
- * fix — and also why the two contracts below matter more than usual: an
- * unhandled rejection in the main process is a crash, and two overlapping
- * restarts would fight over one sidecar process.
- */
+/* Unawaited flushes must neither reject unhandled nor overlap sidecar restarts. */
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -114,9 +109,8 @@ describe('startSignOutSidecarFlush', () => {
   });
 
   /*
-   * The restart exists to make config_ready false. A true here means the DB
-   * clear did not take and credentials survived it, which is the one outcome
-   * worth shouting about rather than logging quietly.
+   * config_ready=true after restart means credentials survived DB clearing and warrants a visible
+   * failure.
    */
   it('reports config_ready still being true after the restart', async () => {
     const deps = makeDeps({ probeConfigReady: vi.fn(async () => true) });
@@ -155,9 +149,8 @@ describe('awaitSignOutSidecarFlush', () => {
   });
 
   /*
-   * A timeout is the caller saying it has waited long enough, not that the
-   * restart should stop. Signing in presses on after it; the restart still
-   * finishes and still queues on the same lifecycle tail.
+   * A caller timeout must not cancel the restart; it still finishes through the same lifecycle
+   * queue.
    */
   it('answers timeout without cancelling the flush', async () => {
     const start = deferred<void>();
