@@ -1,15 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
-// (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
-// IMPORT time, so each test stubs env/globals, resetModules(), then imports a
-// fresh copy — mirroring mindsUrls.test.ts.
+// Stub environment/globals before each fresh import; analytics captures build version, key and
+// platform at module load.
 
-// vi.mock is hoisted above the file, so the mock's getAccessToken must come
-// from vi.hoisted (a bare const would not exist yet when the factory runs).
-// hostState.isElectron is a hoisted mutable so a test can flip the surface to
-// web before importAnalytics() (SURFACE/LIB are read at import time); getters
-// keep the mock reading the current value on each fresh import.
+// Hoist mutable token/platform mocks so module factories can read them before ordinary declarations
+// initialize.
 const { getAccessToken, checkInstall, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   checkInstall: vi.fn(),
@@ -67,9 +62,7 @@ function fakeJwt(payload) {
 
 beforeEach(() => {
   vi.stubEnv('VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN', 'phc_test');
-  // Most tests exercise the send path, so default to a production build; the
-  // dev-server-guard tests override MODE. Default to the desktop surface; the
-  // $lib/web tests flip hostState.isElectron before importing.
+  // Default send-path tests to production/desktop; guard and web cases override before import.
   vi.stubEnv('MODE', 'production');
   hostState.isElectron = true;
   getAccessToken.mockReset().mockResolvedValue(null); // unauthenticated by default
@@ -134,7 +127,7 @@ describe('trackFirstQuery delivery gating (ENG-501)', () => {
   const FIRST_QUERY_KEY = 'mdb_first_query_sent';
 
   it('marks the localStorage flag only after a successful send', async () => {
-    const fetchMock = mockFetch(); // resolves ok:true
+    const fetchMock = mockFetch();
     const { trackFirstQuery } = await importAnalytics();
 
     await trackFirstQuery();
@@ -235,7 +228,7 @@ describe('trackFirstResponse activation gate (ENG-736)', () => {
     const { trackFirstResponse } = await importAnalytics();
 
     await trackFirstResponse('error', 'model_access_denied');
-    await trackFirstResponse('success'); // e.g. a later retry succeeds
+    await trackFirstResponse('success');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.outcome).toBe('error');
@@ -345,7 +338,7 @@ describe('trackBootScreenResolved boot event (ENG-921)', () => {
   });
 
   it('is a no-op off Electron (the web SPA has no local server to install)', async () => {
-    hostState.isElectron = false; // web SPA
+    hostState.isElectron = false;
     const fetchMock = mockFetch();
     const { trackBootScreenResolved } = await importAnalytics();
 
@@ -369,7 +362,7 @@ describe('surface-derived $lib (ENG-1163)', () => {
   });
 
   it('labels web events cowork-web (regression: was hardcoded cowork-desktop)', async () => {
-    hostState.isElectron = false; // web SPA: no Electron bridge
+    hostState.isElectron = false;
     const fetchMock = mockFetch();
     const { trackFirstQuery } = await importAnalytics();
 
@@ -383,7 +376,7 @@ describe('surface-derived $lib (ENG-1163)', () => {
 
 describe('dev-server emission guard (ENG-1163)', () => {
   it('sends from a production build', async () => {
-    vi.stubEnv('MODE', 'production'); // also the beforeEach default
+    vi.stubEnv('MODE', 'production');
     const fetchMock = mockFetch();
     const { trackFirstQuery } = await importAnalytics();
 
@@ -444,15 +437,13 @@ describe('resolveIsInternal (ENG-672)', () => {
     const { resolveIsInternal } = await importAnalytics();
     expect(resolveIsInternal(undefined, undefined)).toBe(false);
     expect(resolveIsInternal('', null)).toBe(false);
-    expect(resolveIsInternal(null, 'staff')).toBe(false); // roles must be an array
+    expect(resolveIsInternal(null, 'staff')).toBe(false);
   });
 });
 
 describe('non-ASCII person properties (ENG-2138)', () => {
-  // `name` rides `$set` on every authenticated event, so the Latin-1 JWT
-  // decode did not just mis-render the account menu — it wrote the mangled
-  // name into the PostHog person record, over and over. `fakeJwt` encodes via
-  // Buffer's utf-8 default, so the fixture is a faithful token.
+  // Use UTF-8 JWT fixtures to verify authenticated $set names are not repeatedly corrupted in
+  // PostHog.
   it('sends the accented name to PostHog intact', async () => {
     getAccessToken.mockResolvedValue(
       fakeJwt({ sub: 'u-accent', email: 'g@example.com', name: 'Genesis Solórzano' })
@@ -536,9 +527,8 @@ describe('is_internal on captured events (ENG-672)', () => {
   });
 
   it('drops the flag back to unknown when the session later becomes invalid (no explicit sign-out)', async () => {
-    // A revoked/expired refresh token makes getAccessToken resolve null without
-    // routing through resetDeviceIdentity; the flag must not replay the prior
-    // (internal) session's value onto a now-anonymous event.
+    // A refresh resolving null without resetDeviceIdentity must not reuse the previous account's
+    // internal flag.
     vi.useFakeTimers();
     try {
       getAccessToken.mockResolvedValue(
@@ -628,9 +618,7 @@ describe('is_internal on captured events (ENG-672)', () => {
   });
 });
 
-// ENG-1533: the money path between the paywall and the payment. The property
-// values are the whole point of these two events, so they are pinned on the
-// wire, not just at the call site.
+// Assert billing/refusal properties on the wire, not only at their call sites.
 describe('billing + provisioning events (ENG-1533)', () => {
   it('billing_opened carries the trigger that sent the user', async () => {
     const fetchMock = mockFetch();
@@ -703,9 +691,7 @@ describe('billing + provisioning events (ENG-1533)', () => {
   });
 });
 
-// Every failed turn, not just the first one a user ever sends — there was
-// previously no way to measure how often a turn dies, or correlate it with a
-// code/model/conversation.
+// Record every failed turn with correlation metadata, independently of first-response tracking.
 describe('chat_turn_failed', () => {
   it('carries the wire code so failures are groupable by reason', async () => {
     const fetchMock = mockFetch();
@@ -778,13 +764,8 @@ describe('chat_turn_failed', () => {
   });
 });
 
-// ─── aid: the join key between anton's cost events and an identified user ────
-//
-// The defect is structural: `turn_completed` carries `aid` on 100% of events
-// and an identified person on 0%; these events are the mirror image. These pin
-// that the key lands, that it is a PROPERTY and never an identity (ENG-713 was
-// an over-merge incident, and `aid` is machine-grain so aliasing on it would be
-// unrecoverable), and that web never carries it.
+// aid joins Anton costs to identified events but must remain a desktop-only property, never
+// identity.
 describe('anton install id (aid) stamping', () => {
   beforeEach(() => {
     hostState.isElectron = true;
@@ -824,10 +805,8 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('treats a whitespace-only or non-string id as absent', async () => {
-    // The `if (antonInstallId)` guard alone already drops "", so the trim and
-    // the type check are only load-bearing for these two — without them a
-    // whitespace id stamps as "   " and a number stamps as a number, either of
-    // which joins to nothing while looking like a present key.
+    // Whitespace and numeric ids isolate trim/type validation; an empty string already fails the
+    // truthiness guard.
     const blank = await captureWith('   ');
     expect(blank.properties).not.toHaveProperty('aid');
     const numeric = await captureWith(42);
@@ -835,11 +814,8 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('rejects the "unknown" sentinel, which would MERGE distinct machines', async () => {
-    // anton returns the literal "unknown" when it cannot fingerprint the
-    // machine, and stamps the same string on its own events — so this value
-    // would join across every unfingerprintable machine and fuse them into one
-    // identity. ENG-713's outcome without an alias, and worse than an absent
-    // key because it looks valid.
+    // Reject the shared unknown sentinel or unrelated unfingerprintable machines would join under
+    // one key.
     const event = await captureWith('unknown');
     expect(event.properties).not.toHaveProperty('aid');
   });
@@ -854,10 +830,8 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('accepts a DIFFERENT width, because the width is anton\'s business', async () => {
-    // Deliberately not pinned to 16 (#707 review). Both sides of the join come
-    // from the same `get_installation_id`, so if anton ever changed the width
-    // the join stays self-consistent — whereas a hard 16 here would drop 100%
-    // of ids and make every join return zero rows, silently.
+    // Allow changing hex widths: both join sides use Anton's producer, while a fixed client width
+    // would silently discard valid ids.
     for (const wider of ['a1b2c3d4', 'a1b2c3d4e5f6071', 'a1b2c3d4e5f60718a1b2c3d4e5f60718']) {
       const event = await captureWith(wider);
       expect(event.properties.aid, `should have accepted ${wider}`).toBe(wider);
@@ -865,9 +839,7 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('stamps it on an IDENTIFIED event — the whole point of the join', async () => {
-    // The key is worthless unless it lands on an event that also knows who the
-    // person is. That pairing is what makes anton's anonymous cost rows
-    // attributable, so it is asserted directly rather than inferred.
+    // Verify aid and identified person coexist on the same event so cost rows can be attributed.
     const event = await captureWith('a1b2c3d4e5f60718', { identified: true });
     expect(event).toBeDefined();
     expect(event.properties.aid).toBe('a1b2c3d4e5f60718');
@@ -875,9 +847,7 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('is a PROPERTY only — never an alias, never the distinct_id (ENG-713)', async () => {
-    // `aid` is machine-grain: a shared machine is several people. Aliasing on
-    // it would merge them into one PostHog person irreversibly, which is the
-    // ENG-713 failure. It must never appear as identity, only as data.
+    // Machine-grain aid must not alias distinct users of the same machine.
     const fetchMock = mockFetch();
     const mod = await importAnalytics();
     mod.setAntonInstallId('a1b2c3d4e5f60718');
@@ -894,9 +864,7 @@ describe('anton install id (aid) stamping', () => {
   });
 
   it('NEVER stamps it on web', async () => {
-    // The server already withholds it in org mode; this is the client-side half
-    // of the same rule, so a future server change cannot start leaking a host
-    // fingerprint onto web events.
+    // Enforce the desktop-only rule client-side even if a server later exposes aid in org mode.
     hostState.isElectron = false;
     const event = await captureWith('a1b2c3d4e5f60718');
     expect(event).toBeDefined();
