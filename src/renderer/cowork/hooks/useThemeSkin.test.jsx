@@ -18,7 +18,6 @@ describe('useThemeSkin', () => {
     expect(result.current.theme).toBe('dark');
     expect(document.body.dataset.theme).toBe('dark');
     expect(document.body.classList.contains('gf-theme-dark')).toBe(true);
-    // the animated background is told to swap palettes live
     expect(setTheme).toHaveBeenCalledWith('dark');
   });
 

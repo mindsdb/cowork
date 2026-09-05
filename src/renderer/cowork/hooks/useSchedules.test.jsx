@@ -67,7 +67,6 @@ describe('useSchedules', () => {
     expect(api.pauseSchedule).toHaveBeenCalledWith('s1');
     await act(async () => { await result.current.handleResumeSchedule('s1'); });
     expect(api.resumeSchedule).toHaveBeenCalledWith('s1');
-    // every mutation refreshes so the list reflects the server
     expect(api.fetchSchedules).toHaveBeenCalledTimes(4);
   });
 });

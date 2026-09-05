@@ -1,19 +1,8 @@
 import { useEffect } from 'react';
 
-// iOS Safari (and Android Chrome) auto-zoom the page in when a text
-// input with font-size < 16px gets focus, and don't zoom back out
-// when it loses focus / the form is submitted — the user is left
-// viewing a permanently-magnified app after sending a chat message.
-//
-// Rather than bumping every input to 16px on mobile (which would
-// distort the composer's design metrics), we toggle the viewport
-// meta tag around text-input focus: locking `maximum-scale=1` on
-// focusin prevents the zoom from happening, restoring the original
-// value on focusout returns pinch-zoom to the user for the rest of
-// the app. Net effect matches "auto-dezoom after submit" without
-// any visible zoom flash.
-//
-// Active only on mobile; a no-op elsewhere.
+// Temporarily lock viewport scale while mobile text inputs are focused to prevent automatic input
+// zoom.
+// Restore the original meta content on blur so pinch zoom remains available elsewhere.
 export function useViewportZoomLock(isMobile) {
   useEffect(() => {
     if (!isMobile) return undefined;

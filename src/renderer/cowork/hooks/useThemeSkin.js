@@ -2,15 +2,8 @@ import { useState, useEffect } from 'react';
 import { loadSkin, persistSkin } from '../../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../../lib/customTheme';
 
-// The app's appearance axes — theme (light | dark), skin, and the
-// "design your own" custom-skin recipe — plus the Display picker modal's
-// open state. Owns the side effects that keep each applied to <body>:
-//   theme  → gf-theme-* class + data-theme + live gravity-field palette
-//   skin   → data-skin + persistence
-//   custom → inline body token overrides (only while the custom skin is active)
-//
-// The settings-driven nav title colour stays in App.jsx — it reads
-// `settings`, a different domain.
+// Apply theme, skin and custom token overrides to body and the live background.
+// Settings-derived nav title color remains in App.jsx.
 export function useThemeSkin() {
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)

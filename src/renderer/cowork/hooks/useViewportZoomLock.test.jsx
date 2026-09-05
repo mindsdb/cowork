@@ -82,7 +82,6 @@ describe('useViewportZoomLock', () => {
     unmount();
     expect(meta.getAttribute('content')).toBe(ORIGINAL);
 
-    // listeners gone — a later focus is a no-op
     focus(input);
     expect(meta.getAttribute('content')).toBe(ORIGINAL);
     input.remove();
