@@ -1,8 +1,4 @@
-// D1 "Quiet" project card — name-led, single supporting activity line,
-// demoted stats. No per-project tints, no folder colors, no path. Pin
-// + ⋯ kebab reveal on hover. Click anywhere → opens the project.
-//
-// Design source: docs/design-handoff/Anton Projects (D1 · Quiet).
+// Design reference: docs/design-handoff/Anton Projects (D1 · Quiet).
 
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
@@ -24,8 +20,7 @@ function tasksFor(project, tasks) {
   );
 }
 
-// Compute "active" — at least one task in this project has a running
-// stream OR has been touched within the last hour.
+// A running task or activity within the last hour makes a project active.
 function isProjectActive(project, tasks) {
   const list = tasksFor(project, tasks);
   if (list.some((t) => t.status === 'active')) return true;
@@ -36,8 +31,6 @@ function isProjectActive(project, tasks) {
   });
 }
 
-// Pull the most recent task title as the activity line. The handoff
-// asks for ~50–80 chars clamped to 2 lines via -webkit-line-clamp.
 function activitySummary(project, tasks) {
   const list = tasksFor(project, tasks);
   if (list.length === 0) return null;
@@ -87,9 +80,6 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   };
 }
 
-// Full-word pluralized labels for the stats row, keyed the same as the
-// `useProjectStats` shape. Pure — exported so the pluralization + zero-
-// filtering logic can be unit-tested without mounting the card.
 const STAT_LABELS = {
   tasks:     ['task', 'tasks'],
   memories:  ['memory', 'memories'],
@@ -97,8 +87,6 @@ const STAT_LABELS = {
   artifacts: ['artifact', 'artifacts'],
 };
 
-// Zero/undefined stats are omitted entirely (not dimmed) — a quieter
-// take on "nothing here yet" than the old D1Stat's ink-5 treatment.
 export function visibleStats(stats = {}) {
   const out = [];
   for (const key of ['tasks', 'memories', 'schedules', 'artifacts']) {
@@ -117,9 +105,7 @@ export function ProjectCard({
   scheduled = [],
   pinned = false,
   editing = false,
-  // The server is still working through this project's delete. The card stays
-  // put until DELETE succeeds, so it says it is waiting and drops the actions
-  // that would fire a second one.
+  // Keep the card until DELETE succeeds and disable duplicate actions while waiting.
   deleting = false,
   onOpen,
   onTogglePin,
@@ -141,9 +127,6 @@ export function ProjectCard({
   const showHoverActions = alwaysShowActions || revealed || pinned || actionsFocused;
   const isReserved = isReservedProjectName(project.name);
 
-  // When entering edit mode, focus + select the entire name on the
-  // next paint so the user can type immediately to replace it (or
-  // arrow-key into the existing name to tweak).
   useEffect(() => {
     if (!editing) return;
     const id = requestAnimationFrame(() => {
@@ -156,7 +139,7 @@ export function ProjectCard({
   }, [editing]);
 
   const handleCardClick = () => {
-    if (editing || deleting) return; // ignore card clicks while editing or deleting
+    if (editing || deleting) return;
     onOpen?.(project);
   };
 
@@ -183,7 +166,6 @@ export function ProjectCard({
         transition: 'opacity .12s ease',
       }}
     >
-      {/* Top row — folder + name + pin + ⋯ */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         minWidth: 0,
@@ -234,7 +216,6 @@ export function ProjectCard({
           }}>{projectLabel(project)}</span>
         )}
 
-        {/* Pin button — visible on hover for unpinned, always for pinned */}
         <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
           <button
             type="button"
@@ -250,9 +231,8 @@ export function ProjectCard({
               background: 'transparent', border: 0,
               color: pinned ? 'var(--accent)' : 'var(--ink-4)',
               opacity: pinned || showHoverActions ? 1 : 0,
-              // Taken out of flow rather than faded while the delete is on the
-              // wire: an opacity-0 control stays clickable, and the coarse-
-              // pointer rule would paint it back in on touch.
+              // Remove controls during deletion: opacity leaves them clickable and touch rules can
+              // reveal them.
               display: deleting ? 'none' : 'inline-grid',
               placeItems: 'center',
               cursor: 'pointer', flexShrink: 0,
@@ -266,7 +246,6 @@ export function ProjectCard({
           </button>
         </Tooltip>
 
-        {/* ⋯ menu trigger */}
         <Tooltip content="Project menu">
           <button
             ref={triggerRef}
@@ -300,8 +279,6 @@ export function ProjectCard({
         </Tooltip>
       </div>
 
-      {/* Activity block — clamp 2 lines. Falls back to a soft prompt
-          when the project has nothing yet. */}
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column', gap: 4,
         minWidth: 0,
@@ -352,10 +329,6 @@ export function ProjectCard({
 
       <SharedResourceAttribution resource={project} />
 
-      {/* Stats row — full-word pluralized labels, hairline divider
-          above. Zero/undefined stats are omitted; when nothing is
-          left to show, the row (and its divider) don't render at
-          all rather than showing an empty strip. */}
       {cardStats.length > 0 && (
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: 14,

@@ -1,8 +1,5 @@
-// Context card body — surfaces memories (Project + Global) AND
-// project instructions (`.anton/anton.md`) plus any legacy `.context/`
-// files. Listed via GET /projects/{name}/files; Working folder hides
-// `.anton/` and `.context/` trees except this rail shows instructions
-// (and legacy context paths).
+// This rail exposes .anton/anton.md and legacy .context/ instructions omitted from the
+// working-folder surface.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { projectLabelByName } from '../../lib/projectLabel';
@@ -34,11 +31,9 @@ import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
 
 /*
-  Ticket guard for the async loads that paint shared state. Every start claims
-  the next ticket and a response only applies while its ticket is still the
-  latest, so a read that began before a mutation can never repaint over the
-  refresh that mutation triggered.
-*/
+ * Only the latest load ticket may update shared state, preventing pre-mutation reads from
+ * overwriting its refresh.
+ */
 function useLoadTicket() {
   const latest = useRef(0);
   return useMemo(() => ({
@@ -63,10 +58,8 @@ function mergeFileResource(current, fresh) {
   const merged = { ...current, ...fresh };
   const currentModifiedAt = Date.parse(current?.attribution?.lastModifiedAt || '');
   const freshModifiedAt = Date.parse(fresh?.attribution?.lastModifiedAt || '');
-  // A synthetic row is the server's explicit tombstone for deleted
-  // instructions. Its null attribution timestamp is intentional, not evidence
-  // that the response predates the current file, so it must replace every bit
-  // of the former resource metadata.
+  // Synthetic instructions rows are deletion tombstones; their null timestamps must replace all
+  // prior resource metadata.
   const freshIsSynthetic = fresh?.synthetic === true;
   // Only an ordering both sides can actually prove keeps the current metadata.
   // A response that simply carries no timestamp is unknown, not older, and
@@ -95,12 +88,6 @@ function mergeFileResource(current, fresh) {
 }
 
 function MemoryRow({ entry, onOpen }) {
-  // Single-line row — the previous version displayed
-  // `previewFirstLine(entry.content)` underneath the filename, which
-  // for the canonical files (lessons.md, rules.md, identity.md, …)
-  // is just the H1 of the file and reads as a duplicate of the
-  // filename itself. Hover/click opens the editor, which has the
-  // full content; the rail row only needs the file identity + age.
   return (
     <Tooltip content={entry.content || labelCategory(entry.category)}>
       <button
@@ -124,9 +111,6 @@ function MemoryRow({ entry, onOpen }) {
   );
 }
 
-// Row for a project context file (anton.md or any uploaded file).
-// Same visual rhythm as MemoryRow but distinguishes the always-
-// present anton.md with a subtle "Project instructions" label.
 function attachmentSourceIcon(item) {
   const source = item.source || item.kind || 'file';
   if (source === 'connector') return Ico.link(13);
@@ -139,9 +123,6 @@ function SessionAttachmentRow({
 }) {
   const label = item.name || item.id || 'Attachment';
   const when = item.updated_at || item.created_at || item.updatedAt || item.createdAt;
-  // The mime/size used to be a second visible line — moved to the
-  // hover tooltip so the row is one line like Project Files. Same
-  // info, half the vertical weight in the rail.
   const titleSegments = [
     item.note || item.textPreview || null,
     item.mime || null,
@@ -167,9 +148,7 @@ function SessionAttachmentRow({
     >
       <span className="text-ink-4 inline-flex flex-none">{attachmentSourceIcon(item)}</span>
       <span className="block truncate text-sm text-ink min-w-0">{label}</span>
-      {/* Trailing slot: age normally, kebab on hover or while the
-          row's menu is open. Same shared-slot trick as Project Files'
-          trash so the row width doesn't jump. */}
+      {/* Keep timestamp/menu controls in one slot to avoid changing row width. */}
       <span className="relative inline-flex items-center justify-end flex-none min-w-4">
         {when ? (
           <span className={clsx(
@@ -201,10 +180,8 @@ function SessionAttachmentRow({
 function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
   const canDelete = deletable && !!onRequestDelete;
-  // The row was a <button>, but nesting a <button> inside a
-  // <button> is invalid HTML and breaks the trash icon's click in
-  // some browsers. Switch the outer to a div with role="button" so
-  // the trash can be a real interactive child.
+  // Use a div button-role wrapper because nesting the trash button inside another button is
+  // invalid.
   return (
     <div
       role="button"
@@ -222,11 +199,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
       <span className="block truncate text-sm text-ink min-w-0">
         {isAnton ? 'Instructions' : (file.path || file.name)}
       </span>
-      {/* Trailing slot: age normally, trash on hover. Both share
-          the same column with relative/absolute stacking so the
-          row width doesn't change between hover states. The age
-          drives the column's intrinsic width (the trash icon is
-          ~14px wide, roughly the same as "1m"/"2h"/"3d"). */}
+      {/* Overlay age and trash in one slot so hover cannot change row width. */}
       <span className="relative inline-flex items-center justify-end flex-none min-w-4">
         {file.modified ? (
           <span className={clsx(
@@ -242,9 +215,6 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
               type="button"
               aria-label={`Delete ${file.path || file.name}`}
               onClick={(e) => {
-                // Don't let the click bubble up to the row — that
-                // would open the file modal instead of confirming
-                // a delete.
                 e.stopPropagation();
                 onRequestDelete(file);
               }}
@@ -265,10 +235,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
   );
 }
 
-// A Google-Drive-picked file, reference-only — no bytes ever land in
-// the project folder. Clicking opens the file in Drive itself rather
-// than the ContextFileModal preview, since there's no local content to
-// show.
+// Drive picks are remote references with no project-file bytes; open them in Drive.
 function DriveReferenceRow({ file, onRequestDelete }) {
   const openInDrive = () => { if (file.url) host.openExternal(file.url); };
   return (
@@ -286,9 +253,6 @@ function DriveReferenceRow({ file, onRequestDelete }) {
     >
       <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(13)}</span>
       <span className="block truncate text-sm text-ink min-w-0">{file.name || 'untitled'}</span>
-      {/* Both actions show together on hover — unlike ContextFileRow's
-          single age/trash swap, there's no "normal" state content to
-          protect here, so open + delete can just sit side by side. */}
       <span className={clsx(
         'inline-flex items-center gap-1 flex-none transition-opacity',
         'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
@@ -308,8 +272,6 @@ function DriveReferenceRow({ file, onRequestDelete }) {
               type="button"
               aria-label={`Remove ${file.name || 'file'} from project files`}
               onClick={(e) => {
-                // Don't let the click bubble up to the row — that would
-                // open the file in Drive instead of confirming a delete.
                 e.stopPropagation();
                 onRequestDelete(file);
               }}
@@ -333,60 +295,32 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
 }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
-  // Google Drive files the user picked via "Attach Google Drive files"
-  // below — reference-only (name + link), never downloaded. They live
-  // on the connection's _picked_files grant, not in the project folder,
-  // so they're tracked separately from `projectFiles` and merged only
-  // at render time.
+  // Store Drive references separately: they belong to connection grants, not project files.
   const [driveFiles, setDriveFiles] = useState([]);
   const [sessionAttachments, setSessionAttachments] = useState([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState(null);
-  // `openEntry` is a memory file; `openFile` is a project context
-  // file. Both feed into `ContextFileModal` (one component, two
-  // wirings) so the UX feels identical regardless of which surface
-  // the row was opened from.
   const [openEntry, setOpenEntry] = useState(null);
   const [openFile, setOpenFile] = useState(null);
-  // A task upload opened in the file modal — same component/UX as
-  // project files, but driven by the attachment's raw URL (no project
-  // file path, so the modal renders images inline and opens others in
-  // the OS shell rather than doing project-file IO).
+  // Task uploads use raw URLs rather than project-file IO; the shared modal previews images and
+  // opens other files externally.
   const [openAttachment, setOpenAttachment] = useState(null);
   const [showAll, setShowAll] = useState(false);
-  // Row-level delete + header-level upload state.
-  // `pendingDeleteFile` drives the ConfirmModal — set when the user
-  // clicks the trash icon on a row, cleared on close/confirm. We
-  // follow the established ConfirmModal pattern (lifted state +
-  // payload) but keep it local to ContextCard rather than prop-
-  // drilling up to App.jsx — the delete is internal to the rail
-  // and doesn't need to participate in app-level routing.
   const [pendingDeleteFile, setPendingDeleteFile] = useState(null);
   const [pendingDeleteDriveFile, setPendingDeleteDriveFile] = useState(null);
   const [uploadBusy, setUploadBusy] = useState(false);
-  // Separate from uploadBusy: the Drive connect-then-pick flow can now take
-  // minutes (waiting on OAuth + the picker), not the near-instant round trip
-  // local uploads are. Gating the whole menu trigger on one shared flag
-  // would disable the unrelated "Attach files" (local) item for that whole
-  // wait — this only disables the "Attach Google Drive files" item itself.
+  // Keep Drive picker busy state separate so lengthy OAuth cannot disable local file uploads.
   const [drivePickerBusy, setDrivePickerBusy] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
-  // Mirror state for the Task Uploads section — separate from project
-  // files because upload/delete hit different endpoints and a busy
-  // state in one shouldn't grey out the other.
+  // Keep task-upload busy/error state separate because its operations are independent of project
+  // files.
   const [taskUploadBusy, setTaskUploadBusy] = useState(false);
   const [taskUploadError, setTaskUploadError] = useState('');
   const taskUploadInputRef = useRef(null);
-  // Which attachment's kebab menu is currently open. Single-open
-  // policy — clicking one closes any other. The popup itself is rendered
-  // by the shared Base UI-backed <OverflowMenu>, so it portals out of the
-  // RailCard overflow container and keeps keyboard/focus behavior in one
-  // place.
   const [openAttachmentMenuId, setOpenAttachmentMenuId] = useState(null);
   const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
-  // Bump to re-run the attachments effect after a mutation (upload /
-  // delete / move) without needing to wire `onChanged` up to App.jsx.
+  // Refresh attachments after local mutations without routing callbacks through App.jsx.
   const [attachmentsTick, setAttachmentsTick] = useState(0);
   const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
@@ -422,27 +356,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   }, [reloadMemory]);
 
   useEffect(() => {
-    // Hermes has no memory system of its own — Project/Global memory is an
-    // Anton concept, so skip the fetch entirely rather than show sections
-    // the harness never reads or writes.
+    // Skip memory for harnesses such as Hermes that do not use Anton’s memory system.
     if (!showMemory) return undefined;
     reloadMemory();
     return () => { memoryTicket.invalidate(); };
   }, [refreshKey, showMemory, reloadMemory, memoryTicket]);
 
-  // Every instructions fetch (mount + reload-on-edit) claims a ticket. Without
-  // it, saving a context edit and immediately switching projects could let the
-  // late response paint into the new project — the same shape of bug
-  // WorkingFolderLive had.
+  // Ticket instructions reads too so a save followed by project navigation cannot paint into the
+  // new project.
   const filesTicket = useLoadTicket();
 
-  // List every file in the working folder (the project root). Anton
-  // creates files in here as the project evolves (the instructions
-  // file, scratchpad outputs, generated artifacts, etc.). The card
-  // surfaces all of them so the user has a single view of the
-  // project's real state. Hidden dirs (`.anton/` body, `.git/`, etc.)
-  // are filtered out, with the canonical `.anton/anton.md`
-  // instructions row pinned to the top so it's always reachable.
   const reloadFiles = useCallback(({ forceFresh = false } = {}) => {
     if (!project?.name) { setProjectFiles([]); return; }
     const ticket = filesTicket.claim();
@@ -450,20 +373,15 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
       .then((data) => {
         if (!filesTicket.isCurrent(ticket)) return;
         const all = Array.isArray(data?.files) ? data.files : [];
-        // Filter: keep the canonical instructions file from `.anton/`
-        // but otherwise hide hidden trees (anything starting with `.`
-        // at any path segment) so the rail isn't drowned in
-        // metadata. Same heuristic as WorkingFolderLive's filter
-        // before we switched it to the artifacts-only registry.
+        // Hide dot-prefixed path segments except canonical project instructions, which must stay
+        // reachable.
         const visible = all.filter((f) => {
           if (!f || f.is_dir) return false;
           const p = String(f.path || '');
           if (p === ANTON_PROJECT_INSTRUCTIONS_PATH) return true;
-          // Hide hidden segments.
           if (p.split('/').some((seg) => seg.startsWith('.'))) return false;
           return true;
         });
-        // Instructions first, then everything else by mtime desc.
         visible.sort((a, b) => {
           const ai = a.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
           const bi = b.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
@@ -505,19 +423,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   useEffect(() => {
     if (!project?.name) {
       setProjectFiles([]);
-      // Bump the ticket so any in-flight load from a prior project
-      // gets discarded when it finally lands.
+      // Invalidate responses still pending from the prior project.
       filesTicket.invalidate();
       return;
     }
     reloadFiles();
   }, [project?.name, reloadFiles, filesTicket]);
 
-  // Google Drive reference files live on the connection's _picked_files
-  // grant, but each entry is tagged with the project(s) it was added
-  // to — App.jsx's fetchGoogleDriveReferenceFiles filters to just this
-  // project, so this does depend on `project.name` the same way
-  // reloadFiles does.
+  // Filter persisted Drive grants by project tags, so references reload on project-name changes.
   const reloadDriveFiles = useCallback(() => {
     if (!onFetchGoogleDriveFiles || !project?.name) { setDriveFiles([]); return; }
     onFetchGoogleDriveFiles(project.name)
@@ -529,13 +442,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     reloadDriveFiles();
   }, [reloadDriveFiles, refreshKey]);
 
-  // Disconnecting a Google Drive connection elsewhere (Connected Apps and
-  // Data, or the in-chat "Modify connection" bubble) removes its
-  // _picked_files grant along with the whole vault record, but nothing here
-  // was listening for that — the card only refetches on mount/project-switch/
-  // refreshKey, none of which disconnect touches. Mirrors the existing
-  // `anton:projects-changed` event idiom (see App.jsx) rather than prop-
-  // drilling connection state down through ChatView/ProjectsView.
+  // Refresh on connection changes: disconnect deletes picked-file grants without changing the
+  // project or normal refresh keys.
   useEffect(() => {
     window.addEventListener('anton:connections-changed', reloadDriveFiles);
     return () => window.removeEventListener('anton:connections-changed', reloadDriveFiles);
@@ -545,10 +453,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
 
-  // `useEffect` runs after paint — switching tasks would briefly show the
-  // previous task's rows with "Loading attachments…". This runs first
-  // and clears before paint. Loading is only set here on conversation
-  // change (not on refreshKey), so same-task refetches stay quiet.
+  // Clear task attachments before paint on conversation changes to prevent showing the previous
+  // task’s files.
+  // Same-task refreshes retain quiet loading behavior.
   useLayoutEffect(() => {
     if (!sessionRelevant) {
       setSessionAttachments([]);
@@ -590,7 +497,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     return () => { cancelled = true; };
   }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
 
-  // Order: Project section first, Global second.
   const ordered = useMemo(() => {
     const sorted = [...sections].sort((a, b) => {
       if (a.scope === 'Project' && b.scope !== 'Project') return -1;
@@ -613,17 +519,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   const hasDriveFiles = driveFiles.length > 0;
   const hasAnyProjectFiles = hasProjectFiles || hasDriveFiles;
 
-  // Suppress the whole card only when there's truly nothing to act
-  // on AND no project to upload into. Inside a project we always
-  // render the Files section so the new "+ Add file" / empty-state
-  // upload affordance is reachable on a fresh project too.
+  // Keep the Files section for empty projects so users can upload their first file.
   const blockGlobalEmpty = !project?.name
     && totalMemoryFiles === 0
     && !hasAnyProjectFiles
     && !sessionRelevant;
 
-  // Drag OS files onto the context card to add them as PROJECT files.
-  // Reuses the same upload + reload the "+ Add file" affordance uses.
   const handleProjectFilesDrop = async (files) => {
     if (!files.length || !project?.name) return;
     setUploadError('');
@@ -653,12 +554,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   return (
     <div className="relative flex flex-col gap-3 pt-2" {...projectFileDropHandlers}>
       <FileDropOverlay active={projectFilesDragging} label="Drop files to add to project" />
-      {/* All working-folder files. Instructions row is pinned first;
-          the rest follow by most-recent-mtime. >10 files gets a
-          fixed-height scroll container so the rail stays compact.
-          Always render the section (even when empty) when the
-          project is loaded, so the "+ Add file" affordance is
-          reachable on fresh projects too. */}
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
@@ -696,9 +591,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
               ].filter(Boolean)}
             />
           </div>
-          {/* Hidden file input — driven by the visible "+" button so
-              we get the OS file picker for free. `multiple` matches
-              the upload API which accepts a list. */}
           <input
             ref={fileInputRef}
             type="file"
@@ -846,11 +738,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                 'cursor-pointer bg-transparent border-0 text-left',
               )}
             >
-              {/* Same attach-paperclip glyph the empty-state used,
-                  but the row is now an active "click to upload"
-                  affordance — the explicit "+" header button is the
-                  primary surface, this is a fallback for when the
-                  list is empty and the user might miss the header. */}
               <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
               <span>No files attached yet — click to add.</span>
             </button>
@@ -875,14 +762,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   icon: Ico.folder(13),
                   onClick: () => {
                     closeAttachmentMenu();
-                    // Optimistic: drop from Task uploads right away
-                    // so the row disappears the moment the user
-                    // clicks. The server move is fast (rename(2) on
-                    // local disk) but the followup fetchAttachments
-                    // round-trip adds visible latency. We refetch
-                    // project files after the server confirms so the
-                    // moved row appears in PROJECT FILES, and on
-                    // error we reattach the row to TASK UPLOADS.
+                    // Remove promoted task uploads optimistically; refresh project files on success
+                    // and restore the row on failure.
                     const previous = item;
                     setSessionAttachments((prev) => prev.filter((a) => a.id !== item.id));
                     (async () => {
@@ -891,8 +772,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                         reloadFiles();
                       } catch (err) {
                         setTaskUploadError(err?.message || 'Could not move file.');
-                        // Restore the row so the user sees the
-                        // file still belongs to the task.
                         setSessionAttachments((prev) => {
                           if (prev.find((a) => a.id === previous.id)) return prev;
                           return [previous, ...prev];
@@ -921,10 +800,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   menuItems={menuItems}
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
                   onOpen={() => {
-                    // Open the shared ContextFileModal — same UX as a
-                    // project file. The modal renders images inline and
-                    // gives non-images an "Open" (OS shell via rawUrl)
-                    // escape hatch.
                     setOpenAttachmentMenuId(null);
                     setOpenAttachment(item);
                   }}
@@ -942,11 +817,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
             <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-              {/* Display label spelled out — "Project" / "Global" on
-                  their own read as project metadata, not memory. The
-                  vault scope (`section.scope`) is still the canonical
-                  id used to save/edit; this is purely the heading
-                  shown in the rail. */}
+              {/* Keep vault scope IDs unchanged; only headings expand Project/Global to identify them as memory. */}
               {section.scope === 'Project' ? 'Project memory'
                 : section.scope === 'Global' ? 'Global memory'
                 : section.scope}
@@ -1033,14 +904,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles({ forceFresh: true })}
       />
-      {/* Task upload modal — same component, driven by the attachment's
-          raw URL. No `projectName`/`projectPath` is passed, so the modal
-          does no project-file IO: images render inline from `rawUrl`,
-          non-images land in 'binary' mode with an Open action that uses
-          `rawUrl` via the OS shell. `filePath` is the name only (for the
-          image-extension sniff + header title), NOT a real project path.
-          `remover` reuses the same attachment delete the row's menu and
-          ConfirmModal use, then closes the modal. */}
+      {/*
+ * Pass attachment rawUrl without project coordinates to avoid project-file IO. filePath is only a
+ * filename
+ * for display/type detection; reuse the attachment deletion path.
+ */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1068,12 +936,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         onChanged={() => setOpenAttachment(null)}
       />
 
-      {/* Hover-trash confirm — same in-app pattern as App.jsx's
-          delete-task / delete-project modals (ConfirmModal with
-          `destructive` style). We don't surface server failures in
-          a toast yet — if the DELETE fails the reloadFiles() call
-          below will leave the row visible, which is the same self-
-          correcting behavior the memory rail uses on edit. */}
+      {/* Reload after failed deletion to restore the row; this path has no failure toast. */}
       <ConfirmModal
         open={!!pendingDeleteFile}
         title={`Delete "${pendingDeleteFile?.path || pendingDeleteFile?.name || 'file'}"?`}
@@ -1105,16 +968,15 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
             // eslint-disable-next-line no-console
             console.error('[context] delete file failed', err);
             setUploadError(err?.message || 'Could not delete file.');
-            // Restore by refetching the canonical list from server.
             reloadFiles();
           }
         }}
       />
 
-      {/* Same pattern as the real-file delete above — optimistic
-          remove, reloadDriveFiles() to self-correct on failure. This
-          only revokes our own _picked_files bookkeeping; the file
-          itself is untouched in Drive. */}
+      {/*
+ * Remove only the project’s picked-file grant, leaving the Drive file intact; refetch corrects
+ * failed optimistic removal.
+ */}
       <ConfirmModal
         open={!!pendingDeleteDriveFile}
         title={`Remove "${pendingDeleteDriveFile?.name || 'file'}" from project files?`}
@@ -1152,11 +1014,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           const target = pendingDeleteAttachment;
           setPendingDeleteAttachment(null);
           if (!target?.id) return;
-          // Optimistic remove — same rationale as project-file
-          // delete above. The attachments fetch isn't instant, and
-          // waiting for it before clearing the row leaves the modal-
-          // close → row-still-there gap that felt like "nothing
-          // happened".
           setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
           try {
             await deleteAttachment(target.id, {

@@ -1,6 +1,4 @@
-// Guards the prefix-match invariant HomeView relies on to complete
-// onboarding step 1: a copy edit to the prompt must not silently break
-// recognition of a habit-tracker send.
+// Keep onboarding prompt copy compatible with HomeView's prefix-based completion detection.
 import { describe, it, expect } from 'vitest';
 import { HABIT_TRACKER_PROMPT, HABIT_TRACKER_PREFIX } from './steps';
 

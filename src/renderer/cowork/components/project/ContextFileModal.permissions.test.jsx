@@ -144,9 +144,7 @@ describe('ContextFileModal shared-resource permissions', () => {
 });
 
 describe('ContextFileModal load effect stability', () => {
-  // Regression: `editable` and `onResourceLoaded` sat in the load effect's
-  // deps, so the read response widening the edit capability re-ran the effect
-  // and read the same file a second time on every open.
+  // Applying loaded capabilities must not retrigger the file-read effect.
   it('reads the file once when the read response widens the edit capability', async () => {
     api.readProjectFile.mockResolvedValue({
       path: '.anton/anton.md',
@@ -208,9 +206,7 @@ describe('ContextFileModal load effect stability', () => {
 });
 
 describe('ContextFileModal instructions delete default', () => {
-  // Regression: `deletable` defaulted to true, so a surface that opened this
-  // modal on the instructions path without wiring the capability rendered a
-  // live Delete on the file the agent reads every turn.
+  // Missing delete capability must not make the instructions file deletable by default.
   it('withholds delete on the instructions file when no capability is passed', () => {
     render(
       <ContextFileModal

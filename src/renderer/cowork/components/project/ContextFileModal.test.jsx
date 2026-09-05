@@ -1,12 +1,6 @@
 /*
- * On canonical web the Download chip fetches the bytes and saves them from a
- * Blob. A Blob carries no Content-Disposition, so the name handed to
- * `downloadAuthenticatedResource` is the only thing naming the saved file, and
- * project paths nest. Before the fetch path existed the server's
- * Content-Disposition supplied a basename and this could not go wrong.
- *
- * The chip only renders in the html, image, and binary branches, so these
- * cases drive it through the image branch.
+ * Blob downloads lose Content-Disposition, so pass a basename for nested project paths.
+ * Exercise the chip through the image branch, where it is rendered.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';

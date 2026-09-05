@@ -1,21 +1,10 @@
-// The "Get to know Cowork" onboarding steps — the single source of
-// truth for the sidebar checklist. Each step renders one row; clicking it
-// opens a fresh chat seeded with `prompt`, the message Cowork answers to
-// show off that capability. Edit copy or reorder here; the UI follows.
-//
-// Step 1 is also completed when the habit-tracker prompt is sent from the
-// home composer by any route — HomeView prefix-matches outgoing sends.
-//
-// `desktopOnly: true` hides a step on the web build (useOnboarding filters
-// on host.isWeb): web runs against a cloud workspace, so steps that walk
-// the user through local-machine access can't be completed there.
+// HomeView also completes step 1 by prefix-matching the habit-tracker prompt.
+// desktopOnly steps require local-machine access and must be hidden on hosted web.
 
 export const HABIT_TRACKER_PROMPT =
   'Build me a habit tracker as a live artifact: a simple week grid I can tick off each day. Start with three sensible habits and make them easy to rename.';
 
-// Stable prefix used to recognize a (possibly user-edited) habit-tracker
-// send and complete step 1. Kept next to the prompt so a copy edit can't
-// silently break the match — steps.test.js asserts the prompt starts with it.
+// Keep this recognition prefix beside the prompt; steps.test.js checks that copy edits preserve it.
 export const HABIT_TRACKER_PREFIX = 'Build me a habit tracker';
 
 export const ONBOARDING_STEPS = [
@@ -43,11 +32,7 @@ export const ONBOARDING_STEPS = [
       'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, do something useful with a file and show me what you found.',
     desktopOnly: true,
   },
-  // The 'point-at-folder' step ("give you access to a folder on my
-  // computer") is removed, not reworded (ENG-1852): no host can connect a
-  // folder outside the project today — there is no folder picker, and the
-  // promise ended with the agent's own skills/ directory reported as
-  // "connected". Restore a folder step when local-folder access actually
-  // ships (ENG-384 / ENG-497 / ENG-325). Completion state for the old id
-  // persists harmlessly in anton.onboarding.completed.
+  // The removed point-at-folder step requires local-folder access that has not shipped; old
+  // completion IDs are harmless.
+  // Restore only when access exists. ENG-1852 / ENG-384 / ENG-497 / ENG-325.
 ];

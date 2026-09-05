@@ -1,31 +1,8 @@
-// ContextFileModal — view + edit for any markdown file the user
-// can open from the rail or the Memory page. Originally this only
-// drove project instructions (`anton.md` under `.anton/`) + legacy
-// `.context/` files; it has since been generalised so memory entries
-// (rules, lessons, identity notes) can ride the same modal — the
-// design language, keyboard handling, and edit↔view rhythm should
-// feel identical regardless of where the file lives.
-//
-// Two ways to wire it up:
-//
-//   1. Project file mode (legacy): pass `projectName` + `filePath`,
-//      the modal handles read/write/delete via the project files
-//      API. `isAntonMd` (or the path matching
-//      ANTON_PROJECT_INSTRUCTIONS_PATH) flips on the special anton.md
-//      affordances (label and empty-state placeholder).
-//
-//   2. Generic mode: pass `title` + `loader` (or `initialContent`)
-//      + `saver` + optional `remover`. Used by the memory rail to
-//      view + edit a memory file without dragging the project-file
-//      API into a place that doesn't need it.
-//
-// Mode rules:
-//   • If the file exists with content → opens in VIEW mode. User
-//     clicks "Edit" to switch to a textarea.
-//   • If the file is `anton.md` AND empty / missing → opens directly
-//     in EDIT mode. There's nothing to read; the modal IS the
-//     authoring surface. (`startInEditMode` overrides this.)
-//   • Save commits and switches back to view mode.
+// Project mode: projectName/filePath use the project API; isAntonMd enables instruction-specific
+// affordances.
+// Generic mode: provide title, loader or initialContent, saver, and optional remover.
+// Empty/missing anton.md opens in edit mode; other content opens in view mode. startInEditMode
+// overrides this.
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
@@ -54,9 +31,7 @@ const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 
-// Join a project root + relative path into a forward-slash absolute
-// path so `host.openPath(...)` resolves correctly even
-// when the relative side carries embedded slashes.
+// Normalize embedded separators when joining a project root and relative path for host.openPath.
 function joinAbs(root, rel) {
   if (!root || !rel) return '';
   const r = String(root).replace(/\/+$/, '');
@@ -65,18 +40,12 @@ function joinAbs(root, rel) {
 }
 
 
-// Header chip that handles "reveal in Finder" / "open in default app"
-// on desktop and falls back to a download link on the web. Used by
-// both the HTML and binary branches — they live in the modal header
-// so the user always has an escape hatch regardless of what's
-// rendered inline.
+// Keep reveal/open/download available in the header even when the file cannot render inline.
 function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   const isWeb = !!host.isWeb;
   const abs = joinAbs(projectPath, filePath);
   const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
-  // Attachments have a `rawUrl` but no project filePath — Reveal-in-
-  // Finder has nothing to point at (the file isn't on a local project
-  // path), so it's hidden and Open prefers the raw URL via host.
+  // Attachments have a raw URL but no local project path, so hide Reveal and open their URL.
   const hasProjectFile = !!(projectName && filePath);
 
   if (isWeb) {
@@ -113,9 +82,6 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
       <Tooltip content="Open in default app">
         <Button
           onClick={() => {
-            // Prefer the raw URL (attachments + anything that passed one)
-            // via the OS shell; fall back to opening the local project
-            // file in the default app.
             if (rawUrl) host.openExternal(rawUrl);
             else if (abs) host.openPath(abs);
           }}
@@ -126,10 +92,6 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
 }
 
 
-// Empty-state panel for binary / oversized / non-UTF-8 files.
-// Renders a centered icon + the filename + one-line explanation
-// + the same reveal/download affordances as the header chip, so the
-// modal stays useful even when nothing can be displayed inline.
 function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl }) {
   return (
     <div style={{
@@ -173,19 +135,11 @@ function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath,
 
 export default function ContextFileModal({
   open,
-  // ── Project file mode ─────────────────────────────────────────
   projectName,
-  projectPath,     // absolute project root path (optional) — enables
-                   //   reveal-in-finder / open-in-default-app via the
-                   //   Electron IPC. Falls back to the download URL on
-                   //   the web.
+  projectPath,     // Absolute project root for desktop OS actions; web falls back to download.
   filePath,        // project-relative path (instructions: ANTON_PROJECT_INSTRUCTIONS_PATH)
-  rawUrl,          // optional absolute URL for inline media (images) and the
-                   //   binary-mode "Open" action. Lets attachments — which
-                   //   have no project file path — render images inline and
-                   //   open in the OS shell without project-file IO.
+  rawUrl,          // Raw attachment URL for preview/external opening without project-file IO.
   isAntonMd,       // optional override; otherwise derived from filePath
-  // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
   subtitle,        // optional uppercase label after the title (e.g. "Project · acme")
   initialContent,  // optional preview from the listing — saves a fetch on open
@@ -212,36 +166,24 @@ export default function ContextFileModal({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // Which render branch the modal is in:
-  //   'text'   — Markdown / plain text, the original editable view.
-  //   'html'   — load as an iframe via projects preview-mount (parity
-  //              with how artifacts surface HTML dashboards).
-  //   'image'  — render the file inline as an <img> from its raw URL
-  //              (project download URL or an attachment's raw URL).
-  //   'binary' — can't render inline (too large, not UTF-8, image,
-  //              archive…). Show "Open in Finder" / "Download"
-  //              affordances instead of dumping bytes into the modal.
+  // Render text for editing, HTML in an iframe, images from raw URLs, and unsupported/oversized
+  // files through external-access actions.
   const [mode, setMode] = useState('text');
   const [previewUrl, setPreviewUrl] = useState('');
   const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
   /*
-    The load effect must not re-fire when a capability changes. Reading the
-    file back can itself flip `editable` (the listing row carried no decision,
-    the GET did), which would otherwise mean a second read on every open, and
-    a revoked `canEdit` arriving mid-typing would reset the draft. The
-    callback rides a ref for the same reason: an inline arrow from a caller
-    would turn the effect into an unbounded fetch loop.
-  */
+   * Read capability/callback through refs so server capability updates do not refetch and erase a
+   * draft,
+   * and inline parent callbacks cannot create a fetch loop.
+   */
   const editableRef = useRef(editable);
   const onResourceLoadedRef = useRef(onResourceLoaded);
   useEffect(() => { editableRef.current = editable; }, [editable]);
   useEffect(() => { onResourceLoadedRef.current = onResourceLoaded; }, [onResourceLoaded]);
 
   const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
-  // Generic mode = caller wired up its own loader/saver and didn't
-  // pass a project file context. Used to gate the anton-specific
-  // empty-state default and the project-file fallback IO.
+  // Custom loaders/savers bypass project-file defaults and the instructions empty state.
   const genericMode = typeof saver === 'function' || typeof loader === 'function';
 
   const headerTitle = title ?? (isAnton ? 'anton.md' : filePath);
@@ -253,28 +195,18 @@ export default function ContextFileModal({
     ? '(no instructions yet — click Edit to add some)'
     : '(empty file)');
 
-  // Markdown files render with our chat MarkdownContent component so
-  // headings, lists, code fences, tables, and links look the way they
-  // do anywhere else in the app. Anything else (txt, json, yaml…)
-  // falls back to a monospace `<pre>` with the raw bytes — beautifying
-  // those would obscure the actual contents the user came to inspect.
-  // The fallback ID for the modal-edit case (no filePath, e.g. memory
-  // entries identified by relativePath through `title`) is "anton.md"
-  // so memory rows still render markdown.
+  // Render markdown normally and other text verbatim; formatting JSON/YAML would obscure the
+  // inspected file.
+  // Memory entries without filePath use title, with the existing markdown fallback.
   const referencePath = filePath || title || '';
-  // Image files render inline as an <img>. Detected purely by
-  // extension on the reference path so it works for both project
-  // files (download URL) and attachments (raw URL, no project path).
+  // Detect images by reference-path extension for both project files and URL attachments.
   const isImage = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(referencePath);
   const isMarkdown = /\.md$/i.test(referencePath) || referencePath === ''
     || isAnton
     || genericMode;
 
-  // Load on open. Anton.md is special-cased server-side: the read
-  // endpoint returns an empty body when the file doesn't exist yet,
-  // so we always get a clean string here. HTML project files take a
-  // separate path (preview-mount → iframe); binary or oversized
-  // files fall through to a "Reveal / Download" affordance.
+  // Missing project instructions return empty text; HTML mounts separately and unsupported files
+  // use external actions.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -283,10 +215,7 @@ export default function ContextFileModal({
     setBinaryDetail('');
     setMode('text');
 
-    // Image branch (before the project-IO guard): render inline as an
-    // <img>. Works for project files (download URL from name+path) and
-    // attachments (a `rawUrl` with no projectName). Runs first so an
-    // attachment image never falls into the guard below.
+    // Check images before requiring project coordinates so raw-URL attachments can preview inline.
     if (isImage) {
       const url = rawUrl || (projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '');
       if (url) {
@@ -313,10 +242,8 @@ export default function ContextFileModal({
       }
     }
 
-    // No project file IO is possible (e.g. an attachment: `rawUrl` set,
-    // no projectName). A non-image attachment can still be opened in the
-    // OS shell via the binary panel's Open action, so land in 'binary'
-    // mode rather than a stuck empty 'text' view.
+    // Without project coordinates, raw-URL attachments use binary mode’s Open action instead of an
+    // empty text view.
     if (!genericMode && (!filePath || !projectName)) {
       if (rawUrl) {
         setMode('binary');
@@ -325,7 +252,6 @@ export default function ContextFileModal({
       return () => { cancelled = true; };
     }
 
-    // HTML branch: project-file preview-mount, iframe srcs `BASE + relUrl`.
     if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
       setLoading(true);
       mountProjectFilePreview(projectName, filePath)
@@ -349,8 +275,6 @@ export default function ContextFileModal({
     }
 
     if (initialContent != null) {
-      // Hot path — caller had the content already (from a recent
-      // fetch / a draft). Skip the round trip.
       setContent(initialContent);
       setDraft(initialContent);
       setEditing(editableRef.current && (startInEditMode ?? (isAnton && !initialContent.trim())));
@@ -372,10 +296,8 @@ export default function ContextFileModal({
       .catch((e) => {
         if (cancelled) return;
         const msg = e?.message || 'Could not read file';
-        // 413 (too large) and 415 (not UTF-8 / not a text file) are
-        // expected for binary or oversized files. Surface a graceful
-        // "Reveal in Finder / Download" affordance instead of the
-        // raw error.
+        // 413/415 are expected for large/binary files; offer external access instead of the raw
+        // read error.
         if (!genericMode && /HTTP 413|HTTP 415|too large|not valid UTF-8/i.test(msg)) {
           setMode('binary');
           setBinaryDetail(msg);
@@ -387,9 +309,7 @@ export default function ContextFileModal({
     return () => { cancelled = true; };
   }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
 
-  // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
-  // Focus the textarea when entering edit mode.
   useEffect(() => {
     if (!editing) return;
     const id = requestAnimationFrame(() => textareaRef.current?.focus());
@@ -424,11 +344,9 @@ export default function ContextFileModal({
   // to deleteProjectFile, including the capability-gated instructions file.
   const deleteApplicable = remover !== null;
   /*
-    The agent reads the project instructions file every turn, so it stays
-    undeletable unless a caller hands down an explicit server capability. Any
-    surface that opens this modal on that path without one gets the protection
-    for free instead of having to remember two props.
-  */
+   * Project instructions are required each turn; allow deletion only with an explicit server
+   * capability.
+   */
   const deleteAllowed = isAnton ? deletable === true : (deletable ?? true);
 
   const handleDelete = async () => {
@@ -458,8 +376,7 @@ export default function ContextFileModal({
       onClose={onClose}
       size="md"
       width="min(720px, 92vw)"
-      // FIXED height — toggling view↔edit must feel like the same modal
-      // (textarea + preview both flex:1 to fill it, no jump-on-cancel).
+      // Keep height fixed across preview/edit swaps.
       height="min(720px, 88vh)"
       ariaLabel={headerTitle}
       closeOnBackdrop={!busy}
@@ -490,10 +407,6 @@ export default function ContextFileModal({
                 onClick={() => setEditing(true)}
               >Edit</Button>
             )}
-            {/* HTML / image / binary modes all expose a "Reveal" /
-                "Open" / "Download" affordance in the header so the user
-                can always get at the file even when the modal renders
-                something else inline. */}
             {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && (
               <FileAccessButton
                 projectPath={projectPath}
@@ -521,10 +434,7 @@ export default function ContextFileModal({
           </div>
         </div>
 
-        {/* Body is a flex column so the textarea / pre below can both
-            `flex: 1` and fill the same vertical space identically.
-            The body itself doesn't scroll — content scrolls inside
-            the textarea or the pre. */}
+        {/* Let textarea/pre fill the same body space and own their scrolling. */}
         <div style={{
           flex: 1, minHeight: 0,
           padding: '16px 18px',
@@ -545,8 +455,7 @@ export default function ContextFileModal({
               Read only. You do not have permission to edit this shared resource.
             </div>
           )}
-          {/* HTML branch — render inside a sandboxed iframe with the
-              preview-mount URL so relative assets resolve. */}
+          {/* Use the mounted URL so relative HTML assets resolve. */}
           {!loading && mode === 'html' && previewUrl && (
             <div style={{
               flex: 1, minHeight: 0,
@@ -562,9 +471,7 @@ export default function ContextFileModal({
               />
             </div>
           )}
-          {/* Image branch — render inline, centered in the same preview
-              area the html/binary modes use. On load failure, fall back
-              to the binary panel so the user keeps a Reveal/Open escape. */}
+          {/* Fall back to binary controls when an image fails, retaining Open/Reveal. */}
           {!loading && mode === 'image' && previewUrl && (
             <div style={{
               flex: 1, minHeight: 0,
@@ -582,7 +489,6 @@ export default function ContextFileModal({
               />
             </div>
           )}
-          {/* Binary / oversized branch — graceful escape hatch. */}
           {!loading && mode === 'binary' && (
             <BinaryFilePanel
               fileName={filePath || title || 'file'}
@@ -606,12 +512,8 @@ export default function ContextFileModal({
                 width: '100%',
                 padding: '12px 14px', borderRadius: 8,
                 background: 'var(--surface-2)',
-                // Transparent border — content panel blends into the
-                // modal body instead of nesting a hard rectangle. The
-                // border is kept (rather than removed) so the panel
-                // keeps its layout footprint identical to the
-                // markdown viewer below; both must size identically
-                // for the view↔edit swap to feel seamless.
+                // Keep the transparent border’s footprint so viewer/editor swaps do not shift
+                // layout.
                 border: '1px solid transparent',
                 color: 'var(--ink)',
                 fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
@@ -621,10 +523,6 @@ export default function ContextFileModal({
               }}
             />
           ) : isMarkdown ? (
-            // Beautiful markdown render for `.md` files (anton.md,
-            // memory entries, anything else markdown-shaped). The
-            // outer container handles the panel chrome + scroll; the
-            // MarkdownContent component just lays out the body.
             <div style={{
               flex: 1, minHeight: 0,
               padding: '14px 18px',
@@ -675,9 +573,6 @@ export default function ContextFileModal({
               <Button
                 variant="subtle"
                 onClick={() => {
-                  // Cancel edit — restore the persisted content. If
-                  // anton.md is still empty after cancel, kick the
-                  // modal back to its no-content view.
                   setDraft(content);
                   setEditing(false);
                 }}

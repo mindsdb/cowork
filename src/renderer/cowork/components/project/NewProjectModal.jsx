@@ -1,17 +1,6 @@
-// "Start a new project" modal.
-//
-// Replaces the inline-edit dashed card on the projects page. Owns
-// the full create flow:
-//   1. Validate the name (server sanitises + dedupes; we just guard
-//      empty / whitespace).
-//   2. POST /v1/projects to create the folder.
-//   3. If the user supplied instructions text, PUT it at
-//      ANTON_PROJECT_INSTRUCTIONS_PATH (`.anton/anton.md`).
-//   4. If files are queued, upload them in one multipart request.
-//
-// Failure handling: each step that touches the server is independent
-// — we show a status line if a step fails but don't roll back the
-// already-completed steps. The user can finish the rest manually.
+// Creation, instructions, and uploads commit independently. Report partial failures without rolling
+// back
+// completed steps so the user can finish setup manually.
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
@@ -83,8 +72,6 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const nameRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Reset everything when the modal opens — `open` flipping false→true
-  // should always present a clean form.
   useEffect(() => {
     if (!open) return;
     setName('');
@@ -97,13 +84,10 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
-  // closeOnEsc / closeOnBackdrop). The name field auto-focuses on open.
 
   const addFiles = (incoming) => {
     if (!incoming || !incoming.length) return;
-    // Dedupe on name+size — common case is the user re-dragging the
-    // same selection; merging without dedupe creates dupes.
+    // Deduplicate repeated file selections by name and size.
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => `${f.name}::${f.size}`));
       const next = [...prev];
@@ -131,13 +115,10 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(true);
     setError('');
     try {
-      // 1) Create the folder. Server sanitises + dedupes — `result.name`
-      //    is the canonical name the rest of the steps must use.
+      // Use the server’s sanitized, deduplicated project name for subsequent writes.
       const result = await createProject(trimmed);
       const finalName = result?.name || trimmed;
 
-      // 2) Write instructions if the user typed any. Use the final
-      //    (post-sanitisation) project name.
       const trimmedInstr = (instructions || '').trim();
       if (trimmedInstr) {
         try {
@@ -148,9 +129,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }
       }
 
-      // 3) Upload files in one multipart request. All-or-nothing per
-      //    file — server returns a per-file result list we ignore for
-      //    now (could surface partial failures in a toast later).
+      // Upload results are per-file; partial failures are not surfaced here.
       if (files.length) {
         try {
           await uploadProjectFiles(finalName, files);
@@ -286,9 +265,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               multiple
               style={{ display: 'none' }}
               onChange={(e) => {
-                // Snapshot before clearing `value`: clearing empties the live
-                // FileList, and React runs the setState updater after this
-                // handler returns — so passing FileList alone would add nothing.
+                // Snapshot files before clearing the input: its FileList is live, but the state
+                // updater may run later.
                 const picked = e.target.files ? Array.from(e.target.files) : [];
                 e.target.value = '';
                 addFiles(picked);
