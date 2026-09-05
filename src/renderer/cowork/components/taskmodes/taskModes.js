@@ -1,18 +1,6 @@
-// Task modes for the home composer (ENG-1594). Each mode is a pill under the
-// composer; picking one shows a removable chip in the composer toolbar, swaps
-// the placeholder, and surfaces that mode's sample prompts. Picking a sample
-// drops its FULL `prompt` into the composer (the short `label` is only the
-// list text) — same as Manus. All texts captured from manus.im (2026-08-14),
-// brand-adapted where they name the product. Website has no sample prompts on
-// Manus (it shows a category flow instead), so those prompts are authored in
-// the same style from Manus's website categories.
-//
-// `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
-// that file). `samplesVariant` mirrors Manus: slides + visualization render
-// sample cards under a heading, the rest render plain rows. `chipNoun`
-// (optional) is the noun the chip's remove aria-label uses when `chipLabel`
-// is a verb phrase — "Remove Games mode" reads better than
-// "Remove Create games mode".
+// Prompts are adapted from manus.im (2026-08-14); website prompts are authored from its categories.
+// icon resolves an Icons.jsx key dynamically; keep string references aligned.
+// chipNoun supplies the accessible removal noun when chipLabel is a verb phrase.
 
 export const TASK_MODES = [
   {
@@ -228,14 +216,13 @@ export const TASK_MODES = [
   },
 ];
 
-/** Outgoing message for a selected mode: the user text, then the instruction
-    line. Appended (not prepended) because the task title, sidebar preview, and
-    search index all derive from the message HEAD — a leading instruction would
-    make every task of a mode read identically and bury the user's actual ask. */
+/**
+ * Append mode instructions: task titles, previews and search derive from the message head and must
+ * start with the user’s request.
+ */
 export function composeModeMessage(mode, text) {
   if (!mode) return text;
-  // A picked sample is already a full prompt — appending the instruction
-  // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
+  // Samples are complete prompts and need no appended mode instruction.
   if (mode.samples.some((s) => s.prompt === text.trim())) return text;
   return `${text}\n\n${mode.instruction}`;
 }

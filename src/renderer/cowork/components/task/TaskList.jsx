@@ -1,6 +1,3 @@
-// Vertical column of TaskCards. Used by the project view today;
-// drop-in for any other "list of conversations" surface.
-
 import { useMemo } from 'react';
 import { TaskCard } from './TaskCard';
 
@@ -14,10 +11,7 @@ const _ts = (raw) => {
   return Number.isFinite(t) ? t : 0;
 };
 
-// Collapse runs of a single schedule into one synthetic task card so
-// the project view doesn't render dozens of "this is just a test"
-// duplicates from a daily/hourly schedule. Matches the TasksView
-// grouping logic.
+// Group runs of one schedule into a single task card, matching TasksView.
 function groupTasks(tasks, schedules, scheduleRunsIndex) {
   const schedById = new Map((schedules || []).map((s) => [s?.id, s]));
   const resolveSid = (t) => t?.scheduledId || (scheduleRunsIndex || {})[t?.id] || null;
@@ -34,9 +28,7 @@ function groupTasks(tasks, schedules, scheduleRunsIndex) {
       const sched = schedById.get(sid);
       const baseTitle = sched?.title || t.title || 'Scheduled task';
       g = {
-        // Synthetic task object: every existing call-site passes
-        // these via TaskCard so the click flow can branch on
-        // `_scheduleGroup` and route to the schedule detail.
+        // Synthetic schedule groups route clicks to schedule detail through TaskCard.
         id: `sched:${sid}`,
         title: baseTitle,
         subtitle: t.subtitle,
@@ -61,14 +53,11 @@ function groupTasks(tasks, schedules, scheduleRunsIndex) {
 
 export function TaskList({
   tasks = [],
-  // Optional title — when present, renders an Inter "Tasks · N"
-  // header above the list. Pass null to render just the list.
+  // Pass null to omit the task-list heading.
   title = 'Tasks',
   emptyMessage = 'No tasks yet — start one above.',
   projects = [],
-  // Schedule metadata for grouping. Optional — when absent we fall
-  // back to a flat list (preserves the old behaviour for callers
-  // that haven't been updated).
+  // Without schedule metadata, show a flat task list.
   schedules = [],
   scheduleRunsIndex = {},
   onSelectTask,
