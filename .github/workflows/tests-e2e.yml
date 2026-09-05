@@ -1,12 +1,7 @@
 name: Tests (e2e)
 
-# Tier-2 launch smoke (qa.md §5c): build the app, launch the real Electron
-# main + renderer with Playwright, assert a window opens and React mounts
-# with no uncaught errors.
-#
-# NOT a PR gate (qa.md §7): needs a full build + a display (xvfb) and is
-# slower/flakier than unit CI. Nightly + manual dispatch; promote to a
-# required check only after it proves non-flaky.
+# Nightly/manual Electron launch smoke requires a display and full build.
+# Promote to a PR gate only after it proves reliable.
 
 on:
   schedule:
@@ -36,8 +31,7 @@ jobs:
       - name: Run Playwright Electron smoke (headless via xvfb)
         run: xvfb-run --auto-servernum -- npx playwright test
         env:
-          # Surface the Electron main process stdout/stderr in the CI log —
-          # a main-process crash otherwise reads as a bare firstWindow timeout.
+          # Expose main-process logs so crashes do not appear only as firstWindow timeouts.
           DEBUG: pw:browser*
       - uses: actions/upload-artifact@v4
         if: failure()

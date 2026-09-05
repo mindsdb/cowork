@@ -36,8 +36,6 @@ jobs:
     outputs:
       download_url: ${{ steps.s3.outputs.download_url }}
     steps:
-      # The manifest writer lives in the repo, so this job needs the tree as
-      # well as the build artifact.
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -55,8 +53,7 @@ jobs:
       - name: Validate Windows signing report before upload
         if: inputs.platform == 'windows'
         env:
-          # Public Authenticode publisher CN of our installers (SSL.com EV cert).
-          # Override via repo variable if the cert's subject ever changes.
+          # Publisher CN must match the signing certificate; override only if its subject changes.
           EXPECTED_PUBLISHER_CN: ${{ vars.WINDOWS_PUBLISHER_CN }}
         run: |
           set -euo pipefail
@@ -293,14 +290,9 @@ jobs:
             echo "- ${CDN_BASE}/${KEY}" >> "$GITHUB_STEP_SUMMARY"
           done
 
-      # electron-updater reads one mutable channel manifest that references an
-      # immutable signed payload. Publish payload/blockmap first and latest*.yml
-      # last so clients can never observe metadata for bytes that do not exist.
+      # Publish signed payload and blockmap before the mutable update pointer so metadata never references missing bytes.
       - name: Publish shell updater feed
-        # linux ships no electron-updater feed — a .deb install updates via
-        # apt/dpkg, not the Squirrel-style feed mac/windows use — so skip this
-        # step for linux platforms rather than hitting the "Unknown updater
-        # platform" branch below and failing the upload.
+        # Linux deb packages have no electron-updater feed.
         if: >-
           (inputs.build_kind == 'prod' || inputs.build_kind == 'stable')
           && (inputs.platform == 'mac' || inputs.platform == 'windows')
@@ -477,11 +469,7 @@ jobs:
             echo "- Metadata: ${CDN_BASE}/${PREFIX}/${METADATA_NAME}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The manifest is how a browser client finds the current installer: which
-      # version is live, the immutable URL that serves it, and the sha256 to
-      # check the finished file against. It is written last, after the loop
-      # above has confirmed the bytes it names are in the bucket, so it can
-      # never point at something that does not exist yet.
+      # Write the public download manifest only after verifying its referenced installer bytes exist.
       - name: Publish public download manifest
         if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:
@@ -508,18 +496,8 @@ jobs:
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/json"
 
-      # Prove over the public CDN what the release claims: the manifest resolves
-      # to the bytes this run built, and the URL it names can be resumed.
-      #
-      # Every assertion here reads the body rather than the status line. A
-      # status can no longer hide a missing key, now that the distribution
-      # answers one with a 404, but it still cannot tell a current object from
-      # a stale one, which is the failure an immutable key is most exposed to.
-      #
-      # The wait is an explicit loop rather than `curl --retry`, which fires
-      # only on a timeout or a 408/429/5xx. A newly created key can be shadowed
-      # by an edge that cached the 404 for it moments earlier, and no retry
-      # flag covers that.
+      # Verify CDN bodies, not just status: cached/stale objects can still return success.
+      # Poll explicitly for cached 404s, which curl --retry does not retry.
       - name: Verify the published download over the CDN
         if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:

@@ -1,25 +1,9 @@
 name: Release smoke (public downloads)
 
-# Downloads the installers the way a user does, from downloads.mindshub.ai in a
-# real Chromium, and checks that what arrives is what the release published:
-# the manifest resolves, the versioned URL carries its channel's cache policy
-# and is attachment-named, an interrupted transfer resumes, and the finished
-# bytes match the checksum.
-#
-# Runs AFTER a prod release rather than on a PR, because there is nothing to
-# check until a release has published. Also nightly, which is what catches a
-# key that was correct at publish time and has since been overwritten, expired
-# by a lifecycle rule, or lost behind a stale edge.
-#
-# NOT a PR gate: it asserts on live infrastructure, so a red run can mean the
-# CDN rather than the commit. `tests-unit.yml` covers the manifest contract on
-# the PR; this covers the thing that contract is a promise about.
+# Verify public CDN headers, resumable downloads, and checksums after release and nightly.
+# Keep off PR gates: failures may reflect live infrastructure rather than the commit.
 
-# The release passes `channels: prod` and the version it just tagged. Both
-# matter. `staging.json` is written by a push to `staging`, so checking the
-# stable channel from the prod pipeline fails a release that worked, and this
-# workflow is in that pipeline's notify list. The version is what stops the
-# suite passing against the manifest a PREVIOUS release left behind.
+# Release callers must pin both prod channel and the new version; otherwise smoke could test staging or an older release.
 on:
   workflow_call:
     inputs:
@@ -58,12 +42,7 @@ defaults:
 jobs:
   downloads:
     runs-on: ubuntu-latest
-    # The resume test reassembles a whole installer, once per platform per
-    # channel, and the browser test pulls one more per platform. Across the four
-    # platforms (mac, windows and a deb per arch) a nightly run over both
-    # channels moves twelve installers and a release run over prod alone moves
-    # eight. The debs are roughly half the size of a .pkg/.exe, so the bytes
-    # grew by about half again rather than doubling.
+    # Allow time for full installer downloads and resume reassembly across selected platforms/channels.
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -74,15 +53,11 @@ jobs:
       - uses: ./.github/actions/retry
         with:
           command: npm ci
-      # Only Chromium: this suite is about what a browser does with the CDN's
-      # response headers, and that behaviour is the same across engines for the
-      # parts under test. The Electron suite brings its own runtime.
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Download the published installers and check them
         env:
-          # `inputs` is null on a schedule trigger, so the fallback is what the
-          # nightly run gets: both channels, no version to pin against.
+          # Schedule has no inputs: default to both channels without a pinned version.
           RELEASE_SMOKE_CHANNELS: ${{ inputs.channels || 'prod,stable' }}
           RELEASE_SMOKE_VERSION: ${{ inputs.version }}
         run: npm run test:release-smoke
