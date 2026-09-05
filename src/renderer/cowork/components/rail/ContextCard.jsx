@@ -775,8 +775,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                     color: 'var(--ink-4)',
                   }}
                 >
-                  Showing the first {projectFiles.length} files. This folder has
-                  more than the list can hold.
+                  This folder holds more files than the list can show, so some
+                  are missing here.
                 </div>
               )}
               {driveFiles.map((f) => (
