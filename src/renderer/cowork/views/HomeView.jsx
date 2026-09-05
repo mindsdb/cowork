@@ -11,40 +11,9 @@ import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened } from '../lib/analytics';
 
-// ── Boot choreography ───────────────────────────────────────────────────
-//
-// One single orb element travels through every phase. Putting two
-// stacked orbs (idle + thinking) inside one container that we
-// animate via CSS transforms means the user sees ONE coherent thing
-// instead of five separate sprites swapping in and out.
-//
-//   loading    — server still spinning up. The orb is rendered in
-//                its thinking state, scaled up (~1.5x ≈ 64px), and
-//                translated horizontally to the centre of the
-//                viewport. Sits at the vertical height the greeting
-//                will eventually occupy.
-//   collapsing — the orb scales down to ~6px (a "dot") in place.
-//                State stays thinking — the satellite is still
-//                spinning around its centre, just shrunk.
-//   traveling  — the dot translates from viewport-centre to its
-//                resting position on the left of where the greeting
-//                will sit. Eased with a slight bounce so the move
-//                reads as deliberate, not abrupt.
-//   morphing   — at the resting position the dot scales back up
-//                to its rest size (1×, 42px). The orb's state
-//                crossfades from thinking to idle as the satellite
-//                slows to its idle orbit.
-//   typing     — typewriter — the greeting types out beside the
-//                idle orb, one character at a time. No caret;
-//                letters just appear.
-//   settling   — composer + active list fade in below.
-//   idle       — final home view. From here the existing
-//                idle/thinking orb crossfade resumes based on
-//                composer typing + active tasks.
-//
-// Failure paths (server help modal pop, settings redirect on
-// config_ready=false) live in App.jsx so they fire once per app
-// session, not once per HomeView remount.
+// Boot animates through loading, collapsing, traveling, morphing, typing, settling, then idle.
+// App.jsx owns boot failures so help/redirects fire once per session instead of on every HomeView
+// mount.
 
 const GREETING_FALLBACK = "Let's knock something off your list";
 
@@ -58,31 +27,12 @@ const TYPE_PER_CHAR_MS = 22;
 const TYPE_TAIL_MS = 380;       // pause after last char before settling
 const SETTLE_MS    = 520;
 
-// (Sizing for each visual layer is hard-coded in the JSX below —
-// the big thinking orb is 64px, the dot is 10px, the idle orb is
-// 42px. No constants extracted because each value is referenced
-// exactly once.)
 
-// `boot-fadein` lives in globals.css alongside the global `fadein-up`
-// (and every other keyframe in the app). (The earlier caret-blink
-// keyframe was dropped when we removed the typewriter cursor in favour
-// of letters appearing letter-by-letter beside the idle orb.)
 
 function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }) {
-  // Phases: loading → collapsing → traveling → morphing → typing →
-  //         settling → idle.
-  //
-  // Each transition lives in its OWN effect. Putting the trigger and
-  // the next-phase timer into the same effect lets React's cleanup
-  // cancel the not-yet-fired timer on phase change, freezing the
-  // choreography mid-step (the symptom: orb shrinks and never moves).
-  // Splitting them keeps each timer's lifecycle aligned with the
-  // phase it advances out of.
-  //
-  // skipIntro lets the host bypass the choreography entirely.
-  // App.jsx sets it true after the backend has been online once, so
-  // subsequent home mounts (clicking "New task", navigating back from
-  // a project, etc.) open straight at 'idle'.
+  // Give each phase transition its own effect; combining trigger and timer lets phase-change
+  // cleanup cancel
+  // the next transition. skipIntro bypasses animation on later Home mounts.
   const [phase, setPhase] = useState(() => skipIntro ? 'idle' : 'loading');
   const [typedCount, setTypedCount] = useState(0);
 
@@ -143,17 +93,8 @@ function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }
 }
 
 
-// Measure how far the orb's natural rest position sits from the
-// horizontal centre of the home view's CONTENT AREA (not the window
-// viewport — the home view sits in a column to the right of the
-// sidebar, so window-centre is left-of-content-centre and the orb
-// would land off-axis on a sidebar-open layout).
-//
-// The orb is always rendered in its rest position in flow; the
-// transform applied by HomeView shifts it to that content-centre
-// during boot phases. Re-measure on resize so a window-drag while
-// the boot animation is mid-flight still finishes at the right
-// place.
+// Measure the orb’s rest position relative to the content column, not the sidebar-inclusive window.
+// Recompute on resize so an in-progress animation still reaches the correct destination.
 function useOrbCenterOffset(orbRef, containerRef) {
   const [offset, setOffset] = useState(null);
   useLayoutEffect(() => {
@@ -161,10 +102,7 @@ function useOrbCenterOffset(orbRef, containerRef) {
       const orbNode = orbRef.current;
       const ctrNode = containerRef.current;
       if (!orbNode || !ctrNode) return;
-      // Strip any in-flight transform on the orb before measuring so
-      // we always capture the rest-position rect, not the currently-
-      // animated one. The next render reapplies whatever transform
-      // the phase demands.
+      // Temporarily remove the animated transform to measure the rest position.
       const prev = orbNode.style.transform;
       orbNode.style.transform = '';
       const orbRect = orbNode.getBoundingClientRect();
@@ -200,11 +138,8 @@ function ActiveList({ tasks, onSelect, onClear }) {
             onClick={() => onSelect(t.id)}
             aria-label={t.title}
             style={{
-              // Reset default <button> chrome so the row visually matches
-              // the prior <div> layout. Using <button> is required so the
-              // global `button { -webkit-app-region: no-drag }` rule takes
-              // effect — without it, the window-shell's outer drag region
-              // swallows mousedown and the onClick never fires.
+              // Use a button so the global no-drag rule allows clicks inside Electron’s window drag
+              // region.
               border: 0,
               background: 'transparent',
               textAlign: 'left',
@@ -260,20 +195,16 @@ export default function HomeView({
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
 
-  // Task modes (slides/website/app-style prompt scaffolding) don't apply to
-  // a Claude Code task — clear any mode left selected from before Coding
-  // Mode was turned on, so a stale chip/placeholder/instruction can't ride
-  // along into a coding-mode send once the picker itself is hidden below.
+  // Clear task-mode scaffolding when entering Coding Mode so a hidden selection cannot affect the
+  // send.
   useEffect(() => {
     if (codingModeEnabled) setTaskMode(null);
   }, [codingModeEnabled]);
 
-  // Sending the habit-tracker prompt completes onboarding step 1 no
-  // matter which surface filled the composer (suggestion chip, sidebar
-  // checklist, or the user typing it by hand). A selected task mode
-  // appends its instruction line after the user text (titles and search
-  // derive from the message head) and clears itself after a successful
-  // send. `meta` (harness/model, ENG-1656) passes through untouched.
+  // Detect onboarding sends regardless of how text was entered. Append mode instructions after user
+  // text
+  // so titles/search retain the prompt head; preserve meta and clear mode only after successful
+  // send.
   const sendTracked = async (text, meta) => {
     if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
@@ -289,36 +220,15 @@ export default function HomeView({
     skipIntro,
   });
 
-  // Idle-phase orb crossfade — driven by composer typing + active
-  // tasks. Two stacked OrbitMorph instances (idle + thinking) with
-  // opposing opacity transitions read as one orb morphing between
-  // states. While the boot choreography is running we override these
-  // (thinking is forced on through the early phases, idle for later).
   const [isTyping, setIsTyping] = useState(false);
   const wantsThinking = isTyping || (activeTasks && activeTasks.length > 0);
 
   const orbRef = useRef(null);
-  // Centre-offset is measured against this container — the home view's
-  // outer column. Sidebar-aware: the orb lines up with the visual
-  // centre of what the user sees as "the new task screen", not the
-  // raw window centre.
   const homeRef = useRef(null);
   const centerOffsetX = useOrbCenterOffset(orbRef, homeRef);
 
-  // The orb container only TRANSLATES during boot — scale-down /
-  // scale-up live on the individual visual layers below so the user
-  // sees a clearly-visible solid dot during the travel phase
-  // (instead of a barely-perceptible scaled-down OrbitMorph). Layers:
-  //
-  //   1. BigThinking — the 64px thinking orb the surface boots into.
-  //      Fades + scales down during 'collapsing' so it visually
-  //      "shrinks into" the dot.
-  //   2. Dot — a small solid circle (10px). Fades in at the end of
-  //      'collapsing', stays visible through 'traveling' (so the
-  //      travel from centre → rest position has something for the
-  //      eye to follow), fades out during 'morphing'.
-  //   3. IdleOrb — the 42px idle/thinking stack the home view ends
-  //      on. Fades in + scales up from the dot during 'morphing'.
+  // Translate the container and scale separate visual layers; a solid travel dot stays visible
+  // where a shrunken orb would not.
   const isCentered = phase === 'loading' || phase === 'collapsing';
   const isEarlyBoot = phase === 'loading' || phase === 'collapsing' || phase === 'traveling';
 
@@ -355,10 +265,6 @@ export default function HomeView({
     || phase === 'settling' || phase === 'idle') ? 1 : 0;
   const idleLayerScale = idleLayerOpacity ? 1 : 0.18;
 
-  // Within the idle layer, crossfade between idle and thinking
-  // OrbitMorph instances based on runtime activity. Pre-morphing
-  // the idle layer is invisible anyway, so these only matter once
-  // we're past 'morphing'.
   const inIdleWithActivity = phase === 'idle' && wantsThinking;
   const idleOpacity      = inIdleWithActivity ? 0 : 1;
   const thinkingOpacity  = inIdleWithActivity ? 1 : 0;
@@ -385,23 +291,15 @@ export default function HomeView({
       }}
     >
       <h1 className="home-greeting-row" style={{
-        // Deliberate exception to the .s-* ladder. This is the home hero,
-        // and the ladder has no rung between s-h1 (28px) and s-display
-        // (44px): 28px is dwarfed by the 42px orb, and 44px wraps the
-        // greeting to two lines in the 640px column. So it sits at a
-        // bespoke 36px, balanced against the orb. Tracking is nearly
-        // neutral (-0.004em): relaxed alongside the .s-* ladder (which
-        // eased off its old Josefin-era values) — a long Inter sentence
-        // at this size reads airier and less cramped near 0.
+        // Use 36px between the type ladder’s 28px and 44px: it balances the 42px orb without
+        // wrapping the greeting.
         fontFamily: 'var(--font-display)',
         fontSize: 36, fontWeight: 600, letterSpacing: '-0.004em',
         color: 'var(--text-strong)',
         margin: '0 0 28px',
         width: '100%', maxWidth: 'var(--composer-max-width, 640px)',
-        // Always flex-start. The orb stays at its REST flow position
-        // (marginLeft: -58) and is moved visually via translateX
-        // during the boot phases — same DOM element throughout, no
-        // justifyContent snap to cover with a fade.
+        // Keep the rest position in flow and animate translation, avoiding layout snaps during
+        // boot.
         display: 'flex', alignItems: 'center', gap: 16,
         justifyContent: 'flex-start',
       }}>
@@ -412,20 +310,10 @@ export default function HomeView({
             position: 'relative',
             width: 42, height: 42,
             flexShrink: 0, marginLeft: -58,
-            // inline-flex (rather than inline-block) keeps the
-            // element out of the inline baseline-alignment system
-            // — under a transform, inline-block can shift a couple
-            // pixels relative to the surrounding text. The actual
-            // visual layers below are absolutely-positioned, so the
-            // alignItems/justifyContent on this container don't
-            // affect them; they're here for the OUTER vertical
-            // alignment with the greeting text.
+            // inline-flex avoids transformed inline-block baseline shifts against the greeting.
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            // Container only translates (left → centre during boot,
-            // back to rest during travel). All scale-up / scale-down
-            // visual work happens on the layers inside. Identity
-            // transform → 'none' so we don't create a stacking
-            // context when it isn't needed.
+            // Use none for zero translation to avoid an unnecessary stacking context; scale the
+            // inner layers independently.
             transform: (orbTranslateX === 0)
               ? 'none'
               : `translateX(${orbTranslateX}px)`,
@@ -451,11 +339,6 @@ export default function HomeView({
             <OrbitMorph size={64} state="thinking" />
           </span>
 
-          {/* 2) The dot. Solid accent circle, 10px. Visible during
-                 collapsing (fades in as the big orb shrinks),
-                 traveling (the eye follows it from centre to rest),
-                 and the start of morphing (fades out as the idle
-                 orb scales up over it). */}
           <span aria-hidden style={{
             position: 'absolute', top: '50%', left: '50%',
             width: 10, height: 10, borderRadius: '50%',
@@ -467,11 +350,6 @@ export default function HomeView({
             pointerEvents: 'none',
           }} />
 
-          {/* 3) Idle/thinking orb stack — the resting visual. Scales
-                 up from the dot during 'morphing' (so the dot
-                 visibly evolves into the orb), then stays at full
-                 size for typing → idle, with the existing
-                 idle/thinking activity crossfade. */}
           <span style={{
             position: 'absolute', top: '50%', left: '50%',
             width: 42, height: 42,
@@ -502,10 +380,6 @@ export default function HomeView({
         </span>
         {showText && (
           <span style={{
-            // The typed substring (or full text once we're past
-            // 'typing'). No caret — letters just appear next to the
-            // orb, one per tick. The wrapping span fades in subtly
-            // so the first character doesn't pop.
             opacity: 1,
             animation: phase === 'typing'
               ? 'boot-fadein 200ms ease-out both'
@@ -514,10 +388,6 @@ export default function HomeView({
         )}
       </h1>
 
-      {/* Composer + active list. Mounted from 'settling' onward; the
-          fade-in animation only plays on first mount (when phase
-          flips from morphing to settling). On 'idle' they're already
-          present at full opacity. */}
       {showInteractiveSurface && (
         <div style={{
           width: '100%',
@@ -587,22 +457,18 @@ export default function HomeView({
               sendsMeta
             />
           )}
-          {/* Everything below the composer lives in a zero-height wrapper:
-              the centered column lays out as if nothing is here, so the
-              greeting + composer never shift when pills swap for the
-              (taller) sample list or when active tasks appear. The content
-              overflows downward; the scroll container still reaches it
-              because descendant overflow extends the scrollable area. */}
+          {/*
+ * A zero-height wrapper keeps changing suggestions/tasks from shifting the centered composer.
+ * Visible descendant overflow remains scrollable.
+ */}
           <div style={{
             width: '100%', height: 0, overflow: 'visible',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
           }}>
-            {/* Samples only render when onPrefill exists — a sample click's
-                whole job is prefilling the composer, so without the callback
-                it would be a silent dead click (same gate the old
-                HomeSuggestions had). Hidden entirely in Coding Mode — the
-                slides/website/app-style prompt scaffolding these offer
-                doesn't apply to a Claude Code task. */}
+            {/*
+ * Show samples only with a prefill handler and outside Coding Mode, where their scaffolding does
+ * not apply.
+ */}
             {!blocked && !codingModeEnabled && (
               taskMode
                 ? (onPrefill && <TaskModeSamples mode={taskMode} onPick={onPrefill} />)

@@ -1,6 +1,4 @@
-// ENG-1533: home renders the same connect-a-provider card as chat, so its
-// "Start for free" is the same route to billing under the same trigger. Two
-// surfaces reaching one destination must not read as two different causes.
+// Home and Chat must emit the same billing trigger.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

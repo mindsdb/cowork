@@ -1,6 +1,4 @@
-// ENG-1304: the model-denial card offers "Switch to MindsHub Air" only when
-// the caller says Air is payable, and never echoes the server error string.
-// ENG-1638: it names the model exactly as the picker does — catalog label first.
+// Offer Air only when affordable, and prefer catalog labels over raw server model names.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

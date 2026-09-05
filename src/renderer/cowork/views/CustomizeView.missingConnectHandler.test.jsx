@@ -1,6 +1,4 @@
-// There's no in-page fallback left for "+ Connect" once onConnectNew is
-// omitted — a caller that forgets to wire it up gets a CTA that silently
-// does nothing. This pins the loud-failure behavior instead.
+// A missing connect handler must fail visibly instead of leaving a dead button.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
