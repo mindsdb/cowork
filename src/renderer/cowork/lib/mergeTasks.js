@@ -1,22 +1,10 @@
-// Pure task-merge semantics for fetchSessions reconciliation, extracted from
-// App.jsx so the rules are directly testable (ENG-1304, PR #580 review).
-// The invariants that matter:
-//   - local wins the live conversation surface while streaming
-//   - updatedAt takes the newer of (local, server) so a mid-stream refresh
-//     can't slide a just-revived task down the list (ENG-961)
-//   - the per-task model pin is client-only state (the server always returns
-//     model: null), so every merge path carries the local value
+// Keep live conversation content and client-only model pins when reconciling server snapshots.
 export function mergeTasksFromServer(serverTasks, localTasks) {
   const local = Array.isArray(localTasks) ? localTasks : [];
   if (!Array.isArray(serverTasks)) return local;
   const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. When a turn
-  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
-  // client updatedAt the instant the user sends, but the server's value
-  // only catches up once the turn's messages persist (the server derives
-  // updated_at from the latest message — ENG-961). Keeping the newer of
-  // the two stops a fetchSessions mid-stream from sliding the just-revived
-  // task back down the list before the server value lands.
+  // The server timestamp lags until messages persist; keep the newer local timestamp to avoid
+  // moving an active task down the list.
   const _newerUpdatedAt = (a, b) => {
     const aa = Date.parse(a || '') || 0;
     const bb = Date.parse(b || '') || 0;
@@ -36,11 +24,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     const hasLocalContent = lMessages.length > 0;
     const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
     if (!isStreaming && !hasLocalContent) {
-      // Even without live messages, prefer the locally-bumped
-      // updatedAt if it's newer — handleSendInTask stamps the task
-      // before any stream events arrive, so a fetchSessions that
-      // races between user-click-send and the first SSE event must
-      // not overwrite the bump.
+      // Keep the local timestamp bump even before the first SSE message arrives.
       return { ...server, model, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
     }
     if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {

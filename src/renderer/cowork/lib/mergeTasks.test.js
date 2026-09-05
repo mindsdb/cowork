@@ -1,6 +1,5 @@
-// ENG-1304 (PR #580 review): the per-task model pin is client-only state —
-// the server returns model: null on every conversation, so the merge must
-// carry the local value or a fetchSessions wipes the Switch-to-Air pin.
+// Keep the client-only task model pin when server conversations return model:null, or a list
+// refresh loses Switch-to-Air.
 import { describe, it, expect } from 'vitest';
 import { mergeTasksFromServer } from './mergeTasks';
 

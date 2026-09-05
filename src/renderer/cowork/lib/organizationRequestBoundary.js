@@ -15,11 +15,9 @@ function nonEmptyString(value) {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The server parses this header as a UUID and answers a malformed one with a
- * mandatory reload, so a value it cannot accept would reload, pin the same
- * value again, and reload again. Send nothing rather than something the
- * boundary must reject. Auth guarantees the id: `activate_organization` without
- * one is refused at the gateway before any request reaches cowork-server.
+ * The server requires a UUID and mandates reload for malformed values, which would otherwise cause
+ * a reload loop.
+ * Omit invalid ids; the auth gateway rejects an active-organization claim without its required id.
  */
 function organizationIdFromClaim(value) {
   let claim = value;
