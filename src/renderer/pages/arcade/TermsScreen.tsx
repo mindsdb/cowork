@@ -1,7 +1,3 @@
-// Terms consent, arcade edition. Same legal gate as before — full
-// documents one click away, explicit checkbox, same consent sentence —
-// only the framing changed (a retro "license agreement" dialog).
-
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArcadeShell } from './components';
@@ -10,12 +6,6 @@ import { TERMS_TEXT, PRIVACY_TEXT } from './legalText';
 
 type View = 'main' | 'terms' | 'privacy';
 
-/**
- * Accessible modal for the full legal documents. Owns its own focus
- * management (focus in on open, trap Tab within the dialog, Escape to
- * close, restore focus to the trigger on close) so the consent screen
- * stays simple and rule-of-hooks-safe.
- */
 export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClose: () => void }) {
   const isTerms = doc === 'terms';
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -28,7 +18,6 @@ export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClos
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
       if (e.key !== 'Tab') return;
-      // Trap Tab within the dialog's focusable elements.
       const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
@@ -102,10 +91,10 @@ export default function TermsScreen({ onAccept }: { onAccept: () => void }) {
             </button>
           </div>
 
-          {/* Not a <label>: the consent text embeds the Terms/Privacy
-              link buttons, and nested interactive elements make native
-              label→checkbox forwarding unreliable. The row itself
-              toggles via onClick; the links stopPropagation. */}
+          {/*
+ * Do not use a native label around interactive legal links; toggle the row explicitly and stop link
+ * propagation.
+ */}
           <div
             className="arc-check"
             onClick={() => setAccepted((a) => !a)}

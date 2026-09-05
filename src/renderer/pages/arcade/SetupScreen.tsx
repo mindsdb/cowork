@@ -1,8 +1,3 @@
-// Install/setup, arcade edition — "LOADING WORLD". Identical host
-// wiring to the old Setup page (startInstall + progress/log/done/error/
-// cancelled events); the steps render as a quest log with a chunky
-// progress bar and a green-phosphor console underneath.
-
 import { useState, useEffect, useRef } from 'react';
 import { host } from '../../platform/host';
 import { ArcadeShell, PixelProgress, Typewriter } from './components';
@@ -131,8 +126,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
 }
 
 function DoneScreen({ onComplete }: { onComplete: () => void }) {
-  // Linger long enough to read the payoff, then auto-advance — same
-  // pacing contract as the old Setup DoneScreen.
+  // Pause briefly on completion before advancing.
   useEffect(() => {
     const t = setTimeout(onComplete, 3200);
     return () => clearTimeout(t);

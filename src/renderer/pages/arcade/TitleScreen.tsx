@@ -1,13 +1,4 @@
-// Title screen — the first thing a brand-new user sees (plays only
-// until terms are accepted, then never again).
-//
-//   1. CRT power-on flash (700ms)
-//   2. "MINDSDB PRESENTS" typewriter
-//   3. COWORK logo + tagline + the cast walks on
-//   4. blinking PRESS ⏎ TO START
-//
-// Any click or Enter skips straight to the end state; a second
-// Enter/click advances. No forced sit-through.
+// First-run intro: click or Enter skips to the title; a second activation advances.
 
 import { useEffect, useState } from 'react';
 import { ArcadeShell, PressPrompt, Typewriter } from './components';
@@ -15,10 +6,7 @@ import { PixelSprite } from './sprites';
 
 type Stage = 'on' | 'presents' | 'title';
 
-// Rotating "hand it off" demos — one per category of work (inbox,
-// reports, calendar, CRM, automation) so consecutive examples never
-// repeat a theme. Format borrowed from the CLI: a YOU> ask, then a
-// terse past-tense receipt. Keep receipts to `✓ metric · dry aside`.
+// Keep demo receipts in the CLI form: ✓ metric · dry aside.
 const DEMOS: { ask: string; receipt: string }[] = [
   { ask: 'clear my inbox',                  receipt: '✓ 1,000 emails triaged · noise unsubscribed' },
   { ask: 'send the weekly sales report',    receipt: '✓ numbers pulled · sent · every Friday now' },
@@ -29,9 +17,7 @@ const DEMOS: { ask: string; receipt: string }[] = [
 
 const RECEIPT_HOLD_MS = 3400;
 
-/** Types the YOU> ask, pops the ✓ receipt, holds, then rotates.
-    (Typewriter itself honors prefers-reduced-motion — full text, no
-    crawl — so rotation still works for reduced-motion users.) */
+/** Reduced motion shows each ask immediately; demo rotation still continues. */
 function DemoTicker() {
   const [idx, setIdx] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -46,10 +32,8 @@ function DemoTicker() {
     return () => clearTimeout(t);
   }, [showReceipt]);
 
-  // Each line is centered individually — like the tagline above — so every
-  // frame is balanced no matter how short the ask. A hidden sizer reserves
-  // the finished ask's width (caret included) up front, so the line types
-  // left-to-right inside an already-centered slot with zero wobble.
+  // Reserve finished text width (including the caret) so centered typewriter lines do not shift
+  // while typing.
   return (
     <div
       aria-label={`${demo.ask} — ${demo.receipt}`}
@@ -93,10 +77,8 @@ export default function TitleScreen({ onComplete }: { onComplete: () => void }) 
     }
   }, [stage]);
 
-  // Click anywhere fast-forwards the intro beats to the title.
   const skipToTitle = () => setStage((s) => (s === 'title' ? s : 'title'));
 
-  // Enter (or Space/Esc) during the intro beats also fast-forwards.
   useEffect(() => {
     if (stage === 'title') return;
     const handler = (e: KeyboardEvent) => {
@@ -137,7 +119,6 @@ export default function TitleScreen({ onComplete }: { onComplete: () => void }) 
                 PUT AI AGENTS TO WORK.
               </div>
 
-              {/* Rotating "hand it off" work demos (CLI-style ask → receipt) */}
               <div className="arc-fade-in" style={{ marginTop: 26, animationDelay: '200ms', display: 'flex', justifyContent: 'center' }}>
                 <DemoTicker />
               </div>
