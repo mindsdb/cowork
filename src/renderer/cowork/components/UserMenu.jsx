@@ -1,25 +1,7 @@
 /**
- * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
- * placeholder), display name, and org, opening a dropdown with the account
- * destinations. Parity with the web console's user menu (ENG-1408).
- *
- * The primary actions are Settings, Billing & Usage, Members, Help & Feedback,
- * and Logout. Manage organization appears when the active organization has a
- * readable label. External destinations carry an ↗ hint so the jump out of the
- * app is telegraphed before the click.
- *
- * **The organization picker lives here rather than in the rail**, which is the
- * opposite of where the workspace selector ended up, and the two decisions are
- * the same decision. An organization is who is paying; a workspace is a
- * container inside it. The account menu is about identity, so the organization
- * belongs in it and the workspace does not, which is why the workspace picker
- * moved out to its own control above the New task CTA. The console puts its
- * organization selector in exactly this menu too.
- *
- * Switching costs more than a label: the active organization controls the
- * tenant that subsequent requests address. Desktop refreshes its session in
- * main; web refreshes Keycloak and reloads the renderer. That is why rows
- * disable while a switch is in flight and a refusal gets a written response.
+ * Organizations determine the tenant and payer; workspaces select resource scope within that
+ * organization.
+ * Switching tenants refreshes the session (desktop) or Keycloak and the renderer (web).
  */
 
 import { useRef, useState } from 'react';
@@ -52,14 +34,10 @@ import {
 
 const icon = (I) => <I size={14} strokeWidth={1.5} aria-hidden="true" />;
 
-// Right-aligned ↗ on items that leave the app for the OS browser.
 const EXTERNAL_HINT = <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />;
 const OPENS_IN_BROWSER = 'Opens in your browser';
 
-// `beforeOpen` runs just before the jump out, for the one destination that is
-// measured (ENG-1533). Per-item rather than inside this helper: Members and
-// Help & Feedback are not billing, and stamping them with a billing event to
-// save a parameter is how an event stops meaning its name.
+// Keep beforeOpen per destination so non-billing links cannot emit billing events.
 const externalItem = (Ico, label, url, beforeOpen) => ({
   icon: icon(Ico),
   label,
@@ -72,9 +50,6 @@ const externalItem = (Ico, label, url, beforeOpen) => ({
 });
 
 function Avatar({ user }) {
-  // Falls back to initials when the account has no picture claim — and when
-  // the picture URL fails to load (stale/blocked avatar hosts must not leave
-  // a broken-image glyph in the footer).
   const [imgFailed, setImgFailed] = useState(false);
   if (user.picture && !imgFailed) {
     return (
@@ -106,27 +81,14 @@ export function UserMenu({ user, onOpenSettings }) {
   const toastManager = useToastManager();
 
   const displayName = user.name || user.username || user.email;
-  // The listing wins over the token claim, because the claim carries no display
-  // name: a personal organization's claim name is the raw `personal_<userId>`,
-  // while Keycloak holds the label auth generated for it. `user.org` is the
-  // fallback for the moments the listing has not arrived, and it is already
-  // null rather than the raw slug.
-  //
-  // Both sides go through `organizationLabel`, so a personal organization reads
-  // `Personal` whether or not the listing has landed. Reading `displayName`
-  // directly here is what made the row paint `Personal` and then swap to auth's
-  // long `<email>'s organization` (ENG-2109).
+  // Prefer the listing's display label over the raw personal_<userId> claim.
+  // Normalize both paths with organizationLabel so Personal does not change after loading.
   const activeOrgName = organizationLabel(activeOrg) || user.org || null;
-  // The console heads its menu with the email; fall back to whatever else names
-  // the account so the header is never empty.
   const identity = user.email || user.username || user.name || null;
 
   const pick = async (organizationId) => {
     const result = await switchOrg(organizationId);
-    /**
-     * A possibly committed web switch reloads immediately. Do not paint an
-     * error into the old tenant while navigation is tearing that UI down.
-     */
+    /** Do not show an error in the old tenant when a possibly committed web switch is reloading. */
     if (result?.ok || result?.reloadRequired) return;
     toastManager.add({
       title: result?.error || 'We could not change organization. Please try again.',
@@ -141,11 +103,8 @@ export function UserMenu({ user, onOpenSettings }) {
   const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
 
   /**
-   * One row per organization, the active one checked. Shown for a single
-   * organization too, the way the console shows it: a checked row answers
-   * "which organization am I in" outright, where an absent section leaves the
-   * reader to infer it. The row is not a destination, and a second click during
-   * an in-flight switch would race the first tenant transition.
+   * Show even a single organization to identify the tenant; disable rows while switching to prevent
+   * races.
    */
   const listedOrgRows = orgs.map((org) => {
     const isActive = org.id === activeOrg?.id;
@@ -153,7 +112,6 @@ export function UserMenu({ user, onOpenSettings }) {
     return {
       id: `organization-${org.id}`,
       label,
-      // Long names truncate in the row, so hover carries the whole one.
       title: label,
       hint: isActive ? activeRowHint : undefined,
       disabled: isActive || switching,
@@ -162,10 +120,8 @@ export function UserMenu({ user, onOpenSettings }) {
   });
 
   /**
-   * The listing is asynchronous and can fail, and on desktop it is answered by
-   * a main process that may predate these channels. Name the organization the
-   * token claim already knows about rather than dropping the section, so the
-   * menu reads the same in every state and only the switch targets are missing.
+   * Fall back to the token label when the async listing fails or an older main process lacks these
+   * channels.
    */
   const claimOnlyOrgRow = activeOrgName ? [{
     id: 'organization-active',
@@ -183,12 +139,6 @@ export function UserMenu({ user, onOpenSettings }) {
   ] : [];
 
   const items = [
-    /**
-     * Identity header — who you are signed in as, matching the console. The
-     * organization is a separate fact with its own section below; letting it
-     * stand in for the account here meant a menu that never named the person
-     * and, when the organization could not be resolved, named nothing at all.
-     */
     identity && {
       id: 'identity',
       heading: (
@@ -203,20 +153,11 @@ export function UserMenu({ user, onOpenSettings }) {
     ...orgRows,
     { id: 'account-group', heading: sectionHeading('Account') },
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
-    // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
-    // went looking. It has to be recorded — it is a real route to the billing
-    // page, and a capped user who dismisses the card and uses the menu instead
-    // is otherwise invisible — but any upgrade-intent analysis must exclude it.
+    // Record voluntary billing navigation as nav so upgrade-intent analysis can exclude it.
     externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL, () => trackBillingOpened('nav')),
     externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
     externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
-    // Creating or leaving an organization is a full console flow, so the menu
-    // deep-links out rather than growing a second one that would open a
-    // browser anyway. Shown whenever there is an organization to manage.
     ...(activeOrgName ? [externalItem(Building2, 'Manage organization', MINDS_GENERAL_URL)] : []),
-    // Logout on both shells: Electron clears the refresh token + stored keys via
-    // the bridge; web ends the Keycloak browser session (host.logout()). Both
-    // funnel through useLogout() and the ConfirmModal below.
     { divider: true },
     { icon: icon(LogOut), label: 'Logout', danger: true, onClick: () => setLogoutConfirmOpen(true) },
   ];
@@ -228,15 +169,11 @@ export function UserMenu({ user, onOpenSettings }) {
       aria-haspopup="menu"
       aria-expanded={menuOpen}
       onClick={() => setMenuOpen((current) => !current)}
-      // Hover fill is a 6% ink mix (the .recent-item.is-selected treatment),
-      // not a surface token — the light sidebar sits at ~#F4F4F4, which is
-      // what --surface-2 and --stone-100 resolve to, so any absolute surface
-      // fill disappears there. Mixing against --ink stays visible on any
-      // background and brightens correctly in dark mode.
+      // Mix against ink: absolute surface tokens can equal the sidebar background and hide hover
+      // state.
       className="flex items-center gap-2 flex-1 min-w-0 px-2 py-1.5 rounded-lg border-0 bg-transparent cursor-pointer text-left font-[inherit] transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] [-webkit-app-region:no-drag]"
     >
-      {/* Keyed by the picture URL so a failed load doesn't stick to the
-          initials fallback after the account picture changes. */}
+      {/* Reset failed-image state when the picture URL changes. */}
       <Avatar key={user.picture || 'initials'} user={user} />
       <span className="min-w-0 flex-1 flex items-baseline gap-1.5 whitespace-nowrap">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink">{displayName}</span>
@@ -274,8 +211,6 @@ export function UserMenu({ user, onOpenSettings }) {
         cancelLabel="Cancel"
         destructive
         busy={loggingOut}
-        // Same as the settings Account section: dismissable while the
-        // platform finishes.
         dismissableWhileBusy
         note={waitNote}
         busyLabel="Signing out…"

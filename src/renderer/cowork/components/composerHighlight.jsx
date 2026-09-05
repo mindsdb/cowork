@@ -1,29 +1,15 @@
-// Source-mode highlight overlay for the composer textarea.
-//
-// The technique: a transparent `<textarea>` sits on top of a
-// pixel-aligned styled div that mirrors the textarea content with
-// inline-code chips, fence-body washes, and accent-coloured fence
-// markers. Selection and caret stay on the textarea (the only thing
-// you can see *through* the transparent text layer), so input, copy/
-// paste, undo, IME, screen readers, and a11y all work like a normal
-// textarea — we only add the visual chrome.
-//
-// CRITICAL constraint: nothing in this file (or its CSS hooks) is
-// allowed to change character widths. The overlay must wrap at exactly
-// the same points the textarea does. That means:
-//   - background-color, color, box-shadow: fine
-//   - padding, margin, border, font-weight, font-style: forbidden on
-//     anything that holds text (use box-shadow for chip borders, keep
-//     weight/style unchanged from the textarea).
-//   - The trailing-newline phantom is a `​` so text + overlay end
-//     at the same logical position when value ends with '\n'.
+// Mirror a transparent textarea with styled segments while retaining its native editing and
+// accessibility behavior.
+// Character widths must stay identical so both layers wrap together: use color, background and
+// box-shadow, never
+// text padding, margins, borders, font-weight or font-style. Use a trailing zero-width space when
+// text ends in a newline.
 
 import { parseFences } from './composerFences';
 
 /**
- * Walk `text` and split it into typed segments. Order and total length
- * exactly match `text` so the overlay aligns char-for-char with the
- * underlying textarea.
+ * Segment order and total length must exactly match the textarea text to preserve overlay
+ * alignment.
  */
 export function highlightSegments(text, mentionNames) {
   if (!text) return [];
@@ -39,20 +25,14 @@ export function highlightSegments(text, mentionNames) {
     if (f.isOpening && f.pairedWith) {
       const close = f.pairedWith;
       out.push({ kind: 'fence-marker', text: text.slice(f.char, f.end) });
-      // Body spans from end of opener line through the char right
-      // before the closer line. Includes the trailing \n after the
-      // opener and the \n before the closer so the visual wash covers
-      // both gutters.
+      // Include the newlines beside both fences so the body wash covers both gutters.
       out.push({ kind: 'fence-body', text: text.slice(f.end, close.char) });
       out.push({ kind: 'fence-marker', text: text.slice(close.char, close.end) });
       pos = close.end;
-      // Advance past the closer in the fences array.
       const closeIdx = fences.indexOf(close);
       i = closeIdx + 1;
     } else {
-      // Orphan opener with no matching close (or stray closer with no
-      // opener). Render the line as a marker; content beyond it stays
-      // plain.
+      // Unpaired fence lines remain markers; following content stays plain.
       out.push({ kind: 'fence-marker', text: text.slice(f.char, f.end) });
       pos = f.end;
       i += 1;
@@ -64,11 +44,6 @@ export function highlightSegments(text, mentionNames) {
   return out;
 }
 
-/**
- * Push a stretch of non-fenced text, breaking out single-backtick inline
- * spans into chip segments. The remaining prose is further split into
- * skill-mention segments by `_pushProse`.
- */
 function _pushPlain(out, text, mentionNames) {
   if (!text) return;
   const re = /`([^`\n]+)`/g;
@@ -87,11 +62,8 @@ function _pushPlain(out, text, mentionNames) {
 }
 
 /**
- * Split non-code prose into plain + 'slash-mention' segments. A mention is a
- * "/name" token at a word boundary whose name matches a known skill, so we
- * colour real mentions but never an arbitrary slash (a path, "and/or", etc.).
- * Segment text is preserved verbatim and in order so the overlay still aligns
- * char-for-char with the textarea.
+ * Highlight only known /skill names at word boundaries, avoiding paths and arbitrary slashes.
+ * Preserve all segment text verbatim for alignment.
  */
 function _pushProse(out, text, mentionNames) {
   if (!text) return;
@@ -116,11 +88,7 @@ function _pushProse(out, text, mentionNames) {
   }
 }
 
-/**
- * Render the styled overlay. Caller is responsible for sizing/font
- * via the wrapper class (see `.composer-textarea-overlay` in
- * globals.css) — this component only owns the segment tree.
- */
+/** The wrapper owns matching textarea sizing and font; this component renders the segments. */
 export function HighlightOverlay({ text, mentionNames }) {
   const segments = highlightSegments(text, mentionNames);
   return (
@@ -130,9 +98,7 @@ export function HighlightOverlay({ text, mentionNames }) {
           ? <span key={i}>{seg.text}</span>
           : <span key={i} className={`overlay-${seg.kind}`}>{seg.text}</span>
       ))}
-      {/* Phantom zero-width char ensures the overlay's last line matches
-          the textarea's empty-trailing-line height when the value ends
-          with a newline. */}
+      {/* Keep trailing-line height aligned with the textarea. */}
       {text && text.endsWith('\n') ? '​' : null}
     </>
   );

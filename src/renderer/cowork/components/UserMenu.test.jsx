@@ -17,11 +17,7 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
-/**
- * The menu reads a platform-neutral organization hook. Stubbing the hook keeps
- * every test below about the menu; Electron and web routing have their own
- * focused coverage.
- */
+/** Stub the platform-neutral organization hook; its Electron/web routing is covered separately. */
 const orgsMock = vi.hoisted(() => ({
   state: { orgs: [], activeOrg: null, activeOrgId: null, switching: false },
   switchOrg: vi.fn(async () => ({ ok: true })),
@@ -41,9 +37,7 @@ import {
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
 
-// `useToastManager` throws outside a provider, and the real tree always has
-// one (App wraps AppCore, and the sidebar is inside it). Wrapping here is the
-// honest fix; making the component tolerate a missing provider would not be.
+// Wrap in the Toast provider present in the real App tree.
 const renderMenu = (element) => render(<ToastProvider>{element}</ToastProvider>);
 
 const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
@@ -178,7 +172,6 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
-    // Confirm modal — nothing signed out yet.
     expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
     expect(hostMock.host.logout).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
@@ -186,10 +179,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   });
 });
 
-// ENG-1533: the menu is a real route to the billing page, so it emits
-// billing_opened — but as `nav`, which is not upgrade intent. Keeping it
-// separable is what stops a token_cap_hit -> billing_opened funnel counting
-// people who were only checking their usage.
+// Use billing trigger nav so voluntary usage checks remain distinguishable from upgrade intent.
 describe('UserMenu — billing route is measured as navigation (ENG-1533)', () => {
   it('records trigger=nav on Billing & Usage', () => {
     renderMenu(<UserMenu user={user} />);
@@ -210,14 +200,7 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
   );
 });
 
-/**
- * ── Which organization this install works in ──────────────────────
- *
- * The picker is here rather than in the rail because an organization is who
- * is paying, and the account menu is the identity surface. Switching also
- * changes the tenant subsequent requests address, which is why a refusal has
- * to say something rather than leaving a row that quietly did nothing.
- */
+/** Organization switching changes request tenancy; refused switches must be visible. */
 describe('UserMenu — organization picker', () => {
   const withOrgs = (orgs, active) => {
     orgsMock.state = {
@@ -229,10 +212,8 @@ describe('UserMenu — organization picker', () => {
   };
 
   it('names the active organization from the listing, not from the token claim', () => {
-    // A company organization is where the listing genuinely knows more than the
-    // claim: the claim carries no display name, so without the listing there is
-    // nothing to print. Kept on ACME rather than the personal organization,
-    // which is the one case where the listing's own label is the wrong one.
+    // Use a company fixture to test listing display names; personal organizations intentionally
+    // replace generated labels.
     withOrgs([ACME, PERSONAL], ACME);
     renderMenu(<UserMenu user={{ ...user, org: null }} />);
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent)
@@ -286,10 +267,8 @@ describe('UserMenu — organization picker', () => {
 
   it('still names the only organization, and leaves nothing to switch to', () => {
     /*
-     * The console shows the section for one organization too. A checked row
-     * answers "which organization am I in" outright, where an absent section
-     * leaves the reader to infer it from nothing. There is still no switch
-     * target, so the row is disabled.
+     * Keep the current organization visible for single-org accounts even though there is no switch
+     * target.
      */
     withOrgs([PERSONAL], PERSONAL);
     renderMenu(<UserMenu user={user} />);
@@ -301,10 +280,8 @@ describe('UserMenu — organization picker', () => {
 
   it('falls back to the claim organization when the listing never arrives', () => {
     /*
-     * Signed out, an older main process with no such channel, or a read still
-     * in flight all land here. The section still names the organization the
-     * token knows about, so only the switch targets are missing rather than
-     * the whole answer.
+     * When listing is unavailable, retain the token's organization label while omitting switch
+     * targets.
      */
     withOrgs([], null);
     renderMenu(<UserMenu user={user} />);

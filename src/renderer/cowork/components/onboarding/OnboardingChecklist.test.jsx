@@ -1,8 +1,5 @@
-// Dismissability contract for the sidebar checklist (ENG-1502): the card
-// closes at any time without spawning chats, and a done step can't start
-// duplicate chats on re-click.
-// Platform contract (ENG-1778): desktopOnly steps are hidden on web, and
-// the counts/completion follow the visible steps.
+// Dismissal must not create chats, completed steps must not duplicate them, and web counts must
+// exclude desktop-only steps.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

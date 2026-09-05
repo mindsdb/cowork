@@ -1,18 +1,7 @@
-// Composer fence-line parser. Pure functions, no React imports — so this
-// module is unit-testable on its own once a renderer test runner lands.
-//
-// Strict mode: only column-0 backtick fences. Supported runs are 3+
-// backticks; a closing fence must be at least as long as the opener it
-// pairs with (so a 4-backtick block can embed plain ``` as content
-// without prematurely closing).
-//
-// Deliberately NOT supported (yet — open issues if you need them):
-//   - Tilde fences (~~~). CommonMark allows; we don't.
-//   - Indented fences (1–3 leading spaces). CommonMark allows; we don't.
-//   - Info-string parsing beyond a single language tag. We grab the rest
-//     of the line as `lang` but `parseOpenerLine` (used by the auto-
-//     expand trigger) only accepts a clean [a-zA-Z0-9_+-] tag so weird
-//     inputs like "```python lots of stuff" don't trigger auto-expand.
+// Column-0 backtick fences only: open with 3+ backticks and close with at least the opener’s count.
+// Tilde and indented fences are unsupported.
+// The parser retains the full info string as lang; auto-expansion requires a single [a-zA-Z0-9_+-]
+// language tag.
 
 const OPEN_RE = /^(`{3,})([^\n]*)$/;
 const CLOSE_RE = /^(`{3,})\s*$/;
@@ -41,7 +30,6 @@ export function parseFences(text) {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (stack.length) {
-      // Inside a fence — only a matching-or-longer closer is special.
       const close = CLOSE_RE.exec(line);
       const opener = stack[stack.length - 1];
       if (close && close[1].length >= opener.len) {
@@ -56,7 +44,6 @@ export function parseFences(text) {
         fences.push(closer);
         stack.pop();
       }
-      // else: content line. Skipped — we only track fence lines.
     } else {
       const open = OPEN_RE.exec(line);
       if (open) {
@@ -77,23 +64,15 @@ export function parseFences(text) {
 }
 
 /**
- * Caret-vs-fence context. Returns the matched opener/closer and the
- * content-region bounds when `pos` sits anywhere inside a paired
- * block's content region, or null otherwise.
- *
- * The content region is: from the char right after the opener line's
- * trailing newline through the char right before the closer line's
- * leading newline. Caret on a fence LINE itself is NOT inside.
+ * Return a paired fence and content bounds for a caret inside its content, or null. Bounds exclude
+ * both fence lines
+ * and extend from after the opener’s newline to before the closer’s leading newline.
  */
 export function fenceCtxAt(text, pos) {
   return fenceCtxAtParsed(parseFences(text).fences, pos);
 }
 
-/**
- * Same as `fenceCtxAt` but accepts a pre-parsed fence list so callers
- * that have already invoked `parseFences(text)` once per value (e.g.
- * the composer's memoized fences) can reuse it instead of reparsing.
- */
+/** Reuse a parsed fence list when the caller already has one. */
 export function fenceCtxAtParsed(fences, pos) {
   for (const f of fences) {
     if (!f.isOpening || !f.pairedWith) continue;
@@ -109,21 +88,16 @@ export function fenceCtxAtParsed(fences, pos) {
 }
 
 /**
- * True when the parser's stack would be empty immediately BEFORE the
- * line that starts at `lineStart`. This is the auto-expand precondition
- * we care about: the line about to be typed isn't sitting inside or
- * closing a prior unbalanced fence. Correctly handles the rare edge
- * case of inserting a new ``` line ABOVE existing unbalanced fences.
+ * Check only preceding lines: future unbalanced fences must not prevent auto-expanding a new block
+ * above them.
  */
 export function stackEmptyBeforeLine(text, lineStart) {
   return parseFences(text.slice(0, lineStart)).unmatched.length === 0;
 }
 
 /**
- * Match a line that's eligible for auto-expansion as an opener.
- * Stricter than OPEN_RE — only a clean info-string of [a-zA-Z0-9_+-]
- * (no whitespace mid-string) so an arbitrary info string doesn't
- * trigger the trigger. Returns { len, lang } or null.
+ * Auto-expand only a clean single language tag matching [a-zA-Z0-9_+-]; return { len, lang } or
+ * null.
  */
 export function parseOpenerLine(line) {
   const m = /^(`{3,})([a-zA-Z0-9_+-]*)\s*$/.exec(line);

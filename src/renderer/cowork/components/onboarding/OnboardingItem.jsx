@@ -1,7 +1,5 @@
 import Ico from '../Icons';
 
-// Small rounded checkbox — hollow while pending, accent-filled with a tick
-// once the step is done.
 function Checkbox({ done }) {
   return (
     <span
@@ -20,9 +18,6 @@ function Checkbox({ done }) {
   );
 }
 
-// One checklist row. Pending: title + description shown. Done: title struck
-// through and muted, description collapsed — revealed again on hover. Hover
-// visuals live in CSS (`.onboarding-step-row`), not React state.
 export default function OnboardingItem({ step, done, onStart }) {
   return (
     <button
@@ -48,8 +43,6 @@ export default function OnboardingItem({ step, done, onStart }) {
         >
           {step.title}
         </span>
-        {/* Collapsible description: the 0fr→1fr grid row animates height
-            open/closed without hard-coding a pixel value. */}
         <span className="onboarding-step-desc">
           <span style={{ overflow: 'hidden', minHeight: 0 }}>
             <span style={{ display: 'block', fontSize: 12, lineHeight: 1.4, color: 'var(--frost-600)', marginTop: 2 }}>

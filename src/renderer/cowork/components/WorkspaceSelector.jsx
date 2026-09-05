@@ -1,27 +1,6 @@
-// `<WorkspaceSelector>` — the MindsHub workspace control at the top of the
-// sidebar, between the wordmark and the New task CTA.
-//
-// A **MindsHub Workspace** is an org-internal container that owns hub resources
-// (API keys, artifacts, model entitlements) and lives in the auth service. It is
-// not the working folder this app also calls a workspace, which is why
-// everything here is named `hubWorkspace`.
-//
-// **Why it is its own control and not a group inside the account menu.** It was
-// a group in there first, and two things were wrong with that. The current
-// workspace was invisible until you opened the menu, which is the opposite of
-// what a scope indicator is for. And the account menu is where the organization
-// selector lands, so two levels of the same hierarchy would have been nested
-// inside a menu that is about identity rather than scope. Both reference
-// consoles put the scope picker at the top of the rail, above the primary
-// action, and show the current value on the trigger.
-//
-// **It renders for a single workspace too.** There is nothing to switch to, but
-// "which workspace am I in" is worth answering on its own, and that question was
-// the reason this moved out of the account menu.
-//
-// No create entry: workspaces are created in the console, and the last row deep
-// links there rather than growing a second create flow that would have to open a
-// browser anyway.
+// hubWorkspace means an auth-service resource scope within an organization, distinct from the
+// working folder.
+// Show a single workspace too: the trigger identifies current scope. Creation stays in the console.
 
 import { ArrowUpRight, Check, ChevronDown, Settings2 } from 'lucide-react';
 import Menu from './ui/Menu';
@@ -31,8 +10,7 @@ import { tileLetter, tileStyle } from '../lib/letterTile';
 import { openExternal } from '../../platform/host';
 import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
 
-// The letter square. Colour is hashed from the id, not the name, so a rename
-// keeps the tile people recognise (see lib/letterTile).
+// Hash color by id so renaming preserves the tile.
 export function WorkspaceTile({ id, name, size = 18 }) {
   return (
     <span
@@ -56,16 +34,7 @@ export function WorkspaceSelector({ user }) {
     try {
       await switchWorkspace(workspaceId);
     } catch (err) {
-      // A written sentence rather than the error's own message: a refusal
-      // arrives as "API /hub/workspaces/active returned 403", which tells the
-      // reader nothing and reads like a crash. Nothing is applied
-      // optimistically, so without this a refused switch looks like a dead
-      // menu item.
-      //
-      // 409 gets its own sentence because it is the one refusal retrying cannot
-      // fix. The server distinguishes "archived" from every other failure on
-      // purpose, so collapsing it into "try again" would send someone round a
-      // loop that has no exit.
+      // 409 means archived: retry cannot fix it. Other refusals get a readable retry message.
       toastManager.add({
         title:
           err?.status === 409
@@ -79,15 +48,7 @@ export function WorkspaceSelector({ user }) {
   const active =
     workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
-  // Nothing to show until the gate is on and the hub answered. Rendering a
-  // placeholder row would reserve space in the rail for a control that may
-  // never appear, which reads as a layout bug on every launch.
-  //
-  // `reachable` is checked rather than inferred from an empty list. The server
-  // does send both, and today an unreachable read also carries no rows, so
-  // leaning on that would pass every test while resting on a coincidence: the
-  // moment a partial answer arrives, the control would name a workspace nobody
-  // confirmed.
+  // Require reachable explicitly; a partial workspace list does not confirm current scope.
   if (!enabled || !reachable || !active) return null;
 
   const activeName = workspaceName(active);
@@ -108,24 +69,12 @@ export function WorkspaceSelector({ user }) {
         id: `workspace-${workspace.id}`,
         icon: <WorkspaceTile id={workspace.id} name={name} />,
         label: name,
-        // Long names truncate in the row, so hover carries the full one. Only
-        // that: a title is the accessible DESCRIPTION, not the state, so it
-        // cannot be what tells assistive tech which row you are on.
         title: name,
-        // That job is `aria-current`. Without it the only cue on the active row
-        // is `aria-disabled`, which announces as "dimmed" and reads as
-        // unavailable rather than as "you are here". The tick is decorative and
-        // the label is the accessible name, so this is the one place the state
-        // can live where a screen reader will reach it.
+        // aria-current announces active scope; title is only a description and disabled only means
+        // unavailable.
         aria: isActive ? { 'aria-current': 'true' } : undefined,
-        // The trigger already names the active workspace, but both reference
-        // consoles mark it in the list too, and without it the only visible
-        // signal is the row being disabled. lucide marks its own icons
-        // `aria-hidden` when no other a11y prop is passed, so there is nothing
-        // to add here.
         hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
-        // The active row is not a destination, and a second click during an
-        // in-flight switch would race the first.
+        // Disable during switching to prevent competing scope transitions.
         disabled: isActive || switching,
         onClick: isActive ? undefined : () => pick(workspace.id),
       };
@@ -146,8 +95,7 @@ export function WorkspaceSelector({ user }) {
       type="button"
       data-workspace-selector
       aria-label={`Workspace: ${activeName}`}
-      // Bordered and surface-filled so it reads as a control rather than a
-      // heading. `no-drag` because the whole window is a drag region.
+      // no-drag is required because the surrounding window is a drag region.
       className="w-full flex items-center gap-2 h-9 px-2.5 rounded-lg border border-solid border-line bg-surface text-left cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] [-webkit-app-region:no-drag]"
     >
       <WorkspaceTile id={active.id} name={activeName} />
