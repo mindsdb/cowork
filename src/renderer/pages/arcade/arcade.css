@@ -1,14 +1,6 @@
-/* ────────────────────────────────────────────────────────────────────
-   ARCADE — the 8-bit onboarding design system.
+/* Arcade onboarding owns its palette and arc- namespace independently of the app theme. */
 
-   Self-contained palette: the pre-app flow is a "game boot" and always
-   renders on a dark CRT regardless of the app theme the user lands in
-   afterwards. Everything here is namespaced `arc-` so it can't collide
-   with styles.css / globals.css.
-   ──────────────────────────────────────────────────────────────────── */
-
-/* Palette lives on both the shell and the legal-viewer portal — the
-   portal mounts on <body>, outside .arc-root, so it can't inherit. */
+/* The legal viewer portals to body, so it needs the palette outside arc-root too. */
 .arc-root,
 .arc-legal-overlay {
   --arc-bg: #0a0a13;
@@ -25,12 +17,9 @@
   --arc-yellow: #fbbf24;
   --arc-red: #f87168;
   --arc-purple: #a78bfa;
-  /* Wordmark stripe pair (light/dark presets flip these). */
   --arc-logo-a: #ffffff;
   --arc-logo-b: #b9bdd4;
-  /* The page font — arcade mono by default; the standard presets
-     (midnight/daylight) override this with the app's Inter stack so
-     the preview/onboarding genuinely looks like the chosen theme. */
+  /* Standard presets replace arcade mono with the app font. */
   --arc-font: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
 }
 
@@ -50,14 +39,11 @@
   -webkit-user-select: none;
 }
 
-/* First loading/welcome screen: match the app's window background for the
-   current theme/skin (the body gf-theme bg) instead of the arcade backdrop,
-   and drop the CRT scanline/vignette overlay. */
+/* Welcome/loading follows the window theme without duplicating the arcade scanline overlay. */
 .arc-root.welcome-loading { background: transparent; }
 .arc-root.welcome-loading::before,
 .arc-root.welcome-loading::after { content: none; display: none; }
 
-/* CRT scanlines + vignette laid over everything, clicks pass through. */
 .arc-root::after {
   content: '';
   position: absolute;
@@ -75,7 +61,6 @@
     radial-gradient(115% 115% at 50% 50%, transparent 62%, rgba(0, 0, 0, 0.42) 100%);
 }
 
-/* Very subtle phosphor flicker on the whole tube. */
 .arc-root::before {
   content: '';
   position: absolute;
@@ -125,9 +110,9 @@
 .arc-hud-title {
   font-size: 26px;
   font-weight: 700;
-  text-transform: uppercase; /* arcade look; standard presets reset this */
+  text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-indent: 0.22em; /* optically recenter tracked text */
+  text-indent: 0.22em; /* Balance trailing letter spacing. */
   color: var(--arc-ink);
   text-shadow: 0 0 18px color-mix(in srgb, var(--arc-ink) 18%, transparent);
   white-space: nowrap;
@@ -174,9 +159,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* NOT justify-content:center — with overflow scrolling that clips the
-     top of tall content. Auto margins on the child center it when there
-     is room and degrade gracefully to scrollable when there isn't. */
+  /* Use child auto margins; justify-content:center would clip the top of overflowing content. */
   padding: 16px 28px 28px;
   overflow-y: auto;
 }
@@ -216,7 +199,6 @@
 
 .arc-press:focus-visible { outline: 2px dashed var(--arc-cyan); outline-offset: 4px; }
 
-/* Inert "LOCKED" prompt — no blink, no pointer, muted. */
 .arc-press-off {
   color: var(--arc-dim);
   cursor: not-allowed;
@@ -284,14 +266,10 @@
 .arc-btn-ghost:hover { color: var(--arc-ink); border-color: var(--arc-dim); }
 .arc-btn-ghost:focus-visible { outline: 2px dashed var(--arc-cyan); outline-offset: 3px; }
 
-/* Ghost button stacked directly under an .arc-btn (sign-in card): match the
-   primary's corner radius and height instead of the pill, so the pair reads
-   as one button group. */
 .arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 3px; padding: 11px 16px; }
 body[data-arcade-preset="midnight"] .arc-btn-ghost.arc-btn-ghost-stacked,
 body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 10px; }
 
-/* Plain inline "link" */
 .arc-link {
   font-family: inherit;
   font-size: 11.5px;
@@ -558,8 +536,7 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 
 .arc-cart:focus-visible { outline: none; }
 
-/* Corner brackets around the focused cartridge — drawn as a sibling
-   overlay so they sit OUTSIDE the card edge like the reference. */
+/* Place the focus brackets outside the card edge using a sibling overlay. */
 .arc-cart-wrap { position: relative; display: flex; }
 
 .arc-brackets {
@@ -591,10 +568,8 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 .arc-brackets span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
 .arc-brackets span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
 
-/* Locked-cartridge "nope" shake */
 .arc-cart.shake { animation: arc-shake 300ms steps(6); }
 
-/* Detail panel under the cartridges */
 .arc-cart-detail {
   width: 100%;
   max-width: 640px;
@@ -630,7 +605,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   line-height: 0;
 }
 
-/* faint horizontal stripes through sprites, like the reference */
 .arc-sprite::after {
   content: '';
   position: absolute;
@@ -647,7 +621,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 
 .arc-sprite svg { image-rendering: pixelated; }
 
-/* idle bob for hero sprites */
 .arc-bob { animation: arc-bob 1.6s steps(2, jump-none) infinite; }
 
 @keyframes arc-bob {
@@ -664,15 +637,12 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 .arc-title-logo {
   font-size: clamp(56px, 11vw, 96px);
   font-weight: 700;
-  /* The sibling rule below can be wider than the glyphs, stretching the
-     shared wrapper — without an explicit center the text hugs the left.
-     text-indent balances the trailing letter-space after the final K. */
+  /* Center explicitly because the rule can stretch the wrapper; text-indent balances trailing tracking. */
   text-align: center;
   text-indent: 0.06em;
   letter-spacing: 0.06em;
   color: var(--arc-ink);
   text-shadow: 0 0 34px color-mix(in srgb, var(--arc-ink) 22%, transparent);
-  /* phosphor stripes through the big glyphs */
   background: repeating-linear-gradient(
     to bottom,
     var(--arc-logo-a) 0px,
@@ -701,7 +671,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   color: var(--arc-cyan);
 }
 
-/* CRT power-on: vertical collapse + flash, classic tube. */
 .arc-crt-on {
   animation: arc-crt-on 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
@@ -735,8 +704,7 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   border-radius: 6px;
   padding: 10px 12px;
   text-align: left;
-  /* Opt back into text selection: .arc-root sets user-select:none, but
-     users need to copy/paste install errors from these logs (ENG-340). */
+  /* Allow selection of install errors despite arc-root's user-select:none. */
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -846,7 +814,6 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   word-break: break-word;
 }
 
-/* pixel checkbox */
 .arc-check {
   display: flex;
   align-items: flex-start;
@@ -908,12 +875,10 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
 .arc-stack { display: flex; flex-direction: column; align-items: center; }
 
 .arc-scroll-fade {
-  /* soften hard cut at stage overflow */
   scrollbar-width: thin;
   scrollbar-color: var(--arc-edge-2) transparent;
 }
 
-/* coin sparkle on success */
 @keyframes arc-pop {
   0% { transform: scale(0.2); opacity: 0; }
   60% { transform: scale(1.15); opacity: 1; }
@@ -926,12 +891,7 @@ body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { borde
   .arc-pop { animation: arc-fade-in 300ms ease both; }
 }
 
-/* ── Preset-themed onboarding ──────────────────────────────────────────
-   After CHOOSE YOUR DISPLAY, the remaining onboarding screens (POWER UP,
-   NOW LOADING) render in the chosen preset's palette. App.tsx stamps
-   body[data-arcade-preset] at selection time; ThemeSelect clears it on
-   mount so screens before/at the chooser keep the neutral CRT look.
-   ARCADE is the default palette above — no block needed. */
+/* App sets data-arcade-preset after selection; ThemeSelect clears it for the chooser. ARCADE is the default. */
 
 /* GAME BOY — 8-bit light (paper) */
 body[data-arcade-preset="gameboy"] .arc-root,
@@ -1013,17 +973,13 @@ body[data-arcade-preset="daylight"] .arc-root::after {
   background: radial-gradient(115% 115% at 50% 50%, transparent 72%, rgba(15, 16, 17, 0.07) 100%);
 }
 
-/* Standard presets: kill the phosphor flicker layer. */
 body[data-arcade-preset="midnight"] .arc-root::before,
 body[data-arcade-preset="daylight"] .arc-root::before {
   background: none;
   animation: none;
 }
 
-/* Standard presets: the full identity, not just colors. The chooser
-   (and POWER UP / NOW LOADING after it) should genuinely look like the
-   theme being picked — the app's Inter stack instead of arcade mono,
-   and soft rounded chrome instead of the chunky 3D cabinet buttons. */
+/* Standard presets use the full app font and shape tokens, not only their palette. */
 body[data-arcade-preset="midnight"] .arc-root,
 body[data-arcade-preset="midnight"] .arc-legal-overlay,
 body[data-arcade-preset="daylight"] .arc-root,
@@ -1031,9 +987,6 @@ body[data-arcade-preset="daylight"] .arc-legal-overlay {
   --arc-font: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Standard presets: buttons match the app's .btn.primary — an outlined
-   accent button with a soft glow, NOT the filled arcade cabinet button.
-   (globals.css → .btn / .btn.primary.) */
 body[data-arcade-preset="midnight"] .arc-btn,
 body[data-arcade-preset="daylight"] .arc-btn {
   display: inline-flex;
@@ -1078,9 +1031,7 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
   box-shadow: none;
 }
 
-/* Welcome orb caption — matches the app's hero greeting (home-greeting-row):
-   var(--font-display) at 36/600/-0.02em, sentence case. The 8-bit skin maps
-   --font-display to its mono face, so this tracks the greeting in every mode. */
+/* Use font-display so the caption follows the active skin's greeting font. */
 .arc-welcome-title {
   font-family: var(--font-display);
   font-weight: 600;
@@ -1090,9 +1041,6 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
   color: var(--arc-ink);
 }
 
-/* Standard presets: match the app's hero greeting (home-greeting-row in
-   HomeView): font-display, 36px, weight 600, tight tracking, sentence case —
-   no arcade tracking/glow. */
 body[data-arcade-preset="midnight"] .arc-hud-title,
 body[data-arcade-preset="daylight"] .arc-hud-title {
   font-family: var(--font-display);
@@ -1116,7 +1064,6 @@ body[data-arcade-preset="daylight"] .arc-cart {
   border-radius: 12px;
 }
 
-/* Light presets: flat page bg (no blue radial wash), softer chrome. */
 body[data-arcade-preset="gameboy"] .arc-root,
 body[data-arcade-preset="daylight"] .arc-root {
   background: var(--arc-bg);
@@ -1132,12 +1079,7 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
   box-shadow: 0 4px 0 0 rgba(15, 16, 17, 0.22);
 }
 
-/* Floating corner toggles (theme + 8-bit style) shown on the onboarding
-   pages only — CoworkApp hasn't mounted yet here, so there's no sidebar
-   footer to host them (that's where the in-app equivalent lives; see
-   Sidebar.jsx). Uses the app's shared design tokens, not the --arc-*
-   onboarding palette, so it doesn't clash once the user lands in the
-   real app. */
+/* Onboarding mounts before CoworkApp, so it owns separate corner toggles using the shared app tokens. */
 .arcade-theme-toggle {
   position: fixed;
   right: 18px;
@@ -1165,8 +1107,6 @@ body[data-theme="dark"] .arcade-theme-toggle:hover {
   box-shadow: 0 0 18px rgba(34,211,238,0.3);
 }
 
-/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
-   it in the corner. Lit accent while any non-default skin is active. */
 .arcade-skin-toggle {
   bottom: 54px;
 }
