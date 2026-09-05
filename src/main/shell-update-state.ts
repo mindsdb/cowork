@@ -60,10 +60,7 @@ function clearTransient(snapshot: ShellUpdateSnapshot): ShellUpdateSnapshot {
   return stable;
 }
 
-/**
- * Pure shell-update lifecycle. Unsupported events are deliberately ignored:
- * late electron-updater events must not rewind a newer state.
- */
+/** Ignore unsupported or late events so they cannot rewind a newer update state. */
 export function transitionShellUpdate(
   snapshot: ShellUpdateSnapshot,
   event: ShellUpdateEvent,

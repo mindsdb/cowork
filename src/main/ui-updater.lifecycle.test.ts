@@ -5,21 +5,16 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
 
-// Integration-style tests for the OTA cache LIFECYCLE — the serve-gate,
-// provenance, freshness, compat verification, and rollback orchestration that
-// the pure decisions (update-logic.test.ts) can't cover. Real fs on a temp
-// cache dir; everything else (electron, build channel, server + bundled
-// versions, network, tar) is mocked. `_verifiedCompatVersion` is module state,
-// so each test loads a fresh module via vi.resetModules().
+// Exercise real OTA filesystem lifecycle and tar extraction in a temporary cache; mock Electron,
+// versions and network.
+// Reload modules per case to reset compatibility-verification state.
 const h = vi.hoisted(() => ({
   userData: '',
   bundled: '2.26.7.6.1',
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
-  // Set to make fs.renameSync throw EPERM whenever the predicate returns true
-  // for a rename's SOURCE path (fake a Windows lock on a chosen swap step).
-  // Null = real rename, so every other test is unaffected.
+  // Inject EPERM by rename source; null preserves real filesystem behavior for other tests.
   shouldFailRename: null as ((from: string) => boolean) | null,
 }));
 
@@ -45,9 +40,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => h.userData, getVersion: () => h.bundled, isPackaged: true },
   BrowserWindow: class {},
 }));
-// Prod build → OTA enabled (otaUiEnabled is the real pure fn from update-logic).
-// buildKind()==='prod' keeps getCacheDir() on the historical userData path these
-// tests set up (non-prod channels relocate the cache under coworkHome()).
+// Use prod to enable real OTA policy and retain the historical userData cache path.
 vi.mock('./cowork-home', () => ({
   buildKindStrict: () => 'prod',
   buildKind: () => 'prod',
@@ -140,7 +133,7 @@ describe('serve gate (getRendererPath / isServingOta / getCachedVersion)', () =>
   it('does not serve a constrained cache until it has been verified this session', async () => {
     seedSlot('current', '2.26.7.13.1', '2.26.7.6.1');
     const ui = await loadUpdater();
-    expect(ui.isServingOta()).toBe(false); // fail-closed at boot
+    expect(ui.isServingOta()).toBe(false);
     expect(ui.getCachedVersion()).toBeNull();
   });
 });
@@ -158,7 +151,7 @@ describe('verifyServedUiCompat (serve-time re-enforcement)', () => {
 
   it('defers (keeps, never quarantines) a cache the running server is too old for', async () => {
     seedSlot('current', '2.26.7.13.1', '2.26.7.13.1');
-    h.server = '2.26.7.6.1'; // below the floor
+    h.server = '2.26.7.6.1';
     const ui = await loadUpdater();
     await expect(ui.verifyServedUiCompat()).resolves.toBe('deferred');
     expect(ui.isServingOta()).toBe(false);
@@ -169,7 +162,7 @@ describe('verifyServedUiCompat (serve-time re-enforcement)', () => {
 
   it('defers when the server version is unknown (never quarantines on a can’t-verify)', async () => {
     seedSlot('current', '2.26.7.13.1', '2.26.7.6.1');
-    h.server = null; // /health unreachable
+    h.server = null;
     const ui = await loadUpdater();
     await expect(ui.verifyServedUiCompat()).resolves.toBe('deferred');
     expect(ui.isServingOta()).toBe(false);
@@ -192,9 +185,7 @@ describe('rollbackUI (quarantine + provenance rotation)', () => {
 
     await ui.rollbackUI();
 
-    // The failed (current) version is quarantined so it isn't re-activated.
     expect(JSON.parse(fs.readFileSync(rejectedFile(), 'utf-8')).version).toBe('2.26.7.13.1');
-    // `previous` rotated into `current`, carrying its own meta.
     expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
     expect(ui.isServingOta()).toBe(true);
   });
@@ -224,7 +215,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
 
   it('activates a fresh constrained bundle AND opens the serve-gate in the same pass', async () => {
     stageManifest('2.26.7.13.1', '2.26.7.6.1');
-    h.server = '2.26.7.13.1'; // satisfies the floor (server-first coupling already ran)
+    h.server = '2.26.7.13.1';
     const ui = await loadUpdater();
 
     await expect(ui.applyUIUpdate()).resolves.toBe(true);
@@ -236,7 +227,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
 
   it('withholds a bundle whose floor the running server does not meet', async () => {
     stageManifest('2.26.7.13.1', '2.26.7.20.1');
-    h.server = '2.26.7.13.1'; // below the floor
+    h.server = '2.26.7.13.1';
     const ui = await loadUpdater();
 
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
@@ -244,19 +235,18 @@ describe('applyUIUpdate (apply-time gate)', () => {
   });
 
   it('does not re-activate the version already installed as the bundled renderer', async () => {
-    stageManifest('2.26.7.6.1'); // == bundled
+    stageManifest('2.26.7.6.1');
     const ui = await loadUpdater();
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
   });
 
-  // EPERM on staging→current AFTER current was moved aside is the torn state
-  // that would leave no UI slot on next boot; the swap must restore the prior
-  // bundle and decline cleanly rather than throw. (OTA sibling of ENG-1209.)
+  // If staging promotion fails after current moved aside, restore the prior bundle so the next boot
+  // retains a usable slot.
   it('recovers the prior slot when the final swap rename is locked (EPERM)', async () => {
     seedSlot('current', '2.26.7.10.1'); // prior good bundle, newer than bundled
     stageManifest('2.26.7.13.1', '2.26.7.6.1');
     h.server = '2.26.7.13.1';
-    h.shouldFailRename = (from) => from.includes(`${path.sep}staging`); // only staging → current
+    h.shouldFailRename = (from) => from.includes(`${path.sep}staging`);
     const ui = await loadUpdater();
 
     // Declines the update instead of propagating the EPERM…
@@ -266,25 +256,23 @@ describe('applyUIUpdate (apply-time gate)', () => {
     expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
   }, 15000); // permanent-fail path exhausts the retry backoff before recovering
 
-  // The recovery rename itself must be retried: a transient lock on `previous`
-  // must not be what leaves the app with no slot. Fail staging→current forever
-  // (to trigger recovery) and previous→current twice (to force recovery retries),
-  // then assert the prior slot is restored.
+  // Fail promotion permanently and restoration twice to prove recovery itself retries transient
+  // rename locks.
   it('retries the recovery rename until the transient lock on `previous` clears', async () => {
     seedSlot('current', '2.26.7.10.1');
     stageManifest('2.26.7.13.1', '2.26.7.6.1');
     h.server = '2.26.7.13.1';
     let prevTries = 0;
     h.shouldFailRename = (from) => {
-      if (from.includes(`${path.sep}staging`)) return true; // never activates
-      if (from.includes(`${path.sep}previous`)) return ++prevTries <= 2; // recovery clears on 3rd
+      if (from.includes(`${path.sep}staging`)) return true;
+      if (from.includes(`${path.sep}previous`)) return ++prevTries <= 2;
       return false;
     };
     const ui = await loadUpdater();
 
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
     expect(prevTries).toBe(3); // recovery rename went through retryOnTransientLock
-    expect(ui.getCachedVersion()).toBe('2.26.7.10.1'); // prior slot restored
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
   }, 15000);
 });
 
@@ -298,7 +286,7 @@ describe('bundled-version misconfiguration guard', () => {
     const ui = await loadUpdater();
 
     await ui.checkForUIUpdate();
-    await ui.applyUIUpdate(); // second entry point — must not warn again (one-shot)
+    await ui.applyUIUpdate();
 
     const hits = warn.mock.calls.filter((c) => String(c[0]).includes('not CalVer'));
     expect(hits).toHaveLength(1);

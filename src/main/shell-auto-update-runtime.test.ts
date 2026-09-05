@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The runtime imports server-process (withServerMaintenance), which pulls in
-// credential-provisioning → keychain-service → the native `keytar` module at
-// load time. keytar needs libsecret on Linux CI, which isn't installed; this
-// test only exercises the pure reconcileDownloadedTarget helper, so stub the
-// credential layer to keep the import graph off keytar (mirrors
-// server-process.test.ts).
+// Mock the credential import chain so this pure reconciliation test does not require native
+// keytar/libsecret on Linux CI.
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));

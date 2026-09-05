@@ -12,29 +12,17 @@ import { retryOnTransientLock } from './fs-retry';
 
 export type { UIManifest };
 
-// Cache-metadata schema. Bumping this invalidates every prior cache slot
-// (readSlotVersion returns null), which is exactly what we want if the on-disk
-// format ever changes — a legacy slot must never be served blindly. Bumped to
-// 2 when the slot began persisting `minServerVersion`, so slot-1 caches (which
-// carried no floor) are re-derived rather than served without their constraint.
+// Bump the cache schema when slot metadata changes so legacy caches are re-derived with their
+// constraints.
 const CACHE_META_SCHEMA = 2;
 
-// The exact slot VERSION whose server-compat floor has been verified satisfied
-// this session — either at apply time (against the just-updated server) or by
-// verifyServedUiCompat() after boot. A constrained slot is served only when its
-// version matches this. Tracking the version (not a global boolean) means the
-// gate can't leak across a slot rotation and opens for the precise slot that
-// passed. null = nothing verified yet (fail-closed: a constrained slot at boot
-// serves bundled until proven compatible).
+// Authorize compatibility for an exact slot version, never a global flag that could survive slot
+// rotation.
+// Constrained slots serve bundled UI until verified this session.
 let _verifiedCompatVersion: string | null = null;
 
-// Serialize the cache-slot shuffle. activateStaged and rollbackUI both moved
-// from sync to async (retry backoff), so the current/previous/staging rename
-// dance is no longer atomic w.r.t. the event loop and the two paths could
-// interleave — e.g. a boot-time rollback still retrying a locked `current`
-// while the update poll starts an activate on the same dirs. This promise chain
-// forces every shuffle to run to completion before the next begins. A rejection
-// never breaks the chain (the next op still runs).
+// Serialize async cache shuffles so activation and rollback cannot interleave. A failed shuffle
+// must not break the queue.
 let _swapChain: Promise<unknown> = Promise.resolve();
 function serializeSwap<T>(fn: () => Promise<T>): Promise<T> {
   const run = _swapChain.then(fn, fn);
@@ -42,12 +30,7 @@ function serializeSwap<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-// Whether UI OTA hot-updates run in this build. Gated by build channel + env
-// (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
-// releases, OFF for preview/stable (staging) and dev so testers keep the
-// branch-under-test bundled UI. Resolved per-call (cheap) so an env override
-// can flip it without a rebuild; fails safe to OFF if the build kind is
-// unreadable.
+// Enable OTA only for eligible channel/env settings; unreadable identity disables it.
 function otaEnabled(): boolean {
   // buildKindStrict() returns null (never prod) for a missing/malformed build
   // kind, so a mispackaged build can't accidentally enable production OTA.
@@ -56,15 +39,8 @@ function otaEnabled(): boolean {
   return otaUiEnabled({ buildKind: kind, envOverride: process.env.OTA_UI });
 }
 
-// One-shot guard against a silent, feature-killing misconfiguration: OTA is
-// enabled but the app-bundled version isn't CalVer (e.g. a build that shipped
-// without a CalVer BUILD_APP_VERSION baked, so getAppDisplayVersion falls back
-// to the package.json SemVer). The freshness gate (otaCacheIsFresh) compares the
-// cache against that version, so a non-CalVer bundled version makes EVERY update
-// fail the "strictly newer than bundled" check — OTA reports success but serves
-// nothing, with no other signal. Warn loudly once so it's diagnosable in the
-// field instead of invisible. Fires only when OTA is on (so it's prod-scoped by
-// construction), from the update entry points.
+// Warn once if OTA is enabled without a bundled CalVer; otherwise every freshness comparison can
+// silently reject updates.
 let _warnedBundledNotCalVer = false;
 function warnIfBundledVersionNotCalVer(): void {
   if (_warnedBundledNotCalVer) return;
@@ -81,12 +57,7 @@ function warnIfBundledVersionNotCalVer(): void {
 // Where we read latest.json from — GitHub Pages, no API rate limits.
 const DEFAULT_MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
-// QA / staging-dogfood seam: COWORK_OTA_MANIFEST_URL repoints the OTA client at
-// a non-prod manifest host (e.g. a local fixture server), so the full
-// check/apply/rollback lifecycle can be exercised without publishing to the
-// real prod manifest. Never set in a shipped prod build. A plaintext http://
-// override is honoured only for loopback (see httpsGet), so a leaked or tampered
-// value can't silently downgrade prod OTA to a cleartext remote fetch.
+// QA can override the manifest URL; plaintext HTTP is allowed only for loopback fixtures.
 function getManifestUrl(): string {
   return (process.env.COWORK_OTA_MANIFEST_URL || '').trim() || DEFAULT_MANIFEST_URL;
 }
@@ -191,22 +162,18 @@ export function getRendererPath(): string {
   return isServingOta() ? path.join(getCurrentDir(), 'index.html') : getBundledRendererPath();
 }
 
-/** True when getRendererPath() would serve an activated OTA bundle. The bundle
- *  is only served when ALL hold: OTA is enabled for this build channel; the
- *  `current` slot carries valid provenance; its index.html exists; and its
- *  version is genuinely newer than the app-bundled renderer (so a fresh
- *  install, a shell upgrade, or a legacy pre-gate cache can never downgrade the
- *  UI). Otherwise we fall back to the always-safe bundled renderer. */
+/**
+ * Serve OTA only when enabled, valid, present and newer than the bundled renderer; otherwise use
+ * bundled.
+ */
 export function isServingOta(): boolean {
   if (!otaEnabled()) return false;
   const meta = readSlotMeta(getCurrentDir());
   if (!meta) return false;
   if (!fs.existsSync(path.join(getCurrentDir(), 'index.html'))) return false;
   if (!otaCacheIsFresh(meta.version, getAppDisplayVersion())) return false;
-  // Fail closed: a cache with a persisted server-compat floor is served only
-  // once THIS slot's version has been verified against the running server (at
-  // apply time or by verifyServedUiCompat). At boot the server may not be up
-  // yet, so a constrained cache serves bundled until proven safe.
+  // Verify this exact constrained slot against the running server before serving it; boot defaults
+  // to bundled.
   if (meta.minServerVersion && _verifiedCompatVersion !== meta.version) return false;
   return true;
 }
@@ -310,11 +277,10 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   return true;
 }
 
-/** Activate a staged bundle: current → previous, staging → current.
- *  The rm/rename steps race Windows locks (renderer/AV holding a file), so each
- *  retries. And the swap is multi-step: if `staging → current` fails after
- *  `current` was moved aside, the app would be left with NO active slot — so on
- *  a mid-swap failure we put `current` back before rethrowing. */
+/**
+ * Swap current→previous and staging→current with lock retries. Restore current if the second rename
+ * fails.
+ */
 async function activateStaged(version: string, minServerVersion?: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
@@ -348,10 +314,7 @@ async function activateStaged(version: string, minServerVersion?: string): Promi
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
-/** Reason to withhold this UI bundle for server-compat, or null if OK to apply.
- *  A safety net on top of the server-first update coupling: reads the running
- *  server version once from /health and delegates the (CalVer) decision to the
- *  pure helper. No constraint / unknown server never blocks. */
+/** Check the declared server floor; an unknown or incompatible server withholds constrained UI. */
 async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
   if (!manifest.minServerVersion) return null;
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
@@ -361,8 +324,8 @@ async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
 }
 
 /**
- * Check for UI updates. If a new version is available, downloads and
- * stages it but does NOT activate (caller decides when to activate).
+ * Check whether a compatible newer UI bundle is available; download and activation happen
+ * separately.
  */
 export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   if (!otaEnabled()) {
@@ -386,10 +349,8 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   }
   if (rejected) clearRejectedVersion(); // manifest moved on — retry allowed
 
-  // Announce only a bundle strictly newer than the effective installed UI (the
-  // newest of the app-bundled renderer and the raw current cache). This stops a
-  // fresh install re-downloading the version it already ships, and blocks a
-  // regressed manifest from downgrading a newer cache.
+  // Require a version newer than both bundled and cached UI to avoid redundant downloads or
+  // downgrade.
   if (!uiUpdateIsNewer(manifest.version, getAppDisplayVersion(), readSlotVersion(getCurrentDir()))) {
     return { updateAvailable: false, applied: false };
   }
@@ -401,14 +362,8 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
 }
 
 /**
- * Download, verify, stage, and activate a UI update in one shot.
- * Returns true if the update was applied successfully.
- *
- * Single-flighted: both the manual apply (UI_UPDATE_APPLY) and the boot/poll
- * reach here, and downloadAndStage's `rmDir(staging)` + extract runs outside the
- * swap chain — so without this two runs could overlap on the staging dir (one
- * extracting while the other renames staging→current). Concurrent callers share
- * the one in-flight run.
+ * Single-flight download/stage/activation so concurrent calls cannot extract and rename the same
+ * staging directory.
  */
 let _applyInFlight: Promise<boolean> | null = null;
 export function applyUIUpdate(): Promise<boolean> {
@@ -454,12 +409,10 @@ async function runApplyUIUpdate(): Promise<boolean> {
   return true;
 }
 
-/** Roll back the active OTA bundle: quarantine the version we're leaving (so it
- *  isn't re-activated), restore the previous slot if there is one, else fall
- *  through to the bundled renderer. Provenance travels with each slot, so
- *  getCachedVersion() reflects the restored state. The quarantine is recorded
- *  synchronously (before the first await), so a fire-and-forget caller is safe;
- *  the rm/rename retry the same Windows locks activateStaged guards. */
+/**
+ * Quarantine synchronously, then restore the previous slot or bundled UI with lock retries.
+ * Synchronous quarantine makes fire-and-forget rollback safe.
+ */
 export async function rollbackUI(): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
@@ -478,18 +431,11 @@ export async function rollbackUI(): Promise<void> {
   });
 }
 
-/** Re-verify the currently-active OTA slot against the running server and open
- *  the serve-gate for its version if compatible. Called AFTER the updater's
- *  server-update/recovery pass, so a server that needed upgrading to satisfy the
- *  floor has already been brought current.
- *
- *  Never rolls back or quarantines here: an incompatible or unverifiable slot is
- *  merely *deferred* (bundled wins this session, the slot is kept intact) — a
- *  transient old/down server must not permanently reject an otherwise-valid
- *  cache. Quarantine is reserved for an actual renderer-load failure.
- *   - 'none'     — OTA off or no valid slot
- *   - 'verified' — slot satisfies the floor; gate opened for its version
- *   - 'deferred' — incompatible or unverifiable; serve bundled, keep the slot */
+/**
+ * After server updates, verify the exact active slot and return none, verified or deferred.
+ * Defer incompatible/unknown versions without deleting the slot; only a real renderer-load failure
+ * quarantines it.
+ */
 export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'deferred'> {
   if (!otaEnabled()) return 'none';
   const meta = readSlotMeta(getCurrentDir());

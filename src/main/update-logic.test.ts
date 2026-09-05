@@ -101,10 +101,8 @@ describe('parseLsRemote', () => {
   const sha2 = '2222222222222222222222222222222222222222';
 
   it('prefers the heads/ match over a non-matching earlier line', () => {
-    // Classic ls-remote shape: HEAD first, then the branch ref. The heads/
-    // line must win over the positional first line. (Matching is substring —
-    // fine in practice because `git ls-remote repo <ref>` already filters to
-    // exact ref-component matches, so `main-archive` can't appear here.)
+    // HEAD can precede the requested branch; select the matching heads ref. ls-remote already
+    // filters ref components.
     const stdout = `${sha1}\tHEAD\n${sha2}\trefs/heads/main\n`;
     expect(parseLsRemote(stdout, 'main')).toBe(sha2);
   });
@@ -372,9 +370,8 @@ describe('looksLikeBrokenInstall', () => {
   });
 
   it('does NOT match a runtime/data failure that a reinstall cannot fix', () => {
-    // An Alembic "database ahead" trace — note it contains benign frames like
-    // `<frozen importlib._bootstrap>`, which must NOT be mistaken for an import
-    // failure (that false positive is exactly what caused the bad reinstall).
+    // Alembic traces contain importlib frames without being import failures; they must not trigger
+    // reinstall.
     const migration = [
       '  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed',
       '  File ".../alembic/script/revision.py", line 637, in _revision_for_ident',
@@ -456,11 +453,9 @@ describe('otaUiEnabled', () => {
   });
 
   it('lets an explicit env override win over the build kind (both directions)', () => {
-    // Force ON even on a non-prod build...
     for (const v of ['on', 'enable', '1', 'true', 'TRUE', ' On ']) {
       expect(otaUiEnabled({ buildKind: 'stable', envOverride: v })).toBe(true);
     }
-    // ...and force OFF even on prod.
     for (const v of ['off', 'disable', '0', 'false', 'FALSE', ' Off ']) {
       expect(otaUiEnabled({ buildKind: 'prod', envOverride: v })).toBe(false);
     }
@@ -476,8 +471,8 @@ describe('otaUiEnabled', () => {
 describe('otaCacheIsFresh', () => {
   it('serves the cache only when it is strictly newer than the bundled renderer', () => {
     expect(otaCacheIsFresh('2.26.7.13.1', '2.26.7.6.1')).toBe(true);
-    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.13.1')).toBe(false); // older cache → bundled wins
-    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.6.1')).toBe(false); // equal → bundled wins
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.13.1')).toBe(false);
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.6.1')).toBe(false);
   });
 
   it('compares on the CalVer date, not the raw string (git-describe suffix ok)', () => {
@@ -494,13 +489,9 @@ describe('otaCacheIsFresh', () => {
 
 describe('uiUpdateIsNewer', () => {
   it('only when strictly newer than the newest of bundled + current cache', () => {
-    // Newer than both → yes.
     expect(uiUpdateIsNewer('2.26.7.20.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(true);
-    // Equal to the effective installed → no (the fresh-install re-download loop).
     expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', null)).toBe(false);
-    // Older than the current cache → no (blocks a regressed-manifest downgrade).
     expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(false);
-    // Newer than bundled but there's no cache yet → yes.
     expect(uiUpdateIsNewer('2.26.7.13.1', '2.26.7.6.1', null)).toBe(true);
   });
 
@@ -713,7 +704,7 @@ describe('parseAntonConstraint', () => {
 describe('satisfiesAntonConstraint', () => {
   it('honors the real ENG-1094 range (<3,>=2.26.6.30.1)', () => {
     const c = '<3,>=2.26.6.30.1';
-    expect(satisfiesAntonConstraint('2.26.7.27.2', c)).toBe(true);  // the fix
+    expect(satisfiesAntonConstraint('2.26.7.27.2', c)).toBe(true);
     expect(satisfiesAntonConstraint('2.26.6.30.1', c)).toBe(true);  // lower bound inclusive
     expect(satisfiesAntonConstraint('2.26.6.30.0', c)).toBe(false); // below floor
     expect(satisfiesAntonConstraint('3.0.0', c)).toBe(false);       // hits the <3 ceiling
@@ -765,7 +756,7 @@ describe('selectLatestConstrainedPypiVersion', () => {
   const releases = {
     '2.26.6.30.1': files,
     '2.26.7.27.1': files,
-    '2.26.7.27.2': files,     // the ENG-1081 fix
+    '2.26.7.27.2': files,
     '2.26.7.28.1rc1': files,  // a pre-release
     '3.0.0': files,           // a next-major, outside cowork-server's <3
   };
