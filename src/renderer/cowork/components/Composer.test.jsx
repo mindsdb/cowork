@@ -1,7 +1,4 @@
-// Regression for ENG-992: the project menu's "+ New project" row (empty
-// search) used to only focus the search input — visually nothing happened.
-// It must open the "Start a new project" modal, and a create from that
-// modal must select the new project on the composer.
+// The empty-search New project row must open the creation modal and select its result.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -19,13 +16,8 @@ vi.mock('../api', async (importOriginal) => {
   };
 });
 
-// The coding-mode harness pill only renders on desktop (`!host.isWeb`) —
-// jsdom's default host reads as web, which would hide it from every test
-// in this file. Only the "Model Router" harness-switch test below
-// exercises it; everything else (api.js's getApiOrigin() at import time,
-// etc.) keeps the real host.
-// Spread the real modules and override only what these tests assert on, so a
-// new export never has to be added here to keep the file importable.
+// Override only desktop detection for harness tests; spread the real modules so unrelated mount
+// dependencies remain available.
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
@@ -61,10 +53,7 @@ const renderComposer = (overrides = {}) => {
 };
 
 const openNewProjectModal = async (user) => {
-  // Query by the stable aria-label rather than DOM position/order — the
-  // model picker moved into the composer toolbar (ENG-1656), ahead of the
-  // project pill in document order, so "first .meta-pill" no longer means
-  // "the project pill".
+  // Query the stable aria-label; toolbar reordering changes which meta-pill appears first.
   await user.click(screen.getByRole('button', { name: 'Choose project' }));
   await user.click(screen.getByRole('button', { name: /new project/i }));
   return screen.findByText('Start a new project');
@@ -111,15 +100,8 @@ describe('Composer — prefill selection (ENG-1137)', () => {
   });
 });
 
-// ─── Model picker (ENG-1656) ─────────────────────────────────────────
-//
-// Section/tag/icon grouping logic itself is <ModelSelect>'s job now (see
-// ModelSelect.test.jsx and lib/modelCatalog.test.js) — the composer just
-// wires its own model state to it. These tests cover that wiring: the
-// picker is reachable by its stable aria-label regardless of layout, a
-// pick round-trips through onModelChange in the {id, name} shape callers
-// expect, and modelReadOnly falls back to a fixed label (ChatView's
-// "model is fixed once a task starts" behavior).
+// Test Composer-to-ModelSelect wiring and its {id,name} callback contract; grouping belongs to
+// ModelSelect/modelCatalog tests.
 
 const MODEL_META = {
   modelProviders: { mindshub_air: 'anthropic', sonnet: 'anthropic', kimi: 'moonshot' },
@@ -150,9 +132,7 @@ describe('Composer — model picker (ENG-1656)', () => {
   });
 
   it('re-checks wallet availability when the picker opens, once per window', async () => {
-    // Parity with the Settings picker: without this, a user who hits "Add
-    // credits" (external browser), tops up and returns finds the model
-    // still greyed until they visit Settings or restart.
+    // Reopening after top-up must refresh affordability without a Settings visit or restart.
     const user = userEvent.setup();
     const onRefresh = vi.fn(async () => {});
     renderComposer({
@@ -162,17 +142,15 @@ describe('Composer — model picker (ENG-1656)', () => {
     });
 
     const trigger = screen.getByRole('combobox', { name: 'Choose model' });
-    await user.click(trigger); // open
+    await user.click(trigger);
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    await user.click(trigger); // close
-    await user.click(trigger); // reopen inside the freshness window
+    await user.click(trigger);
+    await user.click(trigger);
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
-  // The bug this closes: a free user could pick a model the wallet can't pay
-  // for, and the turn then ran a different, affordable model, because
-  // resolution substitutes a pin it knows the gateway will deny. So the answer
-  // came from one model while the picker named another.
+  // Reject unaffordable picks so the selected label cannot misrepresent a different model
+  // substituted at execution.
   it('offers a needs-credits model as a disabled row that cannot be chosen', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
@@ -186,19 +164,15 @@ describe('Composer — model picker (ENG-1656)', () => {
     const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
     expect(locked).toHaveAttribute('data-disabled');
     expect(locked).toHaveTextContent('Needs credits');
-    // The row is closed off, so this button is the only thing left on it that
-    // answers "how do I unlock this". Settings' top-up hint does not cover the
-    // case: it renders for the CURRENT model, and the current model here is one
-    // the wallet can pay for.
+    // Use an affordable current model so its Settings top-up hint cannot account for the locked
+    // row's Add credits action.
     expect(within(locked).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
 
     await user.click(locked);
     expect(props.onModelChange).not.toHaveBeenCalled();
   });
 
-  // The mirror to settingsTransform's own assertion — the two option builders
-  // are meant to produce the same row, and the only thing keeping them honest
-  // is asserting the same facts on both.
+  // Keep both option builders' model metadata contracts covered.
   it('opens billing from a needs-credits row without selecting it', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
@@ -214,9 +188,8 @@ describe('Composer — model picker (ENG-1656)', () => {
 
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
-    // The row is disabled, so Base UI never reaches its select handler. This
-    // pins that the button did not somehow route around that, not the
-    // button's own stopPropagation, which no test here can distinguish.
+    // This proves the credits action does not select a disabled row; it does not isolate
+    // stopPropagation.
     expect(props.onModelChange).not.toHaveBeenCalled();
   });
 
@@ -245,13 +218,8 @@ describe('Composer — model picker (ENG-1656)', () => {
   });
 });
 
-// ─── Reasoning effort sub-picker (ENG-1940) ───────────────────────────
-//
-// ModelSelect's own footer/flyout/trigger-suffix behavior is covered
-// thoroughly, in isolation, by ModelSelect.test.jsx — these cases only
-// check the wiring: Composer threads `modelMeta.modelEfforts` and the
-// current `effort`/`onEffortChange` into the SAME "Choose model" picker
-// (there is no longer a separate sibling control), and it round-trips.
+// Test effort metadata/value/callback wiring through the existing model picker; ModelSelect tests
+// cover footer interactions.
 
 const MODEL_EFFORTS = { sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } };
 
@@ -326,13 +294,8 @@ describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
   });
 });
 
-// ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
-//
-// The picker's first entry defers to whichever model this account's
-// Settings has configured, instead of forcing a task to pin one specific
-// model up front. It lives inside the MindsHub group (leading it) rather
-// than pinned above every section. It's hidden for Claude Code
-// specifically — the CLI's `--model` flag needs a real, concrete model id.
+// Model Router leads MindsHub and defers to account settings; Claude Code must hide it because
+// --model needs a concrete id.
 
 describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () => {
   it('lists Model Router first overall, leading the MindsHub group', async () => {
@@ -372,9 +335,7 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
     });
 
-    // Coding mode defaults to the Anton harness pill until switched —
-    // Model Router is still offered until Claude Code is actually picked.
-    // The harness pill is a ToggleGroup (radiogroup semantics), not a combobox.
+    // Coding mode starts on Anton; select Claude Code before asserting Model Router disappears.
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     expect(screen.queryByRole('option', { name: 'Model Router' })).not.toBeNull();
     await user.keyboard('{Escape}');
@@ -422,13 +383,8 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
   });
 });
 
-// ─── Claude Code falls back to the account's Coding model ────────────
-//
-// Model Router can't drive Claude Code (no auto-routing concept in the
-// CLI), so switching harness to Claude Code with nothing pickable — e.g.
-// no MindsHub session, so `models` (the catalog) is empty — must not
-// leave the task unlaunchable. It falls back to Settings' configured
-// Coding model instead.
+// With an empty catalog, Claude Code must fall back to the account's Coding model rather than
+// become unlaunchable.
 
 describe('Composer — Claude Code falls back to the Coding model default (ENG-1656 follow-up)', () => {
   it('auto-selects the Coding model default once Claude Code is picked with nothing selected', async () => {
@@ -482,14 +438,11 @@ describe('Composer — Claude Code falls back to the Coding model default (ENG-1
     const user = userEvent.setup();
     const props = renderComposer({
       models: [], codingModeEnabled: true, sendsMeta: true,
-      // onModelChange deliberately a no-op mock — this Composer instance's
-      // `model` prop never actually updates, simulating a Send that races
-      // ahead of the parent's state round-trip.
+      // Keep onModelChange a no-op to simulate Send outrunning the parent's model-prop round trip.
       onModelChange: vi.fn(),
       codingModelDefault: 'claude-sonnet-4-6',
-      // Draft text persists (useDraft) keyed by conversationId — a fresh
-      // key keeps this test isolated from any draft another test in this
-      // file left behind under the shared default 'new' key.
+      // Use a fresh conversation key to avoid drafts persisted by other tests under the shared
+      // new-task key.
       draftKey: 'claude-code-safety-net-test',
     });
 
@@ -504,14 +457,7 @@ describe('Composer — Claude Code falls back to the Coding model default (ENG-1
   });
 });
 
-// ─── No provider configured: a plain button, not a dropdown ──────────
-//
-// With no MindsHub/BYOK provider connected, `models` (the real catalog)
-// is empty, so Model Router would be the only pickable row anyway — a
-// dropdown that opens to one unpickable-in-practice option reads as
-// broken. Composer shows a plain button styled like the closed picker
-// pill (so it doesn't look like an unrelated control) with a settings
-// gear instead of the dropdown caret, going straight to Settings.
+// With no provider, open Settings directly instead of offering a Model Router-only menu.
 
 describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
   it('shows a plain Model Router button, not a combobox, when models is empty', () => {
@@ -549,12 +495,8 @@ describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
   });
 });
 
-// ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
-//
-// The pill's options come from the harnessHermesEnabled / harnessClaudeCodeEnabled
-// props (default true), not a fixed Anton/Claude-Code list — Hermes is now
-// offerable too. Anton has no enable prop: it's the default agent and is
-// always offered, so the pill can never be hidden entirely.
+// Harness settings control Hermes/Claude Code availability; Anton remains offered without an enable
+// prop.
 
 describe('Composer — harness picker honors the per-harness enable flags', () => {
   it('offers all three harnesses by default', async () => {
@@ -612,11 +554,9 @@ describe('Composer — harness picker honors the per-harness enable flags', () =
     // Hermes gets disabled from underneath the already-open composer.
     rerender(<Composer {...baseProps} harnessHermesEnabled={false} />);
 
-    // The reset effect corrects the pill itself...
     expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
     expect(await screen.findByRole('button', { name: 'Anton', pressed: true })).toBeInTheDocument();
 
-    // ...and a send reflects the corrected value, never the disabled one.
     await user.type(screen.getByRole('textbox'), 'hello');
     await user.keyboard('{Enter}');
     expect(onSend).toHaveBeenCalledWith('hello', expect.objectContaining({ harness: 'anton' }));
@@ -647,10 +587,8 @@ describe('Composer — task-mode chip (ENG-1594)', () => {
   });
 });
 
-// ENG-1100: every clipboard paste arrives as "image.png", so two screenshots in
-// one conversation were indistinguishable. The composer renames them on the way
-// in — and does it synchronously, or a user who hits Enter right after Ctrl+V
-// would send the message before the attachment chip exists.
+// Rename generic clipboard images synchronously so immediate Send cannot outrun attachment
+// creation.
 describe('Composer — pasted image names (ENG-1100)', () => {
   const CLIPBOARD_NAME = /^clipboard_\d+_[0-9a-f]{8}\.png$/;
 

@@ -2,10 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { ToastProvider } from './ui/Toast';
 
-// Mutable host mock so each test can flip isWeb. getAccessToken resolves the
-// token behind the footer user menu — null (signed out) unless a test sets
-// one; openExternal/logout are consumed by the UserMenu the footer renders
-// when signed in.
+// Use mutable platform/token mocks for web and signed-in footer cases.
 const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {} }));
 const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
 vi.mock('../../platform/host', () => ({
@@ -13,9 +10,7 @@ vi.mock('../../platform/host', () => ({
   getAccessToken: getAccessTokenMock,
   openExternal: vi.fn(async () => {}),
 }));
-// The footer user menu now reads the organization listing through the main
-// process. Stubbed rather than served, because nothing in this file is about
-// organizations; the menu and the hook each have their own test file.
+// Stub organization listing; menu and hook tests cover its platform routing separately.
 vi.mock('../hooks/useMindsOrgs', () => ({
   useMindsOrgs: () => ({
     orgs: [], activeOrg: null, activeOrgId: null, switching: false,
@@ -34,16 +29,12 @@ const hubWorkspacesMock = vi.hoisted(() => ({
     refresh: vi.fn(),
   })),
 }));
-// Stubbed rather than exercised here: these tests are about the account
-// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
-// at module load and this file's host mock does not provide one. The workspace
-// group has its own test file.
+// Stub workspace loading because these account-destination tests lack the API host boundary;
+// workspaces have separate coverage.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
-// WorkspaceSelector calls `useToastManager()` unconditionally, before its own
-// early return, and Base UI requires a provider for it. The real tree has one
-// (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
-// than making the component tolerate its absence.
+// Supply the real tree's Toast provider; WorkspaceSelector calls useToastManager before its early
+// return.
 const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';
@@ -150,10 +141,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
 });
 
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
-  // ENG-720 gave web a standalone Channels row *because* the web shell hid
-  // Settings entirely, and Channels lives under Settings. ENG-932 makes
-  // Settings reachable on web, so the workaround is removed — shipping both
-  // would leave web with two ways in and desktop with one.
+  // Web Settings now exposes Channels; a standalone Channels row would duplicate navigation.
   beforeEach(() => {
     hostMock.isWeb = true;
   });
@@ -172,10 +160,7 @@ describe('Sidebar — Channels has no standalone entry on either platform (ENG-9
 });
 
 describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
-  // The web shell hid the whole Settings entry point, which also hid the
-  // reasoning-effort control — the only user-side workaround for a turn that
-  // burns its entire output budget and returns nothing (ENG-1042). A hosted
-  // user hitting that had no recourse at all.
+  // Keep Settings reachable on web so users can adjust reasoning effort.
   it('renders a Settings button in the web build', () => {
     hostMock.isWeb = true;
     render(<Sidebar {...baseProps} />);
@@ -183,10 +168,7 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   });
 
   it('opens general settings (not forced to a specific section)', () => {
-    // Was: forced straight to 'settings:agent'. The Agent section (where
-    // reasoning effort lives) is still one click away via Settings' own
-    // nav — this button is just a general entry point now, not an
-    // Agent-specific shortcut.
+    // Open general Settings rather than forcing the Agent section.
     const onNavigate = vi.fn();
     hostMock.isWeb = true;
     render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
@@ -345,10 +327,7 @@ describe('Sidebar — nav title/logo override', () => {
 });
 
 describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
-  // Parity with the web console: a signed-in user gets the account row
-  // (avatar + name · org + menu) instead of the bare Settings row. Settings
-  // moves inside the menu, but the quick theme + 8-bit toggles stay in the
-  // footer (ENG-1545) — restored from the menu-only placement ENG-1408 used.
+  // Check signed-in account footer composition separately from its signed-out Settings entry.
   beforeEach(() => {
     getAccessTokenMock.mockResolvedValue(
       jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
@@ -383,9 +362,7 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
 });
 
 describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', () => {
-  // Before this, all three rendered as an unexplained blank list: `tasks`
-  // started as `[]` with no status, and a failed fetch was collapsed to `[]`
-  // too. A returning user reads an empty sidebar as lost work, not as a wait.
+  // Distinguish loading, failure and empty recents so a transient read cannot look like lost tasks.
   it('shows skeleton rows, and no empty-state copy, while loading', () => {
     render(<Sidebar {...baseProps} tasksStatus="loading" />);
     expect(screen.getByLabelText('Loading tasks')).toBeTruthy();
@@ -409,9 +386,7 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
   });
 
   it('never claims "no tasks" to a user whose tasks are all pinned', () => {
-    // recents deliberately excludes pinned items, so keying the empty state on
-    // it told an all-pinned user they had nothing — with their pinned tasks
-    // visible directly above.
+    // An all-pinned account is not empty even though recents excludes its tasks.
     const t = { id: 'p1', title: 'Pinned thing', messages: [], updatedAt: '2026-09-02T10:00:00Z' };
     const pins = [{ item_type: 'conversation', item_id: 'p1' }];
     render(<Sidebar {...baseProps} tasks={[t]} pins={pins} tasksStatus="ready" />);

@@ -1,7 +1,3 @@
-// Loading + error placeholders for chart blocks. Ported from
-// mdb-ai/src/components/Message/ChartLoadingState.jsx + ChartErrorState.jsx
-// with our tokens and a small inline spinner so we don't pull lucide.
-
 export function ChartLoadingState() {
   return (
     <div className="flex h-[280px] items-center justify-center rounded-md border border-line bg-surface-2">
