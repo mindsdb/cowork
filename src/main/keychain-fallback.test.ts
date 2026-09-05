@@ -3,9 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { vi } from 'vitest';
 
-// Same isolation pattern as token-store.test.ts: a real temp directory per
-// test run, rather than mocking fs, so writeFileSync's mode:0o600 and
-// mkdirSync's recursive behavior are exercised for real.
+// Use a real temporary directory to exercise file mode 0600 and recursive creation instead of
+// mocking filesystem behavior.
 const h = vi.hoisted(() => {
   const base = `${process.env.TMPDIR || '/tmp'}/keychain-fallback-test-${process.pid}`;
   return { userData: `${base}/userData`, home: `${base}/cowork-home` };

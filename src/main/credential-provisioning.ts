@@ -1,24 +1,8 @@
-// Provisions the 15 static OAuth client id/secret values into the OS-native
-// secure store, and reads them back out on every server start (ENG-1241).
-//
-// Previously these shipped in a plaintext, world-readable server-credentials.json
-// inside the signed app bundle. The installer's only remaining job is staging
-// a short-lived copy of that file *outside* the bundle (Contents/Resources is
-// root-owned on macOS, so this process could never delete anything inside it
-// after provisioning); this module is what actually moves values from that
-// staged file into the secure store and cleans up after itself.
-//
-// Runs from loadBundledServerCredentials() on every startServer() call — not
-// gated behind "first launch" — for two reasons: (1) there is no cheaper
-// "is this the first launch" signal than doing this exact check, since
-// runInstaller() (the real first-run wizard) is not on the path every launch
-// takes; (2) a later app update can ship rotated secrets, and only an
-// every-launch check can pick that up for an already-provisioned install.
-//
-// Keep STATIC_CREDENTIAL_KEYS in sync with the CI steps that generate the
-// staged file: .github/workflows/build-macos-pkg.yml,
-// .github/workflows/build-windows-installer.yml and
-// .github/workflows/build-linux-deb.yml.
+// Provision staged OAuth credentials into the secure store on every server start, including
+// rotations.
+// Installers stage outside root-owned bundles so the app can delete the plaintext after
+// provisioning.
+// Keep STATIC_CREDENTIAL_KEYS aligned with the macOS, Windows and Linux installer workflows.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -50,13 +34,7 @@ export const STATIC_CREDENTIAL_KEYS = [
   'SUPABASE_CLIENT_SECRET',
 ] as const;
 
-/**
- * Deterministic fingerprint of a credential set — sorted so key order in the
- * staged JSON never affects the hash, only content does. Lets us detect
- * whether a staged file is newer than what's already in the secure store
- * without a human-maintained version number (so a future secret rotation
- * "just works" the next time an affected install launches).
- */
+/** Hash sorted contents so a rotated credential set is detected independently of JSON key order. */
 export function computeGeneration(values: Record<string, string>): string {
   const lines = STATIC_CREDENTIAL_KEYS.slice()
     .sort()
@@ -64,10 +42,7 @@ export function computeGeneration(values: Record<string, string>): string {
   return crypto.createHash('sha256').update(lines.join('\n')).digest('hex');
 }
 
-/**
- * Every path this process might find a staged file at, most-specific first.
- * Pure and platform-based (no filesystem access), so it's cheap to unit test.
- */
+/** Candidate staging paths, most-specific first. */
 export function getCandidateStagingPaths(): string[] {
   if (process.platform === 'darwin') {
     return [
@@ -81,22 +56,14 @@ export function getCandidateStagingPaths(): string[] {
   }
   if (process.platform === 'linux') {
     return [
-      // Normal case: the deb's postinst identified the installing user and
-      // staged here, owned by them, mode 600 — then deleted the resources copy
-      // below. A .deb unpacks into root-owned /opt, so (exactly as on macOS,
-      // and unlike Windows's per-user install) the app could never delete a
-      // file left in its own resources dir.
+      // The deb stages user-owned credentials here because the app cannot delete its root-owned
+      // /opt copy.
       path.join(os.homedir(), '.cowork-provision', 'server-credentials.json'),
-      // Fallback: no installing user identifiable at postinst time (headless
-      // `dpkg -i`, container, MDM), so postinst left the resources copy alone
-      // rather than stranding the build with no credentials at all.
+      // Headless installs may retain the resources copy when no installing user can be identified.
       path.join(process.resourcesPath || '', 'server-credentials.json'),
     ];
   }
-  // Windows: no separate staging step. electron-builder.yml gives Windows its
-  // own extraResources override, so the file lands directly in the app's own
-  // installed Resources folder — already owned by the current user (per-user
-  // install), so this process can read and delete it in place.
+  // Windows installs per-user, so the app can read and delete the resources copy directly.
   return [path.join(process.resourcesPath || '', 'server-credentials.json')];
 }
 
@@ -105,9 +72,7 @@ function findExistingStagingPath(candidates: string[]): string | null {
     try {
       if (fs.existsSync(candidate)) return candidate;
     } catch {
-      // Unexpected error probing this candidate (e.g. a permission issue on
-      // an intermediate directory) — treat it as absent and keep checking
-      // the rest rather than letting one bad path abort provisioning.
+      // Skip inaccessible candidates so one bad path does not abort provisioning.
     }
   }
   return null;
@@ -118,12 +83,8 @@ function isCredentialRecord(value: unknown): value is Record<string, string> {
 }
 
 /**
- * Reads a staged credentials file (if one exists), writes any values whose
- * generation is newer than what's already in the secure store, and deletes
- * the file once it's no longer needed. Never throws — every failure mode is
- * logged and left for the next launch to retry, since this runs on every
- * server start and a thrown error here must never block the app from
- * starting with whatever credentials are already provisioned.
+ * Provision changed staged credentials, deleting the file only after success.
+ * Failures are logged and retried on the next server start without blocking startup.
  */
 export async function provisionCredentialsFromStaging(): Promise<void> {
   const stagingPath = findExistingStagingPath(getCandidateStagingPaths());
@@ -153,9 +114,7 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
   }
 
   if (storedGeneration === generation) {
-    // Already up to date — the file is redundant. Failing to delete it isn't
-    // a provisioning failure (the secure store is already correct), just a
-    // cleanup nicety, so log and move on rather than retrying forever.
+    // The secure store is current; failure to delete the redundant file is cleanup-only.
     try {
       fs.unlinkSync(stagingPath);
     } catch (err) {
@@ -191,11 +150,8 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
   try {
     await setGenerationMarker(generation);
   } catch (err) {
-    // All 15 values are safely written; only the marker update failed.
-    // Leaving the file in place is still correct: next launch will see the
-    // stored marker hasn't changed and re-run this same write — harmless,
-    // since keytar.setPassword is an upsert — then try the marker update
-    // again.
+    // Keep the staged file if the marker write fails; the next launch can safely repeat the
+    // credential upserts.
     console.error('[credentials] wrote all values but failed to update the generation marker:', err);
     return;
   }
@@ -203,20 +159,12 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
   try {
     fs.unlinkSync(stagingPath);
   } catch (err) {
-    // Provisioning fully succeeded — this is just cleanup. The next launch
-    // will see the marker already matches and quietly delete the leftover
-    // file itself (the branch above), so nothing is lost.
+    // The marker is current; the next launch can remove any leftover staged file.
     console.error(`[credentials] provisioning succeeded but failed to delete staged file at ${stagingPath}:`, err);
   }
 }
 
-/**
- * Reads all 15 static values back out of the secure store. A value that was
- * never provisioned (or fails to read) is omitted from the result, matching
- * the original file-based behavior of returning {} when nothing is
- * configured — an absent key and an empty-string key behave identically once
- * merged into a spawned process's env.
- */
+/** Read provisioned credentials, omitting missing or unreadable values. */
 export async function loadStaticCredentials(): Promise<Record<string, string>> {
   const entries = await Promise.all(
     STATIC_CREDENTIAL_KEYS.map(async (key) => {
@@ -235,31 +183,19 @@ export async function loadStaticCredentials(): Promise<Record<string, string>> {
   return result;
 }
 
-/**
- * Drop-in async replacement for the old synchronous, file-based
- * loadBundledServerCredentials(). Provisions from a staged file if one
- * exists and is newer, then returns whatever's currently in the secure
- * store, for the caller to merge into the spawned server's environment.
- */
+/** Provision staged rotations, then return stored credentials for the server environment. */
 export async function loadBundledServerCredentials(): Promise<Record<string, string>> {
   try {
     await provisionCredentialsFromStaging();
   } catch (err) {
-    // provisionCredentialsFromStaging is written to catch everything itself;
-    // this is a last-resort guard so a truly unexpected failure (e.g. an
-    // OS-level keytar crash) can never stop the server from starting with
-    // whatever's already provisioned.
+    // Unexpected provisioning failures must not prevent startup with existing credentials.
     console.error('[credentials] unexpected error while provisioning from staging:', err);
   }
   const credentials = await loadStaticCredentials();
 
-  // Nothing staged AND nothing in the store is the one genuinely broken state,
-  // and it is silent everywhere else: the staging file is absent on every
-  // healthy launch after the first, so the return above cannot say anything.
-  // The common cause on Linux is a deb installed by one user and launched by
-  // another — postinst staged into the installer's home and removed the /opt
-  // copy, so this user's home has neither. macOS has the same hole. Without
-  // this the only symptom is a connector reporting "not configured".
+  // No staged file and no stored credentials indicates a broken install.
+  // This can happen when a different user launches the app than the installer staged credentials
+  // for.
   if (Object.keys(credentials).length === 0) {
     console.warn(
       '[credentials] no OAuth credentials are provisioned for this user. If this machine was set up'

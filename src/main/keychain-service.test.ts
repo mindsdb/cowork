@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// keychain-service computes SERVICE_NAME at MODULE LOAD from buildKind(): prod
-// keeps the historical unnamespaced 'cowork-oauth' (existing users' refresh
-// tokens live there — changing it would orphan them), and every non-prod kind
-// gets 'cowork-oauth-<kind>' so build kinds on one machine can't share tokens.
-// That prod-vs-non-prod ternary is a safety-critical branch with no other test,
-// so pin it directly: a flipped condition would either orphan prod tokens or
-// leak tokens across channels.
+// Check module-load service naming: prod must retain cowork-oauth for existing tokens; non-prod
+// channels must isolate theirs.
 
 const keytar = {
   getPassword: vi.fn().mockResolvedValue(null),
@@ -18,11 +13,8 @@ vi.mock('keytar', () => ({ default: keytar }));
 const buildKindMock = vi.fn();
 vi.mock('./cowork-home', () => ({ buildKind: () => buildKindMock() }));
 
-// keychain-fallback.ts has its own dedicated test file (keychain-fallback.test.ts)
-// covering the real file-store behavior. Here it's mocked so these tests exercise
-// only keychain-service's routing logic — whether it reaches for the fallback and
-// with which (service, account) — without touching the filesystem or requiring a
-// real `electron` module in this node-env test.
+// Mock the separately tested file store so these tests verify service/account routing without
+// filesystem or Electron access.
 const fallback = {
   getFallbackPassword: vi.fn().mockReturnValue(null),
   setFallbackPassword: vi.fn(),
@@ -71,17 +63,12 @@ describe('keychain-service — per-channel service namespacing', () => {
   });
 });
 
-// keytar throws (rather than returning null) when the OS secure-store
-// backend itself is unreachable — most commonly a Linux desktop with no
-// Secret Service provider running. These pin the file-fallback behavior
-// that covers that case for every export, refresh tokens and the ENG-1241
-// static credentials/generation marker alike, since they all share the
-// same getPassword/setPassword/deletePassword seam.
+// keytar throws when the secure-store backend is unavailable; exercise file fallback for tokens and
+// static credentials alike.
 describe('keychain-service — file fallback when keytar is unavailable', () => {
   beforeEach(() => {
-    // mockClear() alone would leave a mockRejectedValue set by a prior test
-    // in place (it only clears call history, not the implementation), so
-    // each mock's default resolution is restated explicitly here too.
+    // Restore default implementations: mockClear only clears call history and would retain prior
+    // rejected values.
     keytar.getPassword.mockClear().mockResolvedValue(null);
     keytar.setPassword.mockClear().mockResolvedValue(undefined);
     keytar.deletePassword.mockClear().mockResolvedValue(undefined);
@@ -99,9 +86,8 @@ describe('keychain-service — file fallback when keytar is unavailable', () => 
   });
 
   it('getRefreshToken checks the fallback when keytar succeeds but finds nothing', async () => {
-    // Covers continuity across an outage: a token written to the fallback
-    // while keytar was throwing must still be found once keytar recovers
-    // and starts answering (with null, since it never received the write).
+    // After keytar recovers with null, it must still find a token saved to the fallback during the
+    // outage.
     keytar.getPassword.mockResolvedValue(null);
     fallback.getFallbackPassword.mockReturnValue('written-during-outage');
     const svc = await loadForKind('prod');

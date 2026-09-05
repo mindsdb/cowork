@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// minds-auth transitively imports server-process, which statically imports
-// `electron`. In the node test env `electron` resolves to a path string, so
-// stub it before importing the module under test.
+// Stub Electron before import; the Node test environment otherwise resolves it to a path string.
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', getVersion: () => '0.0.0-test', isPackaged: false },
   shell: { openExternal: vi.fn() },
@@ -12,10 +10,7 @@ vi.mock('electron', () => ({
 import { buildMindsEnvContent, mindsSignInSettingWrites, runsOwnEndpoint } from './minds-auth';
 
 describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
-  // ─── The credential never reaches disk ──────────────────────────────
-  // This is the contract the whole change rests on: the sidecar is handed its
-  // credential at runtime, so signing in writes configuration and nothing a
-  // gateway would accept.
+  // Sign-in writes configuration only; hand the gateway credential to the sidecar at runtime.
   it('writes no credential at all', () => {
     const out = buildMindsEnvContent('', 'https://mdb.ai');
     expect(out).not.toMatch(/ANTON_MINDS_API_KEY/);
@@ -23,23 +18,19 @@ describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
   });
 
   it('strips a credential an earlier build left behind', () => {
-    // The marker for a pre-migration install, and signing in is one of the
-    // moments it goes. A line surviving here is a live bearer token sitting in
-    // a file, which is the defect this ticket exists to remove.
+    // Sign-in must remove legacy bearer-token lines from disk.
     const existing = 'ANTON_MINDS_API_KEY=mdb_old\nANTON_MINDS_ENABLED=true';
     const out = buildMindsEnvContent(existing, 'https://mdb.ai');
     expect(out).not.toMatch(/ANTON_MINDS_API_KEY/);
     expect(out).not.toMatch(/mdb_old/);
   });
 
-  // ─── ENG-739 / ENG-597 regression: sign-in must not pin a model ─────
   it('writes no ANTON_PLANNING_MODEL / ANTON_CODING_MODEL on a fresh sign-in', () => {
     const out = buildMindsEnvContent('', 'https://mdb.ai');
     expect(out).not.toMatch(/ANTON_PLANNING_MODEL=/);
     expect(out).not.toMatch(/ANTON_CODING_MODEL=/);
   });
 
-  // ─── ENG-739 review: re-login must NOT wipe an intentional model line ─
   it('preserves a user-set model line in .env on re-login (does not strip it)', () => {
     const existing = [
       'ANTON_MINDS_API_KEY=mdb_old',
@@ -50,10 +41,8 @@ describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
       'SOME_OTHER_KEY=keepme',
     ].join('\n');
     const out = buildMindsEnvContent(existing, 'https://mdb.ai');
-    // The intentional model lines survive verbatim.
     expect(out).toMatch(/ANTON_PLANNING_MODEL=latest:opus/);
     expect(out).toMatch(/ANTON_CODING_MODEL=latest:opus/);
-    // Unrelated keys are preserved.
     expect(out).toMatch(/SOME_OTHER_KEY=keepme/);
   });
 
@@ -82,17 +71,13 @@ describe('mindsSignInSettingWrites (DB sync on sign-in)', () => {
     expect(keys).not.toContain('minds_api_key');
   });
 
-  // ─── ENG-739 review: sign-in must never write a model row to the DB ──
-  // The old path POSTed the full .env to /settings/raw, which re-syncs every
-  // recognised key — so a legacy/stale .env model line could clobber a model
-  // the user just fixed via the picker. We now write only these keys.
+  // Sign-in must write only configuration keys; bulk .env synchronization could overwrite a
+  // deliberate model selection.
   it('writes exactly the provider fields, and no model fields', () => {
     const writes = mindsSignInSettingWrites('https://api.mindshub.ai');
     const keys = writes.map((w) => w.key);
-    // router_provider included (ENG-1632): without a stored row the server
-    // serializes its pydantic default (anthropic) and the Settings save-path
-    // guard saw a permanently-differing provider — repointing the router and
-    // materializing an aux-model pin on every default-mode save.
+    // Persist router_provider too; an absent row exposes the server's anthropic default and can
+    // trigger unwanted model pinning on a later save.
     expect(keys).toEqual([
       'minds_url', 'planning_provider', 'coding_provider', 'router_provider',
     ]);
@@ -148,9 +133,7 @@ describe('sign-in leaves a user-owned endpoint routing alone', () => {
     expect(out).toContain('ANTON_PLANNING_PROVIDER=openai-compatible');
     expect(out).toContain('ANTON_CODING_PROVIDER=openai-compatible');
     expect(out).not.toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
-    // The MindsHub URL still lands -- publishing and connectors need it.
     expect(out).toContain('ANTON_MINDS_URL=https://api.mindshub.ai');
-    // ...and the base URL it routes against is untouched.
     expect(out).toContain('ANTON_OPENAI_BASE_URL=http://192.168.1.100:1234/v1');
   });
 

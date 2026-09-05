@@ -1,15 +1,10 @@
-// Sign-out credential scrub for the shared .env (see AUTH_LOGOUT in index.ts).
-// Extracted so the permanent-write-failure path is unit-testable.
+// Scrub shared .env credentials during sign-out; the DB clear remains authoritative.
 
 import * as fs from 'fs';
 import { writeEnvFileAtomic } from './minds-auth';
 
-// Keys stripped from the .env on sign-out — for the standalone anton CLI and
-// the next-boot migration. ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are
-// intentionally NOT stripped (ENG-739): preserving them on sign-in but deleting
-// them on sign-out would break the same "a `latest:` value may be a deliberate
-// choice — never silently mutate it" rule the sign-in path follows. A model is
-// CLI-only in .env; the DB (product) is cleared separately.
+// Preserve CLI model choices in .env; only credentials are scrubbed here. Product settings are
+// cleared in the DB.
 export const LOGOUT_ENV_KEYS = [
   'ANTON_MINDS_API_KEY',
   'ANTON_MINDS_URL',
@@ -23,21 +18,10 @@ export const LOGOUT_ENV_KEYS = [
   'ANTON_CODING_PROVIDER',
 ];
 
-// Remove the credential keys from the .env file and from this process's
-// inherited copies. The file write goes through writeEnvFileAtomic, which
-// retries transient Windows share-mode locks (the server holds this same file
-// open — ENG-1209) so the scrub actually lands rather than silently skipping.
-//
-// Contract, by design (ENG-1206):
-//   * process.env is cleared in `finally` — always, even if the file write
-//     fails — so the parent can never hand a restarted server stale keys.
-//   * A write that still fails after retries REJECTS rather than resolving, so
-//     the caller can log/observe it. Note this is NOT the authoritative
-//     sign-out step: since ENG-941 the DB is authoritative for credentials and
-//     config_ready, and the .env is never re-read on restart, so the .env scrub
-//     is best-effort (it only keeps stale keys from the standalone anton CLI).
-//     The logout handler therefore logs a rejection and presses on rather than
-//     failing an otherwise-complete sign-out.
+// Always clear process.env, even if the file write fails. Reject exhausted write retries so callers
+// can log them.
+// This scrub protects the standalone CLI; DB credential clearing is the authoritative product
+// sign-out.
 export async function scrubEnvCredentials(envPath: string, keys: string[] = LOGOUT_ENV_KEYS): Promise<void> {
   try {
     if (fs.existsSync(envPath)) {
