@@ -20,8 +20,6 @@ from cowork.server import app  # noqa: F401 — re-exported for uvicorn
 SPA_DIR = Path(os.environ.get("COWORK_SPA_DIR", "/app/dist/renderer-web"))
 
 if SPA_DIR.exists():
-    # Subdirectories that the SPA build emits — served by StaticFiles so
-    # they get correct MIME-types and range-request handling for free.
     for _sub in ("assets", "fonts", "gravity-field", "logos"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
@@ -31,10 +29,7 @@ if SPA_DIR.exists():
                 name=f"spa-{_sub}",
             )
 
-    # Pre-resolve every top-level file in SPA_DIR into a string→Path
-    # allowlist. The fallback handler uses full_path only as a dict key,
-    # never as a path component, so traversal sequences simply miss the
-    # dict and fall through to the SPA shell.
+    # Look up filenames in an allowlist; never combine an untrusted request path with SPA_DIR.
     _spa_files: dict[str, Path] = {
         entry.name: entry for entry in SPA_DIR.iterdir() if entry.is_file()
     }
@@ -42,9 +37,7 @@ if SPA_DIR.exists():
 
     @app.get("/health")
     async def health_compat():
-        # Compat endpoint — proxies to /api/v1/health for callers that probe /health.
-        # Called from mindshub_frontend to establish instance health -- update
-        # there before removing here
+        # mindshub_frontend probes /health; update that caller before removing this compatibility route.
         from cowork.api.v1.endpoints.health import health
 
         return health()
@@ -58,21 +51,14 @@ if SPA_DIR.exists():
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     async def spa_fallback(full_path: str, request: Request):
-        # /api/* paths must never serve the SPA shell in place of a
-        # missing API endpoint. Routes are registered with trailing
-        # slashes (e.g. /api/v1/pins/) but clients often omit them;
-        # Starlette's redirect_slashes would normally 307, but this
-        # catch-all matches first. 307 preserves the original HTTP
-        # method so POST/PUT/PATCH/DELETE all work correctly.
+        # The catch-all wins before Starlette's slash redirect. Preserve API methods with 307
+        # and return 404 for missing API routes instead of serving the SPA.
         if full_path.startswith("api/") or full_path == "api":
             if not full_path.endswith("/"):
                 qs = str(request.url.query)
                 target = f"/{full_path}/" + (f"?{qs}" if qs else "")
                 return RedirectResponse(url=target, status_code=307)
             raise HTTPException(status_code=404)
-        # Top-level file the build emitted? Serve it. Otherwise this is
-        # a client-side route — serve the SPA shell so the renderer's
-        # router can take over.
         served = _spa_files.get(full_path)
         if served is not None:
             return FileResponse(str(served))

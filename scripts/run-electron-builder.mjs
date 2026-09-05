@@ -4,8 +4,6 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-// Static, unlike the dist/ imports below: this one is a source module, so a
-// missing export fails at load with a clear error instead of at the point of use.
 import { linuxBuilderArgs } from './channel-identity.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,7 +12,7 @@ const displayVersion = readFileSync(
   'utf8',
 ).trim();
 
-// npm run build compiles shared helpers before this wrapper runs.
+// Build must compile shared helpers before this wrapper runs.
 const { calVerToUpdaterSemVer } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'version.js')).href
 );
@@ -30,9 +28,7 @@ const targetPlatform = userArgs.includes('--mac')
   : userArgs.includes('--win')
     ? 'win32'
     : null;
-// Linux has no shell update feed (a deb updates through apt), so it is not a
-// `targetPlatform` above — but it does need the per-channel bundle identity
-// that the mac script and dist-win.mjs each apply for themselves.
+// Linux needs channel identity but no shell-update feed; deb updates use apt.
 const targetsLinux = userArgs.includes('--linux');
 const buildKind = (process.env.COWORK_BUILD_KIND || '').trim().toLowerCase();
 const feed = targetPlatform
@@ -55,9 +51,8 @@ writeFileSync(
   `${updaterVersion}\n`,
 );
 
-// Windows pins the expected Authenticode signer (electron-updater skips
-// verification without it). macOS omits it — Squirrel.Mac validates against the
-// installed app's own signing identity instead.
+// Windows needs an explicit Authenticode pin. Squirrel.Mac checks the installed app's signing
+// identity.
 const publisherNames = feed && targetPlatform === 'win32'
   ? resolveWindowsPublisherNames(process.env.COWORK_WIN_PUBLISHER_CN)
   : [];
@@ -67,8 +62,7 @@ if (feed && !skipFeedConfig) {
   const lines = [
     'provider: generic',
     `url: ${feed.url}`,
-    // Fixed channel matching the published manifest name (see
-    // SHELL_UPDATE_CHANNEL); the afterPack hook re-asserts it on the package.
+    // Match the published channel; afterPack reasserts it on the generated manifest.
     `channel: ${SHELL_UPDATE_CHANNEL}`,
     `updaterCacheDirName: ${shellUpdaterCacheDirName(feed.channel)}`,
   ];
@@ -92,12 +86,9 @@ if (feed && !skipFeedConfig) {
   builderArgs.push(
     '-c.publish.provider=generic',
     `-c.publish.url=${feed.url}`,
-    // Keep PublishManager's regenerated app-update.yml on the same fixed channel.
     `-c.publish.channel=${SHELL_UPDATE_CHANNEL}`,
   );
-  // publisherName on the publish config (win.publisherName is rejected by
-  // electron-builder 26's schema); electron-builder writes it into the
-  // generated resources/app-update.yml.
+  // Set publisherName on publish: electron-builder 26 rejects win.publisherName.
   publisherNames.forEach((name, i) => {
     builderArgs.push(`-c.publish.publisherName.${i}=${name}`);
   });

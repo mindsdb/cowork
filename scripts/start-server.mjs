@@ -1,16 +1,5 @@
-// Standalone cowork-server spawn — used by `npm run dev:web` to boot
-// the FastAPI backend alongside Vite. Uses `uv run python -m cowork`
-// from the cowork-server sibling directory, which lets uv manage the
-// virtualenv and dependencies automatically.
-//
-// Mirrors src/main/server-process.ts intentionally. We accept the small
-// duplication: server-process.ts is electron-coupled (uses app.isPackaged,
-// app.getPath('userData'), and a 32 KB stderr ring buffer for the
-// "why is the backend offline?" diagnostics modal) and trying to share
-// via a common module would force awkward imports across the
-// main/renderer boundary. The spawn logic is small and stable.
-//
-// Stdlib only — no electron, no npm deps.
+// Standalone dev-web sidecar. Keep separate from Electron-coupled server-process.ts so it runs
+// without Electron.
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -18,15 +7,13 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-const DEFAULT_PORT = 26866; // ANTON on T9 keypad
+const DEFAULT_PORT = 26866;
 const SERVER_HOST = '127.0.0.1';
 
 let serverProcess = null;
 let serverStarted = false;
 
-// Locate the cowork-server directory. Convention: sibling of this repo
-// (../cowork-server relative to the cowork repo root). Override with
-// COWORK_SERVER_DIR env var for non-standard layouts.
+// Find the sibling cowork-server checkout; COWORK_SERVER_DIR overrides the location.
 function getServerDir() {
   if (process.env.COWORK_SERVER_DIR) {
     return path.resolve(process.env.COWORK_SERVER_DIR);
@@ -37,13 +24,10 @@ function getServerDir() {
 function getUvPath() {
   const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
   if (fs.existsSync(localBin)) return localBin;
-  // Fall back to PATH lookup
   return 'uv';
 }
 
-// Prepend ~/.local/bin and ~/.cargo/bin so the spawned server can find
-// `uv` and other tools. Important for any launch context where shell
-// init files aren't read.
+// GUI/non-login launches may omit uv from PATH; prepend the standard local tool directories.
 function getEnvPath() {
   const localBin = path.join(os.homedir(), '.local', 'bin');
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -92,20 +76,15 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     ...process.env,
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
-    // Pin the dev home; unset COWORK_HOME defaults to ~/.cowork (prod). Mirrors
-    // server-process.ts, which the Electron dev path already does.
+    // Pin the dev home: an unset COWORK_HOME would use the production profile.
     COWORK_HOME: process.env.COWORK_HOME || path.join(os.homedir(), '.cowork-dev'),
-    // Both port names — see server-process.ts spawn env for why.
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
     COWORK_LISTEN_PORT: String(DEFAULT_PORT),
     COWORK_SERVER_HOST: SERVER_HOST,
   };
 
-  // detached:true puts the python in its own process group so the
-  // terminal's SIGINT (from Ctrl-C) doesn't reach it directly. dev-web.mjs
-  // controls shutdown order explicitly: vite quiesces first, THEN we
-  // SIGTERM python — avoids ECONNREFUSED noise from vite proxying
-  // /v1/* during shutdown.
+  // Detach the server process group so terminal SIGINT cannot bypass dev-web's Vite-first shutdown
+  // order.
   const child = spawn(uvCmd, ['run', 'cowork-server'], {
     cwd: serverDir,
     env,
@@ -140,8 +119,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
 export function stop() {
   if (serverProcess) {
-    // Kill the entire process group (detached child + grandchildren)
-    // so the Python server doesn't survive as an orphan holding the port.
+    // Kill the process group, including grandchildren, so no orphan retains the port.
     if (serverProcess.pid) {
       try { process.kill(-serverProcess.pid, 'SIGTERM'); } catch {}
     }
@@ -151,8 +129,6 @@ export function stop() {
   }
 }
 
-// Ensure the detached server process group is cleaned up if the parent
-// exits unexpectedly (crash, uncaught exception, SIGTERM, etc.).
 for (const sig of ['exit', 'SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(sig, () => { stop(); });
 }
@@ -162,9 +138,7 @@ export function isRunning() {
 }
 
 export function onUnexpectedExit(cb) {
-  // Fires when the server child dies AFTER a successful start.
-  // Used by dev-web.mjs to fail loudly instead of leaving Vite proxying
-  // into the void.
+  // Notify dev-web if the server dies after startup so it can stop Vite.
   if (!serverProcess) return;
   const handler = (code) => {
     if (serverStarted) cb(code);

@@ -1,16 +1,7 @@
 #!/usr/bin/env node
-// Fail-closed gate for the Windows shell auto-updater's signature pin.
-//
-// electron-updater's NsisUpdater compares the installer's Authenticode subject
-// against `publisherName` in app-update.yml and SKIPS verification entirely when
-// that field is absent. We bake it (resolveWindowsPublisherNames), but a typo or
-// a silently-renewed cert would either (a) brick auto-update in the field or
-// (b) leave it unverified. This step proves, at build time, that the signed
-// installer WOULD pass electron-updater's own check — by replicating its exact
-// matching (builder-util-runtime's parseDn) against the signing report. On any
-// mismatch it fails the build, so nothing insecure or self-bricking can ship.
-//
-//   node scripts/verify-win-publisher.mjs out/signing-report/installer-signature-report.json
+// Fail the build unless the signed installer matches electron-updater's publisherName pin.
+// Missing pins skip verification; changed certificates can break deployed updaters.
+// Use the updater's exact parseDn matching against the signing report.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -25,7 +16,6 @@ if (!reportPath) {
 
 const report = JSON.parse(readFileSync(reportPath, 'utf8'));
 
-// Same source of truth the build baked into app-update.yml.
 const { resolveWindowsPublisherNames } = await import(
   new URL('../dist/main/shared/shell-update-feed.js', import.meta.url).href
 );
@@ -36,7 +26,7 @@ if (report.status !== 'Valid') {
   process.exit(1);
 }
 
-// Verbatim from electron-updater's windowsExecutableCodeSignatureVerifier.
+// Match electron-updater's windowsExecutableCodeSignatureVerifier.
 const subject = parseDn(report.signerSubject || '');
 const matched = publisherNames.some(name => {
   const dn = parseDn(name);
