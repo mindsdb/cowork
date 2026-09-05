@@ -1,10 +1,5 @@
-// Pure realtime-merge logic for artifact comment threads (Plan 5).
-//
-// A thread is the inference row: { id, selector, status, version, updated_at,
-// payload: { author:{email}, text, replies:[{author:{email}, text, created_at}] } }.
-// SSE events carry the whole updated thread + a `type`; clients upsert by id and
-// ignore any event whose version is <= the one they already hold (idempotent,
-// reorder-safe). Kept pure so it's trivially testable.
+// SSE events contain full thread rows, including payload {author, text, replies}.
+// Upsert by id and reject non-increasing versions so duplicates and reordered events are harmless.
 
 export function upsertThread(threads, event) {
   const list = threads || [];

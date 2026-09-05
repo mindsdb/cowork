@@ -1,17 +1,8 @@
-// Browsers hand a clipboard-pasted screenshot a generic filename — "image.png"
-// in Chrome/Firefox/Safari, "image.bmp" on Windows, "image.tiff" on macOS — so
-// every paste in a conversation arrives under the same name and neither the user
-// (in the composer chips) nor the agent (in the attachment list it gets each
-// turn) can tell them apart. ENG-1100. Rename those to the shape anton's CLI
-// already uses for clipboard saves (anton/clipboard.py): clipboard_<ts>_<8hex>.
-//
-// The suffix is RANDOM here, where the CLI hashes the pixels. Deliberate, for
-// two reasons: crypto.getRandomValues is synchronous, so the paste handler stays
-// sync and a user who hits Enter right after Ctrl+V cannot outrun the chip; and
-// the same image pasted twice within one second gets two names instead of
-// colliding on one. Content-addressed names buy nothing on this side — the
-// server stores every upload in its own uuid directory, so nothing is ever
-// overwritten (cowork-server/cowork/services/files.py).
+// Replace generic clipboard image names with anton/clipboard.py’s clipboard_<timestamp>_<8hex>
+// shape.
+// Use synchronous randomness rather than a pixel hash so immediate Send cannot outrun attachment
+// creation and repeated pastes stay distinct.
+// Uploads already have separate UUID directories; names do not need to be content-addressed.
 
 // A bare `image.<ext>` is the browser's placeholder. Deliberately loose about
 // which extension: image.bmp/tiff/avif are all real, and a hardcoded list would

@@ -1,11 +1,4 @@
-// Pure conversation / stream-history helpers. They operate purely on their
-// arguments plus module imports and `localStorage` — closing over nothing in
-// component scope — so they live beside the other pure adapters
-// (`responseStreamAdapter`, `settingsTransform`) and are unit-tested directly.
-//
-// Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
-// (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
-// (async, hits the API) — the latter just calls `applySessionMessages` here.
+// Conversation-history adapters; network retries and data-vault dispatch remain in App.jsx.
 import { initialStreamState, reduceStream } from './responseStreamAdapter';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
@@ -15,33 +8,19 @@ export function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
 }
 
-// Status values the stream reducer leaves behind for IN-FLIGHT step
-// activity. A clean turn closes everything to 'completed' / 'done' /
-// 'error' / 'cancelled'. Anything else is "this step was running
-// when the stream died" — we'll mark them done on reload so the rail
-// stops claiming work is still happening.
+// Mark abandoned in-flight statuses complete on reload so the rail stops claiming work is still
+// running.
 const RUNNING_STEP_STATUSES = new Set([
   'pending', 'thinking', 'streaming', 'in_progress', 'running',
 ]);
 
-// Reconcile a task's stored streaming/running state against whether
-// a real SSE stream is alive for it RIGHT NOW. Called when the user
-// navigates into a task:
-//   1. Drop `_streaming` / activity placeholders when not live.
-//   2. Collapse in-progress steps to `completed` when not tailing.
+// Reconcile stored placeholders and in-progress steps against the currently live or reconnectable
+// stream.
 export function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
   if (!Array.isArray(messages)) return messages;
   if (isLive) return messages; // legitimate in-flight (local), leave alone
-  // If the server says this conversation's producer is still running,
-  // we're about to (re)attach via tailInFlight — DON'T inject the
-  // "things stopped before I wrapped up" continuation prompt. The
-  // live stream will materialize within ~50ms via the reconnect
-  // path; showing the stopped message first would be both wrong
-  // AND flicker.
-  //
-  // Step-cleanup (RUNNING_STEP_STATUSES → completed) is also skipped
-  // here: those steps may still be progressing under the live tail
-  // and we don't want to prematurely flag them done.
+// A server-live conversation will reconnect through tailInFlight; do not show a stopped prompt or
+// prematurely complete its steps.
   if (isServerInFlight) {
     // If the conversation is in-flight but has no visible content yet
     // (e.g. a scheduled task that just started), show a thinking
@@ -82,28 +61,11 @@ export function removeThinkingPlaceholder(messages) {
 }
 
 export function withThinkingPlaceholder(messages, opts = {}) {
-  // Caller-supplied label so the new-task path can read "Creating
-  // task…" while a reply uses the generic "Thinking…". Both the
-  // activity placeholder (fallback render in ChatView) and the
-  // `_streaming` stub (primary render via the existing streaming
-  // branch) carry the same string, so whichever lands in the
-  // viewport reads consistently.
+  // Use the same label for the activity placeholder and streaming stub so both render paths agree.
   const label = opts.label || 'Thinking…';
-  // Two rows:
-  //   1. The activity placeholder — kept so any code path that
-  //      consumes it (rail Progress card today, future surfaces) sees
-  //      the "user just sent" signal.
-  //   2. A `_streaming` stub — picked up by ChatView's existing
-  //      streaming render block (`!streamingMsg.steps?.length &&
-  //      !streamingMsg.content` branch), which renders an animated
-  //      cursor + label inline below the user's message. Without
-  //      this, the chat scroll is silent between send and the first
-  //      SSE event — fine on a warm session (~sub-second) but
-  //      painful on a brand-new task where anton's bootstrap can
-  //      take 20-30s. The stub gets stripped + replaced by the real
-  //      streaming row on the first `flushStreamingMessage` call,
-  //      at which point `_placeholderLabel` is gone and the label
-  //      naturally falls back to the default "Thinking…".
+  // Keep both rows: rail consumers need the activity signal, while ChatView needs a streaming stub
+  // before the first SSE event.
+  // flushStreamingMessage replaces the stub once real output arrives.
   return [
     ...removeThinkingPlaceholder(stripStreaming(messages)),
     {
@@ -120,11 +82,8 @@ export function withThinkingPlaceholder(messages, opts = {}) {
       content: '',
       steps: [],
       startedAt: Date.now(),
-      // 'thinking' (not 'starting') so PhaseProgress treats the turn
-      // as `isInFlight` and renders the Thinking phase row in the
-      // rail — otherwise the card falls into its "Steps appear here
-      // while Anton works" placeholder branch, which contradicts
-      // the inline cursor in the chat scroll.
+      // PhaseProgress recognizes thinking as in-flight; starting would show an idle rail beside the
+      // active chat cursor.
       streamStatus: 'thinking',
       _placeholderLabel: label,
     },
@@ -165,26 +124,11 @@ export function describeActivity(event, agentName = 'Anton') {
   return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
 }
 
-// ─── Per-turn step persistence ───────────────────────────────────────────
-//
-// Anton's history file (the canonical conversation record) only stores
-// {role, content}. The streaming adapter builds richer step data —
-// scratchpad cells, artifacts, reasoning timing — but those are dropped
-// on persistence and would be lost on conversation reload, leaving the
-// chat with no Thinking block, no inline artifact cards, and an empty
-// Scratchpad modal.
-//
-// We sidecar the full step list in localStorage keyed by conversation
-// id → assistant turn index. Persistence is local to this install
-// (fine for a desktop app); promote to a server-side sidecar later if
-// cross-device sync matters.
-//
-// Schema (per turn):
-//   { steps: ThinkingStep[], startedAt: number }
-//
-// ThinkingStep shape mirrors `responseStreamAdapter`'s output, including
-// the `_isScratchpad` / `_scratchpadTabId` markers the ScratchpadModal
-// keys off so tabs reattach when the conversation is reopened.
+// Cache richer step data locally by conversation id and assistant-turn index when server history
+// lacks it.
+// Each entry is {steps: ThinkingStep[], startedAt: number}; preserve scratchpad markers for tab
+// reattachment.
+// This cache is install-local; newer server event logs are hydrated separately.
 const CONV_TURNS_KEY = (cid) => `anton:conv-turns:${cid}`;
 const LEGACY_ARTIFACTS_KEY = (cid) => `anton:conv-artifacts:${cid}`;
 
@@ -280,11 +224,8 @@ export function failedEventMeta(events) {
   };
 }
 
-// Walk a messages payload from the server and, for any assistant
-// turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
-// `response.failed` becomes a client-side error bubble after the
-// partial assistant turn. Drops the raw `events` array.
+// Hydrate saved events through the live reducer and discard raw events.
+// A terminal failure becomes an error bubble after any partial assistant output.
 export function hydrateMessagesFromServerEvents(messages) {
   if (!Array.isArray(messages)) return messages;
   const out = [];
@@ -363,13 +304,8 @@ export function persistTurnState(cid, turnIndex, steps, startedAt) {
     reasoningStartedAt: s.reasoningStartedAt ?? null,
     executionStartedAt: s.executionStartedAt ?? null,
     executionCompletedAt: s.executionCompletedAt ?? null,
-    // Distinct from `status` — a failed tool/killed cell is still
-    // status:'completed' (the lifecycle finished), with cellStatus
-    // carrying the actual verdict ('error'/'timeout'). Without these two,
-    // a failed step renders as a plain success after reload: `status`
-    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
-    // with ok:false, or a killed scratchpad_done) and the measured
-    // executionDurationMs both got silently dropped by this whitelist.
+    // Lifecycle status can be completed even when execution failed; persist cellStatus and duration
+    // to retain that verdict after reload.
     cellStatus: s.cellStatus || null,
     executionDurationMs: s.executionDurationMs ?? null,
     data: s.data || null,
