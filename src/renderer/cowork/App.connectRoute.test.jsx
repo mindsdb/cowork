@@ -1,15 +1,6 @@
-// Connect Apps and Data must stay reachable on Cloud.
-//
-// The route has been gated behind a "Coming soon to Cloud" modal twice —
-// da5c1d99 (Cloud MVP) and again 25f6f952 (Dev code mode) — both times on
-// staging only. Production ships from main, which carries neither, so Cloud
-// users there connect Gmail and the other OAuth connectors normally; the next
-// staging→main release would have removed a working feature.
-//
-// A rendering test can't reach this: the intercept lives in a closure inside a
-// 5000-line component, behind org-mode state and a sidebar click. A source
-// guard is what actually holds the line, in the spirit of
-// projectLabelSurfaces.test.js.
+// Keep Cloud's Connect Apps and Data route reachable.
+// Check the navigation closure in source so a staging-only Coming soon intercept cannot remove the
+// production feature.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
