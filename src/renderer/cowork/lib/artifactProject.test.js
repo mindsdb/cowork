@@ -7,10 +7,8 @@ const projects = [
 ];
 
 describe('projectNameOf', () => {
-  // Title corrected with ENG-1676: the list is now consulted first, and this
-  // passes because the fixture's list entry has no display_name, so both
-  // sources yield 'Beta'. It asserts the name resolves, not the precedence —
-  // the precedence is pinned in the display-name block below.
+  // This fixture resolves the name but cannot prove precedence because its list entry lacks
+  // display_name.
   it('resolves the name when the server sent one', () => {
     const artifact = { projectId: 'p-2', projectName: 'Beta', path: '' };
     expect(projectNameOf(artifact, projects)).toBe('Beta');
@@ -62,13 +60,8 @@ describe('belongsToProject', () => {
 });
 
 /*
- * ENG-1676. The server derives `projectName` from the directory
- * (`os.path.basename`), so it is always the slug — `untitled-project-2` for a
- * project the sidebar calls `Мій тестовий проєкт`. The projects list is the
- * only source carrying `display_name`, so it has to be consulted first.
- *
- * Both fields are present in the real payload, which is exactly why the
- * precedence needs pinning: reading either one alone looks correct.
+ * Provide both slug-valued projectName and list display_name so only the correct precedence yields
+ * the visible label.
  */
 describe('projectNameOf — display name (ENG-1676)', () => {
   const PROJECT = {

@@ -1,14 +1,7 @@
-// One artifact identity, client side.
-//
-// Dependency-free on purpose: both `api.js` and `artifactWorkspaceApi.js` need
-// these, and `artifactWorkspaceApi.js` already imports from `api.js`.
-//
-// The server sends `id` as a full UUID in bare hex. A card replayed from a
-// conversation recorded before ids were widened carries the old
-// eight-character id — and, for a short window, a separate `stableId` field.
-// The server adopts that field as the artifact's id, so the client does too:
-// otherwise reopening an old conversation shows preview-only for an artifact
-// whose folder on disk is fully migrated.
+// Keep dependency-free: api.js and artifactWorkspaceApi.js both import this, and the latter already
+// imports api.js.
+// Older chat cards carry short ids or stableId; adopt stableId like the server so migrated
+// artifacts remain editable.
 
 const UUID_SHAPE = /^([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})$/i;
 

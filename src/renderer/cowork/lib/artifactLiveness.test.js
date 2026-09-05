@@ -1,7 +1,5 @@
-// The decision that turns "the artifacts list doesn't mention this card" into
-// "this artifact was deleted". Every branch here is a fail-open guard: a false
-// "Deleted" on a live artifact is worse than the bug this fixes (ENG-1673 §R5),
-// so the table below is mostly about the cases that must NOT be reported.
+// Unknown or out-of-scope absence must fail open; falsely marking a live artifact deleted hides
+// usable work.
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -53,9 +51,7 @@ describe('artifactKeys', () => {
     expect(artifactKeys(chatCard({ slug: '' })).projectSlug).toBe('');
   });
 
-  // The prefix key exists for one thing: a hex id that grew from eight
-  // characters to 32. Handing it any other id shape turns it into a
-  // starts-alike matcher over unrelated artifacts.
+  // Bridge only widened hex ids; arbitrary prefixes would match unrelated artifacts.
   it('takes an id prefix from hex ids only', () => {
     expect(artifactKeys({ id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70' }).idPrefix).toBe('7db94eb8');
     expect(artifactKeys({ id: '7DB94EB8' }).idPrefix).toBe('7db94eb8');
@@ -80,11 +76,8 @@ describe('matchesIndex', () => {
   });
 
   it('bridges a widened server id to a pre-widening chat card', () => {
-    // The widening kept the old eight characters as the new id's prefix. This
-    // is the case `id` exists for: the folder moved, so slug and path both
-    // changed and only the identity can match. Without the bridge, a desktop
-    // card (no projectId, so no projectSlug key) would read as deleted while
-    // its files sit on disk.
+    // Change path and slug together so only the legacy-to-full id bridge can recognize the moved
+    // artifact.
     const index = buildArtifactIndex([serverCard({
       id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
       slug: 'renamed', projectId: '', folder: '/proj/.anton/artifacts/renamed',
@@ -103,9 +96,7 @@ describe('matchesIndex', () => {
     expect(matchesIndex(widened, index)).toBe(true);
   });
 
-  // Fail-open is the rule, but the prefix bridge must not widen it into "any
-  // two cards whose ids start alike are the same artifact": that would keep a
-  // genuinely deleted card on screen forever.
+  // Similar arbitrary id prefixes must not keep a truly deleted artifact alive.
   it('does not bridge two non-hex ids that start alike', () => {
     const index = buildArtifactIndex([serverCard({
       id: 'q3-launch-readiness-aaaaaaaa',
@@ -197,9 +188,8 @@ describe('isArtifactDeleted', () => {
   });
 
   it('matches a tombstone built from a server card against a chat card', () => {
-    // The three delete call sites hand `noteArtifactDeleted` a SERVER card, and
-    // it is checked against a CHAT card whose path is the announced file, not
-    // _pick_primary's choice. Exact-string tombstones would miss here.
+    // Match server tombstones against chat file paths, which can differ from the server's chosen
+    // primary file.
     const tombstones = buildArtifactIndex([serverCard({ id: '', slug: '' })]);
     const card = chatCard({
       id: '', slug: '',

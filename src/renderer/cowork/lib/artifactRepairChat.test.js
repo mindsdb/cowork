@@ -50,7 +50,7 @@ describe('resolveRepairConversation', () => {
     for (const fetchConversation of [
       async () => ({ status: 'unavailable', code: 500 }),
       async () => { throw new Error('offline'); },
-      async () => ({ status: 'ok' }), // ok without a record is unusable
+      async () => ({ status: 'ok' }),
     ]) {
       const target = await resolveRepairConversation({
         artifact: artifactFrom(ORIGIN),

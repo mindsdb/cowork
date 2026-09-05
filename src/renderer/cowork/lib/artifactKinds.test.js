@@ -4,10 +4,7 @@ import {
   canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlinePreviewable,
 } from './artifactKinds';
 
-// ENG-1998: the viewer/card layer needs a single, shared answer to "is this
-// an image artifact" — matching isHtmlArtifact's convention (declared `ext`
-// wins, path suffix as a fallback) so the list, the inline chat card, and
-// the preview modal can't drift on which files get a thumbnail.
+// Share image classification across cards and preview using declared extension with path fallback.
 describe('isImageArtifact', () => {
   it('is true for a declared image extension', () => {
     expect(isImageArtifact({ ext: '.png', path: '/a/logo.png' })).toBe(true);
@@ -29,12 +26,7 @@ describe('isImageArtifact', () => {
   });
 });
 
-/*
- * The three surfaces that render an artifact body — the inline chat card, the
- * Working folder rail and the artifacts grid — each carried their own extension
- * list and drifted: the chat card counted images as previewable and the rail did
- * not. These are the one answer all three now ask.
- */
+/* Keep body-preview capability consistent across chat cards, rail and gallery. */
 describe('isInlinePreviewable', () => {
   it('covers what the viewer renders from markup or text', () => {
     expect(isInlinePreviewable({ ext: '.html', path: '/a/index.html' })).toBe(true);
@@ -43,10 +35,7 @@ describe('isInlinePreviewable', () => {
   });
 
   it('leaves images to canPreviewLocally', () => {
-    /*
-     * They load from the serve URL rather than the text or iframe path, and
-     * org mode has no serve URL to load them from.
-     */
+    /* Images require serve URLs, which org mode does not provide. */
     expect(isInlinePreviewable({ ext: '.png', path: '/a/logo.png' })).toBe(false);
     expect(canPreviewLocally({ ext: '.png', path: '/a/logo.png' })).toBe(true);
   });
@@ -85,9 +74,8 @@ describe('canPreviewOrgDraft', () => {
 
 describe('canDownloadOrgDraft', () => {
   /*
-   * ENG-2044. The draft URL exists for every artifact with a primary file, so
-   * "downloadable" is almost "has a draft" — the one exception is the reason
-   * this is a predicate and not an inline `!!draftUrl`.
+   * A fullstack primary file is not a complete downloadable app; draft presence alone is
+   * insufficient.
    */
   const DRAFT = '/api/v1/artifacts/drafts/p/11111111111111111111111111111111/x';
 
