@@ -4,14 +4,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ConfirmModal } from './ConfirmModal';
 
 /*
- * `busy` used to mean two things at once: an action is in flight, and the
- * dialog refuses to close. That is right for work that finishes in a moment,
- * and wrong for sign-out, whose reply can outlast anyone's patience — it left
- * the dialog as the app's only exit with every way out disabled.
- *
- * The two meanings are now separable, and the default is the old behavior, so
- * the twelve other callers that pass `busy` are unaffected. This file is the
- * component's first test, so it pins both halves.
+ * Separate work-in-flight from dismissal lock while retaining the locked default for existing
+ * callers.
  */
 
 function open(props = {}) {
@@ -56,9 +50,8 @@ describe('ConfirmModal while busy', () => {
   });
 
   /*
-   * Dismissable is not idle. The work is still running, so the button that
-   * starts it stays disabled and Enter must not fire a second one — the reason
-   * this shape keeps the dialog open rather than closing it outright.
+   * Dismissible still means busy: keep Confirm and Enter disabled to prevent starting the work
+   * twice.
    */
   it('keeps the confirm action disabled while dismissable', async () => {
     const { onConfirm } = open({ busy: true, dismissableWhileBusy: true });

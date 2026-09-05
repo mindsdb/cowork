@@ -1,28 +1,13 @@
-// Inline image thumbnail for chat attachments — shared by the composer's
-// pending-attachment strip and by sent user-turn bubbles. Without it,
-// image attachments render as a generic icon+name chip and never show
-// the picture.
-//
-// The renderer CSP is `img-src 'self' data: blob:`, so a direct loopback
-// <img src="http://127.0.0.1/…"> is blocked. For a server attachment we
-// fetch the bytes (connect-src allows the loopback origin) and render a
-// blob: URL — the same approach ContextFileModal uses for inline image
-// previews. A local File (composer, not yet uploaded) skips the fetch and
-// goes straight to createObjectURL.
-//
-// Pass exactly one source: `file` (a File/Blob) or `url` (an absolute
-// attachment raw URL). The object URL is revoked on unmount / source
-// change so blobs don't leak across re-renders.
+// Pass exactly one source: file (File/Blob) or url (absolute raw attachment URL).
+// CSP blocks loopback img sources; fetch server bytes and display a revoked-on-cleanup blob URL.
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { fetchAuthenticatedBlob } from '../lib/authenticatedResource';
 
-// Shared by AttachmentThumbnail and ArtifactViewer's image preview — both
-// need the same blob-fetch workaround for the loopback-<img> CSP block (see
-// module comment above). Pass exactly one of `file` (a File/Blob) or `url`.
-// Returns `{ src, failed }`; `src` is '' while loading.
+// Blob-fetch workaround for the loopback image CSP restriction. Pass exactly one File/Blob or URL.
+// Returns { src, failed }; src is empty while loading.
 export function useBlobImageSrc({ file = null, url = null } = {}) {
   const [src, setSrc] = useState('');
   const [failed, setFailed] = useState(false);

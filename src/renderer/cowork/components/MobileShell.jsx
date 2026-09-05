@@ -3,11 +3,6 @@ import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Badge } from './ui';
 
-// Mobile chrome for the cowork SPA. Active at viewport widths < 640px
-// (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
-// layout with a top bar, slide-in accordion drawer, and a project-FAB.
-// Views (HomeView, ChatView, ProjectsView, etc.) render unchanged
-// inside `children` — only the chrome around them swaps.
 
 const SECTIONS = [
   { key: 'projects',  label: 'Projects',       route: 'projects' },
@@ -85,7 +80,6 @@ export default function MobileShell({
   projects,
   scheduled,
   artifacts,
-  // Navigation handlers — wire through to App.jsx state.
   onNavigate,            // (routeKey) — same shape as App's navigate()
   onSelectTask,          // (taskId)
   onSelectProject,       // (project) — show project detail (has-tasks branch)
@@ -95,10 +89,7 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
-  // Top-bar theme toggle, opposite the hamburger — the desktop
-  // floating-toggle-row has no room on mobile, and the coding-mode toggle
-  // that sits beside it there is dropped entirely rather than given a
-  // second spot here.
+// Mobile places the theme toggle in the top bar; the desktop floating controls do not fit.
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,
@@ -108,11 +99,8 @@ export default function MobileShell({
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
-  // Close the FAB menu whenever the route changes — landing in a new
-  // view should never leave the popover floating from the prior one.
   useEffect(() => { setFabMenuOpen(false); }, [route]);
 
-  // Close FAB menu on Escape (keyboard users + iPad with kb).
   useEffect(() => {
     if (!fabMenuOpen) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setFabMenuOpen(false); };
@@ -134,7 +122,6 @@ export default function MobileShell({
     return () => { document.body.style.overflow = prev; };
   }, [drawerOpen]);
 
-  // Close drawer on Escape — keyboard users + iPad with kb attached.
   useEffect(() => {
     if (!drawerOpen) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setDrawerOpen(false); };
@@ -156,14 +143,9 @@ export default function MobileShell({
     if (!project) return;
     const projTasks = tasksForProject(tasksList, project);
     if (projTasks.length === 0) {
-      // No tasks yet — drop the user straight into a new chat for
-      // this project. Composer (route=home) has the project
-      // preselected; first send creates the task on the server.
+      // Open an empty project in the composer; its first send creates the task.
       onNewTaskInProject?.(project);
     } else {
-      // Has tasks — show the project detail (ProjectsView in detail
-      // mode renders the task list, with the rail's cards stacked
-      // below on mobile via the .mshell project-detail overrides).
       onSelectProject?.(project);
     }
   }, [closeDrawer, tasksList, onNewTaskInProject, onSelectProject]);
@@ -190,13 +172,8 @@ export default function MobileShell({
 
   const title = titleForRoute(route, { selectedProject, currentTask });
 
-  // FAB is the universal "create" affordance on mobile. Hidden on:
-  //   • 'task'      — the chat composer already covers "new message".
-  //   • 'settings'  — configuration surface; "create new" not relevant.
-  //   • 'artifacts' — a read-only gallery; artifacts are produced by
-  //                   tasks, not by an explicit "+ artifact" action.
-  // Tap opens a 2-row menu: New task / New project. "New task" honors
-  // the current project context if any.
+  // Hide creation controls on chat, settings and the read-only artifact gallery. New tasks inherit
+  // the current project context.
   const showFab = !['task', 'settings', 'artifacts'].includes(route);
   const fabProject = route === 'projects' && selectedProject ? selectedProject : null;
 
@@ -215,8 +192,6 @@ export default function MobileShell({
           <span />
         </button>
         <div className="mshell__title" title={title}>{title}</div>
-        {/* Top-bar "+" removed — the FAB is now the universal create
-            entry, so two affordances would just duplicate each other. */}
         {showThemeToggle ? (
           <button
             type="button"
@@ -235,7 +210,6 @@ export default function MobileShell({
 
       {showFab && (
         <>
-          {/* Tap-outside scrim. Sits below the menu, above page content. */}
           <div
             className={`mshell__fab-scrim ${fabMenuOpen ? 'is-open' : ''}`}
             onClick={() => setFabMenuOpen(false)}
@@ -316,9 +290,7 @@ export default function MobileShell({
         </div>
 
         <nav className="mshell__drawer-body">
-          {/* Wrapped in mshell-accordion so the row divider is a full-width,
-              square border-bottom (matching the section rows) — a border on
-              the rounded row button itself curved oddly at the corners. */}
+          {/* Put the divider on the square wrapper so it does not curve around the rounded button. */}
           <div className="mshell-accordion">
             <button
               type="button"
@@ -378,8 +350,7 @@ export default function MobileShell({
                 />
               );
             } else if (section.key === 'tasks') {
-              // Show only recently-touched tasks in the drawer so the
-              // accordion stays scannable; full list is one tap away.
+              // Limit the drawer to recent tasks; the destination shows the full list.
               const recent = tasksList.slice(0, 12);
               count = tasksList.length;
               content = recent.length === 0 ? (
@@ -416,13 +387,7 @@ export default function MobileShell({
             );
           })}
 
-          {/* Connect + Settings are top-level nav too, so render them with
-              the same accordion-row markup as the sections above — matching
-              padding, label weight, chevron, and hairline divider — instead
-              of the lighter mshell-row. They don't expand; the chevron is a
-              navigate affordance. The old inset mshell-divider is dropped so
-              the drawer reads as one consistent list (the accordion
-              border-bottom + :last-of-type rule handles separators). */}
+          {/* Reuse accordion-row styling for top-level navigation; these chevrons navigate rather than expand. */}
           <div className="mshell-accordion">
             <button
               type="button"

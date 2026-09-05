@@ -1,15 +1,5 @@
-// The chat's stand-in for an "Address with agent" handoff.
-//
-// The underlying message is a machine prompt — artifact id, base revision,
-// repair id, raw thread JSON — and rendering it verbatim put a wall of
-// identifiers in the transcript where the reviewer's own sentence should be.
-// The card shows what was asked and where the work got to; the prompt text is
-// untouched underneath, because the agent still reads it.
-//
-// Status comes from the repair record rather than from the turn: a turn can
-// keep streaming after the repair is already `ready`, and it can end without
-// the repair having changed anything, so "the turn finished" is not the same
-// claim as "the artifact changed".
+// Display the user's repair request while leaving the machine prompt available to the agent.
+// Status follows the repair record: a completed turn does not prove the artifact changed.
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
@@ -25,21 +15,17 @@ const TONE_CLASS = {
 };
 
 export default function ArtifactRepairCard({ repair, projectId, streaming = false }) {
-  // Undefined until the lookup answers; `repairCardState` falls back to the
-  // streaming/neutral copy in the meantime rather than guessing an outcome.
+  // Keep status unknown until lookup completes; do not guess the repair outcome.
   const [status, setStatus] = useState(undefined);
 
   useEffect(() => {
     if (!repair?.artifactId || !repair?.repairId) return undefined;
     let live = true;
-    // Re-read when the turn stops streaming, which is when a queued repair has
-    // most likely resolved. A card whose status is already terminal does not
-    // need another read, but the cost is one request per completed turn and the
-    // alternative is polling.
+    // Refresh after each completed turn, when a queued repair may have resolved, instead of
+    // polling.
     loadAgentRepair({ id: repair.artifactId, projectId }, repair.repairId)
       .then((detail) => { if (live) setStatus(detail?.repair?.status || ''); })
-      // A failed lookup is not worth surfacing: the card still says a handoff
-      // was sent, which is the part the transcript is responsible for.
+      // A failed lookup leaves the transcript’s handoff confirmation visible.
       .catch(() => { if (live) setStatus(''); });
     return () => { live = false; };
   }, [repair?.artifactId, repair?.repairId, projectId, streaming]);
