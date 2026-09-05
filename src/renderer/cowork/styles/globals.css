@@ -2284,10 +2284,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   display: flex;
   align-items: center;
   gap: 9px;
-  /* Uniform, dense rows: a fixed min-height keeps every row the same height
-     whether or not it carries a count badge (the badge was stretching
-     auto-height rows unevenly). Tightened 34→30 (ENG-1038) for a denser,
-     more structured rail. */
+  /* Fixed row height prevents count badges from stretching individual rows. */
   min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r);
@@ -2300,18 +2297,12 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   border: 0;
   width: 100%;
   text-align: left;
-  /* Snappy hover — the rail should react to the cursor immediately. */
   transition: background .1s ease, color .1s ease;
 }
 .app-sidebar .nav-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
-/* Active = "where you are": a quiet neutral fill, one step stronger than
-   hover. Deliberately NOT the accent — a faded teal tint stood out too
-   much and read off. Same ink text/weight as the rest of the rail (no
-   bold), so the fill alone carries the state. The ink-based mix works in
-   both themes (darkens on light, lightens on dark). */
 .app-sidebar .nav-item.active {
   color: var(--ink);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -2325,19 +2316,11 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   text-transform: uppercase;
   color: var(--ink-4);
   font-weight: 600;
-  /* Tighter top gap so each group reads as attached to its heading, and a
-     10px left edge lined up with the nav-list gutter for structure. */
   padding: 12px 10px 6px;
   margin: 0;
 }
 
-/* Recents heading "View all →" — visibility now driven by JS
-   `onMouseEnter`/`onMouseLeave` on the heading <div> itself, so
-   the rule below only carries the transition and color treatment.
-   Inline opacity/transform/pointer-events on the button do the
-   actual show/hide work; this lets the hover hit area stay
-   strictly bounded to the heading row even if some surrounding
-   CSS would otherwise let `:hover` propagate. */
+/* Sidebar owns heading visibility through inline state; this rule supplies appearance and transition only. */
 .recents-heading .recents-viewall {
   color: var(--ink-3);
   transition:
@@ -2349,14 +2332,11 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   color: var(--accent);
 }
 
-/* Recent row — same shape, mono meta on the right */
 .app-sidebar .recent-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  /* Match .nav-item exactly so nav rows and task/pinned rows read as one
-     consistent list, matched to the nav rows (ENG-1038: both tightened to 30). */
   min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r);
@@ -2371,8 +2351,6 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
-/* Currently-open task — same quiet neutral fill as the active nav item,
-   so "which conversation am I in" reads without shouting. */
 .app-sidebar .recent-item.is-selected,
 .app-sidebar .recent-item.is-selected:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -2403,18 +2381,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  /* Default: muted (offline) palette. Overridden by .is-on / .is-busy below. */
   --status-label-color: var(--ink-3);
   --status-value-color: var(--ink-3);
-  /* Reset button defaults — the pill is rendered as a <button> so it can
-     open the server-help modal on click. */
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: default;
 }
-/* Clickable variant — hovers brighten the surface a touch so the user
-   senses the affordance without the pill changing shape. */
 .backend-status-control.is-clickable { cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
 .backend-status-control.is-clickable:hover {
   background: var(--surface-3);
@@ -2425,8 +2398,6 @@ body[data-theme="dark"] .backend-status-control.is-clickable:hover {
 }
 .backend-status-control.is-on   { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
 .backend-status-control.is-busy { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
-/* In dark mode, drop the chip a notch deeper so it reads as inset against
-   the navy sidebar surface — same family, just a touch darker. */
 body[data-theme="dark"] .backend-status-control {
   background: var(--bg);
   border-color: rgba(255, 255, 255, 0.04);
@@ -2446,9 +2417,6 @@ body[data-theme="dark"] .backend-status-control.is-on .status-text__live {
   box-shadow: 0 0 0 3px var(--accent-bg);
   flex: 0 0 auto;
 }
-/* Live "on" indicator — same neon cyan we use across the app, with two
-   glow layers (tight + soft) so it reads as an authentic power LED on
-   the dark navy sidebar. */
 body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   background: var(--accent);
   box-shadow:
@@ -2460,7 +2428,6 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   background: var(--ink-4);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink-4) 18%, transparent);
 }
-/* Pulsing accent dot while the backend is starting / stopping. */
 .status-dot.busy {
   background: var(--accent);
   animation: status-dot-pulse 1.1s ease-in-out infinite;
@@ -2475,15 +2442,11 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   color: var(--ink-2);
   letter-spacing: 0.02em;
 }
-/* Both halves of the pill text now read from the pill-level CSS vars
-   so the whole label shifts together with the on/off/busy state. */
 .status-text__faded { color: var(--status-label-color); }
 .status-text__live  { color: var(--status-value-color); }
 body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   text-shadow: 0 0 10px var(--accent-glow);
 }
-/* While starting/stopping, the value word breathes — pairs with the
-   pulsing dot and the spinner for a coherent "in flight" look. */
 .backend-status-control.is-busy .status-text__live {
   animation: status-text-blink 1.1s ease-in-out infinite;
 }
@@ -2517,7 +2480,6 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   background: var(--surface-2);
 }
 
-/* Small chrome button (used in footer + sidebar header where 22px is tight) */
 .chrome-btn--small {
   width: 22px; height: 22px;
   display: inline-flex;
@@ -2549,13 +2511,7 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
-/* Floating corner row — the Display Settings toggle (opens ThemeModal —
-   Light/Dark + Normal/8-Bit) and, on desktop, a bare Coding Mode toggle
-   beside it. Restored to the bottom-right placement the onboarding pages
-   always kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
-   hasn't mounted yet there, so those pages have no sidebar footer to host
-   it). Same geometry/tokens as that version so the transition from
-   onboarding into the signed-in app is seamless. */
+/* Match onboarding corner-toggle geometry so mounting CoworkApp preserves placement. */
 .floating-toggle-row {
   position: fixed;
   right: 18px;
@@ -2565,11 +2521,7 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   gap: 8px;
   z-index: 50;
 }
-/* Narrow/tablet band (sidebar popout, not yet the phone MobileShell): the
-   bottom-right corner overlaps task-list rows and the composer's send
-   button at this width, so the row moves up to the top-right instead —
-   just left of the per-view expand/collapse-right-panel button (ChatView /
-   ProjectsView), which sits ~14px from the content edge at ~28px wide. */
+/* Move corner toggles up in the narrow/tablet band to avoid task rows and the send button. */
 .floating-toggle-row--top-right {
   top: 18px;
   right: 60px;
@@ -2597,10 +2549,6 @@ body[data-theme="dark"] .floating-toggle:hover {
   color: var(--accent);
   box-shadow: 0 0 18px rgba(34,211,238,0.3);
 }
-/* Coding Mode toggle — deliberately bare (no border/background box) so it
-   reads as a status glyph next to the boxed Display Settings button, not a
-   second button of the same weight. Greyed out (--ink-4) when off, lit
-   accent when on; toggles coding mode directly on click (no modal). */
 .coding-mode-toggle {
   width: 32px;
   height: 32px;
@@ -2623,13 +2571,9 @@ body[data-theme="dark"] .floating-toggle:hover {
   opacity: 0.85;
 }
 
-/* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
-   later in the session doesn't re-trigger the last-clicked nav item.
-   :focus-visible keeps the ring for true keyboard navigation. */
+/* Show focus rings only for keyboard navigation. */
 button:focus:not(:focus-visible) { outline: none; }
 
-/* OrbitMorph indicator — only the dark-theme accent glow lives here;
-   the rest of the visual is rendered procedurally by the component. */
 .orbit-morph { display: inline-block; line-height: 0; }
 body[data-theme="dark"] .orbit-morph[data-state="thinking"],
 body[data-theme="dark"] .orbit-morph[data-state="done"] {
@@ -2637,11 +2581,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .orbit-morph[data-state="idle"] svg { opacity: 0.7; }
 
-/* Sidebar is a docked flex item across the whole desktop + tablet range
-   (≥640px); below 640 MobileShell replaces it. The old max-width:700 icon-rail
-   and the .sidebar-overlay-wrap tablet-drawer overrides were removed in the
-   ENG-1038 shell simplification (the tablet band no longer uses an overlay).
-   See lib/breakpoints.js for the shared 640 / 900 / 1280 scale. */
+/* Below 640px MobileShell replaces the docked sidebar; shared breakpoints live in lib/breakpoints.js. */
 
 /* ─── Toggle ─────────────────────────────────────────────────────────────── */
 .toggle {
@@ -2658,10 +2598,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .toggle.on .toggle-thumb { left: 18px; }
 
-/* ─── Settings badge pulse ────────────────────────────────────────────────
-   Drives the soft glow on active settings badges. The halo follows the
-   badge's semantic text color, so success stays green and pending stays
-   amber. The pill itself stays still, so the effect reads as breathing. */
+/* Settings badge pulse. */
 @keyframes set-badge-pulse {
   0%, 100% {
     box-shadow:
@@ -2677,7 +2614,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   }
 }
 
-/* Queue strip drops in above the composer with a soft fade + slide. */
 @keyframes queue-pop-in {
   0%   { opacity: 0; transform: translateY(8px) scale(0.985); }
   60%  { opacity: 1; transform: translateY(0)   scale(1.005); }
@@ -2687,8 +2623,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   @keyframes queue-pop-in { 0%, 100% { opacity: 1; transform: none; } }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* Honour OS-level reduced-motion. Hold the mid-pulse state so the
-     badge still reads as "active" without animating. */
+  /* Hold a static active state under reduced motion. */
   @keyframes set-badge-pulse {
     0%, 100% {
       box-shadow:
@@ -2699,10 +2634,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   }
 }
 
-/* ─── Copied toast ───────────────────────────────────────────────────────
-   Floating "Copied" pill that briefly pops above the copy button. Drives
-   the whole 1.5s lifecycle from one animation so the React side just has
-   to render the element while `copied` is true. */
+/* Copied toast: animation owns its visible lifecycle. */
 @keyframes copied-pop {
   0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.92); }
   12%  { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
@@ -2710,9 +2642,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   100% { opacity: 0; transform: translate(-50%, -2px) scale(0.98);}
 }
 
-/* Failure variant: pops in like `copied-pop` but holds instead of fading out —
-   an error needs to stay legible until the user dismisses it (next attempt or
-   blur), not vanish on the same 1.5s clock as a success confirmation. */
+/* Keep failures visible until dismissal; do not apply the timed success fade. */
 @keyframes failed-pop {
   0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.92); }
   100% { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
@@ -2892,20 +2822,12 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   flex: 1; border: 0; outline: 0; font-size: var(--text-md);
   color: var(--text-strong); background: transparent;
 }
-/* WCAG 2.4.7 — borderless inputs still need a visible keyboard-focus
-   cue. The parent `.search-head` already has a divider; the focus-
-   within rule promotes that divider's colour so keyboard users can see
-   the active field without the search modal getting noisy for mouse
-   users. */
+/* Borderless search inputs still need a visible keyboard-focus cue. */
 .search-head:focus-within {
   box-shadow: inset 0 -2px 0 0 var(--accent);
 }
 
-/* Generic focus-within ring — apply to any parent that hosts a
-   borderless input whose `outline:0` is enforced by inline styles
-   (e.g. labels wrapping a search field). The ring lands on the
-   wrapper, not the input, so the rounded surface stays intact.
-   WCAG 2.4.7 / 2.4.11. */
+/* Apply focus-within-ring to wrappers of borderless inputs whose inline outline:0 cannot be overridden. */
 .focus-within-ring:focus-within {
   outline: 0;
   box-shadow: 0 0 0 1px var(--accent);
@@ -2939,38 +2861,19 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   padding: 18px 12px; color: var(--frost-600); font-size: 13px;
 }
 
-/* ─── Chat experience — handoff from docs/design-guidelines/chat.html ────────
-   Layered onto the existing ChatView/Composer markup. Two-family system:
-   Inter (display/labels + body), JetBrains Mono (operator metadata:
-   timestamps, model, turn count). */
+/* Chat design reference: docs/design-guidelines/chat.html. */
 
-/* Floating composer override — chat shell (18px radius, compact field).
-   Toolbar + / Send insets and control sizes match the default composer
-   (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
   background: var(--surface);
   border: 1.5px solid var(--line);
   border-radius: var(--r-xl);
-  /* 10px horizontal + textarea side padding = same 18px text inset as
-     .composer-textarea on home; toolbar is flush on the bottom so the card
-     doesn't pick up a double band (toolbar pb + wrap pb). */
   padding: 16px 14px 12px;
-  /* Subtle all-around lift — replaces the heavier downward shadow we
-     used to pair with the bottom gradient mask. With the mask gone, a
-     soft even glow reads as "floating panel" without darkening the
-     gravity field below. */
   box-shadow:
     0 2px 4px rgba(15, 16, 17, 0.05),
     0 6px 20px rgba(15, 16, 17, 0.08);
 }
-/* Override the shared metrics on the shell so the textarea and overlay
-   stay coupled. Font-family still ships on each child because it's not
-   in the shared var set (textarea uses --font-sans by default; the
-   floating composer flips it to --font-body via two thin overrides). */
+/* Override shared metrics on the shell and font on both children to keep textarea/overlay aligned. */
 .chat-floating-composer .composer-input-shell {
-  /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea.
-     Tighter bottom than default textarea: toolbar supplies top spacing so we
-     don't stack 12px + 10px and leave a tall band under the input line. */
   --composer-font-size: var(--text-md);
   --composer-line-height: 1.5;
   --composer-padding: 4px 8px 8px;
@@ -2983,8 +2886,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   font-family: var(--font-body);
 }
 .chat-floating-composer .composer-toolbar {
-  /* Horizontal inset comes from .composer-wrap; no bottom padding — wrap's
-     padding-bottom gives the only inset below + / Send (matches pre-alignment). */
   padding: 6px 0 0;
   gap: 6px;
 }
@@ -3006,35 +2907,22 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   background: color-mix(in srgb, var(--accent) 88%, black);
 }
 .chat-floating-composer .send-btn:disabled {
-  /* Same dormant accent wash as the base .send-btn:disabled. */
   background: var(--accent-bg);
   color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 body[data-theme="dark"] .chat-floating-composer .composer-wrap {
-  /* Softer than the old 0.55-alpha 32-blur — that was producing a
-     heavy slab below the composer that drew the eye down. Match the
-     light-mode shadow's restraint, just dialed up enough to read
-     against the navy surface. */
   box-shadow:
     0 4px 18px rgba(0, 0, 0, 0.28),
     0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 .chat-floating-composer .composer-wrap.focused {
-  /* Quiet focus (ENG-787 move 03): the accent border is the only focus
-     signal. No 3px teal glow ring; hold the same soft lift as the resting
-     state so the card doesn't jump on focus. */
   border-color: var(--accent);
   box-shadow:
     0 2px 4px rgba(15, 16, 17, 0.05),
     0 6px 20px rgba(15, 16, 17, 0.08);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Mobile shell
-   Active only when the cowork SPA renders inside MobileShell (viewport
-   width < 640px). Reuses the app's design tokens so light/dark both
-   work without a separate palette.
-   ───────────────────────────────────────────────────────────────────── */
+/* MobileShell, below 640px. */
 
 .mshell {
   position: fixed;
@@ -3044,7 +2932,6 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   background: var(--bg);
   color: var(--text-default);
   font-family: var(--font-sans);
-  /* Honor iOS safe areas at the device edges. */
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: env(safe-area-inset-bottom, 0);
   padding-left: env(safe-area-inset-left, 0);
@@ -3077,12 +2964,9 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   padding: 0 4px;
 }
 
-/* Mirrors the hamburger's 40px footprint on the right side so the
-   title stays optically centered now that the top-bar "+" is gone. */
+/* Mirror the opposing control width to center the title. */
 .mshell__top-spacer { display: inline-block; width: 40px; height: 40px; }
 
-/* Theme toggle — same 40px footprint as the hamburger it mirrors, opposite
-   corner of the top bar. */
 .mshell__theme-toggle {
   width: 40px;
   height: 40px;
@@ -3100,7 +2984,6 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
 
-/* Hamburger button — three bars that animate into an X when open. */
 .mshell__hamburger {
   width: 40px;
   height: 40px;
@@ -3152,8 +3035,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   position: relative;
   background: var(--bg);
 }
-/* Reset the global drag region inside the mobile body so the OS doesn't
-   try to drag the window on touch (Electron only — harmless on web). */
+/* Disable Electron dragging inside the mobile body so touch remains interactive. */
 .mshell__body, .mshell__body * { -webkit-app-region: no-drag; }
 
 .mshell__scrim {
@@ -3197,10 +3079,6 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   padding: 0 12px 0 18px;
   border-bottom: 1px solid var(--border-subtle);
 }
-/* Matches .anton-sidebar__wordmark (the desktop sidebar's ANTON
-   brand): font-display, uppercase, the same letter-spacing — so the
-   mobile drawer shares the same brand typography. Size bumped from
-   the sidebar's 11px since the drawer header has more vertical room. */
 .mshell__drawer-logo {
   width: 22px;
   height: 22px;
@@ -3244,7 +3122,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   gap: 2px;
 }
 
-/* Rows — used for nav entries, accordion items, drawer top buttons. */
 .mshell-row {
   display: flex;
   align-items: center;
@@ -3293,7 +3170,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   align-items: center;
 }
 
-/* Accordion section. The chevron rotates 90° down when expanded. */
 .mshell-accordion {
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -3361,15 +3237,8 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-faint);
 }
 
-/* ── Mobile Settings full page (ENG-990) ─────────────────────────────────
-   On mobile, Settings renders as a full-page surface with accordion
-   navigation instead of the desktop two-column modal. Mirrors the
-   MobileShell chrome (fixed inset, 52px top bar, safe-area insets) and
-   layers at the same z as the modal it replaces so it covers the shell. */
-/* The full-page surface itself is a fullBleed <Modal> (App.jsx) — it carries
-   the fixed inset-0 frame, safe-area insets, and z-layer, plus the dialog
-   focus trap / scroll lock. These children style the top bar + scroll body
-   that SettingsView renders inside it. */
+/* Mobile Settings. */
+/* The fullBleed Modal owns viewport, safe areas, focus trap, and scroll lock; style only its children here. */
 .settings-mobile__top {
   flex: 0 0 auto;
   height: 52px;
@@ -3417,15 +3286,10 @@ body[data-theme="dark"] .mshell__drawer-title {
   -webkit-overflow-scrolling: touch;
   background: var(--bg);
 }
-/* Master-detail (ENG-990). The section list uses the full-width mshell
-   accordion rows (border dividers); the detail page renders the section's
-   content in natural flow (SettingsSectionPanel drops its internal scroll on
-   mobile) with a comfortable gutter and safe-area-aware bottom padding. */
 .settings-list { padding: 4px 0 24px; }
 .settings-detail { padding: 6px 14px calc(24px + env(safe-area-inset-bottom, 0)); }
 
-/* FAB — anchored bottom-right inside the mobile body. Sits above the
-   home-indicator on iOS via env(safe-area-inset-bottom). */
+/* Place the FAB above the iOS safe-area inset. */
 .mshell__fab {
   position: absolute;
   right: 18px;
@@ -3451,16 +3315,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   transform: scale(0.94);
   background: var(--accent-2);
 }
-/* When the FAB menu is open, rotate the "+" 45° so it reads as a
-   close affordance. Reused press-state scale runs on top via :active. */
 .mshell__fab.is-open {
   transform: rotate(45deg);
   background: var(--accent-2);
 }
 
-/* Tap-outside scrim. Transparent — its only job is to catch taps
-   that should dismiss the FAB menu. Sits below the menu (z 4) so
-   the menu's tap targets stay live. */
+/* Keep the dismissal scrim below the menu so its controls remain interactive. */
 .mshell__fab-scrim {
   position: fixed;
   inset: 0;
@@ -3472,9 +3332,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .mshell__fab-scrim.is-open { opacity: 1; pointer-events: auto; }
 
-/* Popover anchored to bottom-right above the FAB. Sized to its
-   content; slides up + fades in. Pointer-events suppressed when
-   collapsed so it doesn't block content underneath. */
+/* Suppress pointer events while collapsed so the popup cannot block underlying content. */
 .mshell__fab-menu {
   position: absolute;
   right: 18px;
@@ -3546,8 +3404,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-muted);
 }
 
-/* Separator between adjacent settings rows — border sits between siblings,
-   never below the last item in a collapsible card. */
 .settings-section + .settings-section,
 .settings-section + .settings-hide-mobile,
 .settings-hide-mobile .settings-section + .settings-section,
@@ -3555,11 +3411,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Wider mobile (large phone / small tablet): a section whose sole control is
-   a Switch or ToggleGroup re-forms the desktop "title | control" row instead
-   of stacking (ENG-990). Higher specificity than the stack rule below, so it
-   wins in the 440–639px overlap; under 440px only the stack rule matches, so
-   the narrowest phones still stack everything. */
+/* Higher specificity preserves horizontal controls at 440–639px; narrower screens use the stack rule. */
 @media (min-width: 440px) and (max-width: 639.98px) {
   .settings-section.settings-section--inline {
     grid-template-columns: 1fr auto !important;
@@ -3571,12 +3423,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 
 @media (max-width: 639.98px) {
-  /* Project detail (ProjectsView in detail mode) — desktop puts the
-     rail (Working folder + Context + Scheduled) in a 320px right
-     column. On a phone-width viewport, collapse to a single column
-     and drop the rail entirely — composer + task list only. Inline
-     style attributes in ProjectsView.jsx force the desktop grid, so
-     these overrides use !important. */
+  /* Use important to override ProjectsView's inline desktop grid on phones. */
   .project-detail-root {
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: 1fr !important;
@@ -3585,10 +3432,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   .project-detail-rail-toggle,
   .project-detail-rail-toggle-row { display: none !important; }
 
-  /* Settings — Section is `1fr 320px` (description | control) on
-     desktop. Stack on phone so the control column doesn't get pushed
-     off-screen. Tighter outer padding too — 28px gutters waste a lot
-     of horizontal space at 375px wide. */
   .settings-section {
     grid-template-columns: 1fr !important;
     gap: 10px !important;
@@ -3596,10 +3439,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   .settings-scroll {
     padding: 16px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
   }
-  /* Provider rows have their own 3-column inline grid (title |
-     api-key/url inputs | remove-button) that doesn't share the
-     Section component. Stack so the API key field gets the full
-     screen width; remove-button slides down to the end. */
   .settings-provider-row {
     grid-template-columns: 1fr !important;
     gap: 10px !important;
@@ -3607,15 +3446,8 @@ body[data-theme="dark"] .mshell__drawer-title {
   .settings-provider-row > div:last-child {
     justify-self: end;
   }
-  /* Desktop-only Settings sections (animated background, nav-panel
-     counters) — no value on a phone. */
   .settings-hide-mobile { display: none !important; }
 
-  /* Schedule detail (a scheduled task's full page) — desktop crams
-     three actions (Enable / Edit / Run now) plus a long title into
-     one row, and the Health card puts three metric tiles inline
-     with the description. Both go to two-row stacked layouts on a
-     phone. Outer gutters tighten too. */
   .sched-body {
     padding: 4px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
   }
@@ -3624,9 +3456,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     padding: 14px 14px !important;
     border-radius: var(--r-12) !important;
   }
-  /* Hero top row: title block on top, action toolbar wraps to next
-     line so each control gets a proper tap target instead of being
-     squeezed against the title. */
   .sched-hero-top {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -3638,12 +3467,8 @@ body[data-theme="dark"] .mshell__drawer-title {
     width: 100% !important;
   }
   .sched-hero-actions > * { flex: 0 0 auto; }
-  /* Run now is the primary action — let it grow to fill the row's
-     remaining width so it reads as the dominant CTA. */
   .sched-hero-actions > .btn.primary { flex: 1 1 auto; justify-content: center; }
 
-  /* Health top row: description on top, metric tiles on their own
-     row with even spacing. */
   .sched-health-top {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -3656,54 +3481,33 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
   .sched-health-metrics > * { flex: 1 1 0; min-width: 0; }
 
-  /* Memories / Skills library / Connect Apps publish — all use
-     fixed-width sidebars (300px or 360px) in a 2-col grid. Collapse
-     to single column on phone; the list stacks above the detail. */
   .util-split,
   .util-publish {
     grid-template-columns: 1fr !important;
     padding: 16px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
     gap: 14px !important;
   }
-  /* The Skills view's sidebar uses a hard right border that reads as
-     a visible divider after stacking — soften it on phone. */
   .util-split > div:first-child {
     border-right: none !important;
     border-bottom: 1px solid var(--border-subtle);
   }
 
-  /* The mobile FAB menu is the single create entry on phone — hide
-     the in-page "+ New project" header button and the trailing
-     dashed tile in the projects grid so we don't show three "+"
-     affordances stacked on one screen. */
+  /* The mobile FAB owns creation; hide duplicate project-create controls. */
   .proj-new-action,
   .proj-new-tile { display: none !important; }
 
-  /* Grid/list view toggle — list mode breaks at phone widths
-     (5-column row), and the toggle takes up header space we don't
-     have. Force grid (see effectiveView in ProjectsView /
-     ArtifactsView) and hide the switch. */
+  /* Phone layouts force grid in the views because multi-column list rows do not fit. */
   .proj-view-toggle,
   .artifacts-view-toggle { display: none !important; }
 
-  /* Artifacts grid — desktop uses 32px horizontal gutters which
-     waste half the screen on a phone. Tighten to 14px and reserve
-     bottom space for the safe area. */
   .artifacts-grid {
     padding: 6px 14px calc(80px + env(safe-area-inset-bottom, 0)) !important;
   }
 
-  /* Chat right-hand rail — only hide the FLOATING expand button on
-     mobile (.chat-rail-toggle). The CLOSE button inside the rail
-     (.chat-rail-close) stays visible so the user can dismiss the
-     fullscreen form panel. The mobile shell's hamburger drawer
-     covers the same surfaces that the expand button used to. */
+  /* Hide only the floating expand button; keep the fullscreen rail's close control available. */
   .chat-rail-toggle { display: none !important; }
 
-  /* Make the rail overlay truly fullscreen on mobile so the data-
-     vault form fills the viewport instead of being a 320px-wide
-     slide-over. Inline styles supply the slide transform via
-     transform: translateX; we only override the static frame here. */
+  /* Override the static mobile frame only; inline transforms still control sliding. */
   .chat-rail-aside {
     top: 0 !important;
     right: 0 !important;
@@ -3715,11 +3519,7 @@ body[data-theme="dark"] .mshell__drawer-title {
     padding-bottom: calc(env(safe-area-inset-bottom, 0) + 14px) !important;
   }
 
-  /* Home view (new task) — desktop has the orb sit inline to the
-     left of the greeting (negative margin pulls it outside the text
-     column). On phone widths, stack the orb on top of the greeting
-     and centre everything. Disable the horizontal travel transform
-     too so the orb stays centred through every boot phase. */
+  /* Disable horizontal orb travel when stacking the mobile greeting. */
   .home-greeting-row {
     flex-direction: column !important;
     align-items: center !important;
@@ -3733,8 +3533,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     transform: none !important;
   }
 
-  /* Scratchpad modal — go fullscreen so a 94vw card with rounded
-     corners doesn't waste space inside a fixed scrim at phone widths. */
   .scratchpad-modal {
     width: 100vw !important;
     height: 100vh !important;
@@ -3744,16 +3542,10 @@ body[data-theme="dark"] .mshell__drawer-title {
     border-left: none !important;
     border-right: none !important;
   }
-  /* Tighter horizontal padding so each cell's output/code can use
-     the full screen width. Was pl-6 pr-6 (24px) — overkill on phone. */
   .scratchpad-cell {
     padding-left: 12px !important;
     padding-right: 12px !important;
   }
-  /* Collapse the auto | 1fr grid (step-badge | content) into a
-     single column. The step badge stacks on its own row above the
-     description; output and code blocks then occupy the full width
-     instead of being indented under the badge column. */
   .scratchpad-cell-grid {
     grid-template-columns: 1fr !important;
     column-gap: 0 !important;
@@ -3761,60 +3553,31 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
 }
 
-/* ─── Chat fenced code blocks (Claude-style) ─────────────────────────────
-   Rendered by MarkdownCode for any fenced block whose language isn't
-   one of our special kinds (chartjs / chart / data-vault-form*).
-   Header carries the language tag + a Copy button driven by a delegated
-   click listener mounted on the MarkdownContent root. */
-/* Text selection inside chat-rendered markdown — scoped so it can't leak
-   into other surfaces (composer, side panels, etc.). Replaces the OS-
-   default blue with an on-palette accent wash; `color: inherit` keeps
-   the underlying ink colour readable through the highlight. */
+/* Chat code blocks: MarkdownContent's delegated click handler drives Copy. */
 .markdown-content ::selection {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: inherit;
 }
 
-/* Force unbreakable strings (URLs, file paths, hashes) to wrap inside
-   chat-rendered markdown. Tailwind's `break-words` (overflow-wrap:
-   break-word) only breaks once the word has already pushed the box,
-   which lets long URLs blow past the user-bubble's 78% width cap.
-   `anywhere` allows breaks before that overflow can happen. */
+/* Use anywhere: break-word can let long tokens exceed the bubble's width before wrapping. */
 .markdown-content {
   overflow-wrap: anywhere;
 }
 
-/* ─── KaTeX math (remark-math + rehype-katex, ENG-989) ─────────────────
-   KaTeX inherits `color` from the surrounding text, so inline + display
-   math pick up the active theme's ink token automatically — no per-theme
-   overrides needed. We only adjust rhythm + overflow here. */
+/* KaTeX inherits theme ink; constrain spacing and overflow here. */
 .markdown-content .katex {
-  /* Match the body text size; KaTeX defaults to 1.21em which reads
-     oversized against our chat column. */
   font-size: 1.05em;
 }
 .markdown-content .katex-display {
-  /* Long equations scroll within the column instead of forcing the whole
-     chat turn to overflow horizontally. overflow-y hidden avoids a stray
-     vertical scrollbar from KaTeX's strut boxes. */
+  /* Scroll long equations horizontally; hide strut-induced vertical overflow. */
   overflow-x: auto;
   overflow-y: hidden;
-  /* Tighter than KaTeX's default 1em top/bottom so display math sits in
-     the same vertical rhythm as our paragraphs. */
   margin: 0.75em 0;
   padding-bottom: 2px;
 }
-/* Error colour for broken/half-streamed TeX is set via KaTeX's `errorColor`
-   option (see _KATEX_OPTIONS in MarkdownContent.jsx), not here: KaTeX writes
-   it as an inline style (color: var(--danger)) on a span that isn't nested
-   under `.katex`, so a CSS rule could neither match it nor beat the inline
-   style. */
+/* Set KaTeX errors through its errorColor option: inline styles land outside .katex and override CSS. */
 
-/* ─── User message turn ────────────────────────────────────────────────
-   Refactored out of inline-style sprawl in ChatView.UserTurn. Layout
-   wrapper + bubble + hover-revealed action toolbar + attachment chip +
-   timestamp. Hover affordances are pure CSS (`:hover`) so the component
-   doesn't need useState flags any more. */
+/* User message turns. */
 .user-turn {
   display: flex;
   justify-content: flex-end;
@@ -3828,10 +3591,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   gap: 8px;
   position: relative;
 }
-/* The "Address with agent" handoff, rendered as a card instead of its raw
-   machine prompt. Sits inside the user bubble, so it inherits the bubble's fill
-   and only has to structure what is on top of it — no second background, or the
-   card would read as a nested surface the transcript does not otherwise use. */
+/* Use the existing user-bubble surface for repair cards. */
 .artifact-repair-card {
   display: flex;
   flex-direction: column;
@@ -3856,9 +3616,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   align-items: baseline;
   gap: 8px;
 }
-/* The filename earns its place — it is the one identifier from the prompt a
-   person reads — but it is secondary to the status, and long paths must not
-   push the status out of the row. */
+/* Keep long filenames from pushing repair status out of the row. */
 .artifact-repair-card-file {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
@@ -3889,8 +3647,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* A quiet rule rather than a box: the comment is a quotation of the
-     reviewer, and the bubble already provides the container. */
   border-left: 2px solid var(--line);
   padding-left: 10px;
 }
@@ -3900,42 +3656,25 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .artifact-repair-card-comment {
   color: var(--ink-2);
-  /* The reviewer's own words, so honour their line breaks. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .user-turn-bubble {
-  /* Quiet filled block, not an SMS bubble: a borderless --surface-3 fill,
-     no shadow. The transcript sits on a flat --bg (there is no dot field),
-     so — like Claude — the fill alone carries the shape and no hairline is
-     needed. (The old --surface-2 fill was only ~2% off the page in light
-     mode and needed a border to read, which is why one used to be here.)
-     Quieter than the answer by design: --ink-2 text + a tighter 1.5 leading
-     mark the prompt as an echo so the answer stays the primary read.
-     ENG-787 de-bubble, ENG-641 refine. */
   background: var(--surface-3);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: 14.5px; /* match the answer body (text-body token) — both are prose */
+  font-size: 14.5px;
   line-height: 1.5;
   color: var(--ink-2);
   box-shadow: none;
   user-select: text;
-  /* The bubble is a flex item in a column flex (.user-turn-inner). Without
-     min-width:0 its min-content floor is the widest unbreakable child — a
-     pasted code block / wide table with `white-space: pre` — which lets the
-     bubble grow past the inner's 78% cap and run off the chat column.
-     min-width:0 lets it shrink so the code block's own overflow-x:auto
-     scrolls the long line within the bubble instead. */
+  /* Allow flex bubbles to shrink below min-content so wide code/table children scroll inside the width cap. */
   min-width: 0;
   max-width: 100%;
 }
-/* Long user messages clamp to ~8 lines with a soft bottom fade + a "Show
-   more" toggle (Claude pattern) so a big pasted prompt doesn't dominate the
-   viewport before the answer. The fade and toggle appear only when the
-   content actually overflows the clamp (measured in UserTurn). */
+/* Clamp only overflowing prompts; UserTurn measures whether to show expansion controls. */
 .user-turn-clamp { overflow: hidden; }
 .user-turn-clamp--faded {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent);
@@ -3956,14 +3695,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .user-turn-more:hover { color: var(--ink); }
 
-/* ─── Chat-view accent damping ───────────────────────────────────────────────
-   Two spots hard-filled the raw bright --accent and read as glare in dark mode
-   (the inline artifact-card CTA and the Progress-panel done markers). Both now
-   follow the canonical primary logic: opaque accent in light, a quiet accent
-   glass / deeper accent in dark. */
 
-/* Artifact-card action buttons (Export / reveal / Open). Small-size siblings;
-   the primary "Open" mirrors .btn.primary rather than a flat --accent fill. */
 .chat-card-btn {
   all: unset;
   box-sizing: border-box;
@@ -4003,17 +3735,11 @@ body[data-theme="dark"] .chat-card-btn--primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
-/* Progress-panel done marker: keep the brand --accent fill in light, but in
-   dark drop to the deeper --accent-3 so a column of checks reads as a quiet
-   reference instead of a string of neon dots. */
 body[data-theme="dark"] .phase-check-done {
   background-color: var(--accent-3);
   border-color: var(--accent-3);
 }
-/* ─── Shared turn-action toolbar ──────────────────────────────────────────
-   Horizontal row of icon buttons below both user and assistant messages.
-   Hidden at rest, revealed on hover of the parent turn. `.is-last` keeps
-   the most recent exchange's toolbar always visible (Claude pattern). */
+/* Keep the latest turn toolbar visible; older toolbars reveal on hover. */
 .turn-actions {
   display: flex;
   gap: 4px;
@@ -4028,12 +3754,9 @@ body[data-theme="dark"] .phase-check-done {
 .turn-actions:focus-within {
   opacity: 1;
 }
-/* Footer meta bottom-right of an answer — "Jun 21, 7:39 AM · Anton".
-   Hover-only by design (no .is-last exception): the agent + timestamp
-   are reference details, not part of the reading flow. */
 .turn-meta {
   margin-left: auto;
-  margin-top: 4px; /* matches .turn-actions so both sit on one baseline */
+  margin-top: 4px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: 0.04em;
@@ -4045,38 +3768,18 @@ body[data-theme="dark"] .phase-check-done {
 }
 .answer-turn:hover .turn-meta,
 .answer-turn:focus-within .turn-meta { opacity: 1; }
-/* Answer body rhythm (ENG-787 move 02): a touch more line-height than the
-   user bubble's 1.5 so the answer reads as the roomier, primary long-form
-   content. 1.62 lands between the old 1.7 (too relaxed) and the 1.55 body
-   token — generous but composed, in the Claude register. Scoped to answer
-   turns so user bubbles, memory previews, and other markdown surfaces are
-   unaffected. */
-/* Chat body ink: nudged ~30% darker than the --ink-2 body token for a
-   crisper, more committed read — but kept a soft near-black, not the full
-   --ink, which would read heavy/harsh over long *sans* paragraphs (the trick
-   a serif like Claude's would hide). ~10:1 contrast leaves plenty of headroom.
-   color-mix against the tokens so dark mode moves the text brighter (= more
-   contrast) automatically. Scoped to chat prose so the global --ink-2 token
-   used elsewhere is untouched. */
 .answer-turn .markdown-content p,
 .answer-turn .markdown-content li {
   line-height: 1.62;
   color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
 }
-/* User bubble body: a hair denser than the answer — tighter 1.5 leading plus
-   a touch of negative tracking mark the prompt as a compact echo while the
-   answer stays the roomier primary read. Set at the p/li level (not on
-   .user-turn-bubble) because the markdown `text-body` utility on <p>/<li>
-   carries its own 14.5px/1.55 that otherwise wins over the bubble's base. */
+/* Apply user-bubble rhythm to p/li directly because their text-body utility overrides inherited values. */
 .user-turn .markdown-content p,
 .user-turn .markdown-content li {
   line-height: 1.5;
   letter-spacing: -0.012em;
   color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
 }
-/* The in-flight status label next to the orb — soft left-to-right sheen,
-   the same "alive" read as Claude's thinking label. Numbers inside tick
-   every second, so the JSX pairs this with tabular-nums. */
 @keyframes thinking-shimmer {
   from { background-position: 150% 0; }
   to   { background-position: -50% 0; }
@@ -4138,11 +3841,6 @@ body[data-theme="dark"] .phase-check-done {
   color: var(--ink-4);
 }
 
-/* Heading scale inside user-message bubbles — MarkdownContent's defaults
-   (h1: 20px, h2: 17px) overpower the 14.5px bubble body when someone
-   sends `# Title`. Clamp them to body-adjacent sizes so the bubble keeps
-   a chat-message feel rather than a document banner. h3 is already
-   uppercase/small in MarkdownContent, no adjustment needed. */
 .user-turn .markdown-content h1 {
   font-size: 16px;
   margin-top: 0;
@@ -4154,33 +3852,21 @@ body[data-theme="dark"] .phase-check-done {
   margin-bottom: 4px;
 }
 
-/* Inline `code` chip — Claude-style coral. Light coral foreground on a
-   gentle warm wash, thin warm outline. Hard-coded coral values (rather
-   than going through the cyan --accent ramp) because Claude's identity
-   for code-as-text is intentionally divergent from the cyan accent. */
 .anton-inline-code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: inherit;
   color: rgb(232, 132, 110);
-  /* Neutral chip (a faint --ink tint), not a coral-tinted box with a coral
-     border — so only the TEXT carries the warm colour, à la Claude. Reads
-     calmer and drops another colored border from the transcript. */
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: var(--r-sm);
   padding: 1px 5px;
   word-break: break-word;
 }
-/* Skill mention (/skill-name) in a sent message — plain text (no chip),
-   coloured a little darker than the brand accent + medium weight so it reads
-   as a mention. Matches the composer overlay's .overlay-slash-mention. */
 .anton-skill-mention {
   color: color-mix(in srgb, var(--accent) 82%, #000);
   font-weight: 500;
 }
 body[data-theme="light"] .anton-inline-code {
-  /* Darker terracotta on light keeps AA contrast; the chip fill itself is
-     the neutral --ink tint inherited from the base rule. */
   color: rgb(168, 76, 60);
 }
 
@@ -4192,16 +3878,9 @@ body[data-theme="light"] .anton-inline-code {
   overflow: hidden;
   font-family: var(--font-mono);
 }
-/* When the code block is the first or last child of a chat bubble, its
-   own 12px outer margin stacks with the bubble's padding (14px 18px) and
-   we end up with a fat empty band. Reset the edge margins so the block
-   sits flush against the bubble's inner padding. */
+/* Reset edge code-block margins to avoid stacking them with bubble padding. */
 .markdown-content > .anton-code-block:first-child { margin-top: 0; }
 .markdown-content > .anton-code-block:last-child { margin-bottom: 0; }
-/* Header sits flush on the block body — no divider line, no tinted
-   background. Claude's pattern: language label in muted ink on the
-   left, single Copy icon on the right, both the same surface as the
-   code beneath. */
 .anton-code-block-header {
   display: flex;
   align-items: center;
@@ -4223,9 +3902,7 @@ body[data-theme="light"] .anton-inline-code {
 .anton-code-block-copy {
   display: inline-flex;
   align-items: center;
-  /* No text label visible — Claude shows the icon only. We keep the
-     label in the DOM for the aria-live announcement; CSS just hides it
-     visually (see .anton-code-block-copy-label below). */
+  /* Retain the hidden label for aria-live copy feedback. */
   padding: 4px 6px;
   border: 1px solid transparent;
   border-radius: var(--r);
@@ -4240,11 +3917,7 @@ body[data-theme="light"] .anton-inline-code {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
 }
-/* WCAG 2.4.7 Focus Visible / 1.4.11 Non-text Contrast — keyboard users
-   need a visible focus indicator on the icon-only Copy button.
-   color-mix on --accent stays theme-adaptive (cyan on dark, deeper on
-   light) and clears the 3:1 non-text contrast threshold against the
-   neighbouring surface tokens. */
+/* Icon-only Copy still needs a visible keyboard-focus indicator. */
 .anton-code-block-copy:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 1px var(--accent);
@@ -4254,20 +3927,13 @@ body[data-theme="light"] .anton-inline-code {
 .anton-code-block-copy.is-copied {
   color: rgb(232, 132, 110);
 }
-/* Hide the visible "Copy" / "Copied" label; the icon carries the
-   affordance. The element stays in the DOM with aria-live="polite" so
-   screen readers still get the success announcement. Visually-hidden
-   treatment comes from the shared `.sr-only` utility (see the
-   Accessibility utilities section), extended here rather than
-   duplicating the eight-declaration recipe. */
+/* Use the shared visually hidden treatment; keep the live label in the accessibility tree. */
 .anton-code-block-copy-icon {
   display: inline-flex;
   align-items: center;
   line-height: 0;
 }
-/* Two icons sit in the DOM at once (copy + check); CSS picks which is
-   visible based on the `.is-copied` class the delegated click handler
-   toggles. Keeping both mounted means no layout shift on the swap. */
+/* Keep copy/check icons mounted so swapping them cannot shift layout. */
 .anton-code-block-copy-icon--done { display: none; }
 .anton-code-block-copy.is-copied .anton-code-block-copy-icon--idle { display: none; }
 .anton-code-block-copy.is-copied .anton-code-block-copy-icon--done { display: inline-flex; }
@@ -4288,11 +3954,7 @@ body[data-theme="light"] .anton-inline-code {
   color: var(--ink);
 }
 
-/* Scoped highlight.js theme — dark (default). Only matches tokens
-   inside our wrapper so the page can't accidentally inherit hljs
-   styling elsewhere. The palette pulls from the cyberpunk accent set:
-   cyan for names/titles, mint for strings, purple for keywords,
-   sand for numbers/built-ins, low-contrast ink-4 for comments. */
+/* Scope highlight.js tokens to chat code blocks so styles cannot leak into other surfaces. */
 .anton-code-block .hljs-keyword,
 .anton-code-block .hljs-selector-tag,
 .anton-code-block .hljs-literal,
@@ -4324,8 +3986,6 @@ body[data-theme="light"] .anton-inline-code {
 .anton-code-block .hljs-emphasis { font-style: italic; }
 .anton-code-block .hljs-strong { font-weight: 600; }
 
-/* Light-mode palette — same hue families, lower brightness so they
-   stay readable against the pale surface tokens. */
 body[data-theme="light"] .anton-code-block .hljs-keyword,
 body[data-theme="light"] .anton-code-block .hljs-selector-tag,
 body[data-theme="light"] .anton-code-block .hljs-literal,
@@ -4349,26 +4009,10 @@ body[data-theme="light"] .anton-code-block .hljs-meta,
 body[data-theme="light"] .anton-code-block .hljs-variable,
 body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
 
-/* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
-   iOS Safari auto-zooms when a text input with computed font-size < 16px
-   receives focus. The PRIMARY guard is the viewport-meta toggle in App.jsx
-   (focusin → maximum-scale=1), which stops the zoom WITHOUT resizing text —
-   so inputs keep their designed size on mobile.
-
-   We deliberately do NOT bump every input to 16px here: that made form fields
-   render oversized next to the rest of the UI (ENG-990 QA). The one exception
-   is the chat composer — designed at 16px and the most zoom-prone, high-
-   frequency surface — pinned below via its font-size var.
-
-   Trade-off: the meta toggle races on *programmatic* focus (a menu that opens
-   then focuses an input via rAF) and on the first input after a route change,
-   so those specific inputs can still briefly zoom on real iOS. Accepted in
-   favour of consistent sizing; if it bites, add a targeted 16px opt-in on
-   just those inputs rather than a blanket bump. */
+/* iOS zooms focused inputs below 16px. App's viewport-meta guard can race programmatic focus.
+Keep the composer at 16px; use targeted opt-ins for other affected fields rather than resizing every input. */
 @media (max-width: 640px) {
-  /* Main composer + chat-floating composer — both consume
-     --composer-font-size from .composer-input-shell, which keeps the textarea
-     and its source-mode overlay in lockstep. */
+  /* Set font size through the shared shell variable to keep textarea and overlay aligned. */
   .composer-input-shell { --composer-font-size: 16px !important; }
 }
 
@@ -4377,18 +4021,14 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.08)); font-family: var(--font-display, inherit); font-size: var(--text-md); font-weight: 600; }
 .channels-lede { padding: 16px 20px 0; }
 .channels-pad { padding: 16px 20px; }
-/* Master–detail split. flex:1 + min-height:0 give the two panes a bounded
-   height inside the flex column; without them the content grows past the
-   window and the inner scroll never engages (most visible in the
-   fixed-height Electron shell). */
+/* Bound pane height with flex:1/min-height:0 so inner scrolling can engage. */
 .channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
 .channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
 .channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
 .channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .channels-list-item.is-active { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: var(--border-02, rgba(0,0,0,.1)); }
 .channels-list-name { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; min-width: 0; }
-/* Brand-logo chip: a white tile keeps dark brand marks (e.g. Slack's plum)
-   legible on dark themes. */
+/* White logo tiles keep dark brand marks legible across themes. */
 .channels-logo { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-8); background: #fff; border: 1px solid var(--border-02, rgba(0,0,0,.1)); color: var(--ink-4, #8a8a86); }
 .channels-card-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .channels-detail { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 20px; }
@@ -4401,7 +4041,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-type { font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }
 .channels-agent { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
 .channels-agent-label { font-size: 12px; font-weight: 600; color: var(--fg); }
-/* Segmented tab control for picking the channel agent. */
 .channels-agent-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border-subtle, rgba(0,0,0,.1)); }
 .channels-agent-tab {
   appearance: none; border: 0; background: transparent; cursor: pointer;
@@ -4428,7 +4067,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-notice { font-size: 12px; color: var(--accent-strong, #1f8a4c); margin: 10px 0 0; }
 .channels-actions { display: flex; gap: 8px; margin-top: 14px; }
 
-/* Channel routes (bindings) */
 .channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
 .channels-routes-title { font-size: var(--text-base); font-weight: 600; margin: 0 0 4px; }
 .channels-route-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
@@ -4445,11 +4083,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   100% { opacity: 0; }
 }
 
-/* ─── Artifacts grid — responsive columns (pure CSS, container-query) ───────
-   Column count tracks the ARTIFACTS PANEL width (the .scroll-clean query
-   container), not the viewport — so a narrow panel on a wide screen still
-   gets 2 (or 1) columns. 2 by default, 3 when the panel is wide, 1 when tight.
-   The mobile padding override lives in the max-width:640 block above. */
+/* Query artifact-panel width, not viewport width, so columns follow the actual available space. */
 .artifacts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
