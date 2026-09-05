@@ -1,7 +1,3 @@
-// Single import surface for the cowork UI primitives.
-//
-//   import { Button, Input, Textarea, Card, Bubble, Eyebrow, Badge } from '../components/ui';
-
 export { default as Button } from './Button.tsx';
 export { default as Input, Textarea } from './Input.tsx';
 export { default as Card, CardRow, Bubble } from './Card.tsx';
