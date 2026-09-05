@@ -1,15 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-// Orbit · Morph indicator — port of the vanilla-JS reference at
-// /docs/design-guidelines/orbit-morph-implementation.html.
-//
-// A satellite circles a center that morphs through chaos → pyramid → dot
-// → cube while Anton is thinking, then resolves to a futurist "A" when
-// the work is done. Idle shows a slow orbit around a faded ring.
-//
-// Single rAF loop per instance, SVG content is rebuilt each frame from
-// (angle, phase). Theme follows body[data-theme] live; size is set via
-// the --om-size CSS variable so it scales cleanly.
+// Reference geometry: docs/design-guidelines/orbit-morph-implementation.html.
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -36,10 +27,7 @@ export default function OrbitMorph({
   className,
   style,
   title,
-  // Optional override for the satellite's orbit period (in ms). Lets
-  // callers lock two stacked instances to the same speed so their
-  // satellites stay synchronized across cross-fades. Default is the
-  // state-derived value (1400 thinking, 4500 idle/done).
+  // Override the orbit period in milliseconds to synchronize stacked instances across cross-fades.
   orbitPeriodMs,
 }) {
   const hostRef = useRef(null);
@@ -54,7 +42,6 @@ export default function OrbitMorph({
     if (theme) themeRef.current = theme;
   }, [theme]);
 
-  // If no theme prop is given, follow body[data-theme] live.
   useEffect(() => {
     if (theme) return;
     themeRef.current = readBodyTheme();
@@ -112,13 +99,11 @@ export default function OrbitMorph({
 
       while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-      // Orbit ring guide
       svg.appendChild(svgEl('circle', {
         cx: 12, cy: 12, r: orbitR, fill: 'none',
         stroke: p.faded, 'stroke-opacity': 0.18, 'stroke-width': 0.6,
       }));
 
-      // Satellite (idle + thinking)
       if (s !== 'done') {
         svg.appendChild(svgEl('circle', {
           cx: sx.toFixed(2), cy: sy.toFixed(2),
@@ -127,7 +112,6 @@ export default function OrbitMorph({
         }));
       }
 
-      // Center morph — only in thinking
       if (s === 'thinking') {
         if (shape === 'chaos') {
           const frags = [
@@ -211,7 +195,6 @@ export default function OrbitMorph({
         }
       }
 
-      // Done — futurist A + locked ring
       if (s === 'done') {
         const grp = svgEl('g', {
           stroke: p.accent, 'stroke-width': 1.4,

@@ -1,27 +1,9 @@
-// ToggleGroup — a row of mutually exclusive options.
-//
-// Built on Base UI's ToggleGroup for proper radiogroup semantics
-// and keyboard navigation (arrow keys, Home/End).
-//
-//   <ToggleGroup
-//     value="grid"
-//     onValueChange={setView}
-//     options={[
-//       { value: 'grid', label: 'Grid' },
-//       { value: 'list', label: 'List' },
-//     ]}
-//   />
-//
-//   <ToggleGroup size="sm" ... />
-
 import { Fragment } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
 import { cn } from '../../lib/cn';
 
-// Outer container sizes mirror toolbar controls (SearchInput / SortPill).
-// Container padding (2px) + item vertical padding + font line-height ≈ same
-// total height as a SortPill with padding: 7px 11px.
+// Keep toolbar control heights aligned with SearchInput and SortPill.
 const CONTAINER_SIZE = {
   md: { padding: 2,     borderRadius: 7 },
   sm: { padding: 1,     borderRadius: 5 },
@@ -63,9 +45,8 @@ export function ToggleGroup({
     <BaseToggleGroup
       value={[value]}
       onValueChange={(newValue) => {
-        // BaseToggleGroup returns an array; we want single-select behavior.
-        // When clicking the already-active item, newValue removes it
-        // (empty array) — ignore that to keep one always selected.
+        // Ignore the empty array emitted when clicking the active item: one option must remain
+        // selected.
         const next = newValue.find((v) => v !== value);
         if (next) onValueChange(next);
       }}
@@ -79,12 +60,8 @@ export function ToggleGroup({
       aria-label={ariaLabel}
     >
       {options.map((opt, i) => {
-        // A divider between two UNselected neighbors reads as a segmented
-        // control; between a selected item and its neighbor it would cut
-        // across the selected item's own background fill/shadow, which
-        // looks like a stray line broken over the pill rather than a
-        // separator — hidden (not removed, so nothing reflows) whenever
-        // either side of the boundary is the current selection.
+        // Hide dividers touching the selection so they do not cut across its fill; retain their
+        // space to avoid reflow.
         const prev = options[i - 1];
         const dividerHidden = value === opt.value || (prev && value === prev.value);
         return (
@@ -96,9 +73,6 @@ export function ToggleGroup({
                   width: 1,
                   height: is.dividerHeight,
                   alignSelf: 'center',
-                  // color-mix, not the bare token: a bit more subtle than a
-                  // full-strength line between such small, tightly-packed
-                  // items.
                   background: 'color-mix(in srgb, var(--line) 55%, transparent)',
                   opacity: dividerHidden ? 0 : 1,
                   transition: 'opacity 0.15s ease',

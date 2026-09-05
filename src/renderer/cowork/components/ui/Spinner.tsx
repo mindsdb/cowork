@@ -2,11 +2,6 @@ import { useEffect, useState } from 'react';
 import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/cn';
 
-// Braille-dot spinner — the same look as terminal CLIs (e.g. ora, npm).
-// Frames cycle on a fixed interval; the component is purely presentational
-// and unmounts cleanly so its timer doesn't leak.
-//
-// No variants, so the convention is plain cn() + Tailwind + TS (not cva).
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export interface SpinnerProps extends ComponentPropsWithoutRef<'span'> {

@@ -1,6 +1,4 @@
-// Divider between adjacent options — hidden on whichever side touches the
-// current selection, so it never cuts across a selected item's own
-// background fill/shadow.
+// Hide dividers adjoining the selection so they do not cut through its fill/shadow.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,9 +10,7 @@ const OPTIONS = [
   { value: 'claude-code', label: 'Claude-Code' },
 ];
 
-// Dividers are the aria-hidden spans rendered between BaseToggle items —
-// query them by role exclusion instead of a test id, since they carry no
-// semantic role of their own.
+// Find decorative divider spans by role exclusion rather than adding a test id.
 const dividers = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('[aria-hidden="true"]'));
 
