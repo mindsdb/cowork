@@ -64,10 +64,8 @@ describe('token-store persistence', () => {
     expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(true);
   });
 
-  // ─── ENG-761 regression: safeStorage unavailable must not lose the
-  // session. The pre-fix writeToken silently persisted NOTHING, so the
-  // user looked signed in until the next launch, then showed up as
-  // unauthenticated.
+  // Unavailable safeStorage must still persist a session across launches, not merely appear signed
+  // in until restart.
   it('falls back to the encrypted file when safeStorage is unavailable (Windows)', async () => {
     h.safeStorageAvailable.value = false;
     const store = await loadStore('win32');
@@ -142,7 +140,6 @@ describe('token-store persistence', () => {
   });
 });
 
-// ─── ENG-761: renderer must hear every auth transition ───────────────
 describe('token-store auth-changed broadcast', () => {
   it('broadcasts authenticated:true on saveTokens', async () => {
     const store = await loadStore('win32');

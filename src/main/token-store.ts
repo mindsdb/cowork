@@ -5,15 +5,8 @@ import * as crypto from 'crypto';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
-// Persistence for the Keycloak refresh token.
-//
-// On macOS, Electron's safeStorage (Keychain) binds ACLs to the binary's
-// CDHash, which changes on every build — even with the same Developer ID
-// cert — causing a keychain-access prompt on every app launch. We use
-// AES-256-CBC file-based storage instead (encrypted, 0600 permissions).
-//
-// On Windows/Linux, safeStorage (DPAPI / libsecret) doesn't prompt, so
-// we keep using it there.
+// Persist refresh tokens with safeStorage on Windows/Linux. macOS uses the file fallback
+// to avoid per-build Keychain access prompts; its actual protection is owner-only permissions.
 
 const IS_MAC = process.platform === 'darwin';
 const KEYCHAIN_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
@@ -21,9 +14,7 @@ const ENCRYPTED_FILE = path.join(coworkHome(), 'refresh-token.dat');
 
 // ── Mac file-based encryption ───────────────────────────────────────
 
-// Machine-local obfuscation key derived from a stable per-user path.
-// This is NOT cryptographic security — it prevents casual plaintext
-// exposure on disk. The real protection is file permissions (0600).
+// The path-derived key only obscures plaintext; mode 0600 provides the security boundary.
 function deriveKey(): Buffer {
   const seed = `mindshub-cowork:${app.getPath('userData')}`;
   return crypto.createHash('sha256').update(seed).digest();
@@ -70,20 +61,13 @@ function writeToken(refreshToken: string): void {
   }
   if (safeStorage.isEncryptionAvailable()) {
     fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
-    // Refresh the encrypted-file copy too rather than deleting it: on
-    // machines where DPAPI/libsecret flaps, the fallback is the only store
-    // readable during the next outage, and keeping it fresh means a stale
-    // rotated token can never shadow the real one. Best-effort — the
-    // safeStorage write above already persisted the session.
+    // Keep the fallback copy current so a secure-store outage cannot restore a stale rotated token.
     try { writeEncryptedFile(refreshToken); } catch (e) {
       console.warn('[token-store] could not refresh encrypted-file copy', e);
     }
     return;
   }
-  // safeStorage unavailable (DPAPI/libsecret failure). Previously this
-  // silently persisted NOTHING — the user looked signed in until the
-  // next launch, then showed up as unauthenticated (ENG-761). Fall back
-  // to the same encrypted file macOS uses so the session survives.
+  // If safeStorage fails, persist to the encrypted-file fallback so the session survives restart.
   console.warn('[token-store] safeStorage unavailable — using encrypted-file fallback');
   writeEncryptedFile(refreshToken);
   // Do not let a previously stored DPAPI token take precedence if
@@ -117,12 +101,8 @@ let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
 let _tokenStoreVersion = 0;
 
-// Push the new auth state to every renderer. token-store is the single
-// choke point every MindsHub auth transition flows through (login,
-// silent refresh, logout, invalid-grant clear), so broadcasting here —
-// rather than at each call site — is what guarantees the UI can never
-// silently disagree with the main process again (ENG-761). Defensive:
-// callable before any window exists and under test mocks.
+// Broadcast at the token-store boundary so login, refresh, logout and session death update every
+// renderer.
 function broadcastAuthChanged(authenticated: boolean): void {
   try {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -169,7 +149,5 @@ export function clearTokens(): void {
   broadcastAuthChanged(false);
 }
 
-// Stub — the keychain toggle in settings calls this, but on macOS we no
-// longer use the keychain so there is nothing to migrate. On Windows/Linux
-// there is only one store (safeStorage) so migration is also a no-op.
+// Legacy preference hook; platform-specific storage no longer migrates when toggled.
 export function migrateRefreshTokenStore(_toKeychain: boolean): void {}
