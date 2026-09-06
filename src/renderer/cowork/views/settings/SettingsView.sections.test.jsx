@@ -3,11 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-// Behavior-lock: every Settings section must mount and render its defining
-// content without throwing. This is the safety net for extracting the
-// per-section panels out of SettingsView (starting with Updates) — a dropped
-// prop or missing dependency turns into a failed render here rather than a
-// silent regression in the app.
+// Render every settings section to catch missing props or dependencies after panel extraction.
 
 const spies = vi.hoisted(() => ({
   serverDiagnostics: vi.fn(async () => ({})),
