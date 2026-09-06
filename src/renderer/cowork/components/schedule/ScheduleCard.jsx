@@ -1,9 +1,4 @@
-// `<ScheduleCard>` — grid tile for one scheduled task.
-//
-// Actions (Run now + ⋮ menu) sit top-right and are always visible, not
-// hover-revealed — a hover-only row is unreachable by keyboard focus and by
-// touch/web. Clicking the card body opens the detail page; the action cluster
-// stops propagation so its controls don't also navigate.
+// Keep actions visible for keyboard/touch use; stop propagation so they do not also navigate.
 
 import Ico from '../Icons';
 import { projectLabel } from '../../lib/projectLabel';
@@ -41,14 +36,9 @@ export default function ScheduleCard({
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
 
-  // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
-  // One variable, and it holds the label. TasksView keeps a second, slug-valued
-  // local because its rows match a project by name; this card resolves by
-  // `task.projectId` above, so it needs the slug for nothing -- not the lookup,
-  // not the truthiness guard below (ENG-1676).
   const projectDisplay = projectLabel(projectMatch) || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
@@ -102,8 +92,6 @@ export default function ScheduleCard({
         </div>
       )}
 
-      {/* Meta row (hairline): project origin left, status + schedule right.
-          Enabled tasks show the next run; paused tasks show the cadence. */}
       {/* border-x-0/border-b-0 zero the other sides: preflight is disabled, so
           border-solid would otherwise reveal their default (medium) width. */}
       <div className="mt-auto flex min-w-0 items-center gap-2 border-x-0 border-b-0 border-t border-solid border-line pt-[11px]">
@@ -142,8 +130,7 @@ export default function ScheduleCard({
   );
 }
 
-// Overflow-menu items shared by the card and the list row. Delete routes to the
-// caller's confirm flow (a ConfirmModal), not an inline delete.
+// Delete delegates to the caller’s confirmation flow.
 export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
   return [
     { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => onEdit?.(task) },
@@ -155,8 +142,6 @@ export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
   ];
 }
 
-// Primary action — labeled (not icon-only); `subtle` is a quiet ghost. Busy
-// shows a spinner and disables the click.
 function RunNowButton({ onClick, busy }) {
   return (
     <Button

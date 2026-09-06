@@ -1,12 +1,8 @@
-// Scheduled card — list of scheduled tasks for the current scope.
-// Caller filters items (e.g. by project name) before passing in.
+// Callers filter scheduled items to the current scope before rendering.
 
 import Ico from '../Icons';
 import { RailCard } from './RailCard';
 
-// Kept for the clickable row below, which stays inline (its `all: unset`,
-// padding, cursor, transition are all clickable-conditional + it uses a
-// JS hover handler). font-body resolves to this same Inter stack.
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function ScheduledList({ items, onSelect }) {
@@ -22,10 +18,6 @@ function ScheduledList({ items, onSelect }) {
     <div className="flex flex-col gap-1 pt-1.5">
       {items.map((s) => {
         const label = s.title || s.prompt || s.id;
-        // When `onSelect` is wired, render each row as a button that
-        // routes the user to the schedule detail page. Otherwise a
-        // plain non-interactive row keeps the card informational —
-        // back-compat for any caller that didn't pass the handler.
         const Tag = clickable ? 'button' : 'div';
         return (
           <Tag

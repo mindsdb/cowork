@@ -1,13 +1,3 @@
-// Task bubble button — used in project view's task list and any
-// future "list of conversations" surface. Inter throughout (no
-// monospace), Inter reserved for the small "turns" badge if we ever
-// want to display it as an eyebrow.
-//
-// Hover surfaces a kebab in the right meta column (keeping row width
-// constant via a fixed-width slot) that opens a TaskMenu — currently
-// just "Delete" exposed; pin/move/rename will come back when we
-// re-enable them.
-
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Badge, Card } from '../ui';
@@ -19,10 +9,8 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;
-  // Length-checked, not just shape-checked: since ENG-2246 a task can carry an
-  // empty `messages` before its transcript is warmed, and an existing
-  // conversation never really has zero user turns — so [] means "unknown", and
-  // the card should hide the count rather than assert "0 turns".
+  // An empty messages array may be an unwarmed transcript, so hide the unknown count instead of
+  // displaying zero turns. ENG-2246.
   if (Array.isArray(task.messages) && task.messages.length > 0) {
     return task.messages.filter((m) => m.role === 'user').length;
   }
@@ -32,9 +20,7 @@ function turnsCount(task) {
 export function TaskCard({
   task,
   onClick,
-  // Optional menu wiring — the card renders a hover kebab when any
-  // of these are provided. Move/rename are intentionally not exposed
-  // on this surface for now per current spec.
+  // Optional hover-menu actions.
   projects = [],
   onPin,
   onUnpin,
@@ -49,18 +35,14 @@ export function TaskCard({
   const subtitle = task.subtitle || task.preview || '';
   const updated = relativeAge(task.updatedAt || task.updated_at || task.created_at);
   const turns = turnsCount(task);
-  // App.jsx flips task.status to 'active' while a turn is streaming
-  // and back to 'idle' on completion. Use it as the live indicator —
-  // a subtle pulsing accent dot beside the title reads as "this one
-  // is doing something" without taking up a whole status pill.
+  // App.jsx sets active during streaming and idle on completion.
   const isActive = task.status === 'active';
 
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // Toggle: a second click on the kebab closes the menu (the menu's
-    // own outside-press dismiss ignores clicks on the trigger, so the
-    // close has to come from here).
+    // The outside-press handler ignores the trigger, so a second trigger click must close the menu
+    // here.
     if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
@@ -89,10 +71,6 @@ export function TaskCard({
             minWidth: 0,
           }}>
             {isActive && (
-              // Subtle accent dot — same `pulse-dot` keyframe used
-              // elsewhere in the app. Soft accent glow so it reads
-              // as "live activity" at a glance without competing
-              // with the title text.
               <span
                 aria-hidden
                 className="pulse-dot"
@@ -134,8 +112,7 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Right meta column. Fixed-width slot so the row width never
-            shifts when the kebab fades in over the timestamp/turns. */}
+        {/* Reserve one slot so replacing timestamp/turns with the menu does not change row width. */}
         <div style={{
           position: 'relative',
           minWidth: 80, height: 32,
@@ -193,8 +170,6 @@ export function TaskCard({
         onPin={onPin ? () => onPin(task) : undefined}
         onUnpin={onUnpin ? () => onUnpin(task.id) : undefined}
         onDelete={onDelete ? () => onDelete(task.id) : undefined}
-        // "Move to project…" opens the picker modal (parent handles it).
-        // Rename stays hidden on the card surface for now.
         onMoveToProject={onMoveToProject ? () => onMoveToProject(task) : undefined}
         hideMoveToProject={!onMoveToProject}
         hideRename
