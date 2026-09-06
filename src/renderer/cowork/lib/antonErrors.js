@@ -1,8 +1,5 @@
-// Anton error classification shared by the live-stream path (App.jsx) and
-// the history-hydration path (api.js). The two must agree: a config/auth
-// failure renders the connect-a-provider card, and before this module
-// existed only the live path knew that — a reloaded conversation showed the
-// same failure as a raw error string instead (ENG-1304).
+// Keep live and hydrated config/auth errors classified alike so both render provider setup rather
+// than raw errors.
 
 export function isAntonConfigError(message, event) {
   const text = String(message || '');

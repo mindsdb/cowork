@@ -25,13 +25,9 @@ describe('normalizeAntonError', () => {
   });
 });
 
-// Copy contract: subscriptions are gone, so no user-facing wording may sell
-// one. Sweeps every renderer source for the word Subscribe outside comments —
-// a plain word match, not a quoted-string match, because the HomeView
-// occurrences this guards against were JSX text children ("&gt;Subscribe&lt;/Button&gt;"),
-// which carry no quotes (PR #581 review). The word boundary skips identifiers
-// like loadAndSubscribe on its own; comment strips cover the code comments
-// that legitimately quote the old wording.
+// Scan words in JSX as well as quoted strings; user-facing subscription copy can be an unquoted
+// text child.
+// Ignore identifiers and full-line comments to focus the guard on rendered language.
 describe('no Subscribe wording anywhere (ENG-1305)', () => {
   it('renderer sources never say Subscribe outside comments', () => {
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -41,11 +37,9 @@ describe('no Subscribe wording anywhere (ENG-1305)', () => {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) { walk(p); continue; }
         if (!/\.(jsx?|tsx?)$/.test(e.name) || /\.test\./.test(e.name)) continue;
-        // ponytail: full-line // strip only. A /* */ strip is deliberately
-        // absent — a line comment ending in a URL glob ("… /v1/*.") opens a
-        // fake block that swallows real code up to the next */ (15KB of
-        // api.js, measured). Any unstripped comment quoting Subscribe fails
-        // the test toward a human look, which is the safe direction.
+        // Strip only full-line comments: a URL glob in a line comment can fool a naive block
+        // stripper into hiding real source.
+        // An unstripped prose match should fail toward review rather than silently omit code.
         const src = fs.readFileSync(p, 'utf8').replace(/^\s*\/\/.*$/gm, '');
         for (const m of src.matchAll(/\bSubscribe/g)) {
           const line = src.slice(0, m.index).split('\n').length;

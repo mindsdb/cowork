@@ -26,11 +26,7 @@ describe('org mode', () => {
   });
 
   it('offers download for any artifact whose draft URL exists, shared or not', () => {
-    /*
-     * ENG-2044: on an org deployment the draft URL is the only route to the
-     * bytes, and it is set for every artifact with a primary file — so a
-     * .xlsx the viewer cannot render is saveable instead of a dead end.
-     */
+    /* Nonpreviewable org artifacts with a primary file still download through their draft URL. */
     expect(available({ orgMode: true, hasBridge: false, published: false, hasDraft: true }))
       .toEqual(['preview', 'download', 'delete']);
     expect(available({ orgMode: true, hasBridge: false, published: true, hasDraft: true }))
@@ -59,9 +55,7 @@ describe('desktop mode', () => {
   });
 
   it('does not gate publish control on a published URL', () => {
-    // Desktop decides those from its own state (the caller already filters
-    // Share/Update/Stop sharing by published-ness); this predicate must not
-    // second-guess it.
+    // Desktop callers already gate publish state; this deployment predicate must not override them.
     expect(available({ orgMode: false, hasBridge: true, published: false })).toEqual(ALL);
   });
 });
@@ -75,18 +69,11 @@ describe('defaults', () => {
 
 describe('artifactOpenTarget', () => {
   /*
-   * The click destination, not a yes/no per action. Three surfaces render an
-   * artifact body — the inline chat card, the rail's Working-folder list and the
-   * artifacts grid — and each used to decide from the file extension alone, so
-   * all three opened a local preview on a deployment that serves no content.
-   * Org mode now answers from the authenticated draft URL instead, which the
-   * callers compute with `canPreviewOrgDraft`.
+   * Test exclusive click destinations, separate from per-action availability; org draft eligibility
+   * comes from the caller.
    */
   it('previews an org click in the app, even once the artifact is shared', () => {
-    /*
-     * The click means "show me this artifact". Sending it to the shared page
-     * instead put a browser tab between the user and their own work.
-     */
+    /* Prefer the in-app draft preview over leaving the app for the shared page. */
     expect(artifactOpenTarget({
       orgMode: true,
       published: true,
@@ -97,10 +84,7 @@ describe('artifactOpenTarget', () => {
   });
 
   it('previews an org click before the artifact is shared at all', () => {
-    /*
-     * The draft URL carries its own access check, so the preview does not wait
-     * on a publish the user may never do.
-     */
+    /* Authenticated draft access must not depend on publication. */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewDraft: true, hasBridge: false,
     })).toBe('preview');
@@ -108,10 +92,8 @@ describe('artifactOpenTarget', () => {
 
   it('falls back to the shared page for a draft org mode cannot render', () => {
     /*
-     * Fullstack apps and images: neither has bytes the viewer can render here
-     * (no loopback proxy, no serve URL), so the published page is the only
-     * destination left. `canPreviewInline` is the desktop answer and must not
-     * leak into this branch.
+     * Do not reuse desktop preview capability for org fullstack/image artifacts; use their
+     * published page when available.
      */
     expect(artifactOpenTarget({
       orgMode: true,
@@ -124,9 +106,8 @@ describe('artifactOpenTarget', () => {
 
   it('saves the file for an org draft the viewer cannot render and nobody shared', () => {
     /*
-     * ENG-2044: a .xlsx / .docx / .zip on web. No preview, no shared page — but
-     * the draft URL streams the bytes, so the click downloads rather than dies.
-     * `canPreviewInline` is the desktop answer and must not leak in here.
+     * An unpublished, nonpreviewable org file still downloads through its draft; desktop inline
+     * capability must not leak into this branch.
      */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewInline: true, canPreviewDraft: false,
@@ -142,10 +123,7 @@ describe('artifactOpenTarget', () => {
   });
 
   it('is not clickable in org mode with no preview, no published URL and no draft', () => {
-    /*
-     * Genuinely nothing to open: no primary file exists yet, so there is no
-     * draft URL either. This is the only case that keeps the dead-end reason.
-     */
+    /* Without a preview, published URL or downloadable draft, there is no click target. */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewInline: true, hasBridge: true,
     })).toBeNull();
@@ -169,11 +147,8 @@ describe('artifactOpenTarget', () => {
 });
 
 describe('needsClientUnpublishBeforeDelete', () => {
-  // Deleting a published artifact must not leave an orphaned public copy, and
-  // which side enforces that depends on the deployment. Getting it backwards is
-  // not cosmetic: in org mode `DELETE /publish` answers 501, and the await threw
-  // before the delete was ever attempted — the user saw
-  // "Delete failed: not available in org deployments" and the artifact stayed.
+  // Desktop must unpublish before delete; org mode delegates it server-side because client DELETE
+  // /publish returns 501.
   it('is the client job on desktop, for a published artifact', () => {
     expect(needsClientUnpublishBeforeDelete({ orgMode: false, published: 'https://x' }))
       .toBe(true);

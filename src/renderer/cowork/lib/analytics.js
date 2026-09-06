@@ -1,30 +1,13 @@
-// Desktop PostHog analytics: fire-and-forget event capture via the Capture API
-// directly (no posthog-js dependency).
-//
-// Identity model (ENG-537): events fire under a stable anonymous device id
-// before sign-in, then merge into the Keycloak-`sub`-keyed account on first
-// login via a PostHog `$identify` alias, so the install -> signup -> paying
-// funnel stays complete for users who install before authenticating. Account
-// attributes (email, org, tier, is_internal) ride `$set` on every authenticated
-// event so desktop-only users, who never open the web console, still carry
-// joinable identity.
-//
-// Internal traffic (ENG-385 / ENG-672): CI/QA sessions are dropped entirely; a
-// signed-in mindsdb.com email or Keycloak `staff` role is tagged is_internal so
-// it can be filtered out of the funnel. Before identity resolves the flag is
-// unknown and omitted, never sent as false, so anonymous traffic does not read
+// Fire-and-forget PostHog capture. Anonymous device events merge into the Keycloak account on
+// login.
+// Drop CI/QA traffic; omit is_internal until identity resolves rather than treating unknown users
 // as external.
-//
-// Every product event this module emits is registered in EVENTS below.
 
 import { host } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 
-// The single register of product events, so every event and its own properties
-// are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, aid (desktop, once health resolves), and (once identity resolves)
-// is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
-// so it lives inline in the merge rather than here.
+// Product-event register; capture() adds common identity and version properties.
+// PostHog's protocol event `$identify` lives in mergeAnonIntoAccount.
 const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
@@ -32,62 +15,21 @@ const EVENTS = {
   AGENT_SESSION_STARTED:    'agent_session_started',    // {}
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
-  // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
-  // steps from TWO blocking conditions to THREE here, and this is the first
-  // change to label any of them:
-  //
-  //   before ENG-1537   token_limit only — a drained wallet (ENG-385)
-  //   ENG-1537 onward   + included_allowance_exhausted, a spent free monthly
-  //                     allowance. Counted, but carrying no `reason`
-  //   this change       + model_access_denied, the legacy per-model credit
-  //                     denial (ENG-1533). All three now carry `reason`
-  //
-  // So the count steps up twice, both times for reasons that have nothing to do
-  // with user behaviour. A trend line crossing either step is not like-for-like.
-  //
-  // Every event emitted BEFORE this change carries NO `reason` at all, so a
-  // query filtering on `reason` silently drops all of them — no error, just a
-  // shorter series. What those unlabelled events MEAN depends on which project
-  // you are querying and where in it they land. BOTH projects have an
-  // unlabelled mixed window; only the dates differ:
-  //
-  //   staging     before 2026-08-14 22:10 UTC  all `token_limit`. Safe to relabel
-  //               after it                     MIXED — ENG-1537 merged to staging (#648)
-  //   production  before 2026-08-17 00:03 UTC  all `token_limit`. Safe to relabel
-  //               after it                     MIXED — the same gate reached main in
-  //                                            the weekly release (#625)
-  //
-  // Those bounds are UTC on purpose. The PostHog project renders in
-  // America/Los_Angeles, where both merges fall on the previous day — 14 Aug
-  // 15:10 and 16 Aug 17:03. A rule written as "up to 17 Aug" would mark prod's
-  // 16 Aug evening events safe to relabel when they are already mixed.
-  //
-  // A mixed-window event is `token_limit` OR `included_allowance_exhausted`
-  // with nothing on it to say which, and the two are not separable after the
-  // fact. Do NOT relabel those as `token_limit` — it overstates drained
-  // wallets. Each mixed window closes where a build carrying this change
-  // reaches that project; from there on every event carries `reason`.
-  //
-  // Those are the dates the code landed, not clean cutovers in the data: a
-  // desktop install keeps emitting the shape it was built with until it
-  // updates, so each boundary is smeared across the rollout. `app_version` is
-  // stamped on every event and is the exact per-event discriminator when a
-  // date split is too coarse to trust.
-  //
-  // Whoever next revises these dates: read the file at `ref=main`. The weekly
-  // release squash-merges staging into main, so a branch compare reports
-  // content main already has as diverged and will tell you prod is missing a
-  // condition it has been emitting for weeks.
+// token_cap_hit changed meaning: ENG-1537 added included_allowance_exhausted; ENG-1533 added
+// model_access_denied and reason.
+// Older events have no reason. Only token_limit existed before 2026-08-14 22:10 UTC on staging and
+// 2026-08-17 00:03 UTC on production; later unlabelled events mix token_limit and
+// included_allowance_exhausted.
+// Do not relabel mixed events or compare counts across these changes as user-behaviour trends.
+// Dates mark merges, not client updates: use app_version for exact attribution across desktop
+// rollouts.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
-  // Every failed turn, not just the first (first_response is once-per-user).
-  // `code` is the wire code (anton_error when nothing more specific was
-  // classified); `model`/`provider_label` only ride along when the failure
-  // event names one (the model-403/404 and provider-auth families).
+// CHAT_TURN_FAILED records every failure; FIRST_RESPONSE is once per user.
   CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label?, request_id? }
 };
 
@@ -104,23 +46,15 @@ const SURFACE = host.isElectron ? 'desktop' : 'web';
 // environment label; whether an event is *sent* is gated separately below.
 const LIB = `cowork-${SURFACE}`;
 
-// Only production builds (`vite build`: packaged desktop, OTA bundle, web SPA)
-// emit. The Vite dev server used by `npm run dev` / `npm run dev:web` runs as
-// MODE=development, so local dev never pollutes the funnel even when a real
-// token sits in a machine-local .env (ENG-1163). Set `?analytics_debug=1` (or
-// VITE_ANALYTICS_DEBUG=true) to send from a dev build on purpose. Deployed
-// non-prod web is a production build and stays out of the funnel via the CI
-// cohort flag instead (isCi()).
+// Production builds emit by default; ?analytics_debug=1 or VITE_ANALYTICS_DEBUG enables dev
+// capture.
+// Deployed non-prod builds are production builds, so isCi() must exclude their cohort.
 const IS_PROD_BUILD =
   typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'production';
 
-// Running UI-bundle version, baked in at build time as __APP_VERSION__ (Vite
-// `define`). For OTA clients this is the bundle actually running, not the
-// installer shell. `typeof`-guarded so it degrades to undefined outside a real
-// build (then dropped by JSON.stringify). Attached to every event as
-// `app_version`, and to the person as `last_seen_app_version`. `$set` is
-// last-writer-wins, so a straggling event from an older install can overwrite
-// it; for "current version" use the latest event's app_version instead.
+// The running UI bundle version, including OTA updates; not the installer version.
+// Use the latest event's app_version for current version: delayed events can overwrite
+// last_seen_app_version.
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
 
@@ -168,14 +102,8 @@ function dlog(...args) {
   if (isDebug()) console.log('[analytics]', ...args);
 }
 
-// ── Identity state ─────────────────────────────────────────────────
-// All per-identity mutable state lives in one object so resetDeviceIdentity can
-// clear it wholesale and a reader sees the full surface in one place:
-//   isInternal   — null (unknown) until identity resolves, then boolean (ENG-672)
-//   personProps  — account attributes for `$set` (ENG-537)
-//   deviceId     — stable anonymous id, distinct_id before sign-in
-//   distinctId   — the Keycloak `sub`, cached to avoid decoding the JWT per event
-//   cacheExpiry  — epoch ms after which distinctId must be re-resolved
+// Per-identity state is reset together on sign-out. isInternal remains null until identity
+// resolves.
 const identity = {
   isInternal: null,
   personProps: {},
@@ -224,11 +152,8 @@ function getDeviceId() {
   return identity.deviceId;
 }
 
-// Resolve the plan tier from Keycloak realm roles, mirroring the web console's
-// useHasFullAccess (ENG-452). An account can carry several tier roles at once (a
-// paid user keeps the `free` role too), so a paid/staff role must win over
-// `free`. Precedence: staff > team > pro/pro-hub > free. Returns undefined when
-// roles are absent, so the property is omitted rather than guessed.
+// Paid accounts can retain the free role; match paid/staff roles first.
+// Keep precedence aligned with the console's useHasFullAccess.
 function resolvePlanTier(roles) {
   if (!Array.isArray(roles)) return undefined;
   const set = new Set(roles.map((r) => String(r).toLowerCase()));
@@ -246,57 +171,15 @@ function personSet() {
   return { ...identity.personProps, device_id: getDeviceId(), last_seen_app_version: APP_VERSION };
 }
 
-// anton's analytics install id, learned from the sidecar's /health (ENG-1689).
-//
-// This is the join key, and it is the ONLY reason this value exists here.
-// `turn_completed` — written by anton — carries `aid` on 100% of events and an
-// identified person on 0%. cowork's events are the mirror image: aid on 0%,
-// identified on ~85%. Neither side can reach the other, so per-user cost is
-// unanswerable today; we can name the 78 people who hit ENG-1286's spend
-// ceiling but not what a single one of their turns cost.
-//
-// Stamping the same id on an event that already knows the person turns the
-// existing cost rows into attributable ones — including rows already stored.
-// It adds no cost data of its own; it is a lookup table.
-//
-// The app cannot compute it: it is a truncated SHA-256 of the machine's MAC,
-// produced inside anton's Python process and never written to disk on desktop
-// (ENG-440's installation-id.ts documents exactly this, and deliberately mints
-// an unrelated random id for its own purposes). Re-deriving it in Node would
-// mean reproducing `uuid.getnode()`'s platform probe order, which
-// `os.networkInterfaces()` does not match on a multi-NIC machine — and the
-// failure is silent, since a mismatched key looks present and joins nothing.
+// Anton's /health supplies the aid join key for its turn-cost events.
+// Do not rederive it in Node: Python's uuid.getnode() probes interfaces differently, silently
+// breaking joins.
 let antonInstallId = null;
 
-// PROPERTY ONLY — never an alias, and never a distinct_id. ENG-713 was an
-// over-merge incident where distinct people collapsed into one PostHog person;
-// `aid` is machine-grain, so aliasing on it would merge every user of a shared
-// machine into a single identity and be unrecoverable. As a property it is
-// inert: it joins in a query and changes no identity.
-//
-// Desktop only. The server withholds it in org mode (there it fingerprints the
-// server, not the user), so this is belt-and-braces on a value that should
-// already be empty on web.
-// Shape-checked rather than merely truthy. The case this exists for:
-// `get_installation_id` returns the literal "unknown" when it cannot
-// fingerprint the machine, and anton stamps that same string on its own events
-// — so it would JOIN across every unfingerprintable machine and merge them into
-// one identity. The server filters it; this is the second gate, because the
-// failure is silent and unrecoverable once queries are built on it. A shape
-// check also catches a future sentinel without needing to know its name.
-//
-// **Hex, but deliberately NOT a fixed width.** The producer is
-// `get_installation_id` in `anton/analytics.py` (mindsdb/anton), which today
-// yields 16 lowercase hex from three paths — `sha256(...).hexdigest()[:16]`,
-// `uuid4().hex[:16]`, and a persisted file read `[:16]`. Pinning 16 here would
-// re-encode that width in a third repo with no shared source, and if anton ever
-// widened it this gate would drop 100% of ids and every join would silently
-// return zero rows (#707 review).
-//
-// Pinning the width also buys nothing: both sides of the join come from the
-// SAME anton function, so a width change stays self-consistent and the join
-// keeps working. The width is anton's business. What this gate must reject is a
-// value that is not an id at all — which "unknown" fails on hex alone.
+// Keep aid a desktop-only property, NEVER an alias or distinct_id: shared machines must not merge
+// users.
+// Reject non-id sentinels such as 'unknown', which would join unrelated machines.
+// Allow variable hex width: anton owns the format, and both sides of the join use its producer.
 const AID_SHAPE = /^[0-9a-f]{8,64}$/;
 
 export function setAntonInstallId(id) {
@@ -389,11 +272,8 @@ function postCapture(event, distinctId, properties) {
     });
 }
 
-// Once per (device -> account), tell PostHog to merge the anonymous device
-// person into the identified account person, so pre-login events (notably
-// app_installed) follow the user in. PostHog's server-side merge is an
-// `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
-// marker so it fires once per account, not on every event.
+// Merge pre-login device events into the account with `$identify`/`$anon_distinct_id`.
+// Persist the account marker only after delivery to avoid repeating the merge on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
@@ -510,34 +390,14 @@ export function trackAgentSessionStarted() {
   capture(EVENTS.AGENT_SESSION_STARTED);
 }
 
-// The key upgrade-intent signal: a turn was blocked on credits. Fired from the
-// stream adapter on receipt of the failure (ENG-385). `reason` is the wire code
-// that blocked the turn — a drained wallet (`token_limit`), a spent free monthly
-// allowance (`included_allowance_exhausted`, ENG-1537) or the legacy per-model
-// credit denial (`model_access_denied`, ENG-1533), whose card used to be shown
-// with no impression at all. One event with a `reason` rather than three events,
-// so the impression count stays a single series and the once-per-receipt
-// guarantee is not duplicated. Named `reason` to read consistently beside
-// `trigger` on billing_opened and `outcome` on key_provisioning_refused.
-// Historic events predate the property and carry no `reason`. What they mean
-// depends on the window — see the discontinuity note on EVENTS.TOKEN_CAP_HIT
-// before relabelling any of them.
+// Record the blocking wire code once per stream failure receipt.
+// See EVENTS.TOKEN_CAP_HIT before interpreting older events without reason.
 export function trackTokenCapHit(reason) {
   capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
 }
 
-// Fired on every chat-stream turn that lands in an error state, so the rate is a
-// measurable series instead of an anecdote. `event` is the same failure-meta
-// object the error bubble renders from — pull whatever it carries rather than
-// widening call sites just for telemetry. `code` defaults to 'unknown' (never
-// dropped) so an event with no code is still countable; `model`/`provider_label`
-// only ride along when the failure named one.
-//
-// `conversationId` is dropped when it's still the client-side placeholder a
-// brand-new task starts under (`tmp-...` / `tmp-connect-...`, before the
-// server's canonical id has been adopted) — sending it would look like a real
-// id but can't be pinned to any server log, which is the whole point of
-// carrying it.
+// Use the same failure metadata as the error bubble.
+// Omit temporary conversation ids: they cannot be correlated with server logs.
 export function trackTurnFailed(conversationId, event) {
   const isPlaceholderId = typeof conversationId === 'string' && conversationId.startsWith('tmp-');
   capture(EVENTS.CHAT_TURN_FAILED, {
@@ -551,46 +411,18 @@ export function trackTurnFailed(conversationId, event) {
   });
 }
 
-// The desktop sent the user to the console billing page (ENG-1533). Fired at
-// EVERY route there, so the count is the whole story rather than the paths
-// someone remembered. `trigger` names the condition that sent them, because the
-// causes have different fixes and probably different conversion rates:
-//   token_limit               out of credits mid-turn; pairs with token_cap_hit
-//   included_allowance_exhausted  the month's free allowance is spent, not the
-//                             wallet; also pairs with token_cap_hit (ENG-1537)
-//   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
-//   model_disabled            legacy admin-disabled model; credits do not unlock it
-//   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
-//   connect_provider          "Start for free" on the connect-a-provider card
-//                             (chat and home render the same card)
-//   no_credits_notice         Settings, after a minds-cloud provider test came
-//                             back 402/429/credit/quota
-//   locked_model_hint         Settings, the "<model> needs credits" hint under a
-//                             model the wallet cannot pay for
-//   nav                       the Billing & Usage item in the user menu
-//
-// `nav` is the one value that is NOT upgrade intent — nothing blocked that user,
-// they went looking. It is recorded because it is a real route to the page, but
-// a token_cap_hit -> billing_opened funnel MUST exclude it or the click-through
-// rate is inflated by people checking their usage. PostHog will not do that for
-// you; filter on trigger.
-//
-// Deliberately no impression event alongside any of this: token_cap_hit already
-// fires once per receipt in the stream adapter, and an impression in the render
-// path would re-fire on every paint.
+// Record every route to billing with its trigger (values in EVENTS).
+// Exclude trigger='nav' from upgrade funnels: voluntary usage checks are not blocked-turn
+// conversions.
+// Do not emit a render-time impression here; the stream adapter records token_cap_hit once per
+// receipt.
 export function trackBillingOpened(trigger) {
   capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
 }
 
-// MindsHub declined to provision an LLM key (ENG-1533) — the earliest point a
-// user can be blocked from working at all. The refusal is detected in the main
-// process, but `outcome` is only knowable in the renderer, so this fires there:
-//   byok_offered    first run — routed to Bring Your Own Key, no paywall shown
-//   billing_opened  reconnect — sent to the console billing page
-//   unhandled       SSO sign-in — the result is not acted on, so the user lands
-//                   with no working key, no BYOK route and no message
-// Its own event rather than a `billing_opened` trigger because on the commonest
-// path (first run) no paywall is shown at all; the fork is the measurement.
+// The renderer knows the refusal outcome: byok_offered, billing_opened, or unhandled.
+// Keep this separate from billing_opened because first-run refusals can offer BYOK without opening
+// billing.
 export function trackKeyProvisioningRefused(outcome) {
   capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
 }
@@ -632,13 +464,8 @@ export function trackFirstQuery() {
   return firstQueryInFlight;
 }
 
-// Map a first query's terminal state to a first_response (outcome, reason), or
-// null when there's nothing to record. Pure so it's unit-tested here, not in the
-// React send handlers (ENG-736):
-//   - failed turn → error (wire code, else config_required for auth, else unknown)
-//   - no completion observed → null: outcome unknown, let the next query settle it
-//   - completed with a config error in the body → error
-//   - any other completed turn → success (empty body is fine, e.g. artifact-only)
+// No observed completion leaves the outcome unknown; an empty completed body can still succeed
+// (artifact-only turns).
 export function classifyFirstResponse({ failed = false, completed = false, code, isConfigError = false } = {}) {
   if (failed) {
     return { outcome: 'error', reason: code || (isConfigError ? 'config_required' : 'unknown') };
@@ -648,12 +475,8 @@ export function classifyFirstResponse({ failed = false, completed = false, code,
   return { outcome: 'success', reason: undefined };
 }
 
-// The activation gate (ENG-736). first_query fires when a first message is sent;
-// this fires when it reaches a terminal outcome, so the funnel counts activation
-// only on a real answer and can see why one failed. On error, `reason` carries
-// the failure code (e.g. model_access_denied) so a failed cohort reads as broken,
-// not as weak interest. Once per user; same deliver-then-mark discipline as
-// trackFirstQuery so a dropped send can retry.
+// Record activation on a terminal first-query outcome.
+// Mark only after delivery, like trackFirstQuery, so dropped events can retry.
 const FIRST_RESPONSE_STORAGE_KEY = 'mdb_first_response_tracked';
 let firstResponseInFlight = null;
 export function trackFirstResponse(outcome, reason) {
@@ -705,12 +528,9 @@ export async function trackAppInstalled() {
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
 }
 
-// Boot-screen resolution (ENG-921): fires once per launch, before sign-in, with
-// the chosen `target` and the local-server install state. It's the only signal
-// in the install -> server-ready stretch — app_installed is gated on a healthy
-// server, so a user who stalls before then is otherwise invisible. Install state
-// is logged independent of `target` so a routing regression (ENG-918: server
-// missing, shown 'auth') stays visible. Desktop-only; per-launch, not deduped.
+// Record the first screen and install state independently, before sign-in.
+// Unlike app_installed, this includes launches stalled before the server is healthy; desktop-only,
+// per launch.
 export async function trackBootScreenResolved(target) {
   if (!host.isElectron) return;
   let status;
@@ -729,13 +549,9 @@ export async function trackBootScreenResolved(target) {
   });
 }
 
-// Reset per-device analytics identity on sign-out (ENG-537 review note). A
-// different account signing in on the same machine then starts from a fresh
-// anonymous device id and merges cleanly; otherwise PostHog refuses to re-merge
-// the already-claimed device id into the second account, and pre-login events
-// attribute to the shared device. The install marker is deliberately NOT
-// cleared: the machine is still installed, so app_installed must not re-fire
-// (installs are counted per device, once).
+// Mint a fresh anonymous identity on sign-out: PostHog cannot merge a claimed device id into a
+// second account.
+// Retain the install marker so switching accounts does not count another installation.
 export function resetDeviceIdentity() {
   identity.isInternal = null;
   identity.personProps = {};
