@@ -1,18 +1,5 @@
-// Unsent composer text, keyed by surface: `new` for the home "+ New task"
-// composer, the conversation id for an in-chat reply, `project:<name>` for a
-// project-scoped new task.
-//
-// Why a module-level store instead of lifting state into App: the composer
-// unmounts on every route switch (App conditionally renders HomeView /
-// ChatView), so its `useState` value dies. Project selection survives only
-// because it happens to sit in the always-mounted root. Keying by surface
-// fixes the sibling half of the bug too — one Composer instance is reused
-// across tasks (ChatView has no `key`), so a per-mount value bleeds text
-// typed in task A into task B.
-//
-// Memory is the source of truth; localStorage is only so drafts survive a
-// reload. A quota/private-mode failure therefore degrades to "works until you
-// restart" rather than breaking navigation.
+// Scope drafts by composer surface so navigation cannot move text between tasks/projects. Memory is
+// authoritative; localStorage only provides best-effort reload persistence.
 // deepcode ignore HardcodedNonCryptoSecret: 'anton.composerDrafts' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
 import {
   currentOrganizationEpoch,
@@ -81,10 +68,8 @@ let flushTimer = null;
 function flush() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   /**
-   * A document from the previous organization can finish a debounce after the
-   * new epoch is durable. Usually reject it here; if the epoch advances after
-   * this check, the write still targets only this document's epoch-qualified
-   * key and cannot overwrite the current organization's drafts.
+   * Reject writes from stale epochs. A transition racing this check remains safe because the key
+   * belongs to this document's epoch.
    */
   if (currentOrganizationEpoch() !== organizationEpoch) return;
   try {
@@ -137,9 +122,8 @@ export function moveDraft(fromKey, toKey) {
 }
 
 /**
- * Drop every draft, in memory and on disk. Cancelling `flushTimer` is the
- * load-bearing part: a burst typed before the clear leaves a 400 ms timer armed,
- * and pagehide would otherwise flush the old organization's text back to disk.
+ * Cancel pending flushes before clearing drafts so pagehide cannot restore the old organization's
+ * text.
  */
 function clearAllDrafts() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }

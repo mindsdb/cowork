@@ -40,12 +40,11 @@ export function groupMemoryItems(items, projects) {
 
     const content = item.content || '';
     const projectName = projectId ? (projectNameById.get(String(projectId)) || null) : null;
-    /* Pick server-owned attribution and capability metadata explicitly rather
-       than spreading the raw item. Dropping them would make the Memory
-       page appear editable even when the API correctly returned
-       `canEdit: false`, while spreading everything would carry the raw `scope`
-       and `project_id` alongside the normalised ones and let a future server
-       field named `path`, `content` or `preview` be masked by the keys below. */
+    /*
+     * Keep server attribution/capabilities so read-only records stay read-only.
+     * Select fields explicitly to avoid collisions with normalized scope, project and content
+     * fields.
+     */
     sectionMap.get(key).files.push({
       attribution: item.attribution ?? null,
       capabilities: item.capabilities ?? null,

@@ -9,12 +9,7 @@ describe('letterTile — the hue', () => {
   });
 
   it('follows the key it is given, so a rename cannot recolour a tile', () => {
-    // The point of hashing the id rather than the name: people recognise the
-    // colour before they read the label, so a rename that recoloured the tile
-    // would read as a different workspace. Asserting `tileStyle(k)` twice only
-    // proved the function is pure, which is the test above. What this needs to
-    // see is that the id and the name are different keys, so passing the wrong
-    // one at the call site is observable.
+    // Distinguish ID and name inputs instead of merely testing the same pure call twice.
     const id = 'ws-9d1c0b12';
     const before = 'Client A';
     const after = 'Kiwibot';
@@ -92,15 +87,9 @@ describe('letterTile — the letter', () => {
   });
 });
 
-/* The tile's own comment claims a contrast ratio, and a claim in a comment is
-   the kind that rots. These recompute it from what ships: the mixed strings
-   `tileStyle` produces, against the real theme tokens read out of globals.css.
-   At the original 70% glyph mix three hues failed this in light mode. */
+/* Compute contrast from generated styles and actual CSS colors. */
 describe('letterTile — the glyph stays legible in both themes', () => {
-  /* Read from disk rather than imported: vitest stubs CSS imports, so both a
-     plain import and `?raw` hand back an empty string and every check below
-     would pass on nothing. Vitest pins the cwd to the config root, and a wrong
-     path throws here instead of quietly matching zero tokens. */
+  /* Read CSS from disk because the test loader stubs CSS imports. */
   const css = readFileSync(
     resolve(process.cwd(), 'src/renderer/cowork/styles/globals.css'),
     'utf8'
@@ -147,10 +136,7 @@ describe('letterTile — the glyph stays legible in both themes', () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  /* Enough keys to reach every hue, whatever the hash does with them. Bounded on
-     HUES.length rather than a literal: a hardcoded 7 stopped collecting the
-     moment it had seven, so an eighth hue was never measured and this block
-     stayed green while an unchecked colour shipped. */
+  /* Cover HUES.length so new palette entries cannot escape the contrast check. */
   const everyHue = () => {
     const seen = new Map();
     for (let i = 0; seen.size < HUES.length && i < 500; i += 1) {

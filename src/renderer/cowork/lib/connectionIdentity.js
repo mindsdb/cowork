@@ -7,15 +7,10 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// The card's two lines, neither ever empty. ENG-1705: the title was
-// `user_label || '—'` and nothing backfills `_user_label`, so every connection
-// predating the label field rendered a dash. `label` is the connector
-// registry's display label, already on ConnectionSummaryResponse.
-//
-// Deriving here rather than backfilling is deliberate — a written label is
-// indistinguishable from one the user chose. The slug is terminal because it is
-// the only per-connection unique field: two spec-less connections on one engine
-// would otherwise render identical cards.
+// Derive fallback labels without persisting them: a backfilled value is indistinguishable from a
+// user-chosen label.
+// Use the unique connection slug as the final subtitle fallback to distinguish otherwise identical
+// connections.
 export function connectionIdentity(connection) {
   const c = connection || {};
   const slug = c.name || c.slug || 'unnamed';

@@ -14,8 +14,7 @@ describe('connectionIdentity — title', () => {
   });
 
   it('falls back to the connector registry label when no user label is set', () => {
-    // The ENG-1705 regression: this rendered '—' from v2.26.8.17.1 onward.
-    // `label` is spec.label, already on ConnectionSummaryResponse.
+    // Use spec.label from ConnectionSummaryResponse instead of an empty fallback.
     const { title } = connectionIdentity({
       engine: 'github', name: 'github-46461b', label: 'GitHub', user_label: null,
     });

@@ -42,7 +42,7 @@ describe('withThinkingPlaceholder', () => {
   it('strips prior _streaming + placeholder, then appends an activity + _streaming stub', () => {
     const out = withThinkingPlaceholder([user('q'), placeholder(), streaming()]);
     expect(out[0]).toEqual(user('q'));
-    expect(out).toHaveLength(3); // user + new activity + new _streaming
+    expect(out).toHaveLength(3);
     expect(out[1]).toMatchObject({ role: 'activity', placeholder: true, content: 'Thinking…' });
     expect(out[2]).toMatchObject({ role: '_streaming', streamStatus: 'thinking', _placeholderLabel: 'Thinking…' });
   });
@@ -147,7 +147,7 @@ describe('conversation-turn sidecar (localStorage)', () => {
     persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
     const out = mergeConvTurns('c1', [
       user('q'),
-      assistant(), // no steps → gets the saved ones
+      assistant(),
     ]);
     expect(out[1].steps).toEqual([expect.objectContaining({ id: 'saved' })]);
   });
@@ -258,7 +258,6 @@ describe('applySessionMessages', () => {
   it('hydrates, merges the sidecar, and reconciles in one pass', () => {
     persistTurnState('c1', 0, [{ id: 'saved', status: 'completed' }], 9);
     const out = applySessionMessages('c1', [user('q'), assistant()], { isLive: false });
-    // sidecar steps merged onto the step-less assistant turn
     expect(out.find((m) => m.role === 'assistant').steps).toEqual([expect.objectContaining({ id: 'saved' })]);
   });
 

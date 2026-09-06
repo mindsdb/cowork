@@ -1,9 +1,3 @@
-// Greeting variants for "+ Connect" — picked at random when the user
-// starts a fresh data-vault conversation. The point is to make the
-// experience feel less form-shaped and more like Anton actually
-// asking. We mention a handful of common targets so the user knows
-// the surface area without listing every connector exhaustively.
-
 // Welcome variants for "+ Connect". Tight three-beat shape:
 //   <question> (<short example list>) — <I-can-do-anything tail>
 // No mention of credentials — some connectors are OAuth-only, some
