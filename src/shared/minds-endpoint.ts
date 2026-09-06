@@ -1,16 +1,9 @@
-// Where inference actually goes, decided from the endpoint alone.
-//
-// A MindsHub API key proves nothing about routing: signing in mints one, so a
-// user who then points Cowork at a local model has both a MindsHub key and
-// their own endpoint. Only the base URL says where the prompt is sent.
+// Routing follows the endpoint. A MindsHub credential can coexist with a local model URL and does
+// not identify where prompts go.
 
 /**
- * Parse an endpoint into a URL, tolerating a missing scheme.
- *
- * Base URLs are typed by hand ("192.168.1.100:1234"), and a schemeless string
- * parses as `protocol: "192.168.1.100:"` with no hostname at all — which would
- * silently reclassify the endpoint. Only host and port are ever read, so the
- * assumed scheme cannot affect the answer.
+ * Accept hand-entered endpoints without a scheme; URL parsing would otherwise interpret some
+ * host:port strings as protocols. Callers read only host and port.
  */
 function parseEndpoint(raw: string): URL | null {
   const s = (raw || '').trim();
@@ -31,15 +24,8 @@ function isMindsPublicHost(host: string): boolean {
 }
 
 /**
- * Whether `base` points at MindsHub rather than an endpoint of the user's own.
- *
- * `mindsUrl` covers self-hosted deployments on a private host. It is matched on
- * host AND port: a self-hosted gateway and a local model server commonly share
- * a machine and differ only by port, and comparing hostnames alone would hand
- * the model server's traffic to the gateway.
- *
- * An empty or unparseable `base` is not MindsHub — the caller decides what an
- * unidentifiable endpoint means, since only it knows what else is configured.
+ * Match self-hosted MindsHub on host AND port: a local model can share its hostname. Empty or
+ * unparseable bases are not identified as MindsHub.
  */
 export function isMindsBaseUrl(base: string, mindsUrl = ''): boolean {
   const url = parseEndpoint(base);
@@ -50,19 +36,9 @@ export function isMindsBaseUrl(base: string, mindsUrl = ''): boolean {
 }
 
 /**
- * Whether an `openai-compatible` provider selection denotes MindsHub.
- *
- * The base URL decides. With none, two cases remain and `openAiApiKey`
- * separates them: anton serves MindsHub through the openai-compatible provider
- * and derives the base from the MindsHub URL when only a MindsHub key is set,
- * so that shape really is MindsHub — but once an OpenAI key is set it stops
- * deriving and nothing identifies the endpoint.
- *
- * Pass `openAiApiKey` wherever the answer decides ROUTING, so an
- * unidentifiable endpoint stays openai-compatible and the server's base-URL
- * gate stops the turn rather than the prompt reaching the hosted gateway. Omit
- * it where the answer only decides what the UI shows: there an endpoint that
- * routes nowhere is better drawn as MindsHub than as an empty custom row.
+ * With no base URL, the server derives a MindsHub endpoint only when no OpenAI key is set. Routing
+ * callers must pass openAiApiKey so unknown endpoints remain openai-compatible and fail at the
+ * server base-URL gate. Presentation-only callers may omit it to show the MindsHub fallback.
  */
 export function mindsServesOpenAiCompatible(
   opts: { baseUrl?: string; mindsUrl?: string; openAiApiKey?: string },
@@ -73,10 +49,8 @@ export function mindsServesOpenAiCompatible(
 }
 
 /**
- * `host` or `host:port` for an endpoint, or '' when it names none.
- *
- * Used to label a provider card reconstructed from a bare base URL, so it
- * carries the endpoint the user typed rather than a generic placeholder.
+ * Return host[:port] for a reconstructed provider-card label, or an empty string for an invalid
+ * endpoint.
  */
 export function endpointHost(base: string): string {
   const url = parseEndpoint(base);

@@ -43,9 +43,7 @@ describe('toMindsOrg', () => {
   });
 
   it('names itself by its id when Keycloak sent neither name', () => {
-    // `normalizeOrgRef` will take an id off a bare string entry, so an
-    // organization can reach here with an id and nothing else. Rendering
-    // `undefined` in the picker is the outcome worth ruling out.
+    // Bare string entries can normalize to an id with no label; prevent undefined picker text.
     const result = toMindsOrg({ id: 'org-only-an-id' }, USER);
     expect(result.name).toBe('org-only-an-id');
     expect(result.displayName).toBe('org-only-an-id');
@@ -53,9 +51,7 @@ describe('toMindsOrg', () => {
   });
 
   it('falls back to the raw name rather than inventing a label', () => {
-    // Auth generates `<email>'s organization` and Keycloak holds it. Rebuilding
-    // that string here would be a third copy of the rule, so a missing display
-    // name stays missing and the caller decides what to show.
+    // Do not reconstruct auth-generated organization labels; retain the normalized fallback.
     expect(toMindsOrg({ id: 'o1', slug: 'acme.example' }, USER).displayName).toBe('acme.example');
   });
 });
@@ -125,10 +121,8 @@ describe('the stored pick', () => {
   });
 
   it('reads a pre-ENG-2199 entry as chosen, because that is what it was', () => {
-    // Before the flag existed this key was written on exactly two paths, the
-    // onboarding picker and the account-menu switch — both a person acting. A
-    // legacy entry defaulting to `false` would hand every existing install's
-    // deliberate choice back to the automatic selection on their next sign-in.
+    // Legacy preference writers recorded deliberate user actions; missing provenance must retain
+    // that choice.
     const legacy = { preferences: { mindsOrganization: { sub: USER, orgId: 'org-acme' } } };
     expect(readOrgPreference(legacy, USER)).toEqual({ orgId: 'org-acme', chosenByUser: true });
   });
@@ -156,14 +150,7 @@ describe('the stored pick', () => {
   });
 });
 
-/*
- * ENG-2109. Two readers name an organization: the token claim, which already
- * substituted PERSONAL_ORG_LABEL, and the membership listing, whose
- * `displayName` for a personal organization is auth's generated
- * `<email>'s organization`. Every call site read `displayName` inline and the
- * listing won, so the label changed under the user a beat after first paint.
- * This function is what makes the two agree.
- */
+/* Token and membership readers must agree on the personal label across asynchronous loading. */
 describe('organizationLabel', () => {
   it('calls a personal organization Personal, not auth\'s generated label', () => {
     const generated: MindsOrg = {
@@ -180,13 +167,7 @@ describe('organizationLabel', () => {
       .toBe(PERSONAL_ORG_LABEL);
   });
 
-  /*
-   * Renaming an organization is a shipped feature (auth's
-   * organization_admin.rename, no personal-org guard) and auth's own sync
-   * deliberately leaves a customized name alone. Substituting unconditionally
-   * would discard it at the last hop, which is the same class of bug as
-   * ENG-2109 with the sign flipped.
-   */
+  /* Preserve custom personal-organization names; auth's rename/sync path supports them. */
   it("keeps a personal organization's name when the user renamed it", () => {
     expect(organizationLabel({ ...PERSONAL, displayName: 'Acme Consulting' }))
       .toBe('Acme Consulting');
@@ -222,10 +203,8 @@ describe('organizationLabel', () => {
   });
 
   it('is null rather than empty when an organization names itself nothing at all', () => {
-    // Defensive: `toMindsOrg` derives `name` from slug ?? name ?? id, so a
-    // nameless organization should not reach here. Null keeps the return type
-    // honest and lets every call site's `|| fallback` chain do its job, which
-    // an empty string would also do by accident but without saying so.
+    // Keep the null contract for an organization with no usable name so caller fallbacks remain
+    // explicit.
     expect(organizationLabel({ ...ACME, displayName: '', name: '' })).toBeNull();
   });
 });

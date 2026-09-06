@@ -21,9 +21,8 @@ const STABLE = {
   channel: 'stable',
 };
 
-// The deb carries its arch in the file name (Debian convention,
-// `pkg_version_arch.deb`) and in its S3 prefix, so both must be understood
-// without the arch leaking into the version the download page advertises.
+// Read Debian architecture from filename and S3 prefix without including it in the displayed
+// version.
 const LINUX_PROD = {
   ...PROD,
   key: 'mindshub-cowork/linux-amd64/mindshub-cowork-2.26.8.10.1-amd64.deb',

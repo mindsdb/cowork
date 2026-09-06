@@ -7,10 +7,8 @@ import {
 
 describe('start cap', () => {
   it('is one number, big enough for the slowest case any build can hit', () => {
-    // Deliberately not split by build kind: a dev-only allowance means a start
-    // that passes locally can still be killed in a packaged build, so the
-    // failure only ever reproduces on a customer's machine. A dev boot may
-    // build a whole .venv on a cold cache, so that is the case it is sized for.
+    // Use the same startup allowance in dev and packaged builds, sized for a cold venv build, so
+    // local success does not conceal production timeout.
     expect(SERVER_START_CAP_MS).toBeGreaterThanOrEqual(180_000);
   });
 });
@@ -81,9 +79,7 @@ describe('backendFailureCopy', () => {
   });
 
   it('does not tell the user the backend died when it is still alive', () => {
-    // One "it died before printing anything" sentence for every kind
-    // contradicted the headline directly above it: a timed-out backend is
-    // alive and still importing, and nothing ran at all in the other two.
+    // Failure copy must distinguish a still-running timeout from cases where no process started.
     for (const kind of ['timeout', 'spawn-error', 'not-installed'] as const) {
       const copy = backendFailureCopy({ ...base, kind, hasLog: false });
       expect(copy.hints.some((h) => /died/.test(h))).toBe(false);

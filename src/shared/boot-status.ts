@@ -1,35 +1,20 @@
-// The progress line under the welcome orb while the loading screen is held open
-// through a boot-time update (ENG-749). One pure derivation so the boot overlay
-// stops being blind to the shell channel: it used to read only the OTA status
-// (`UI_UPDATE_STATUS`) and could show the completion-ish "Almost ready…" while a
-// shell update still needed a relaunch to take effect. Feeding the OTA phase,
-// the shell-auto phase, and the manual shell-reinstall notice here keeps the
-// overlay honest (ENG-2296), and is the first step toward one update coordinator
-// all three surfaces read from.
-//
-// This is presentation only — it never decides *whether* to update, just what
-// the loading screen says while one is in flight.
+// Loading-screen copy derived from OTA, shell auto-update and manual reinstall status. This is
+// presentation only; update policy lives in the main process.
 
 export interface BootStatusInput {
-  /** OTA (UI + server) status pushed from main. Only `downloading`/`reloading`
-   *  are in-flight boot phases; `available`/`error`/`shell-available` are
-   *  banner concerns, not loading-screen ones. */
+  /** Only downloading/reloading hold the boot screen; other OTA phases belong to banners. */
   ota?: { phase?: string | null } | null;
   /** electron-updater shell snapshot phase, or null when not packaged / web. */
   shell?: { phase?: string | null } | null;
-  /** The manual shell-reinstall notice (ENG-849) — pushed as `shell-available`
-   *  or recovered via `getShellUpdate()`. It's the fallback the main process
-   *  emits only when shell auto-update is disabled or terminally failed, so the
-   *  `shell` snapshot above then reads `disabled`/`failed` and misses it. A
-   *  reinstall the loading screen isn't applying is still outstanding, so it
-   *  counts as pending here and must not let the overlay claim completion. */
+  /**
+   * Manual reinstall remains pending when shell auto-update is disabled or has failed; the overlay
+   * must not imply it has been applied.
+   */
   manualShellPending?: boolean;
 }
 
-// Shell phases that mean "a shell update still needs a relaunch to finish", so
-// the loading screen must not signal completion while one is pending. `failed`
-// is excluded on purpose — a failed shell update must not hold the boot copy
-// hostage — as are the passive `idle`/`checking`/`complete`/`disabled`.
+// These phases still need a shell relaunch. Failed and passive phases must not hold the boot copy
+// open.
 const SHELL_PENDING = new Set(['available', 'downloading', 'ready-to-install', 'installing']);
 
 const DOWNLOADING = 'Downloading the latest update…';
@@ -47,9 +32,7 @@ export function deriveBootStatus(input: BootStatusInput): string | null {
 
   if (ota === 'downloading') return DOWNLOADING;
   if (ota === 'reloading') {
-    // Only claim we're almost done when nothing else is pending. A pending
-    // shell update still needs a restart the loading screen isn't applying, so
-    // reflect ongoing work instead of completion (ENG-2296).
+    // A pending shell update needs a restart that this loading screen does not apply.
     if (!shellPending) return ALMOST_READY;
     return shell === 'downloading' ? DOWNLOADING : FINISHING;
   }
