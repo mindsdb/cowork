@@ -39,54 +39,31 @@ export function canUseArtifactWorkspace(artifact) {
 }
 
 /*
- * Same ceiling the desktop preview endpoint applies (cowork-server
- * `preview_artifact`). The draft endpoint streams whatever the file is, so the
- * cut has to happen on this side, and it has to be reported: the viewer's
- * "Preview is truncated" strip reads `truncated`, and a hardcoded `false` sent
- * a multi-MB log or dataset whole into one text render with nothing on screen
- * to say the rest existed. That mattered once a click, on every surface, was
- * what opened this.
+ * Match cowork-server preview_artifact’s text ceiling and report truncation; draft responses
+ * themselves are uncapped.
  */
 const DRAFT_TEXT_MAX = 200_000;
 
 /*
- * Both draft loaders below attach the web Keycloak bearer via `authFetch`,
- * which sends it to whatever URL it is given regardless of origin. The viewer
- * already gates on this before calling either function (`canFetchDraftWithCredentials`
- * in artifactPreviewUtils.js — data:/blob: and cross-origin draft URLs never
- * reach here), but the credential attachment happens in this file, so the
- * invariant has to be enforced here too, not just at the one call site that
- * currently respects it.
+ * authFetch attaches a bearer to any origin. Enforce same-origin here even when the viewer already
+ * checked the URL.
  */
 const EMBEDDED_DRAFT_URL_RE = /^(?:blob|data):/i;
 
 function resolveSameOriginDraftUrl(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
-  /*
-   * Embedded content is refused by name rather than by accident. A data: or
-   * blob: URL used to fail here only because it was concatenated onto the
-   * origin and the result would not parse, so the reader was told the URL was
-   * invalid when the real answer is that it carries its own payload and needs
-   * no credential. `data:1234/x,hi` even parsed, and was reported as
-   * cross-origin instead.
-   */
+  /* Embedded URLs carry their own payload and must not receive credentials. */
   if (EMBEDDED_DRAFT_URL_RE.test(draftUrl)) {
     throw new Error('Refusing to send credentials to an embedded draft URL');
   }
-  /*
-   * The same origin `BASE` is built from — asking the host beats stripping the
-   * path back off with a regex, and it is what ArtifactViewer already uses to
-   * absolutize this very URL for the preview iframe.
-   */
+  /* Use the host origin, matching BASE and ArtifactViewer's draft resolution. */
   const apiOrigin = host.getApiOrigin();
   let origin;
   let url;
   try {
     /*
-     * Resolve against the origin rather than concatenating onto it, so this
-     * agrees with `canFetchDraftWithCredentials`, the gate the viewer applies
-     * before calling either loader. Concatenation read a protocol-relative
-     * `//other.example/x` as same-origin; the two now answer alike.
+     * Resolve with URL(), matching the viewer gate; string concatenation misclassifies
+     * protocol-relative external URLs.
      */
     const resolved = new URL(draftUrl, apiOrigin);
     url = resolved.toString();
@@ -101,14 +78,8 @@ function resolveSameOriginDraftUrl(draftUrl) {
 }
 
 /*
- * `withCredentials: false` is the text path's equivalent of the draft-HTML
- * branch's plain `src=` navigation: embedded (data:/blob:) and cross-origin
- * draft URLs carry their own payload or origin and must not receive the web
- * Keycloak bearer, but they can still be read without one. Fetching them
- * bare is what makes a data: CSV render instead of erroring where the same
- * URL renders fine as HTML. The viewer decides which mode applies
- * with `canFetchDraftWithCredentials`; the credentialed path keeps its
- * same-origin backstop below.
+ * Use withCredentials=false for embedded or cross-origin text drafts.
+ * The authenticated path independently enforces same-origin before attaching the Keycloak bearer.
  */
 export async function loadArtifactDraftText(draftUrl, { withCredentials = true } = {}) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
@@ -131,13 +102,8 @@ export async function loadArtifactDraftText(draftUrl, { withCredentials = true }
 }
 
 /*
- * Same fetch as loadArtifactDraftText, uncapped: this one feeds an iframe's
- * `srcdoc` (ArtifactViewer's draft-HTML preview branch), and DRAFT_TEXT_MAX
- * above would silently truncate any HTML document over 200KB before it ever
- * reached the DOM. `isHtml` lets the caller fall back to the old direct-`src`
- * behavior for a non-HTML draft content type — org mode's draft preview only
- * ever offers .html here (md/txt/csv take the text-preview branch), so that
- * fallback is Desktop-only and effectively theoretical.
+ * HTML srcdoc needs the full document; applying DRAFT_TEXT_MAX can silently break it.
+ * Return isHtml so callers can navigate directly for a non-HTML content type.
  */
 export async function loadArtifactDraftDocument(draftUrl) {
   const url = resolveSameOriginDraftUrl(draftUrl);
@@ -211,14 +177,9 @@ export function enableDraftComments(artifact) {
   return request(`${ref.base}/comments-access`, { method: 'POST', body: '{}' });
 }
 
-// Owner-only, like enableDraftComments above.
-//
-// On Cloud an artifact autopublishes to its owner alone; these two are how the
-// owner then chooses an audience. The read exists because the artifact CARD
-// withholds `accessEmails`/`accessPassword` in org mode — one artifacts root is
-// shared by the whole organization, so a card cannot tell owner from co-member
-// and must assume the worst. This route can, so the Share dialog pre-fills from
-// here rather than from the card (ENG-2316).
+// Owner-only access settings: org-mode artifact cards omit emails/passwords because the index is
+// shared with co-members.
+// Prefill the Share dialog from this authorized endpoint instead.
 export function loadArtifactAccess(artifact) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

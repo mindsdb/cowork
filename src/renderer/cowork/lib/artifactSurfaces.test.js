@@ -1,14 +1,5 @@
-// Every surface that renders an artifact must consult the deployment gate.
-//
-// The gate itself is unit-tested in artifactActions.test.js, and that passed
-// throughout two separate regressions: the artifacts grid menu offered Preview /
-// Show in Finder / Share in org mode, and the inline chat card opened a local
-// preview of content the deployment does not serve. A test of the predicate
-// cannot catch a caller that never asks — and each new surface is a new caller.
-//
-// So this asserts the wiring instead: each file that renders an artifact reads
-// the mode and routes through the shared helpers. Source inspection, because the
-// alternative is mounting four component trees to observe one import.
+// Guard call-site wiring to shared deployment helpers; unit tests cannot catch a surface that never
+// consults them.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -38,12 +29,8 @@ describe.each(SURFACES)('%s', (_name, rel) => {
   });
 });
 
-// Deleting must also TELL someone. Every surface used to call the api helper
-// directly and then patch its own local list, so the conversation's inline
-// cards never learned the artifact was gone (ENG-1673). The wrapper is what
-// records the tombstone, and a surface that skips it silently reintroduces the
-// bug — the same "a caller that never asks" failure this file already guards
-// against for the deployment gate.
+// Delete surfaces must use the store wrapper so chat cards receive tombstones, not merely remove
+// their own local rows.
 const DELETE_SURFACES = [
   ['artifacts panel', 'cowork/views/ArtifactsView.jsx'],
   ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
@@ -64,11 +51,8 @@ describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
   });
 });
 
-// An artifact the agent creates mid-session is absent from an index loaded
-// before it existed, and would be reported as deleted. The live stream is the
-// only place that knows it was just born, and App owns every live stream — a
-// signal hung on ChatView would miss a turn that finishes while the user is
-// looking at another chat or another route.
+// App owns live streams across navigation and must mark new artifacts born before an older index
+// can label them deleted.
 describe('live stream', () => {
   const src = readFileSync(resolve(ROOT, 'cowork/App.jsx'), 'utf-8');
 

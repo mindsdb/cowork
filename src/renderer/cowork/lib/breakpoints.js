@@ -1,21 +1,5 @@
-// Canonical responsive breakpoints — the single source of truth for the
-// app's layout-mode switches. `useBreakpoint` (hooks/useBreakpoint.js)
-// reads these in JS, and the CSS side documents the same values (see the
-// "Responsive scale" comment in styles/globals.css) so a resize crosses
-// one boundary in both systems at the same width. Before this module the
-// JS switched at 640/900 while the CSS switched at 700/760/820/1050/…,
-// which is why the tablet band felt half-transformed.
-//
-//   phone    width <  640      → MobileShell (bespoke mobile chrome)
-//   tablet   640 ≤ width < 900  → docked slim icon-rail sidebar
-//   desktop  width ≥  900      → full docked sidebar
-//   wide     width ≥ 1280      → reserved for max-content-width tuning
-//
-// Boundaries name the max width of the band below them, so
-// `width < PHONE_MAX` reads as "phone". CSS max-width rules use the `.98`
-// convention (e.g. 639.98) to avoid a double-match at the exact pixel;
-// the `*_MAX_CSS` helpers below carry that offset so callers don't
-// re-derive it.
+// Keep these layout boundaries aligned with the Responsive scale rules in styles/globals.css.
+// Bands use width < *_MAX; CSS helpers subtract .02px to avoid matching both bands at the boundary.
 export const PHONE_MAX = 640;
 export const TABLET_MAX = 900;
 export const DESKTOP_WIDE = 1280;

@@ -1,22 +1,7 @@
-// Recognise the artifact-repair handoff that "Address with agent" sends.
-//
-// That prompt is written for the agent, not for a person: it carries an
-// artifact id, a base revision, a repair id and the raw comment-thread JSON so
-// the turn can find and edit the right source. Sent as an ordinary user
-// message, it lands in the transcript as a wall of identifiers with the one
-// human-meaningful part — what the reviewer actually asked for — buried in the
-// middle of it.
-//
-// So the chat renders a card instead. The message text is left exactly as it
-// is: the agent reads it, and rewriting it to suit the UI would change the
-// contract for the sake of presentation.
-//
-// Parsing the text is deliberate, over tagging the message with metadata at
-// send time: the transcript is re-hydrated from the server on every reload, so
-// anything not in the text itself would have to survive persistence to keep the
-// card after a refresh. The template is server-generated from a single site
-// (`build_agent_repair` in cowork-server's artifact_revisions.py), so there is
-// one shape to track, and a miss degrades to the plain text that renders today.
+// Recognize cowork-server's build_agent_repair prompt to render a human-readable card without
+// changing the agent's input.
+// Parse persisted text so cards survive reloads; unrecognized templates fall back to the original
+// text.
 
 const PREFIX = 'Address this artifact review thread.';
 const THREAD_LABEL = 'Complete comment thread:';
@@ -52,12 +37,7 @@ function parseThread(text) {
     .filter((entry) => entry.text);
 }
 
-/**
- * Parsed handoff, or null when this is an ordinary message.
- *
- * Null is the common case and the safe one — every caller falls back to
- * rendering the text as written.
- */
+/** Return null for ordinary or unrecognized messages; callers render their original text. */
 export function parseArtifactRepairPrompt(text) {
   if (typeof text !== 'string' || !text.startsWith(PREFIX)) return null;
   const artifactId = field(text, 'Artifact id');
@@ -97,12 +77,8 @@ const STATUS_COPY = {
 };
 
 /**
- * Status → what the card shows.
- *
- * `streaming` only matters before the first status lands: a handoff whose turn
- * is still running reads as "Making changes" even though nothing has written a
- * status yet. Once the server has an answer, that answer wins — a turn can keep
- * streaming after the repair is already `ready`.
+ * Server repair status takes precedence over streaming: the repair can be ready while its turn is
+ * still running.
  */
 export function repairCardState(status, { streaming = false } = {}) {
   if (STATUS_COPY[status]) return STATUS_COPY[status];

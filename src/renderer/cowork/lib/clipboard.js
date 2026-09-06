@@ -1,14 +1,6 @@
-// Copy-to-clipboard helper with a robust fallback chain.
-//
-// `navigator.clipboard.writeText()` is the modern API but requires a
-// secure context AND user activation — both technically true in
-// Electron, but in practice the renderer's effective origin (file://
-// / app:// in some configs) makes it return "Document is not focused"
-// or fail silently. The legacy `document.execCommand('copy')` always
-// works inside Electron because it doesn't require any permissions
-// gate. We try modern first, fall back on any failure.
-//
-// Returns true on success, false if both paths failed.
+// Electron file/app origins can reject navigator.clipboard despite focus, so fall back to
+// execCommand.
+// Return false if neither path succeeds.
 
 export async function copyText(value) {
   if (value == null) return false;
