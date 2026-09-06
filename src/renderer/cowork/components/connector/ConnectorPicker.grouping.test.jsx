@@ -1,9 +1,5 @@
-// Directory grouping rules, which differ by build:
-//   • desktop — Featured on top, then every category; a featured connector
-//     appears in both, which reads as a shortcut across ~213 connectors
-//   • cloud — too few connectors to bother with category sections, so the
-//     available ones are one "Available here" block, followed by the
-//     desktop-only catalogue whose tiles hand the pick to the download path
+// Desktop repeats featured connectors as category entries; Cloud separates available connectors
+// from desktop-only download links.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -71,7 +67,6 @@ describe('ConnectorPicker grouping', () => {
     expect(within(availableHere).getByText('Gmail')).toBeInTheDocument();
     expect(within(availableHere).getByText('Google Drive')).toBeInTheDocument();
     expect(within(availableHere).getByText('Slack')).toBeInTheDocument();
-    // One tile each, and no per-category or "Featured" sections at all.
     expect(screen.getAllByText('Gmail')).toHaveLength(1);
     expect(screen.queryByText('Featured')).toBeNull();
     expect(screen.queryByText('Communication')).toBeNull();

@@ -48,14 +48,7 @@ const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
 
 function FormLogo({ logo, logoUrl, color, connectorId }) {
-  // Prefer the real brand mark: an explicit logo_url, else the static
-  // `logos/<connector_id>.svg` asset the connectors list uses (ENG-1534).
-  // The form spec's `logo_url` is often empty at runtime, which used to
-  // drop us to the generic `logo` glyph ("code" → "<>") on the
-  // "Authorize with <Provider>" button. On a missing/broken asset the
-  // `onError` swaps to the glyph, so connectors without an svg still look
-  // fine. `failedSrc` (not a boolean) means a new connector's src is
-  // retried rather than stuck on the previous one's failure.
+  // Retry logos per source so a failed connector asset does not suppress the next connector’s mark.
   const [failedSrc, setFailedSrc] = useState(null);
   const src = logoUrl || (connectorId ? `logos/${connectorId}.svg` : null);
   if (src && src !== failedSrc) {
@@ -94,22 +87,10 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
     opacity: disabled ? 0.6 : 1,
   };
 
-  // Sentinel rendering — when the underlying state still equals
-  // `ANTON_VAULT_KEEP`, the field hasn't been touched since the
-  // modify-flow pre-fill. Show the input visually empty with a
-  // placeholder that explains the "saved" semantics. The state
-  // stays as the sentinel until the user types; the first keystroke
-  // replaces it via the parent's onChange (controlled-input
-  // semantics — `e.target.value` carries just the typed character
-  // because the displayed value is empty). On submit, fields whose
-  // state is still the sentinel pass through and resolve server-
-  // side against the prior record.
+  // Display saved secret sentinels as empty inputs while retaining their value until typing.
+  // Untouched sentinels round-trip to preserve the stored secret.
   const isSentinel = value === ANTON_VAULT_KEEP;
   const displayValue = isSentinel ? '' : (value ?? field.default ?? '');
-  // For sentinel-bearing fields the placeholder doubles as the
-  // "saved" indicator. Eight asterisks is the convention users
-  // already recognize from password managers — short, unambiguous,
-  // and visually distinct from a normal placeholder hint.
   const placeholder = isSentinel
     ? '********'
     : (field.placeholder || '');
@@ -153,11 +134,8 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
         style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
       >
         <Checkbox
-          // Booleans never carry the sentinel — modify-flow only
-          // replaces secret string fields. For booleans the saved
-          // value lands directly in `default` and the state mirrors
-          // it. Sentinel guard kept for safety: a stray sentinel on
-          // a boolean field renders unchecked.
+          // Secret sentinels normally apply only to strings; treat an unexpected boolean sentinel
+          // as unchecked.
           checked={!isSentinel && !!value}
           disabled={disabled}
           onCheckedChange={(v) => onChange(v)}
@@ -167,7 +145,6 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
       </label>
     );
   }
-  // text, password, url, default
   return (
     <Input
       ref={inputRef}
@@ -191,24 +168,14 @@ export function DataVaultForm({
   userLabel, onUserLabelChange,
   hideHeader = false,
 }) {
-  // ── Multi-method shape ──────────────────────────────────────────
-  // A form can either be single-method (top-level `fields[]` array,
-  // legacy shape) or multi-method (`methods[]` array of method
-  // definitions, each with their own fields+actions). The user picks
-  // a method first, then fills in fields, then submits with an
-  // `auth_method` tag so the server probe knows which to test.
+  // Legacy forms use top-level fields; multi-method forms use each method’s fields/actions and
+  // submit its auth_method.
   const visibleMethods = Array.isArray(spec?.methods)
     ? spec.methods.filter((m) => !m.hidden)
     : [];
   const isMultiMethod = visibleMethods.length > 0;
-  // Local override (user picked a method client-side). Falls back to
-  // whatever the server set in `spec.selected_method`. Cleared when
-  // a brand-new form arrives (new form_id) and when the user clicks
-  // "change" on the breadcrumb.
-  // Selected-method override now lives in formStore so the panel
-  // chrome (the breadcrumb header bar) can read AND clear it. We
-  // mirror the store value into local state so React re-renders on
-  // change.
+  // Keep the method override in formStore so panel breadcrumbs can read/clear it; mirror changes
+  // for rendering.
   const [localSelectedMethod, setLocalSelectedMethodState] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
@@ -223,12 +190,7 @@ export function DataVaultForm({
     if (conversationId) setSelectedMethod(conversationId, mid || null);
     else setLocalSelectedMethodState(mid || null);
   };
-  // Single-method auto-select — when a connector ships only ONE
-  // method (e.g. PostHog: just an API key paste), there's no choice
-  // to make, so we skip the picker entirely. The form opens directly
-  // on that method's fields. We pretend the spec had `selected_method`
-  // set; the breadcrumb header sees a single-method form and hides
-  // itself (nothing to "go back" to).
+  // Skip the picker when only one visible method exists; there is no choice to return to.
   const onlyMethodId = (isMultiMethod && visibleMethods.length === 1)
     ? visibleMethods[0].id
     : null;
@@ -236,28 +198,18 @@ export function DataVaultForm({
   const activeMethod = isMultiMethod
     ? (visibleMethods.find((m) => m.id === activeMethodId) || null)
     : null;
-  // "How to" modal at the form-fill stage — surfaced from the
-  // bottom-left of the actions row (opposite the primary submit
-  // button) so docs are reachable without crowding the field area
-  // or the breadcrumb.
   const [formHowToOpen, setFormHowToOpen] = useState(false);
 
-  // The fields the form is currently rendering — the active method's
-  // for multi-method, or the top-level fields[] for single-method.
   const fields = isMultiMethod ? (activeMethod?.fields || []) : (spec?.fields || []);
 
-  // Per-(form, method) input state so flipping methods preserves
-  // anything typed under each one. Storing inside a Map keyed by
-  // `${form_id}::${method_id || 'default'}` keeps the state shape flat
-  // and easy to reset on a brand-new form.
+  // Key input state by form and method so switching methods preserves each draft.
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
   const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
-  /* Focus target for the first field that fails the required check.
-     `fieldRefs` holds the real control, which is what we want the caret in,
-     but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
-     field puts nothing there. `fieldContainerRefs` holds the wrapper, which
-     every field type has, so the error is at least scrolled into view. */
+  /*
+   * Focus Input/Textarea refs on validation failure; selects and booleans need wrapper refs to
+   * scroll errors into view.
+   */
   const fieldRefs = useRef({});
   const fieldContainerRefs = useRef({});
 
@@ -269,7 +221,6 @@ export function DataVaultForm({
     return out;
   };
 
-  // Reset everything when a NEW form replaces the old one.
   const lastFormIdRef = useRef(spec?.form_id);
   useEffect(() => {
     if (spec?.form_id !== lastFormIdRef.current) {
@@ -286,10 +237,7 @@ export function DataVaultForm({
   const skipped = skippedByKey[stateKey] || new Set();
   const requiredErrors = requiredErrorsByKey[stateKey] || {};
 
-  // Publish a redacted snapshot of the form state so the chat layer
-  // can inject context into messages sent during a connect task.
-  // Secret fields (password type or `secret: true`) are flagged but
-  // never carry their value.
+  // Publish context for chat, but never include password or secret field values.
   useEffect(() => {
     if (!conversationId || !spec) return;
     const fieldSnapshot = {};
@@ -327,10 +275,6 @@ export function DataVaultForm({
 
   if (!spec) return null;
 
-  // Success state — the agent endpoint flips `_is_success` after a
-  // save. Replace the noisy fields/actions surface with a green
-  // check + the title/subtitle. The user can dismiss via the panel's
-  // close (×) or the single "Close" action below.
   if (spec._is_success) {
     return (
       <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
@@ -359,15 +303,10 @@ export function DataVaultForm({
           </Alert>
         )}
         <div className="flex justify-end gap-2">
-          {/* On success we always offer two routes:
-                 • secondary "Close" — just dismiss the panel
-                 • primary "View connectors" — jump to the Connect
-                   Apps and Data page where the user can rename,
-                   remove, or attach the new connection. The host
-                   wires `view_connectors` to its navigate handler.
-              The spec's own `actions` list overrides this default
-              when present, so the probe can customise the wording
-              if it wants (e.g. "Open dashboard"). */}
+          {/*
+ * Use spec.actions when present so successful probes can customize the default Close/View
+ * connectors actions.
+ */}
           {(spec.actions && spec.actions.length > 0
             ? spec.actions
             : [
@@ -419,14 +358,11 @@ export function DataVaultForm({
     if (action.kind === 'primary') {
       const missing = fields.filter((field) => {
         if (!field.required || skipped.has(field.name)) return false;
-        /* PostHog resolves its numeric project ID from the user's personal
-           API key in the panel before the connector request is sent, and the
-           user can supply it either by picking from the discovered list or by
-           typing it directly. So require one of the two rather than both.
-           Until discovery has added the choice field an empty `project_id` is
-           what triggers discovery, so nothing is required yet; once the choice
-           exists, a submit with neither filled in has to say so instead of
-           running discovery a second time. */
+        /*
+         * After PostHog discovery, require either a selected project or a typed ID. Before
+         * discovery, an empty
+         * project_id must remain valid because it triggers discovery itself.
+         */
         if (spec?._connector_id === 'posthog'
           && (field.name === 'project_id' || field.name === 'posthog_project_choice')) {
           if (!fields.some((f) => f.name === 'posthog_project_choice')) return false;
@@ -449,7 +385,6 @@ export function DataVaultForm({
         return;
       }
     }
-    // Strip any field marked as skipped from the values payload.
     const cleanValues = {};
     for (const k of Object.keys(values)) {
       if (!skipped.has(k)) cleanValues[k] = values[k];
@@ -459,23 +394,15 @@ export function DataVaultForm({
       kind: action.kind || 'primary',
       values: cleanValues,
       skipped: [...skipped],
-      // Tell the panel which method the user picked (multi-method
-      // forms only). The agent uses this to decide which probe path
-      // to test and to write into the saved connection.
+      // Include the selected method so the agent can choose its probe and save the connection
+      // correctly.
       authMethod: activeMethodId || null,
     });
   };
 
-  // One-click "Authorize with <Provider>" from the picker (ENG-1534).
-  // Selects the recommended in-browser OAuth method — same as a plain
-  // card pick — which is enough on its own: the host's onMethodChange
-  // already auto-starts the connect immediately for a fields-less
-  // method (see DataVaultFormPanel). We must NOT also dispatch onAction
-  // here: for `browser_oauth_builtin` that hits handleAction's own
-  // auto-start branch too, so a single hero click would launch the
-  // OAuth flow twice concurrently. Only wired for fields-less methods
-  // (see MethodPicker), so a method with required fields still reveals
-  // them first via the normal pick-then-submit path.
+  // Select only: onMethodChange already starts fieldless OAuth. Dispatching onAction too would
+  // launch it twice.
+  // Methods with fields must show them before submitting.
   const authorizeWithMethod = (method) => {
     if (!method) return;
     setLocalSelectedMethod(method.id);
@@ -484,15 +411,7 @@ export function DataVaultForm({
 
   return (
     <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)]">
-      {/* Header — logo + title + subtitle */}
-      {/* Header — logo + title only. The subtitle (`spec.subtitle`)
-          is intentionally NOT rendered here: the chat above already
-          carries the explanation of the connection, and a second
-          line under the title was just visual clutter making the
-          form feel busy. The field labels + help text below carry
-          their own context. Hidden while the user is on the method
-          picker for multi-method forms (the picker has its own
-          "Pick how you want to connect:" caption). */}
+      {/* Omit the subtitle because the chat already explains the connection. */}
       {!hideHeader && !(isMultiMethod && !activeMethod) && (
         <div className="flex items-center gap-3">
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
@@ -502,11 +421,6 @@ export function DataVaultForm({
         </div>
       )}
 
-      {/* Generic "name this connection" field — applies to every connector
-          regardless of method, so it renders right under the title rather
-          than inside the per-method fields list below. Hidden on success
-          (host passes `userLabel={undefined}` in that case) and while the
-          user is still on the method picker (nothing to label yet). */}
       {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
         <div className="flex flex-col gap-1">
           <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
@@ -523,16 +437,8 @@ export function DataVaultForm({
         </div>
       )}
 
-      {/* Note: live status (`status_text`) is rendered as a
-          dismissible TOAST by DataVaultFormPanel — sitting outside
-          the form body so per-step status updates don't displace
-          the fields. The form itself just disables inputs while
-          probing (`busy` is set by the host) and otherwise stays
-          structurally identical to its idle state. */}
+      {/* Render status through the panel toast so probe updates do not displace form fields. */}
 
-      {/* Multi-method picker — shown when the form has methods[] and
-          no method is currently active (neither user-picked nor
-          server-pre-selected). User clicks a card to pick. */}
       {isMultiMethod && !activeMethod && (
         <MethodPicker
           spec={spec}
@@ -546,16 +452,8 @@ export function DataVaultForm({
         />
       )}
 
-      {/* Method breadcrumb used to live here — moved up into the
-          panel's header bar (DataVaultFormPanel reads selected method
-          from formStore). The panel's "← Back to options · <method>"
-          replaces the static "Connect" title once a method is picked,
-          so the surface gains vertical space for fields. */}
 
-      {/* Everything below is hidden until a method is chosen on a
-          multi-method form. Single-method forms never gate. */}
       {(!isMultiMethod || activeMethod) && <>
-      {/* Form-level banners */}
       {spec.form_error && (
         <Alert variant="danger">{spec.form_error}</Alert>
       )}
@@ -563,23 +461,11 @@ export function DataVaultForm({
         <Alert variant="warning">{spec.form_warning}</Alert>
       )}
 
-      {/* Fields — always rendered. While a probe is in flight the
-          host disables inputs via `busy`, so the layout stays put
-          and the user can still see what they entered (without it
-          jumping out of view when the status row appears).
-          Uses the `fields` const (line 155) so multi-method specs
-          render the chosen method's fields, not just `spec.fields`
-          (which is empty for multi-method forms — picking a method
-          would otherwise leave the user staring at an empty body
-          and a Submit button, exactly the "confirm-and-continue"
-          step we don't want). */}
+      {/* Keep fields visible but disabled during probing so entered values and layout remain stable. */}
       <div className="flex flex-col gap-[10px]">
         {fields.map((f) => {
           const isSkipped = skipped.has(f.name);
-          // Identity / read-only marker. The modify-flow pins
-          // `name` (and could pin others) so the vault row key
-          // stays stable. Locked fields render disabled and lose
-          // the skip affordance.
+          // Lock identity fields in modify mode so the vault row key cannot change or be skipped.
           const isLocked = !!f._locked;
           return (
             <div
@@ -596,15 +482,10 @@ export function DataVaultForm({
                     <span className="text-danger ml-[3px]">*</span>
                   )}
                 </label>
-                {/* Every field is skippable by default. The user may
-                    not have the requested value, or the form may be
-                    asking the wrong thing — Anton uses the skipped
-                    set on the next iteration to figure out the
-                    minimum-viable connection. Per-field opt-out via
-                    `skipable: false` in the spec is still respected.
-                    Locked fields (modify-flow identity) drop the
-                    skip affordance entirely — there's nothing for
-                    Anton to figure out about a fixed row key. */}
+                {/*
+ * Allow skipping unless explicitly forbidden; Anton uses skipped fields to refine the request.
+ * Locked identity fields cannot be skipped.
+ */}
                 {f.skipable !== false && !isLocked && (
                   <button
                     type="button"
@@ -636,11 +517,7 @@ export function DataVaultForm({
                   style={{ color: 'color-mix(in srgb, var(--accent) 80%, var(--ink-2))' }}
                 >{f.warning}</div>
               )}
-              {/* Transient per-field status (e.g. "Validating…"). The
-                  probe sets this via `set_field_status` and clears it
-                  with the same tool + null. Renders below error/warning
-                  but is shown alongside them — they describe different
-                  things (status = activity, error = outcome). */}
+              {/* Field activity status can coexist with errors/warnings; the probe clears it with null. */}
               {f.status && !isSkipped && (
                 <div className="inline-flex items-center gap-[6px] text-[11.5px] text-ink-3">
                   <span
@@ -663,11 +540,6 @@ export function DataVaultForm({
         })}
       </div>
 
-      {/* Actions — always rendered too. Disabled while busy. The
-          active method's actions take precedence; falls back to the
-          form's top-level actions, then a generic Submit button.
-          Layout: How-to link on the left (when the active method
-          ships docs), action buttons on the right. */}
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {(() => {
           const m = activeMethod || spec || {};
@@ -703,11 +575,8 @@ export function DataVaultForm({
         })()}
         <div className="flex gap-2 flex-wrap">
         {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
-          // Modify mode swaps the primary action's label to make
-          // the destination explicit — "Save changes" reads as an
-          // overwrite, "Connect" implies a fresh attachment. Only
-          // touches the visible label; the action id + kind go
-          // through unchanged so server-side handling is identical.
+          // Modify mode changes the visible label only; preserve action ID/kind for server
+          // handling.
           const label = (spec._modify && a.kind === 'primary')
             ? 'Save changes'
             : a.label;
@@ -720,9 +589,7 @@ export function DataVaultForm({
                   : 'default'
               }
               onClick={() => {
-                // Field-level skip via an action button (vs the per-field
-                // skip control). Useful when the spec wants a one-shot
-                // "let Anton pick this" affordance.
+                // Allow spec actions to skip a field as well as the per-field controls.
                 if (a.kind === 'skip' && a.field) {
                   skipField(a.field);
                   return;
@@ -730,10 +597,6 @@ export function DataVaultForm({
                 dispatch(a);
               }}
               disabled={busy && a.kind !== 'cancel'}
-              // `is-busy` paints a gentle accent pulse while the probe is
-              // in flight (globals.css `.btn.primary.is-busy`). Overrides
-              // the default disabled-dim so the button reads as "working"
-              // rather than "dead."
               className={a.kind === 'primary' && busy ? 'is-busy' : undefined}
             >
               {a.kind === 'primary' && busy ? 'Working…' : label}
@@ -744,10 +607,6 @@ export function DataVaultForm({
       </div>
       </>}
 
-      {/* How-to modal for the form-fill stage — wired to the
-          left-aligned link in the actions row. Opens the active
-          method's docs in a portaled overlay (escaping the form's
-          stacking context) so the docs read as a centered modal. */}
       <HowToModal
         open={formHowToOpen}
         title={`How to · ${(activeMethod || spec)?.label || 'Connect'}`}
@@ -758,24 +617,8 @@ export function DataVaultForm({
   );
 }
 
-// ── Method picker ─────────────────────────────────────────────────
-//
-// Vertical stack of cards, one per method. Each card shows label,
-// description, and an optional "Recommended" pill. Click selects
-// the method (host pulls the choice into local state and the form
-// switches to the picked method's fields).
 function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
-  // When a method exposes `how_to` markdown, clicking the help
-  // affordance opens an in-app modal instead of an external URL.
-  // We hold the active method so the modal can show its title.
   const [howToFor, setHowToFor] = useState(null);
-  // ── Hero promotion (ENG-1534) ───────────────────────────────────
-  // Lead with the single recommended method as a prominent button, and
-  // tuck the rest under a quiet "See other options" disclosure — so an
-  // OAuth connector reads as one obvious "Authorize with X" action
-  // instead of a menu of technical-sounding cards. Recommended methods
-  // already float to the front (stable). Decision logic lives in the
-  // pure, unit-tested `computeHeroView`.
   const { hero, rest, heroOneClick, heroLabel, heroHelper, providerName } =
     computeHeroView(methods, spec);
   const orderedMethods = orderMethods(methods);
@@ -859,15 +702,10 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
         const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
         const hasHelp = hasHowTo || !!m.help_url;
         const handleHelp = (e) => {
-          // Stop bubbling so the card's onClick doesn't also fire
-          // and select the method. Prevent default so the anchor
-          // doesn't try to navigate inside the Electron renderer
-          // (file:// origin).
+          // Prevent help clicks from selecting the method or navigating the Electron renderer.
           e.stopPropagation();
           e.preventDefault();
-          // Prefer the in-app markdown modal when the spec ships
-          // its own content; fall back to opening the URL in the
-          // user's default browser via Electron's openExternal.
+          // Prefer supplied help markdown over an external URL.
           if (hasHowTo) {
             setHowToFor(m);
           } else if (m.help_url) {
@@ -883,10 +721,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             aria-disabled={busy || undefined}
             onClick={() => { if (!busy) onPick?.(m.id); }}
             onKeyDown={(e) => {
-              // Only treat Enter/Space as activation when the card
-              // itself is the focused element — when the inner help
-              // anchor has focus its own keyboard activation handles
-              // it, and we don't want to also select the method.
+              // Activate only the focused card itself; inner help links own their keyboard events.
               if (busy) return;
               if (e.target !== e.currentTarget) return;
               if (e.key === 'Enter' || e.key === ' ') {
@@ -894,13 +729,8 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 onPick?.(m.id);
               }
             }}
-            // `min-w-0`: when the card sits inside a constrained flex
-            // parent (the form panel column), it lets the card shrink
-            // below its intrinsic content width so a long unbreakable
-            // token in the description (e.g. a sample connection URI)
-            // can't push the card past the panel's edge. Suspenders:
-            // `[overflow-wrap:anywhere]` on the description handles the
-            // line-breaking.
+            // Allow cards to shrink below intrinsic width so long connection URIs cannot overflow
+            // the panel.
             className="flex flex-col items-stretch text-left gap-[6px] px-[14px] py-3 rounded-[9px] text-ink font-[family-name:var(--font-body)] outline-none min-w-0"
             style={{
               background: m.recommended
@@ -934,12 +764,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               )}
             </div>
             {m.description && (
-              // Spec authors sometimes embed a sample connection URI in
-              // the description (Postgres `connection_string` method, for
-              // example). Without word-break that long unbreakable token
-              // blows out the card's width. `[overflow-wrap:anywhere]`
-              // lets the browser break mid-token where needed; `min-w-0`
-              // on the parent card unlocks shrink below intrinsic width.
+              // Break long sample URIs inside the shrinking card instead of widening it.
               <div className="text-sm text-ink-3 leading-[1.45] [overflow-wrap:anywhere] [word-break:break-word] min-w-0">{m.description}</div>
             )}
             {hasHelp && (
@@ -980,8 +805,6 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   return (
     <div className="flex flex-col gap-2">
       {hero ? (
-        // Lead with the recommended method as a prominent button; the
-        // rest fold away under a quiet disclosure (ENG-1534).
         <>
           {renderHero()}
           {rest.length > 0 && (
@@ -1008,7 +831,6 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           )}
         </>
       ) : (
-        // No recommended method — fall back to today's flat card list.
         <>
           <div className="text-sm text-ink-3 mb-[2px]">
             Pick how you want to connect:
@@ -1027,14 +849,6 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   );
 }
 
-// ── Method breadcrumb ────────────────────────────────────────────
-//
-// Compact row above the fields once a method is active. Reads as a
-// "← Back to options" navigation link with the chosen method label
-// appended as muted metadata, so picking a method doesn't feel like
-// a "confirm your choice" step — the form fields appear immediately
-// below and the back affordance is left-aligned, button-like, and
-// obvious.
 function MethodBreadcrumb({ method, onChange, busy }) {
   return (
     <button

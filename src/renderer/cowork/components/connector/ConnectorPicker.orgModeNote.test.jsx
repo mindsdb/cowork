@@ -1,6 +1,5 @@
-// The org-mode desktop-app note used to live in the dead ConnectWorkflowView
-// (unreachable — CustomizeView always delegates "+ Connect" to this picker
-// instead). This is the live surface now, so the note lives here.
+// Verify the desktop-app note on the live ConnectorPicker route, not the unused
+// ConnectWorkflowView.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
