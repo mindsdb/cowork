@@ -1,8 +1,3 @@
-// Per-instance Chart.js canvas. Adapted from mdb-ai's MessageChart +
-// ChartsService — kept as a self-contained component so we don't need a
-// global singleton: each MessageChart owns its Chart instance and tears
-// it down on unmount.
-
 import { useEffect, useRef } from 'react';
 
 function stripComments(str) {
@@ -13,9 +8,7 @@ function stripComments(str) {
 
 function parseConfig(str) {
   try {
-    // The legacy chartjs format ships a JS-object literal, not strict
-    // JSON, so we evaluate it like mdb-ai does. The contents come from
-    // our own backend so this is safe inside the renderer.
+    // Legacy chartjs accepts executable JavaScript object literals rather than strict JSON.
     // eslint-disable-next-line no-eval
     return eval('(' + stripComments(str) + ')');
   } catch (e) {

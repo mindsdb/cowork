@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 
-// MarkdownContent pulls in the platform host bridge, the skills store, and
-// the code/table renderers. None are relevant to math rendering, so stub
-// them to keep the test focused on the remark-math + rehype-katex pipeline.
+// Stub host, skills and code/table dependencies to isolate the math rendering pipeline.
 vi.mock('../../../platform/host', () => ({
   host: { openExternal: vi.fn() },
 }));
@@ -64,13 +62,12 @@ describe('_normalizeMathDelimiters', () => {
   it('leaves fenced code blocks untouched', () => {
     const src = 'before \\(a\\)\n```\nregex: \\(group\\)\n```\nafter \\[b\\]';
     const out = _normalizeMathDelimiters(src);
-    expect(out).toContain('```\nregex: \\(group\\)\n```'); // code preserved verbatim
-    expect(out.startsWith('before $$a$$')).toBe(true); // prose still converted
-    expect(out).toContain('after $$b$$'); // in-line \[b\] → inline (not block)
+    expect(out).toContain('```\nregex: \\(group\\)\n```');
+    expect(out.startsWith('before $$a$$')).toBe(true);
+    expect(out).toContain('after $$b$$');
   });
 
-  // ── Review regression tests (PR #486) ──────────────────────────────────
-  // Finding 1: code constructs must survive, not just triple-backtick fences.
+  // Preserve every code construct, not only triple-backtick fences.
   it('does not rewrite delimiters inside inline code spans or tilde fences', () => {
     expect(_normalizeMathDelimiters('write `$x$` or `\\(y\\)` for math'))
       .toBe('write `$x$` or `\\(y\\)` for math');
@@ -78,7 +75,7 @@ describe('_normalizeMathDelimiters', () => {
       .toBe('~~~\n$x$ and \\[y\\]\n~~~');
   });
 
-  // Finding 2: display math must not break out of its Markdown container.
+  // Display math must stay inside its Markdown container.
   it('keeps display math inside blockquotes / list items (inline fallback)', () => {
     expect(_normalizeMathDelimiters('> \\[x\\]')).toBe('> $$x$$');
     expect(_normalizeMathDelimiters('- item \\[x\\]')).toBe('- item $$x$$');
@@ -86,15 +83,14 @@ describe('_normalizeMathDelimiters', () => {
     expect(_normalizeMathDelimiters('p\n\n\\[ x=1 \\]\n\np')).toContain('$$\nx=1\n$$');
   });
 
-  // Finding 2 follow-up: stashing code must not lose the line's real context.
-  // A code span before display math on a container line must not fool the
-  // "own line" test into promoting the formula to a block outside the quote.
+  // Stashing a code span must retain quote/container context before classifying following display
+  // math.
   it('preserves line context across stashed code spans', () => {
     expect(_normalizeMathDelimiters('> `x` \\[x^2\\]')).toBe('> `x` $$x^2$$');
     expect(_normalizeMathDelimiters('- `y` \\[z\\]')).toBe('- `y` $$z$$');
   });
 
-  // Finding 3: a currency $ must never be reused as a math opener.
+  // A currency dollar sign must not become a math opener.
   it('does not pair a currency $ with a later math opener', () => {
     // $5 cannot open (followed by a digit); $x$ still renders on its own.
     expect(_normalizeMathDelimiters('It costs $5;($x$ is the variable).'))
@@ -113,10 +109,7 @@ describe('_normalizeMathDelimiters', () => {
   });
 });
 
-// ENG-1636: anton sometimes emits a finished file's local path (or a
-// fabricated sandbox: URL) as a "download" link. It never resolves in chat, so
-// the renderer neutralizes it and points the user at the Live Artifacts panel
-// instead of leaving a dead link.
+// Neutralize local/fabricated sandbox download links and direct users to Live Artifacts.
 describe('isArtifactLocalPath', () => {
   it('detects Windows drive paths (forward or back slash)', () => {
     expect(isArtifactLocalPath('C:\\Users\\roland\\.anton\\artifacts\\x\\f.xlsx')).toBe(true);
@@ -137,7 +130,7 @@ describe('isArtifactLocalPath', () => {
 
   it('leaves legitimate links and non-string input alone', () => {
     expect(isArtifactLocalPath('https://example.com/report.xlsx')).toBe(false);
-    expect(isArtifactLocalPath('/settings')).toBe(false); // web-mode route
+    expect(isArtifactLocalPath('/settings')).toBe(false);
     expect(isArtifactLocalPath('mailto:a@b.com')).toBe(false);
     expect(isArtifactLocalPath('')).toBe(false);
     expect(isArtifactLocalPath(null)).toBe(false);
@@ -166,10 +159,10 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
       <MarkdownContent text={`[Download Scorecard.xlsx](${path})`} complete />,
     );
     const span = container.querySelector(`span[title*="${PANEL_HINT}"]`);
-    expect(container.querySelector('a')).toBeNull(); // no clickable/dead link
-    expect(container.textContent).toContain('Download Scorecard.xlsx'); // text kept
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.textContent).toContain('Download Scorecard.xlsx');
     expect(span).not.toBeNull();
-    expect(span.getAttribute('href')).toBeNull(); // wrapper can never navigate
+    expect(span.getAttribute('href')).toBeNull();
   });
 
   it('renders a Windows drive-path link (the majority case) as inert panel text', () => {
@@ -219,7 +212,7 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
       <MarkdownContent text={'where \\(i=\\sqrt{-1}\\) holds'} complete />,
     );
     expect(container.querySelector('.katex')).not.toBeNull();
-    expect(container.querySelector('.katex-display')).toBeNull(); // inline, not display
+    expect(container.querySelector('.katex-display')).toBeNull();
   });
 
   it('renders display \\[…\\] as KaTeX display math', () => {
@@ -234,8 +227,8 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
       <MarkdownContent text={'the complex plane $s = \\sigma + it$.'} complete />,
     );
     expect(container.querySelector('.katex')).not.toBeNull();
-    expect(container.querySelector('.katex-display')).toBeNull(); // inline
-    expect(container.textContent).not.toContain('$'); // $ delimiters consumed
+    expect(container.querySelector('.katex-display')).toBeNull();
+    expect(container.textContent).not.toContain('$');
   });
 
   it('does NOT treat plain-prose currency as math', () => {
@@ -268,13 +261,8 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
   });
 
   it('recolors broken/unparseable TeX to the danger token, not KaTeX #cc0000', () => {
-    // Unbalanced braces are a hard KaTeX parse error → rehype-katex emits a
-    // `.katex-error` span. KaTeX writes the colour as an INLINE style (and the
-    // span is not nested under `.katex`), so the only way to override its harsh
-    // #cc0000 default is the `errorColor` option — a CSS rule cannot reach it.
-    // Guard that here since nothing else pins the colour. (happy-dom drops the
-    // comma-fallback `var(x, y)` form, which is why errorColor is plain
-    // `var(--danger)`.)
+    // KaTeX error color is inline and outside .katex, so verify the errorColor option.
+    // Use plain var(--danger); happy-dom drops the fallback var form.
     const { container } = render(
       <MarkdownContent text={'\\(\\frac{1}{\\)'} complete />,
     );

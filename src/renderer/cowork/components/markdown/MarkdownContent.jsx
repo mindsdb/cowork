@@ -1,10 +1,3 @@
-// Drop-in replacement for our old TextBlock in chat turns.
-//
-// Wires react-markdown + remark-gfm + rehype-sanitize with our own
-// component overrides for code (charts!), tables, and basic block tags.
-// Scoped Tailwind classes pick up our token colours so it follows the
-// active theme automatically.
-
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,13 +17,8 @@ import {
 import { host } from '../../../platform/host';
 import { useSkillNames } from '../../lib/skillsStore';
 
-// remark plugin: colour "/skill-name" mentions in the brand accent. Splits
-// text nodes on a "/name" token at a word boundary whose name matches a known
-// skill (so a path like /usr/bin or "and/or" is never tinted), wrapping the
-// match in a <span class="anton-skill-mention"> via mdast data.hName — which
-// mdast-util-to-hast turns into a real span and rehype-sanitize keeps (span +
-// className are already allowlisted for engram chips). Dependency-free: a
-// small recursive walk instead of pulling in unist-util-visit.
+// Highlight only known skill mentions at word boundaries so paths and and/or remain ordinary text.
+// The mdast span/class survives the existing sanitize allowlist.
 function remarkSkillMentions(names) {
   const set = names instanceof Set ? names : new Set(names || []);
   const splitText = (value) => {
@@ -71,10 +59,8 @@ function remarkSkillMentions(names) {
   return (tree) => { if (set.size > 0) walk(tree); };
 }
 
-// Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
-// do NOT include javascript:, file:, data:, or anything that could
-// navigate the Electron renderer to a privileged location. mailto: is
-// allowed because `host.openExternal` routes it through the OS handler.
+// Allow only HTTP(S) and OS-handled mailto links; other schemes could navigate Electron to
+// privileged locations.
 const _SAFE_HREF_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
 function isSafeExternalHref(href) {
@@ -88,28 +74,16 @@ function isSafeExternalHref(href) {
   return _SAFE_HREF_SCHEMES.has(url.protocol);
 }
 
-// A finished artifact's local path or a fabricated sandbox: URL that anton emits
-// as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
-// it (ENG-1636).
-//
-// Asymmetric by design: ANY Windows drive path is caught, but a POSIX path only
-// under `.anton/artifacts/` or `.cowork/`. Scoping POSIX to the artifact shape
-// keeps a real web `/route` link from being swallowed; the trade is a
-// POSIX-shaped hole — a file anton writes elsewhere on macOS/Linux still renders
-// as a dead link. Artifacts live under `.anton/artifacts`, so the canonical case
-// is covered on every platform; widening to bare-absolute-POSIX is where
-// over-matching would start.
+// Neutralize local artifact links. Catch every Windows drive path but only artifact-shaped POSIX
+// paths
+// under .anton/artifacts or .cowork, preserving real web /route links. Other POSIX file paths
+// remain a known gap.
 export function isArtifactLocalPath(href) {
   if (!href || typeof href !== 'string') return false;
   const h = href.trim();
   if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
-  if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
-  // POSIX artifact path (bare path — absolute or relative). A REAL web link
-  // (http/https/mailto) whose URL merely happens to contain the marker — e.g. a
-  // published `https://…/.cowork/…` URL — must stay clickable, so bail before
-  // the marker test. The `(?:^|/)` boundary matches both an absolute path
-  // (`/Users/…/.anton/artifacts/…`) and a leading-relative one
-  // (`.anton/artifacts/…`) while not matching a stray `foo.cowork/…`.
+  if (/^(?:file|sandbox):/i.test(h)) return true; // Exclude real web/mail links before testing artifact markers; match markers only at path-segment
+// boundaries.
   if (/^(?:https?|mailto):/i.test(h)) return false;
   return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h);
 }
@@ -117,12 +91,9 @@ export function isArtifactLocalPath(href) {
 const _ARTIFACT_LOCAL_LINK_TITLE =
   'This file is in the Live Artifacts panel — open or download it there';
 
-// Rewrite a link targeting a local file path (or fabricated sandbox:/file: URL)
-// into an inert <span> — link text kept, tooltip pointing at the Live Artifacts
-// panel, never a dead <a> (ENG-1636). Runs pre-sanitize on purpose: sanitize
-// strips a disallowed-scheme href (C:\…, sandbox:, file:) before the `a`
-// override could see it, so only here are Windows/POSIX/file/sandbox caught
-// uniformly. The <span>'s leftover href isn't allowlisted → sanitize drops it.
+// Replace local-file links before sanitization strips their hrefs, preserving text and an
+// artifact-panel hint.
+// The remaining href on the span is not allowlisted and is removed.
 function remarkArtifactLocalLinks() {
   const walk = (node) => {
     if (!node || !Array.isArray(node.children)) return;
@@ -156,19 +127,14 @@ function openMarkdownHref(href) {
   try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
 }
 
-// Allow the extra attributes our chart blocks need on <code>, and
-// permit the `engram:` URL scheme on links so the engram-comment
-// pre-processor (see `_renderEngramComments`) can route metadata
-// through the `a` component override into a styled chip.
+// Permit code classes for special renderers and engram: links for metadata chips.
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
-    // Only `className` needs allowlisting here: defaultSchema permits `title`
-    // on every element (attributes['*']), so remarkArtifactLocalLinks' Live
-    // Artifacts tooltip survives without a span entry, but ['*'] omits
-    // className — which the engram chips and this plugin both set.
+    // Allow className explicitly; defaultSchema already preserves title globally for artifact-link
+    // tooltips.
     span: [...(defaultSchema.attributes?.span || []), ['className']],
   },
   protocols: {
@@ -177,19 +143,9 @@ const sanitizeSchema = {
   },
 };
 
-// User messages are typed or pasted into the composer, where the
-// supported way to make a code block is a ``` fence (see the composer's
-// fence handling). Text copied from an already-indented context —
-// nested lists, quoted replies, an editor selection — arrives with a
-// uniform leading indent, which CommonMark then promotes to an
-// *indented* code block. The result is that pasted prose renders as a
-// monospace, non-wrapping card instead of formatted markdown.
-//
-// Strip the indentation common to every non-blank line (textwrap.dedent
-// semantics): the spurious copied-in indent is removed while relative
-// nesting — genuine sub-bullets, indented fence bodies — is preserved.
-// It's a no-op unless *all* non-blank lines share a leading indent, so
-// mixed content is left untouched.
+// Remove indentation shared by all nonblank user lines so pasted prose is not mistaken for an
+// indented
+// code block. Preserve relative nesting and mixed-indentation content.
 function _dedentUserText(text) {
   if (!text || typeof text !== 'string') return text;
   const lines = text.split('\n');
@@ -206,10 +162,7 @@ function _dedentUserText(text) {
 
 function _mergeInlineCodeLines(text) {
   if (!text || typeof text !== 'string') return text;
-  // Trailing-whitespace tolerant: a line that's just `code` followed by
-  // any combination of spaces/tabs/CR (Windows line endings) still
-  // counts as an "inline only" line. Without the \s*$ the regex
-  // silently misses any message that crossed a CRLF transport.
+  // Allow trailing spaces/tabs/CR so inline-only code lines survive CRLF transport.
   const INLINE_ONLY = /^`([^`\n\r]+)`\s*$/;
   // Split on either LF or CRLF so lines don't carry a trailing \r that
   // breaks the $ anchor on the regex above.
@@ -223,7 +176,6 @@ function _mergeInlineCodeLines(text) {
       i += 1;
       continue;
     }
-    // Found a candidate line — scan forward for more.
     const run = [m[1]];
     let j = i + 1;
     while (j < lines.length) {
@@ -240,7 +192,6 @@ function _mergeInlineCodeLines(text) {
       out.push('```');
       i = j;
     } else {
-      // One or two inline-code lines — leave them as inline.
       out.push(lines[i]);
       i += 1;
     }
@@ -248,19 +199,10 @@ function _mergeInlineCodeLines(text) {
   return out.join('\n');
 }
 
-// Make sure ```data-vault-form fences always start on their own line.
-// LLMs frequently glue the opening fence to the end of a sentence
-// ("…fill in the form.```data-vault-form\n…"), which collapses the
-// block into inline code and skips our renderer entirely. We hunt
-// for the pattern wherever it appears and inject the missing
-// newlines around it so the markdown parser treats it as a real
-// fenced code block.
+// Separate glued form fences from prose so markdown recognizes them as blocks and invokes the
+// renderer.
 function _normalizeFormFences(text) {
   if (!text || typeof text !== 'string') return text;
-  // Catches both `data-vault-form` (full spec) and
-  // `data-vault-form-patch` (partial update) — the regex's lang
-  // pattern is broad enough to cover any future `data-vault-form*`
-  // variant we add without further changes.
   return text.replace(
     /([^\n])?(```data-vault-form[a-z\-]*\b[^\n]*\n[\s\S]*?\n[ \t]*```)([^\n])?/g,
     (_match, before, block, after) => {
@@ -271,34 +213,17 @@ function _normalizeFormFences(text) {
   );
 }
 
-// Regions we must never rewrite: fenced code blocks (``` or ~~~) and inline
-// code spans. A message that *documents* LaTeX ("write `$x$` for inline
-// math") has to show its delimiters verbatim, not render them. We stash these
-// behind placeholders (see below) rather than splitting on them, so the
-// conversion still sees each line's real context. This misses a few CommonMark
-// corners on purpose — 4+ backtick fences, multi-backtick spans, an
-// unterminated fence mid-stream — since covering them fully would mean
-// re-implementing the parser; the realistic cases are handled.
+// Shield fenced/inline code from math rewriting while preserving line context. Known gaps are long
+// backtick fences, multi-backtick spans, and unterminated streaming fences.
 const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
 
 const _isBlankRun = (s) => /^\s*$/.test(s);
 
-// Math comes from model/user-authored chat text, so keep KaTeX's unsafe HTML
-// extensions disabled and bound the amount of layout/macro work one formula
-// can request. These match KaTeX's secure defaults where one exists, but are
-// explicit here so a dependency default change cannot silently widen the
-// renderer's trust boundary.
-//
-// errorColor: broken/half-streamed TeX renders in this colour instead of
-// KaTeX's harsh #cc0000 default, so a partial formula mid-stream doesn't read
-// as alarming. It MUST be set here, not in CSS — KaTeX writes the error span's
-// colour as an inline `style` attribute (and the span isn't nested under
-// `.katex`), so an external stylesheet rule can neither match it nor outrank
-// the inline style. rehype-katex threads this through to both its KaTeX call
-// and its own fallback span, so one option covers every error path. Plain
-// `var(--danger)` with no comma fallback: `--danger` is defined in every theme
-// scope so the fallback is dead weight, and the comma form `var(x, y)` is
-// rejected by happy-dom's CSS parser (breaking the test that guards this).
+// Disable unsafe KaTeX HTML and bound formula layout/macro work explicitly so dependency defaults
+// cannot
+// widen trust. Set errorColor here because KaTeX emits inline styles; use var(--danger) without a
+// comma
+// fallback because every theme defines it and happy-dom rejects the fallback form.
 const _KATEX_OPTIONS = Object.freeze({
   trust: false,
   maxSize: 50,
@@ -306,29 +231,14 @@ const _KATEX_OPTIONS = Object.freeze({
   errorColor: 'var(--danger)',
 });
 
-// Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
-// inline, `\[ … \]` and `$$ … $$` display. remark-math only parses the `$`
-// family, and CommonMark eats the backslash in `\(` / `\[` before we ever
-// reach an AST, so these have to be rewritten in the raw text (see ENG-989).
-// Everything becomes the double-dollar form remark-math parses:
-//
-//   inline   \(x\)              →  $$x$$
-//   display  \[x\]  (own line)  →  \n\n$$\nx\n$$\n\n   (block → display math)
-//   display  \[x\]  (in a line) →  $$x$$   (inline → stays in its blockquote /
-//                                           list item instead of breaking out)
-//   inline   $x$                →  $$x$$   (currency-guarded)
-//
-// `\(…\)` / `\[…\]` are unambiguous, so they always convert. A single `$…$`
-// is not (currency!), so remark-math's own single-`$` parsing stays disabled
-// and we detect it here with pandoc's rule: the opening `$` isn't followed by
-// a digit or space, the closing `$` isn't followed by a digit, and neither
-// `$` belongs to a `$$` pair. So "$s=\sigma+it$" renders while "a $1 million
-// prize", "from $5 to $10", and "$5;($x$ …)" keep their literal dollars.
-// Leading-digit inline like "$2\pi$" stays literal on purpose — write
-// "\(2\pi\)" for that, which is unambiguous.
+// Normalize math before CommonMark consumes backslash delimiters. Convert \(…\) and \[…\] to double
+// dollars; display delimiters become blocks only on their own line, preserving enclosing
+// lists/quotes.
+// Single-dollar math requires a non-digit/non-space opener, a closer not followed by a digit, and
+// no $$ pair.
+// This preserves currency; leading-digit math such as $2\pi$ stays literal and must use \(2\pi\).
 export function _normalizeMathDelimiters(text) {
   if (!text || typeof text !== 'string') return text;
-  // Fast path: nothing to do without a `\(`, `\[`, or a `$`.
   if (
     text.indexOf('\\(') === -1 &&
     text.indexOf('\\[') === -1 &&
@@ -336,13 +246,8 @@ export function _normalizeMathDelimiters(text) {
   ) {
     return text;
   }
-  // Stash code regions behind NUL-delimited placeholders so the conversion
-  // runs against the *whole* string — preserving each line's real context
-  // (blockquote `>` / list-item prefixes) that a naive split would fragment
-  // (e.g. "> `x` \[y\]") — while never rewriting code. Placeholders carry no
-  // math delimiter and no newline, so they pass through untouched; the code
-  // is restored verbatim afterwards. NUL can't occur in chat text and never
-  // escapes this function.
+  // Stash code with newline-free placeholders so normalization retains list/blockquote context,
+  // then restore it verbatim.
   const code = [];
   const stashed = text.replace(_MD_CODE_REGION, (m) => {
     const token = `\u0000${code.length}\u0000`;
@@ -355,10 +260,8 @@ export function _normalizeMathDelimiters(text) {
 
 function _convertMathDelimiters(text) {
   return text
-    // Display \[ … \]. Only inject a block ($$ on its own lines) when the
-    // delimiters already sit on their own line; otherwise the blank lines
-    // would pull the math out of an enclosing blockquote / list item, so keep
-    // it inline (it renders in place, just not centered).
+    // Create display blocks only for delimiters on their own line; inserting blank lines elsewhere
+    // would break enclosing lists/quotes.
     .replace(/\\\[([\s\S]+?)\\\]/g, (m, body, offset, whole) => {
       const lineStart = whole.lastIndexOf('\n', offset - 1) + 1;
       const before = whole.slice(lineStart, offset);
@@ -373,20 +276,10 @@ function _convertMathDelimiters(text) {
     .replace(/(?<!\$)\$(?!\$)(?![\d\s])([^$\n]*?\S)\$(?!\$)(?!\d)/g, (_m, body) => `$$${body.trim()}$$`);
 }
 
-// Engram metadata in lessons.md / rules.md / profile.md is encoded
-// as inline HTML comments at the end of each bullet, e.g.
-//   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
-// react-markdown drops HTML by default, so the comment normally
-// disappears entirely, taking the engram's provenance with it. We
-// transform each comment into a sequence of markdown links with a
-// special `engram:` URL scheme — those survive sanitization, and the
-// `a` component override below picks the scheme up and renders each
-// pair as a small chip.
-//
-// The scanner below is intentionally narrow: it only rewrites comment
-// bodies that look like one or more `key:value` pairs (e.g. `topic:foo`,
-// `ts:2026-02-27`, `source:consolidation`). Plain authorship comments
-// like `<!-- TODO -->` or `<!-- not sure -->` are stripped.
+// Convert key:value metadata comments into sanitized engram: links for provenance chips;
+// react-markdown
+// otherwise drops them. Strip ordinary prose comments such as TODO rather than treating them as
+// metadata.
 const _ENGRAM_BODY_RE = /^\s*([a-z][a-z0-9_-]*:[^\s<>]+(?:\s+[a-z][a-z0-9_-]*:[^\s<>]+)*)\s*$/i;
 
 function _engramCommentChips(body) {
@@ -400,10 +293,7 @@ function _engramCommentChips(body) {
       if (idx <= 0) return '';
       const key = pair.slice(0, idx);
       const val = pair.slice(idx + 1);
-      // The link text is what the user sees; the href carries the
-      // engram scheme so the renderer can distinguish it from real
-      // links. Encode the value so spaces / special chars don't
-      // break the URL portion.
+      // Encode metadata values in the synthetic URL; keep their readable text in the link label.
       return `[${key}: ${val}](engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)})`;
     })
     .filter(Boolean)
@@ -440,9 +330,7 @@ function _renderEngramComments(text) {
   return out;
 }
 
-// Density-scoped class strings. `dense` halves the rhythm and shaves
-// a step off every body-text role; used by memory previews where the
-// reading column is narrower and we want more lessons on screen.
+// Dense spacing is used by memory previews.
 const _SIZES = {
   default: {
     root: 'markdown-content space-y-4 break-words text-body text-ink-2',
@@ -454,9 +342,6 @@ const _SIZES = {
     ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
   },
-  // `dense` is the memory-preview density. Trimmed one notch off
-  // chat defaults (and a comfortable line-height) for an elegant
-  // reading column without sacrificing readability.
   dense: {
     root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
@@ -475,11 +360,7 @@ export function MarkdownContent({
   complete = true,
   conversationId = null,
   dense = false,
-  // Variant + capability flags — assistant turns default to the full
-  // feature set (forms, charts, engram chips). User turns pass
-  // `variant="user"` with forms/charts off so a user typing
-  // ```data-vault-form or ```chart in their composer doesn't
-  // accidentally pop the form panel / a chart in the chat column.
+  // User turns disable forms/charts so typed special fences cannot open side-effect renderers.
   variant = 'assistant',
   enableForms = true,
   enableCharts = true,
@@ -487,18 +368,12 @@ export function MarkdownContent({
   // They can opt out of per-word DOM wrappers and animations so transcript
   // rendering never competes with typing in the composer.
   animateStreamingWords = true,
-  // Gate the "consecutive inline-code lines → fenced block" rewrite to
-  // assistant output only. Authored content (user turns, memory files,
-  // artifact previews) defaults to off so author-intentional inline
-  // code runs are preserved verbatim.
+  // Merge inline-code runs only in assistant output; authored user/memory/artifact content must
+  // preserve those choices.
   isAssistant = false,
 }) {
   const rootRef = useRef(null);
-  // Only run the form-fence normalization pass when forms are enabled.
-  // User messages bypass it so a typed ```data-vault-form block stays
-  // a normal fenced code block instead of getting auto-tidied for the
-  // form renderer. The inline-code-run merge is similarly gated by
-  // `isAssistant` so only LLM output gets that fix-up.
+  // Normalize form fences only when enabled, and merge inline-code runs only for assistant output.
   const normalized = useMemo(
     () => {
       // User turns are pasted/typed: strip a uniform copied-in indent so
@@ -507,23 +382,17 @@ export function MarkdownContent({
       const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
       const withEngrams = _renderEngramComments(formNormalized);
-      // Applied to every variant so a formula pasted into the composer
-      // renders too — not just assistant output.
       return _normalizeMathDelimiters(withEngrams);
     },
     [text, enableForms, isAssistant, variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 
-  // Skill names from the shared store → colour "/mention" tokens. useSkillNames
-  // returns a stable Set rebuilt once per reload in the store, so all instances
-  // share one Set instead of each allocating their own inside useMemo.
+  // Share the store’s stable skill-name set across markdown instances.
   const skillNames = useSkillNames();
   const remarkPlugins = useMemo(
-    // singleDollarTextMath:false — remark-math never parses a lone `$`, so
-    // plain-prose currency ("$5 and $10") is safe. _normalizeMathDelimiters
-    // does the delimiter work instead: it rewrites \(…\), \[…\], and genuine
-    // (pandoc-guarded) $…$ inline math into the `$$…$$` form parsed here.
+    // Disable remark-math’s single-dollar parsing to preserve currency; the guarded normalizer
+    // produces double-dollar math.
     () => [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
@@ -533,10 +402,8 @@ export function MarkdownContent({
     [skillNames],
   );
 
-  // Delegated click listener — every anton-code-block ships a [data-copy-code]
-  // button rendered by MarkdownCode. A single listener at this root survives
-  // streaming re-renders (blocks come and go as chunks arrive) without
-  // attaching/detaching per-block handlers.
+  // Delegate Copy clicks at the root so streaming block mounts need no individual listener
+  // lifecycle.
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -559,12 +426,8 @@ export function MarkdownContent({
           btn.classList.remove('is-copied');
         }, 1200);
       };
-      // navigator.clipboard requires a secure context + clipboard-write
-      // permission; Electron renderers can run in contexts where it's
-      // unavailable OR rejects silently, which is why the original
-      // `.catch(() => {})` made copies look broken. Fall back to a
-      // hidden-textarea + execCommand('copy') path which works anywhere
-      // the document has focus.
+      // Clipboard APIs can be unavailable or reject in Electron; fall back to focused-document
+      // textarea copying.
       const fallbackCopy = (text) => {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -593,13 +456,9 @@ export function MarkdownContent({
   const streaming = !complete && animateStreamingWords;
 
   const components = useMemo(() => {
-    // During streaming, wrap text children in individual <span> elements
-    // so each new word fades in via CSS animation. Defined inside useMemo
-    // so the component overrides stay referentially stable across renders —
-    // if the function reference changed every render, react-markdown would
-    // unmount/remount every element, re-triggering all animations.
-    // React's reconciliation preserves existing spans (by index key) and
-    // only creates new DOM nodes for newly appended words.
+    // Keep renderer overrides stable so react-markdown does not remount nodes and restart every
+    // word animation.
+    // Index keys preserve existing streamed spans while new words append.
     const _animate = animateStreamingWords && !complete ? (children) => {
       let wordKey = 0;
       return Children.map(children, (child) => {
@@ -630,9 +489,6 @@ export function MarkdownContent({
     tr: TableRow,
     th: TableHead,
     td: TableCell,
-    // Inline body styling — keep paragraphs compact and consistent
-    // with the rest of the chat column. During streaming, words are
-    // individually wrapped so each new word fades in.
     p: ({ children, node, ...rest }) => (
       <p className={sz.p} {...rest}>{_animate ? _animate(children) : children}</p>
     ),
@@ -652,28 +508,17 @@ export function MarkdownContent({
     ),
     a: (props) => {
       const href = props.href || '';
-      // Engram metadata chip — see _renderEngramComments above. We
-      // intercept the synthetic `engram:` href and render a small
-      // pill instead of a link. Keying off the URL scheme keeps real
-      // links untouched.
       if (href.startsWith('engram:')) {
         return (
           <span
             className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
-            // Strip the children's <a> wrapper styling — react-markdown
-            // hands us the linkified text as plain text children, so
-            // we render straight into the chip.
           >
             {props.children}
           </span>
         );
       }
-      // Unsafe / unsupported schemes (file:, data:, javascript:, etc.)
-      // render as plain text so a stray malicious link can't navigate
-      // the renderer to a privileged location. We add `title` so users
-      // who hover get a hint about why the link is inert instead of
-      // wondering why nothing happens — WCAG 3.3.1 (Error
-      // Identification) in spirit.
+      // Render unsupported schemes as inert text so links cannot navigate Electron to privileged
+      // locations.
       if (!isSafeExternalHref(href)) {
         return (
           <span title="Link blocked: unsupported URL scheme">
@@ -681,19 +526,9 @@ export function MarkdownContent({
           </span>
         );
       }
-      // Safe external link — keep it focusable and announce-able by
-      // screen readers, but intercept the click and route through the
-      // host bridge so Electron opens it via the OS shell instead of
-      // navigating the renderer.
-      //
-      // WCAG notes:
-      //   - 2.4.7 Focus Visible: `focus-visible:` adds a visible
-      //     ring + underline when reached via keyboard.
-      //   - 2.4.4 Link Purpose / 4.1.2 Name, Role, Value: the
-      //     visually-hidden span announces "(opens in new window)" so
-      //     SR users know the link navigates externally.
-      //   - 2.1.1 Keyboard: native <a> handles Enter (browsers fire
-      //     click on Enter for focused anchors).
+      // Keep native accessible links but route clicks through host so Electron opens the OS browser
+      // instead of
+      // navigating its renderer. Provide visible keyboard focus and announce the new window.
       return (
         <a
           className="text-accent underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent rounded-sm"
@@ -715,14 +550,9 @@ export function MarkdownContent({
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-5 border-t border-line opacity-25" />,
     pre: (props) => {
-      // Fenced code blocks with a language are handled by MarkdownCode,
-      // which renders its own anton-code-block wrapper. We drop the outer
-      // <pre> in that case so block-level markup is not nested inside <pre>.
-      //
-      // Fenced code blocks without a language still arrive as <pre><code>
-      // but the code child has no language-* class. Mark that child as a
-      // block so MarkdownCode renders the full code-block card instead of
-      // falling through to inline-code styling.
+      // Remove the outer pre when MarkdownCode renders its own block wrapper. Mark language-less
+      // fenced code
+      // as block too so it cannot fall through to inline styling.
       const child = Array.isArray(props.children) ? props.children[0] : props.children;
       const childClass = child?.props?.className || '';
 
@@ -744,11 +574,9 @@ export function MarkdownContent({
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
         remarkPlugins={remarkPlugins}
-        // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
-        // `<code class="language-math">` wrappers (code+className is already
-        // allowlisted), then KaTeX replaces them with its rendered markup.
-        // That generated markup is trusted (built from a text-only TeX
-        // source) so it deliberately isn't re-sanitized.
+        // Sanitize before KaTeX, retaining language-math wrappers. KaTeX then renders text-only TeX
+        // using the
+        // restricted options above; its generated markup is not sanitized again.
         rehypePlugins={[
           [rehypeSanitize, sanitizeSchema],
           [rehypeKatex, _KATEX_OPTIONS],

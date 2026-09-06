@@ -1,12 +1,4 @@
-// Scratchpad viewer — input/output focused, with a toggle to reveal
-// the underlying code + stderr per cell. Borrowed visual structure
-// from mdb-ai's playground panel: tabs across the top group cells by
-// `_scratchpadTabId` (anton's `name`); each cell shows description +
-// timing + output prominently, with code/errors hidden behind a
-// "Show code" toggle.
-//
-// Code is syntax-highlighted via prism (CodeBlock component) and uses
-// JetBrains Mono for the editor font. Theme follows body[data-theme].
+// Group cells by _scratchpadTabId (Anton's name); reveal code and stderr on demand.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -27,42 +19,27 @@ function fmtMs(ms) {
 
 function detectLanguage(data, isToolCall) {
   if (isToolCall) return 'json';
-  // Anton runs Python in the scratchpad sandbox by default. If the
-  // future allows other languages, infer from data.action or similar.
   return 'python';
 }
 
-// Synthetic group key for cells that arrived without a
-// _scratchpadTabId — usually the LLM emitted the tool call without a
-// `name` field (or the JSON was truncated mid-stream and the field
-// was lost). Bucketing all of them under one tab keeps the strip
-// from fragmenting into a row of one-cell pads, and the per-cell
-// `step x/y` counter reflects the position within this single
-// group rather than 1/1 over and over.
+// Group unnamed cells into one tab instead of creating a separate single-cell pad for each.
 const UNNAMED_TAB_KEY = '__unnamed__';
 
 export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null }) {
   const { isNarrow } = useBreakpoint();
 
-  // Group cells by their canonical tab id (anton's `name` field).
-  // Trim + validate so the empty string and whitespace-only strings
-  // don't silently land in a "" group. Unnamed cells flow into a
-  // single UNNAMED_TAB_KEY bucket so we never split one logical
-  // pad across multiple tabs.
+  // Trim tab IDs and treat empty/whitespace names as the shared unnamed group.
   const tabs = useMemo(() => {
     const byTab = new Map();
     for (const s of steps) {
-      // Include scratchpad cells (Anton) and tool-call cells (Hermes).
-      // Skip reasoning-only steps — they have no inspectable payload.
+      // Skip reasoning-only steps because they have no inspectable payload.
       if (!s._isScratchpad && !s._isToolCall) continue;
       const raw = s._scratchpadTabId;
       const tabId = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
       const key = tabId || UNNAMED_TAB_KEY;
       if (!byTab.has(key)) {
-        // Tool-call tabs are keyed by tool_use_id (an opaque id, not a
-        // human name) — show the step's own label (e.g. "test_tool")
-        // instead. Scratchpad tabs are keyed by the pad's own name,
-        // which IS meant to be shown as-is.
+        // Tool-call IDs are opaque, so display step labels; scratchpad IDs are already
+        // human-readable names.
         const displayName = !tabId
           ? 'Untitled'
           : (s._isToolCall ? (s.label || tabId) : tabId);
@@ -87,13 +64,10 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
   useEffect(() => { if (focusTabId) setActiveTabId(focusTabId); }, [focusTabId]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
-  // The modal now also opens for pure tool-call activity (no
-  // scratchpad cells at all) — "Scratchpad" as a fixed title would be
-  // wrong there, so title off whether the active pad is a tool call.
+  // Use a tool-call title for tabs containing no scratchpad cells.
   const activeIsToolCallOnly = !!activeTab && activeTab.cells.every((c) => c._isToolCall);
   const modalTitle = activeIsToolCallOnly ? (activeTab.name || 'Tool Call') : 'Scratchpad';
 
-  // Esc + backdrop dismissal are handled by <Modal>.
 
   return (
     <Modal
@@ -107,8 +81,6 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
     >
       <div className="scratchpad-modal flex h-full flex-col overflow-hidden">
 
-        {/* Modal header — title + close. Per-cell `step x/y` already
-            says the count, so we don't repeat it here. */}
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
@@ -128,12 +100,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           </Tooltip>
         </div>
 
-        {/* Tab strip — only when more than one pad. Inline styles via
-            CSS variables (instead of Tailwind utility classes) so the
-            tab chrome inherits the same dark / light theming the rest
-            of the modals use; the previous Tailwind `bg-accent/15`
-            etc. didn't have dark-mode partners and rendered as too-
-            saturated stripes against the navy surface. */}
+        {/* Use theme variables so tab chrome retains contrast in both themes. */}
         {tabs.length > 1 && (
           <div style={{
             display: 'flex', flex: '0 0 auto',
@@ -197,7 +164,6 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           </div>
         )}
 
-        {/* Cells — vertical stack inside the active pad */}
         <div className="flex-1 overflow-y-auto" style={{ WebkitAppRegion: 'no-drag' }}>
           {activeTab?.cells.map((cell, i) => (
             <CellView
@@ -222,11 +188,6 @@ function CellView({ cell, index, total, focused = false }) {
   const containerRef = useRef(null);
   const data = cell.data || {};
 
-  // When the modal opens with this cell as the click target,
-  // scroll it into view inside the cells column and briefly
-  // highlight its left border so the user knows which cell their
-  // click landed on. Only fires when `focused` flips true; the
-  // highlight auto-clears after ~1.6s.
   const [highlight, setHighlight] = useState(false);
   useEffect(() => {
     if (!focused) return undefined;
@@ -241,18 +202,9 @@ function CellView({ cell, index, total, focused = false }) {
     return () => { cancelAnimationFrame(id); clearTimeout(t); };
   }, [focused]);
   const isToolCall = !!cell._isToolCall;
-  // The cell's input event (.end) and result event (.result) BOTH
-  // carry the source code. Server clips long tool events at 64 KB —
-  // for the rare cell that exceeds that, one of the two fields may
-  // still hold a parseable copy. Try data.code first (canonical),
-  // then result.code (sent with stdout/stderr), then result.input.code.
-  // For tool-call cells (Hermes, and now anton generic tools), show
-  // args as JSON — excluding `one_line_description`, which lives in
-  // the same `data` bag but is our own live-progress bookkeeping field
-  // (patched in by thought.tool_call.progress), not a real argument.
-  // Without excluding it, a tool call with zero real arguments would
-  // still show a non-empty "Args" toggle whose JSON is just this
-  // internal field, which reads as a fabricated argument.
+  // Tool events can be clipped at 64 KB; try canonical then result-carried code copies. For
+  // tool-call args,
+  // exclude one_line_description because it is progress metadata, not an argument.
   const code = isToolCall
     ? (() => {
         const { one_line_description: _omit, ...args } = data;
@@ -265,12 +217,8 @@ function CellView({ cell, index, total, focused = false }) {
     cell.executionStartedAt && cell.reasoningStartedAt
       ? cell.executionStartedAt - cell.reasoningStartedAt
       : null;
-  // Execution duration: prefer the server-measured value (anton
-  // tracks `time.monotonic()` around the runtime call and forwards
-  // it as `eta_seconds` on the scratchpad_done progress event). Fall
-  // back to the diff between event arrivals — useful only when
-  // historical events lacked the duration field, since live arrival
-  // diffs are subject to stream / queue jitter.
+  // Prefer server-measured execution duration; arrival-time differences are a legacy fallback
+  // affected by stream jitter.
   const executionMs = (typeof cell.executionDurationMs === 'number'
     && Number.isFinite(cell.executionDurationMs))
     ? cell.executionDurationMs
@@ -279,8 +227,6 @@ function CellView({ cell, index, total, focused = false }) {
         : null);
   const language = detectLanguage(data, isToolCall);
   const hasErr = !!stderr;
-  // Auto-reveal code for the cell that has an error (likely what the
-  // user wants to inspect right away).
   useEffect(() => { if (hasErr) setShowCode(true); }, [hasErr]);
 
   return (
@@ -289,27 +235,13 @@ function CellView({ cell, index, total, focused = false }) {
       className={clsx(
         'scratchpad-cell',
         'border-b border-line py-5 last:border-b-0',
-        // Inset the card 4px so the highlight bar can sit at the
-        // exact left edge of the cell when focused. Padding stays
-        // consistent in both states.
         'pl-6 pr-6',
-        // Subtle accent left-border that fades out — visible cue for
-        // "this is the cell you clicked." Transparent border preserves
-        // layout so non-focused cells don't shift.
+        // Keep a transparent border when unfocused so the highlight does not shift layout.
         'border-l-2',
         highlight ? 'border-l-accent bg-surface-2' : 'border-l-transparent',
         'transition-colors duration-700',
       )}
     >
-      {/* Two-column grid: step-badge | content. Everything visible
-          for the cell — description, timing meta, code/output/stderr
-          sections, and the toggle — lives in the right column, so
-          all those blocks share a single left edge that's aligned
-          with the description text rather than with the step
-          counter. The badge stays on the left, baseline-aligned to
-          the first row of the description. On mobile we collapse to
-          a single column (see globals.css) so output/code fill the
-          full width. */}
       <div
         className="scratchpad-cell-grid grid items-start"
         style={{ gridTemplateColumns: 'auto 1fr', columnGap: 12 }}
@@ -319,10 +251,6 @@ function CellView({ cell, index, total, focused = false }) {
         </span>
 
         <div className="min-w-0 flex flex-col gap-1">
-          {/* Title row — description on the left, code toggle on the
-              right. The toggle stays inline with the description so
-              hitting "Code" lands at eye level, not floated above
-              the badge. */}
           <div className="flex items-baseline justify-between gap-3">
             <span className="truncate font-display text-[14px] font-semibold text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
@@ -332,9 +260,6 @@ function CellView({ cell, index, total, focused = false }) {
             )}
           </div>
 
-          {/* Always render reason + exec, even when timing data is
-              missing — a "—" placeholder reads as "no data" without
-              the meta strip going missing entirely. */}
           {!isToolCall && (
             <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
               <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
@@ -347,10 +272,6 @@ function CellView({ cell, index, total, focused = false }) {
             </div>
           )}
 
-          {/* Code/args first when expanded — the user toggled it ON to
-              see the source, so it should lead. Output and stderr
-              follow. When the toggle is off, we render output bare
-              without a label as the lone artefact of the cell run. */}
           {showCode && code && (
             <Section
               label={isToolCall ? 'Arguments' : 'Code'}
@@ -369,10 +290,6 @@ function CellView({ cell, index, total, focused = false }) {
             </Section>
           )}
 
-          {/* Output — bare pre when code is hidden (clean focus on
-              the result), or labelled Section when sitting next to
-              code so the two read evenly. For tool-call cells, try
-              to pretty-print JSON output with syntax highlighting. */}
           {stdout && (
             (() => {
               let formattedOutput = stdout;
@@ -393,10 +310,7 @@ function CellView({ cell, index, total, focused = false }) {
             })()
           )}
 
-          {/* Stderr — only visible alongside the rest of the
-              inspector (toggle on) since it's a debug signal, not a
-              top-line result. Auto-revealed for errored cells via
-              the useEffect that flips showCode true above. */}
+          {/* Show stderr with the inspector, which opens automatically for errored cells. */}
           {showCode && hasErr && (
             <Section label="Stderr">
               <pre className="overflow-x-auto rounded-md border border-red-200 bg-red-50 p-3 font-mono text-[12px] leading-snug text-red-700">
@@ -410,10 +324,6 @@ function CellView({ cell, index, total, focused = false }) {
   );
 }
 
-// Material-style switch for the "Show code" affordance. Reads as
-// a labelled toggle: the word "Code" with a 32×18 track + 14px
-// thumb to its right. On = accent fill, off = surface-2. Both
-// states inherit theme via CSS variables so dark/light Just Work.
 function CodeToggle({ checked, onChange, label = 'Code' }) {
   return (
     <button
