@@ -48,18 +48,14 @@ func yFromTop(_ yTop: CGFloat, h: CGFloat) -> CGFloat {
 cg.setFillColor(dmgBackgroundColor.cgColor)
 cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-// Exact provided logo.
 if let logo = NSImage(contentsOfFile: logoPath) {
-  // Banner size is 728x285. With a width of 660, the height should be roughly 258.
   let logoRect = CGRect(x: 270, y: yFromTop(58, h: 258), width: 660, height: 258)
   logo.draw(in: logoRect, from: .zero, operation: .sourceOver, fraction: 1.0)
 }
 
-// Separator line.
 cg.setFillColor(NSColor(calibratedRed: 0.37, green: 0.63, blue: 0.95, alpha: 0.55).cgColor)
 cg.fill(CGRect(x: 120, y: yFromTop(420, h: 2), width: 960, height: 2))
 
-// Arrow between app and Applications.
 let arrowPath = NSBezierPath()
 arrowPath.move(to: CGPoint(x: 510, y: yFromTop(522, h: 0)))
 arrowPath.line(to: CGPoint(x: 622, y: yFromTop(522, h: 0)))
@@ -82,7 +78,6 @@ NSColor(calibratedRed: 0.32, green: 0.36, blue: 0.42, alpha: 0.78).setStroke()
 arrowInner.lineWidth = 2
 arrowInner.stroke()
 
-// White cards behind native Finder labels.
 let labelCardTop: CGFloat = 575
 let labelCardHeight: CGFloat = 44
 let leftIconCenterX: CGFloat = 300

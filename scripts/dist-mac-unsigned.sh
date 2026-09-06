@@ -6,8 +6,7 @@ export npm_config_python="${npm_config_python:-/opt/homebrew/bin/python3.11}"
 npm run build
 
 if [[ "$(uname -m)" == "arm64" ]]; then
-  # Finder custom DMG background/layout is unreliable on APFS images.
-  # To force HFS+ DMG creation, electron-builder must run under a REAL x64 Node binary.
+  # Custom Finder DMG layout needs HFS+; electron-builder must run under a real x64 Node binary.
   X64_NODE=""
   while IFS= read -r candidate; do
     if file "$candidate" 2>/dev/null | grep -q "x86_64"; then

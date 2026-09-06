@@ -1,11 +1,4 @@
-// `npm run dev:web` orchestrator.
-//
-// Boots the Anton FastAPI sidecar first, waits for /health, then boots
-// Vite. Mirrors how Electron starts its python sidecar before mounting
-// the renderer — the developer doesn't have to start the server in a
-// second terminal and watch a wall of ECONNREFUSED scroll past.
-//
-// Stdlib + ./start-server.mjs only. No `concurrently`, no new deps.
+// Start cowork-server and wait for health before Vite can proxy requests.
 
 import { spawn } from 'node:child_process';
 import { start, stop, onUnexpectedExit, SERVER_PORT } from './start-server.mjs';
@@ -18,9 +11,6 @@ let shuttingDown = false;
 async function main() {
   process.stdout.write(`⧖ Waiting for cowork-server on :${SERVER_PORT}…`);
 
-  // Heartbeat: one dot per 500ms while we wait for /health. Health
-  // probes run every 250ms inside start-server.mjs; emitting one dot
-  // per two probes keeps the output calm.
   const heartbeat = setInterval(() => process.stdout.write('.'), 500);
 
   try {
@@ -35,8 +25,7 @@ async function main() {
   process.stdout.write('\n');
   console.log(`✓ cowork-server ready on :${SERVER_PORT}`);
 
-  // Bail loudly if the server dies after we've handed off to Vite.
-  // We don't auto-restart — let the developer re-run.
+  // Exit on server death so Vite cannot continue proxying into a dead backend.
   onUnexpectedExit((code) => {
     if (shuttingDown) return;
     console.error(`✗ cowork-server exited unexpectedly (code ${code}). Re-run \`npm run dev:web\`.`);
@@ -44,11 +33,7 @@ async function main() {
     process.exit(1);
   });
 
-  // Boot Vite. inherit stdio so HMR output, error overlays, and the
-  // "press q to quit" hint render the way developers expect.
-  // BUILD_TARGET=web activates the cowork-web-root-rewrite middleware
-  // in vite.config.ts which maps `/` to `/index-web.html` — so the
-  // bare URL is the canonical one.
+  // BUILD_TARGET=web enables Vite's / to index-web.html rewrite.
   viteChild = spawn(
     'npx',
     ['vite', 'dev', 'src/renderer', '--open', '/'],
@@ -60,8 +45,6 @@ async function main() {
 
   viteChild.on('exit', async (code) => {
     if (shuttingDown) return;
-    // Vite exited on its own (e.g. user pressed `q`). Mirror its exit
-    // code, but tear down the python child first.
     shuttingDown = true;
     stop();
     process.exit(code ?? 0);
@@ -70,7 +53,6 @@ async function main() {
 
 async function shutdown() {
   if (shuttingDown) {
-    // Second Ctrl-C: force-exit. Don't wait for graceful shutdown.
     console.error('\n✗ Force-quit.');
     if (viteChild) { try { viteChild.kill('SIGKILL'); } catch {} }
     stop();
@@ -78,16 +60,12 @@ async function shutdown() {
   }
   shuttingDown = true;
 
-  // Order: vite first, then python. Vite (in our process group) gets
-  // its own SIGINT directly from the terminal and starts shutting down;
-  // we wait for it to fully exit, THEN SIGTERM the (detached) python.
-  // This avoids a window where vite is still proxying /v1/* into a
-  // dying python and the terminal fills with ECONNREFUSED.
+  // Stop Vite before the detached server so shutdown cannot leave the proxy hitting a dying
+  // backend.
   if (viteChild && viteChild.exitCode === null) {
     try { viteChild.kill('SIGTERM'); } catch {}
     await new Promise((resolve) => {
       viteChild.once('exit', resolve);
-      // Don't wait forever if vite hangs — 5s is generous.
       setTimeout(resolve, 5000);
     });
   }

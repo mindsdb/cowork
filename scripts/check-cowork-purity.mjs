@@ -1,9 +1,4 @@
-// Purity guard  every file under src/renderer/cowork/ MUST reach
-// the Electron bridge through src/renderer/platform/host.ts — never via
-// window.antontron directly. host.ts's header comment has promised this
-// guard since before it existed; this script makes it true.
-//
-// Usage: npm run check:cowork-purity   (wired into CI)
+// CI guard: cowork renderer code must access Electron through platform/host.ts.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -23,9 +18,7 @@ function scan(dir) {
     if (!EXTENSIONS.has(path.extname(entry.name))) continue;
     const lines = fs.readFileSync(p, 'utf-8').split('\n');
     lines.forEach((line, i) => {
-      // Any literal occurrence counts, comments included — lexing "is this a
-      // comment/URL/string?" is how false negatives creep in. Don't mention
-      // the bridge name under cowork/; reference host.ts instead.
+      // Count literal bridge references even in comments; reference host.ts in cowork prose too.
       if (line.includes(NEEDLE)) hits.push(`${p}:${i + 1}: ${line.trim()}`);
     });
   }

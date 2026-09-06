@@ -15,7 +15,7 @@ OUT_DMG="release/${ARTIFACT_NAME}-${VERSION}-universal-custom.dmg"
 SPEC_JSON="release/appdmg.json"
 
 export npm_config_python="${npm_config_python:-/opt/homebrew/bin/python3.11}"
-# Ensure we do not accidentally force unsigned mode from a parent shell.
+# Clear inherited unsigned-mode overrides.
 unset CSC_IDENTITY_AUTO_DISCOVERY || true
 
 if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
@@ -26,11 +26,9 @@ fi
 
 npm run build
 
-# Generate deterministic 1200x800 DMG background from logo.jpg.
 swift ./scripts/generate-dmg-background.swift
 
-# Build the macOS app bundle only (no DMG from electron-builder), unless caller
-# explicitly wants to reuse an existing prebuilt/pre-notarized app bundle.
+# Skip app rebuilding only when the caller explicitly supplies a prebuilt bundle.
 if [[ "${SKIP_APP_BUILD:-0}" != "1" ]]; then
   npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
 else
