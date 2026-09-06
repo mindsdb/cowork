@@ -44,12 +44,8 @@ export function withModelPickerFallback(
 }
 
 /**
- * Build the canonical model rows consumed by ModelSelect.
- *
- * Both Cowork and Code use this function so display names, provider groups,
- * moving-version tags, and wallet state cannot drift between workspaces.
- * ModelSelect owns the visual treatment and grouping; this helper only adapts
- * the settings catalog into its option contract.
+ * Shared catalog-to-option adapter for Cowork and Code; ModelSelect owns visual treatment and
+ * grouping.
  */
 export function buildModelPickerOptions(
   models: ModelPickerSource[] = [],

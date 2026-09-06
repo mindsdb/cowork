@@ -1,17 +1,6 @@
-// Single OrbitMorph anchored to one registered "slot" (ChatView uses
-// the streaming ANTON header only). Slots register via useOrbitSlot;
-// OrbitProvider reads the active slot id + streamState and positions
-// the morph in canvas coordinates.
-//
-// Position (top/left) snaps on every layout/scroll tick — no transition,
-// or the orb would lag behind the slot while scrolling. Opacity/scale
-// still ease. Recomputed on:
-//   - slot id change
-//   - registered slot ref change (mount/unmount)
-//   - window resize
-//   - scroll inside the conversation column (passed in via scrollRef)
-//   - a ResizeObserver on the active slot itself (handles content
-//     reflow as steps stream in)
+// Position one OrbitMorph at the active registered slot.
+// Snap position on layout/scroll changes so the orb cannot lag behind its slot; only opacity and
+// scale ease.
 
 import {
   createContext,
@@ -139,11 +128,7 @@ export function OrbitProvider({
 
   const ctx = useMemo(() => ({ register }), [register]);
 
-  // Portal the orb into the canvas element itself. That way the
-  // canvas's `overflow: hidden` (or any clip on its ancestors) bounds
-  // the orb naturally — it can never leak past the conv column into
-  // the rail. Without the portal, the orb is a sibling of the canvas
-  // and only the chat outer's clip applies, which is too permissive.
+  // Portal into the canvas so its overflow clip also clips the orb to the conversation column.
   const orbNode = state ? (
     <div
       aria-hidden="true"

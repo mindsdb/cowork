@@ -1,18 +1,6 @@
-// Pure selection logic for the per-task message queue drain (ENG-1378).
-//
-// Sending is serialized globally — anton-core runs one turn at a time —
-// but the queue of messages a user fires mid-turn is keyed per task
-// ({ [taskId]: item[] }). After a turn ends the drain must sweep *every*
-// task's queue, not just the finishing task's: a message queued for a
-// conversation the user navigated away from would otherwise strand
-// forever showing "N queued · waiting for <agent>".
-//
-// Given the queues map, the set (or list) of task ids that still exist,
-// and the id of the task whose turn just finished, decide which task's
-// queue should drain next. The finishing task is preferred so its own
-// follow-up messages keep FIFO order; a queue whose task no longer
-// exists (deleted or merged mid-flight) is skipped rather than wedging
-// the drain loop.
+// Anton's single stream slot serializes sends, but queues belong to tasks.
+// After a turn ends, consider every existing task’s queue so navigation cannot strand messages;
+// prefer the finishing task.
 export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
   const exists = existingTaskIds instanceof Set
     ? (id) => existingTaskIds.has(id)
@@ -24,33 +12,11 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
   return Object.keys(queues || {}).find(hasQueue) || null;
 }
 
-// Decide whether the single app-wide stream slot is stranded and must be
-// force-released. Normally a turn's terminal event (onDone/onError) frees it; a
-// stream that dies with NO terminal — a half-open SSE, or a reconnect tail on a
-// turn that ended elsewhere — leaves it reserved forever, stranding every later
-// message at "N queued". `serverInFlightIds` is the authoritative running list,
-// so holding the slot for a task the server no longer lists means it's stale.
-//
-// Four guards keep a HEALTHY turn from being aborted while still recovering a
-// genuinely stranded one:
-//
-//   * `seen` sets the threshold (not a gate): a turn the server listed and then
-//     dropped is high-confidence, released after `threshold` (2) spaced misses;
-//     one never observed waits for the wider `unseenThreshold` (4), since a
-//     lagging Redis replica can briefly report a live just-started turn as
-//     absent. Still bounded, so a fast-fail that's never listed recovers too.
-//   * miss-spacing (`now`/`minMissSpacingMs`): a miss counts only once
-//     `minMissSpacingMs` has elapsed since the last, so a focus refresh firing
-//     right after the 5s poll can't collapse the window. `now === 0` disables it.
-//   * `preflight`: a send reserves the slot, then awaits attachment uploads
-//     before the stream starts; that expected absence holds the tally clean.
-//   * `producedData`: the turn's own SSE socket has delivered an event, proof it
-//     started. Suppresses only the UNSEEN reap (the absence is registration lag,
-//     not a never-started fast-fail); a seen-then-dropped turn is still a genuine
-//     strand and reaps at `threshold`.
-//
-// Tally `{ cid, misses, seen, lastMissAt }` resets when the task reappears or the
-// slot moves conversations.
+// Recover a stream slot whose terminal event never arrived, using the server’s running list.
+// Use spaced misses, with a longer threshold for never-seen turns because registration can lag.
+// Preflight uploads reset misses; SSE data suppresses only never-seen reaping, not
+// seen-then-dropped recovery.
+// Reset the tally when the task reappears or the slot changes; now=0 disables miss-spacing.
 export function reservationReleaseDecision(
   streamingTaskId,
   serverInFlightIds,
@@ -77,11 +43,8 @@ export function reservationReleaseDecision(
     return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
   }
 
-  // Absent and never registered, but the turn's own SSE socket has delivered
-  // events — it provably started, so the absence is registration/replica lag,
-  // not the fast-fail this path reaps. Defer to registration (→ seen) or the
-  // stream's own terminal belt. Gated on !priorSeen: once listed, a later
-  // disappearance is a genuine strand and reaps regardless of events.
+  // SSE data proves a never-seen turn started despite registration lag.
+  // Once seen, a later disappearance still counts toward reaping.
   if (!priorSeen && producedData) {
     return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: 0, release: false };
   }
@@ -105,12 +68,9 @@ export function finishedCids(prevIds, nextIds, streamingTaskId) {
   return [...prevIds].filter((cid) => !next.has(cid) && cid !== streamingTaskId);
 }
 
-// Re-key queued messages when the server mints a canonical id for a task
-// that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
-// source id's queue onto `toId`, preserving FIFO order (existing `toId`
-// items first, then the sources in the given order). Falsy source ids and any
-// source equal to `toId` are ignored. Returns the input map unchanged when
-// nothing moves, so the React setState no-ops instead of re-rendering.
+// Move temporary-id queues to the canonical id: existing destination items first, then sources in
+// order.
+// Return the original map when nothing moves so React can skip the update.
 export function mergeQueuesForAdoptedId(queues, fromIds, toId) {
   // A falsy `toId` would write an unreachable `next[undefined]` key and strand
   // every moved message — the ENG-1378 symptom. The one caller (adoptServerId)

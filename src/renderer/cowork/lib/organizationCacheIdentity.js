@@ -49,10 +49,9 @@ function cacheIdentityFromAccessToken(accessToken) {
 }
 
 /**
- * Mark the canonical browser build as identity-bound before React can hydrate
- * tenant state. Until a valid initial token is pinned, reads and writes fail
- * closed. Electron and legacy tenant hosts never call this and retain their
- * existing unscoped persistence behavior.
+ * Require identity before web React hydration; cache access fails closed until the initial token is
+ * pinned.
+ * Electron and legacy tenant hosts retain unscoped persistence.
  */
 export function requireWebOrganizationCacheIdentity() {
   webIdentityRequired = true;
@@ -60,9 +59,8 @@ export function requireWebOrganizationCacheIdentity() {
 }
 
 /**
- * Pin this JavaScript document to the subject and organization in its initial
- * authenticated token. A later token cannot retarget an already-running heap;
- * the request boundary owns reloading that document instead.
+ * Pin the document to its initial subject/organization; token changes require a reload, never
+ * retargeting this heap.
  */
 export function pinWebOrganizationCacheIdentity(accessToken) {
   if (!webIdentityRequired) return 'unscoped';
@@ -79,9 +77,8 @@ export function pinWebOrganizationCacheIdentity(accessToken) {
 }
 
 /**
- * Resolve a cache key for this document. The transition epoch still separates
- * live same-origin switches; the token identity also separates sessions when
- * Keycloak changed on another origin while Cowork was closed.
+ * The epoch isolates live switches; token identity also separates sessions changed through Keycloak
+ * while Cowork was closed.
  */
 export function storageKeyForOrganizationIdentity(baseKey, epoch) {
   if (!webIdentityRequired) return storageKeyForEpoch(baseKey, epoch);

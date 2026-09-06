@@ -42,9 +42,7 @@ describe('modelMaker', () => {
   });
 
   it('sends unknown models to Other instead of guessing wrong', () => {
-    // `muse-spark` used to be the example here. It now matches Meta deliberately —
-    // it is Meta's model, and matching it is what earns it a real icon instead of
-    // the placeholder — so this needs a genuinely unrecognisable alias.
+    // Use an unknown alias; Muse Spark now resolves to Meta.
     expect(modelMaker('zephyr-base', 'Zephyr Base 2')).toBe(OTHER_MAKER);
     expect(modelMaker('', '')).toBe(OTHER_MAKER);
   });
@@ -64,9 +62,7 @@ describe('groupModelOptions', () => {
   const options = CATALOG.map(([value, label]) => ({ value, label }));
 
   it('groups into sections in declaration order, MindsHub first', () => {
-    // Sections, not one group per maker: the labs users pick by name get their
-    // own, the open-weight models collect into one, and xAI is not among them
-    // (Grok isn't open weight) so it falls through to Other.
+    // Picker sections differ from makers: xAI belongs in Other.
     const groups = groupModelOptions(options);
     expect(groups.map((g) => g.key)).toEqual([
       'mindshub', 'anthropic', 'openai', 'google', 'open-weight', 'other',
@@ -92,9 +88,7 @@ describe('groupModelOptions', () => {
   });
 
   it('leaves Meta out of Open Weight', () => {
-    // The section is a claim about the model, not the company: Meta publishes
-    // open-weight models AND proprietary ones, and the Meta model MindsHub serves
-    // is Muse Spark, which is not open weight.
+    // Meta mixes model types; Muse Spark is closed-weight.
     const groups = groupModelOptions([
       { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' },
     ]);
@@ -102,9 +96,7 @@ describe('groupModelOptions', () => {
   });
 
   it('sections muse-spark from the backend provider and still gives it Meta\'s icon', () => {
-    // The case ENG-1111 named as unguessable. Section and icon are separate
-    // signals: `provider: meta` puts it in Other, while the maker gives it a real
-    // mark instead of the neutral placeholder.
+    // Maker icons and picker sections are independent: Meta can appear in Other.
     const opt = { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' };
     expect(groupModelOptions([opt]).map((g) => g.key)).toEqual(['other']);
     expect(modelMaker(opt.value, opt.label).key).toBe('meta');
@@ -132,9 +124,7 @@ describe('groupModelOptions', () => {
   });
 
   it('puts a maker no section claims into Other rather than its own heading', () => {
-    // Replaces the earlier per-maker "dynamic group" behaviour: with a fixed set
-    // of sections, an unrecognised maker or provider is listed under Other. Still
-    // no app release needed for a new one to appear — just not its own heading.
+    // Unknown makers fall back to Other.
     const groups = groupModelOptions([
       { value: 'x', label: 'X', maker: 'somebody-new' },
       { value: 'y', label: 'Y', maker: 'acme' },
@@ -144,9 +134,7 @@ describe('groupModelOptions', () => {
   });
 
   it('sections by the backend provider, which outranks alias inference', () => {
-    // `provider` is MindsHub's authoritative field. `fireworks` is a host that
-    // serves several open-weight models, which is why it maps to a section rather
-    // than to a maker/icon.
+    // Fireworks is the serving provider, not the model's maker icon.
     const groups = groupModelOptions([
       { value: 'some-alias', label: 'Some Alias', provider: 'fireworks' },
       { value: 'another', label: 'Another', provider: 'gemini' },
@@ -178,9 +166,7 @@ describe('groupModelOptions', () => {
   });
 });
 
-// ─── Families: which alias moves, and which version sits under which head ───
-//
-// Both pickers read these, so a rule that disagrees with itself shows up twice.
+// Both model pickers share family grouping.
 
 describe('hasFrozenVersions', () => {
   it('is true when a listed version froze a listed head', () => {
@@ -188,9 +174,7 @@ describe('hasFrozenVersions', () => {
   });
 
   it('ignores a pin whose head is not in the list', () => {
-    // A typo'd family in the policy, or a head filtered out upstream. The pin renders
-    // with no marker of its own, so it must not turn the moving-alias marker on for
-    // the rows around it either.
+    // A pin whose head is absent must not enable Latest markers.
     expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonet' })).toBe(false);
   });
 
@@ -203,9 +187,7 @@ describe('hasFrozenVersions', () => {
 
 describe('orderByFamily', () => {
   it('nests a chain under the alias at the top of it', () => {
-    // Two levels: `sonnet-4-1` froze `sonnet-4-5`, which froze `sonnet`. Walking one
-    // level left the deepest version to the final sweep, which appended it after the
-    // unrelated `opus` family — under a sibling it has nothing to do with.
+    // Resolve transitive aliases so deeper descendants stay in one family.
     expect(orderByFamily(
       ['sonnet', 'sonnet-4-5', 'sonnet-4-1', 'opus', 'opus-4-1'],
       {
@@ -224,18 +206,14 @@ describe('orderByFamily', () => {
   });
 
   it('stays a permutation on a cycle, where nothing roots the walk', () => {
-    // A dropped id is a model the user can no longer select, and for a persisted
-    // selection a desync. Cycles reach the app through a Statsig edit with no deploy
-    // and no validation of the family target.
+    // Cycles must not silently drop persisted model options.
     expect(orderByFamily(['a', 'b'], { a: 'b', b: 'a' })).toEqual(['a', 'b']);
     expect(orderByFamily(['a', 'b', 'c'], { a: 'b', b: 'a', c: 'a' }).slice().sort())
       .toEqual(['a', 'b', 'c']);
   });
 });
 
-// ─── isModelLocked — the one definition of "the wallet can't pay for this",
-// read by the Settings picker and the composer's menu so the two can never
-// disagree about which rows a user is allowed to choose.
+// Both pickers use the same wallet-lock predicate.
 describe('isModelLocked', () => {
   it('locks a model the availability map flags false', () => {
     expect(isModelLocked({ fable: false }, 'fable')).toBe(true);
@@ -245,9 +223,7 @@ describe('isModelLocked', () => {
     expect(isModelLocked({ fable: true }, 'fable')).toBe(false);
   });
 
-  // Absent means available, deliberately. Every BYOK provider has no such map,
-  // and an older gateway publishes no flag for a model it does serve, so
-  // reading absence as locked would empty those pickers.
+  // Missing availability metadata must remain usable for BYOK.
   it('treats an id the map does not mention as available', () => {
     expect(isModelLocked({ fable: false }, 'sonnet')).toBe(false);
     expect(isModelLocked({}, 'sonnet')).toBe(false);
@@ -255,9 +231,7 @@ describe('isModelLocked', () => {
     expect(isModelLocked(null, 'sonnet')).toBe(false);
   });
 
-  // The map is written from real booleans. A stringy value would make
-  // `!value` read "false" as available and, worse, a truthy "false" lock
-  // nothing, so the test pins the strict comparison rather than the coercion.
+  // Only boolean false means unavailable; do not coerce other values.
   it('only a real false locks, never a falsy lookalike', () => {
     expect(isModelLocked({ fable: 0 }, 'fable')).toBe(false);
     expect(isModelLocked({ fable: 'false' }, 'fable')).toBe(false);

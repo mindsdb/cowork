@@ -65,19 +65,13 @@ describe('reservationReleaseDecision', () => {
     expect(d).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
-  // Unseen turns get a wider grace than the fast 2-miss threshold: a lagging
-  // Redis replica reporting a just-started turn as absent must not abort it too
-  // eagerly. But the grace is BOUNDED — it must not hang forever, or the
-  // crashed/fast-fail send path (a turn that starts and dies between polls, so
-  // it is never observed) would never recover the app-wide slot.
+  // Replica lag needs a longer, bounded grace period before reaping an unseen task.
   it('releases a never-seen turn only after the wider unseen threshold', () => {
     let tally = fresh;
-    // First unseenThreshold-1 misses accrue without releasing (the grace).
     for (let i = 1; i < 4; i += 1) {
       tally = reservationReleaseDecision('a', [], tally);
       expect(tally).toEqual({ cid: 'a', misses: i, seen: false, lastMissAt: 0, release: false });
     }
-    // The 4th (unseenThreshold) miss releases — the slot recovers, not hangs.
     tally = reservationReleaseDecision('a', [], tally);
     expect(tally).toEqual({ cid: 'a', misses: 4, seen: false, lastMissAt: 0, release: true });
   });
@@ -88,7 +82,6 @@ describe('reservationReleaseDecision', () => {
     let tally = reservationReleaseDecision('a', [], fresh);
     tally = reservationReleaseDecision('a', [], tally);
     expect(tally).toEqual({ cid: 'a', misses: 2, seen: false, lastMissAt: 0, release: false });
-    // Server finally lists it → seen, tally clears, no release.
     expect(reservationReleaseDecision('a', ['a'], tally)).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
@@ -111,14 +104,11 @@ describe('reservationReleaseDecision', () => {
   it('clears the tally when a seen turn transiently reappears', () => {
     const missed = reservationReleaseDecision('a', ['b'], seen('a'));
     expect(missed.misses).toBe(1);
-    // Server lists it again on the next poll → tally clears, still seen.
     expect(reservationReleaseDecision('a', ['a'], missed)).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
   it('restarts the tally when the slot moves to a different conversation', () => {
-    // A miss accrued against a seen `a`, then the slot adopts `b`. `b` is a
-    // fresh, unseen turn — it cannot inherit `a`'s count or its seen flag, so it
-    // starts its own grace from one miss and is not reaped on the fast threshold.
+    // A new task must not inherit the previous task's seen flag or misses.
     const afterA = reservationReleaseDecision('a', ['x'], seen('a')); // { cid:'a', misses:1, seen:true }
     const b = reservationReleaseDecision('b', ['x'], afterA);
     expect(b).toEqual({ cid: 'b', misses: 1, seen: false, lastMissAt: 0, release: false });
@@ -133,16 +123,12 @@ describe('reservationReleaseDecision', () => {
     expect(reservationReleaseDecision('a', [], tally, { threshold: 3 }).release).toBe(true);
   });
 
-  // Miss-spacing guard: the 5s interval and a focus refresh can fire
-  // close together. Two absent polls within the spacing window count as one
-  // miss, so the two-miss release window can't collapse to an instant.
+  // Focus events and polling must respect the reap-check spacing.
   it('does not double-count misses from polls closer than the spacing window', () => {
     const first = reservationReleaseDecision('a', [], seen('a'), { now: 1000, minMissSpacingMs: 4000 });
     expect(first).toEqual({ cid: 'a', misses: 1, seen: true, lastMissAt: 1000, release: false });
-    // A focus poll 500ms later — inside the window — does not advance the tally.
     const tooSoon = reservationReleaseDecision('a', [], first, { now: 1500, minMissSpacingMs: 4000 });
     expect(tooSoon).toEqual({ cid: 'a', misses: 1, seen: true, lastMissAt: 1000, release: false });
-    // The next interval poll, a full window later, does — and releases.
     const later = reservationReleaseDecision('a', [], tooSoon, { now: 6000, minMissSpacingMs: 4000 });
     expect(later).toEqual({ cid: 'a', misses: 2, seen: true, lastMissAt: 6000, release: true });
   });
@@ -154,10 +140,7 @@ describe('reservationReleaseDecision', () => {
     expect(second.release).toBe(true);
   });
 
-  // Pre-flight: the slot is reserved but the stream (and the server's record of
-  // it) hasn't started — a long attachment upload. Its absence from the server
-  // list is expected, so no miss accrues and it is never released, and a seen
-  // flag from before the upload survives it.
+  // Preflight absence is expected and must not clear the seen flag.
   it('never releases or accrues a miss while pre-flight, and preserves seen', () => {
     let tally = seen('a');
     for (let i = 0; i < 5; i += 1) {
@@ -172,26 +155,18 @@ describe('reservationReleaseDecision', () => {
       .toEqual({ cid: 'a', misses: 2, seen: true, lastMissAt: 0, release: true });
   });
 
-  // The reviewer's false-positive: a HEALTHY turn whose Redis/replica
-  // registration lags well past the unseen grace (slow EFS workspace staging on
-  // the remote path). Its own SSE socket is already delivering events, so
-  // `producedData` is true — the client has authoritative proof it started, and
-  // must never reap it as a "never-started fast-fail." Absent from the list for
-  // far longer than the 4-miss unseen window, it is still never released.
+  // SSE data proves a turn started even before registration appears; do not reap it as unseen.
   it('never reaps an unseen turn that has produced stream events, however long it lags the list', () => {
     let tally = fresh;
     for (let i = 0; i < 8; i += 1) {
       tally = reservationReleaseDecision('a', [], tally, { producedData: true });
       expect(tally).toEqual({ cid: 'a', misses: 0, seen: false, lastMissAt: 0, release: false });
     }
-    // When the poll finally lists it, it flips to seen and stays clean.
     expect(reservationReleaseDecision('a', ['a'], tally, { producedData: true }))
       .toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
-  // The fast-fail this belt exists for is unaffected: a turn that starts and
-  // dies between polls never delivers an event, so `producedData` stays false
-  // and the bounded unseen reap still recovers the slot.
+  // Without SSE data, startup failure must still resolve within a bounded grace period.
   it('still reaps an unseen turn that produced nothing (the fast-fail path)', () => {
     let tally = fresh;
     for (let i = 1; i < 4; i += 1) {
@@ -201,9 +176,7 @@ describe('reservationReleaseDecision', () => {
     expect(reservationReleaseDecision('a', [], tally, { producedData: false }).release).toBe(true);
   });
 
-  // producedData is gated on the unseen path only: once the server has listed a
-  // turn, a later disappearance is a genuine strand (half-open SSE after a real
-  // start), so it still reaps at the fast seen threshold even though events flowed.
+  // A previously seen task that disappears must still be reaped after producing data.
   it('reaps a seen turn that vanishes even though it produced events', () => {
     const first = reservationReleaseDecision('a', ['b'], seen('a'), { producedData: true });
     expect(first).toEqual({ cid: 'a', misses: 1, seen: true, lastMissAt: 0, release: false });
