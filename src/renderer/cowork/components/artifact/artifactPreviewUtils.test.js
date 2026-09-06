@@ -44,10 +44,8 @@ describe('artifact preview URLs', () => {
 });
 
 /*
- * The viewer's text renderer and the click gates that promise it have to read
- * one set. They used to hold a copy each, so adding a format meant editing
- * both: miss the gate and no click reaches a file the viewer renders; miss the
- * viewer and a card offers a preview that falls through to the iframe.
+ * Viewer and click gates must share text-format support so every offered preview has a matching
+ * renderer.
  */
 describe('TEXT_PREVIEW_EXTS', () => {
   it('is the same set the artifact click gates read', () => {
@@ -56,12 +54,8 @@ describe('TEXT_PREVIEW_EXTS', () => {
 });
 
 /*
- * The old `src=` iframe navigation never attached credentials, regardless of
- * what origin it pointed at. `authFetch` attaches the web Keycloak bearer to
- * whatever URL it is given, so routing a draft through it is only safe when
- * that URL is our own API — anything else (a data:/blob: URL with no network
- * request at all, or a genuinely different origin) must keep using the old
- * unauthenticated `src=` path instead.
+ * Only same-API drafts may use authFetch's bearer; embedded and cross-origin documents need
+ * uncredentialed navigation.
  */
 describe('canFetchDraftWithCredentials', () => {
   const API_ORIGIN = 'https://cowork.example';
@@ -89,12 +83,7 @@ describe('canFetchDraftWithCredentials', () => {
   });
 });
 
-/*
- * srcdoc gives an iframe no base URL of its own. Fetched draft HTML that used
- * to navigate the iframe's `src` directly relied on the browser deriving the
- * base from that URL; srcdoc needs the same base stated explicitly or every
- * relative <script src>/<link href>/anchor in the document breaks.
- */
+/* srcdoc needs an explicit base URL so fetched HTML retains its relative asset/link resolution. */
 describe('injectDraftBaseHref', () => {
   it('inserts a base tag pointing at the draft directory, inside <head>', () => {
     const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';
@@ -140,10 +129,8 @@ describe('injectDraftBaseHref', () => {
   });
 
   it('escapes characters that are unsafe inside an HTML attribute', () => {
-    // `&` is a valid, unencoded path character per the URL spec (only query
-    // strings require escaping it) but is unsafe left bare inside an HTML
-    // attribute value — this is the one realistic way a draft directory path
-    // could carry a character `escapeHtmlAttribute` has to neutralize.
+    // A literal ampersand can survive URL path parsing but still needs escaping in an HTML
+    // attribute.
     const result = injectDraftBaseHref(
       '<head></head>',
       'https://cowork.example/api/v1/artifacts/drafts/p1/a&b/index.html',
@@ -153,13 +140,9 @@ describe('injectDraftBaseHref', () => {
   });
 
   /*
-   * srcdoc's document.URL stays `about:srcdoc` no matter what <base> says, so
-   * a fragment-only link (href="#x") resolves against the base and no longer
-   * matches the document's own URL — the browser treats it as a real
-   * navigation instead of an in-page scroll (confirmed against a live
-   * browser during review of PR #765). That navigation has no Authorization
-   * header, so it reproduces the very 401 this file exists to fix. The guard
-   * script intercepts it.
+   * about:srcdoc remains the document URL despite base; fragment links otherwise navigate to the
+   * base without Authorization.
+   * The guard must intercept them as in-document scrolling.
    */
   it('injects the fragment-navigation guard script alongside the base tag', () => {
     const result = injectDraftBaseHref('<head></head>', 'https://cowork.example/drafts/p1/a1/index.html');
@@ -170,11 +153,8 @@ describe('injectDraftBaseHref', () => {
 });
 
 /*
- * Runs the guard's source inside a fresh iframe's own realm (its own
- * `document`/`window`/`Function`), mirroring how it actually executes —
- * inside the srcdoc document, not the parent page. A plain `new Function()`
- * against the top-level test document would register a `click` listener that
- * outlives and accumulates across tests instead.
+ * Execute the guard inside the iframe's realm; using the parent Function would accumulate listeners
+ * on the shared test document.
  */
 function mountGuardedDocument(bodyHtml) {
   const iframe = document.createElement('iframe');
@@ -281,12 +261,7 @@ describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
   });
 });
 
-/*
- * A CSV preview printed Chromium's "Failed to fetch" where the table should
- * have been, because the text branch showed whatever it caught. These pin the
- * two rules the mapper owes its callers: a status is always named, and
- * a browser-internal string never reaches the modal.
- */
+/* Map text-preview failures to named statuses without exposing browser-internal error strings. */
 describe('draftPreviewErrorMessage', () => {
   it('maps 401 and 403 to the copy the draft-HTML branch already showed', () => {
     expect(draftPreviewErrorMessage({ status: 401 }))
@@ -341,11 +316,6 @@ describe('draftPreviewErrorMessage', () => {
   });
 });
 
-/*
- * The CSV preview path had no coverage at all, which is how the three parsing
- * defects below survived. `.csv` is the only artifact type these
- * four exports serve, so a wrong cell here is a wrong table on screen.
- */
 describe('parseCsv', () => {
   it('parses a header and its rows', () => {
     expect(parseCsv('id,name\n1,Ada\n2,Grace\n')).toEqual([
@@ -418,10 +388,8 @@ describe('countCsvRows', () => {
   });
 
   /*
-   * The two functions read the same file for the same screen: the table comes
-   * from parseCsv, the "showing N of M" notice above it from countCsvRows. If
-   * they disagree on quoting or line endings the notice contradicts the table,
-   * so the shared rules are asserted together rather than once each.
+   * Assert parsing and row counting together so quoting/line endings cannot make the table disagree
+   * with its row-count notice.
    */
   it.each([
     ['plain', 'id,name\n1,Ada\n2,Grace\n'],

@@ -199,13 +199,7 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin');
   });
 
-  /*
-   * data: and cross-origin draft URLs never reach loadArtifactDraftDocument —
-   * a data: URL makes no network request at all (nothing for a credential to
-   * protect), and a genuinely different origin must never receive the web
-   * Keycloak bearer that authFetch would attach. Both keep using the old
-   * direct src= navigation exactly as before this PR.
-   */
+  /* Embedded/cross-origin HTML drafts must use direct src navigation without the Keycloak bearer. */
   it('renders an embedded data: draft URL via src, without fetching', async () => {
     const dataArtifact = {
       ...artifact,
@@ -237,11 +231,8 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
 });
 
 /*
- * The text branch (.md/.txt/.csv) had no coverage at all, which is how it kept
- * two defects the draft-HTML branch above does not have: it showed
- * whatever it caught, so Chromium's "Failed to fetch" reached the modal on a
- * CSV, and it had no embedded/cross-origin fallback, so a data: draft failed
- * for CSV where the same URL renders fine as HTML.
+ * Text drafts need friendly fetch errors and uncredentialed embedded/cross-origin support, just as
+ * HTML drafts do.
  */
 describe('ArtifactViewer draft text preview', () => {
   const csvArtifact = {
@@ -325,9 +316,8 @@ describe('ArtifactViewer draft text preview', () => {
   });
 
   /*
-   * The text path's equivalent of the draft-HTML branch's plain `src=`
-   * navigation: read it, just without the bearer. Refusing outright is what
-   * made a data: CSV fail where a data: HTML draft renders.
+   * Fetch embedded/cross-origin text without a bearer rather than refusing a draft that HTML can
+   * display.
    */
   it.each([
     ['an embedded data:', 'data:text/csv;charset=utf-8,id%2Cname%0A1%2CAda'],

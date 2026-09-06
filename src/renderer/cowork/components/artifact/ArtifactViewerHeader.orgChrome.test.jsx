@@ -1,17 +1,12 @@
-// What the preview window offers, per deployment mode.
-//
-// Org mode is a review surface for MVP: sharing controls and the actions kebab
-// are not part of it, and both used to render there because the header only ever
-// asked about capabilities. Delete stays reachable from the gallery card.
+// Check deployment-specific preview chrome: owner sharing is available on Cloud; OS/file actions
+// remain desktop-only.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
   host: { isWeb: true, isElectron: false, isMac: () => false, openExternal: vi.fn() },
 }));
-// Stubbed to a bare button: the real menu drives a whole publish controller
-// (versions, access drafts, passwords), and none of that is what this file is
-// about — only whether the header renders sharing at all.
+// Stub the publish controller to test header visibility independently of access/version state.
 vi.mock('./publish/PublishMenu', () => ({
   PublishMenu: () => <button type="button">Share</button>,
 }));
@@ -66,10 +61,8 @@ const props = {
 afterEach(() => setOrgMode(false));
 
 describe('preview window chrome in org mode', () => {
-  // Sharing used to be hidden here, on the grounds that publishing "lives on the
-  // gallery card instead" — but the card filters publish out in org mode too, so
-  // Cloud had no way to share an artifact at all. It is owner-side chrome on both
-  // deployments now (ENG-2316).
+  // Cloud owners need Share in the viewer; filtering it from both viewer and gallery leaves no
+  // sharing route.
   it('offers sharing', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} />);
@@ -77,9 +70,7 @@ describe('preview window chrome in org mode', () => {
     expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
   });
 
-  // The ⋯ menu stays hidden: its entries are OS/file actions plus `/publish`
-  // routes, none of which an org deployment can answer. Sharing is the one
-  // affordance that was wrongly grouped with them.
+  // Keep org-mode OS/file and local publish actions hidden while exposing owner sharing separately.
   it('still hides the OS/file actions menu', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} />);

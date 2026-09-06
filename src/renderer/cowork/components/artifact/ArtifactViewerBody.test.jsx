@@ -137,8 +137,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
   };
 
   it('does not resolve the comment when the decision was ignored', async () => {
-    // The whole of ENG-2327: both call sites read a null return as success, so
-    // accept closed the review comment for a decision that never happened.
+    // An ignored decision must not close the comment as if acceptance succeeded.
     const tree = setup(vi.fn().mockResolvedValue({ decided: false, reason: 'missing-repair' }));
     render(tree);
 
@@ -173,7 +172,6 @@ describe('ArtifactViewerBody agent repair decisions', () => {
     const confirm = await screen.findByRole('button', { name: /Restore anyway/i });
     await act(async () => { confirm.click(); });
 
-    // Still open while the restore is in flight.
     expect(screen.getByText(/discard everything written since/i)).toBeTruthy();
 
     await act(async () => { settle({ decided: true }); await pending; });
