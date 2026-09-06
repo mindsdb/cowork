@@ -14,8 +14,6 @@ import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 
-// Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
-// share sage (progress is the same banner mid-download); `error` goes amber.
 const UPDATE_TONE_CLASS = {
   ready: {
     box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)]',
@@ -34,8 +32,6 @@ const UPDATE_TONE_CLASS = {
   },
 };
 
-// Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
-// Windows/Linux use Ctrl+ literal.
 const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
@@ -51,10 +47,7 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
       <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
-      {/* Keep long labels ("Connected Apps and Data") on one line — at the
-          narrow end of the sidebar's clamp they'd otherwise wrap to two rows.
-          min-w-0 lets the flex item shrink below its content so the ellipsis
-          can engage instead of forcing a wrap. */}
+      {/* min-w-0 allows long labels to truncate within the sidebar instead of wrapping. */}
       <span className="nav-row__label flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
       {badge != null && (
         <Badge variant="muted" size="xs">{badge}</Badge>
@@ -72,8 +65,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const triggerRef = useRef(null);
-  // One-shot latch: Enter commits once (the trailing unmount-blur is a
-  // no-op), and Escape arms it so the same blur can't commit the cancel.
+  // Latch Enter/Escape so the subsequent blur cannot commit twice or undo cancellation.
   const renameDone = useRef(false);
   const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
@@ -94,19 +86,14 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // Toggle: a second click on the kebab closes the menu (the menu's
-    // own outside-press dismiss ignores clicks on the trigger, so the
-    // close has to come from here).
+    // The menu ignores outside presses on its trigger, so a second trigger click must close it.
     if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
     setMenuOpen(true);
   };
 
-  // Fixed-width right slot — both timestamp and kebab are always
-  // rendered (cross-fade on hover). Reserving the same width means
-  // the row height/width stays constant whether the kebab is visible
-  // or not — no jumping when moving between rows.
+  // Reserve one slot for timestamp/kebab cross-fades so hovering cannot shift rows.
   return (
     <div
       className="relative flex"
@@ -140,11 +127,6 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
         <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
           {task.title || 'Untitled'}
-          {/* Schedule-group entries — append a muted "· N runs"
-              suffix so the title still reads clean while the count
-              is visually separated from the schedule name. Painted
-              in --ink-4 (one tone below the title) and the bullet
-              uses --ink-5 so the separator recedes further still. */}
           {task._scheduleGroup && (() => {
             const n = task._scheduleGroup.runs;
             return (
@@ -156,11 +138,6 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
-            negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so the kebab (and the timestamp it cross-fades
-            with) sit snug against the edge of the hover fill, not a full
-            gutter-width inside it. */}
         <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
           <span
             className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_120ms_ease]"
@@ -211,9 +188,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
 
 export default function Sidebar({
   tasks,
-  // 'loading' | 'ready' | 'failed' — lets the recents list tell an in-flight
-  // load and a failed one apart from a genuinely empty account (ENG-2246).
-  // Defaults to 'ready' so callers that don't pass it behave as before.
+  // Distinguish loading and failure from a confirmed empty account; default ready preserves
+  // existing callers.
   tasksStatus = 'ready',
   onRetryTasks,
   pins = [],
@@ -250,11 +226,7 @@ export default function Sidebar({
   onDeleteTask,
   onMoveTaskToProject,
   projects = [],
-  // Schedules + the flat sessionId → scheduleId index. When a
-  // recent task carries a scheduledId, we collapse all sibling
-  // runs of the same schedule into a single synthesized entry
-  // ("Daily digest · 3 runs") so the recents list isn't drowned
-  // out by repeat scheduled-run conversations.
+  // Group sibling schedule runs so recurring tasks cannot flood recents.
   schedules = [],
   scheduleRunsIndex = {},
   onOpenSchedule,
@@ -266,45 +238,26 @@ export default function Sidebar({
   onDismissUpdate, // dismisses the (dismissible) manual installer notice
   agentLabel,
   settingsActive = false,
-  // Signed-in state, pushed from App — the user-menu hook re-reads the
-  // access token when this flips (ENG-761 pattern), so the footer swaps
-  // between the plain Settings row and the account row without a reload.
   isSsoConnected = false,
-  // Settings → Personalization → Show nav-panel counters. When
-  // false, hide the per-nav badge counts AND the time-since slot
-  // on each Recent row. Default true.
+  // Show-nav-counters also controls each Recent row's time-since slot.
   showCounters = true,
-  // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
-  // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
-  // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
-  // chat via this handler (App's send-from-home). Omit to hide the card
-  // (tests, web shells that don't wire it).
+  // Omit onStartChat to hide the onboarding checklist.
   onStartChat = null,
-  // First-artifact tip — App arms it (0 → 1 artifacts transition) and
-  // owns the persistent dismissal; the sidebar anchors it to the Live
-  // Artifacts nav row and adds the "clicking the row dismisses" path.
+  // App owns arming/permanent dismissal; opening Live Artifacts also dismisses the anchored tip.
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
   const codeRoute = activeWorkspace === 'code';
-  // Signed-in account identity (null when signed out) — decides whether the
-  // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
 
-  // Footer states. The status pill wins over everything (Electron-only, the
-  // server needs attention); otherwise a signed-in user gets the account row.
-  // The quick toggles are keyed off "is the user menu actually rendered", not
-  // "is the user signed in" — while the pill shows, the menu (which hosts the
-  // theme switch) isn't on screen, so the toggles must stay.
+  // Keep quick toggles while the status pill hides the user menu that normally hosts those
+  // controls.
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
   const showsUserMenu = !showsStatusPill && !!accountUser;
 
-  // Decorate every task with its pinned state. Tasks come from the
-  // conversations endpoint which doesn't know about pins (they live
-  // in a separate /pins store), so without this the menu shows
-  // "Pin" on items that are already pinned.
+  // Join pins separately: the conversations endpoint does not know pinned state.
   const pinnedIds = new Set(
     (pins || []).filter((p) => p.item_type === 'conversation').map((p) => p.item_id)
   );
@@ -312,28 +265,18 @@ export default function Sidebar({
     pinnedIds.has(t.id) ? { ...t, pinned: true } : t
   );
 
-  // A task is "currently active" if any of its messages carries a
-  // live `_streaming` placeholder — the same signal the chat view
-  // uses to know a turn is in flight. Derived directly from messages
-  // so the dot lights up the moment the stream starts and clears the
-  // moment onDone/onError strips the placeholder. No new wire from
-  // App.jsx needed; `tasks` already carries the messages array.
+  // Derive activity from the same _streaming placeholders as ChatView so dots track stream
+  // lifecycle.
   const activeTaskIds = new Set(
     tasks
       .filter((t) => (t.messages || []).some((m) => m && m.role === '_streaming'))
       .map((t) => t.id)
   );
 
-  // Recents excludes pinned items so a task isn't surfaced twice.
-  // The full pool — sliced down to whatever fits the viewport + a
-  // "Show more" affordance below.
+  // Exclude pinned tasks from recents to avoid duplicate rows.
   const recentsRaw = tasksWithPin.filter((t) => !pinnedIds.has(t.id));
 
-  // Collapse all conversations belonging to one schedule into a
-  // single synthetic entry. Without this a daily/hourly schedule
-  // floods the rail with repeat rows and the actual chat tasks
-  // get pushed out of view. Each group entry inherits the most
-  // recent run's timestamp so the grouping respects "newest first."
+  // Group schedule runs using the newest run timestamp so recurring tasks do not flood recents.
   const _ts = (raw) => {
     if (!raw) return 0;
     if (typeof raw === 'number') return raw;
@@ -345,7 +288,7 @@ export default function Sidebar({
 
   const recentsAll = (() => {
     const out = [];
-    const groups = new Map(); // scheduleId → synthesised group entry
+    const groups = new Map();
     for (const t of recentsRaw) {
       const sid = _resolveSchedId(t);
       if (!sid) {
@@ -361,65 +304,38 @@ export default function Sidebar({
           title: baseTitle,
           subtitle: t.subtitle,
           updatedAt: t.updatedAt,
-          // Orphan schedules (no project) resolve to "general" —
-          // matches the server's _run_schedule fallback.
+          // Orphan schedules use general, matching the server's _run_schedule fallback.
           projectName: sched?.project || t.projectName || 'general',
-          // Marker fields the click handler / row renderer key off:
           _scheduleGroup: { scheduleId: sid, runs: 1, baseTitle },
         };
         groups.set(sid, g);
         out.push(g);
       } else {
         g._scheduleGroup.runs += 1;
-        // Track the freshest timestamp across the group's runs so
-        // sorting / "n minutes ago" reflects the most recent run.
         if (_ts(t.updatedAt || t.subtitle) > _ts(g.updatedAt || g.subtitle)) {
           g.subtitle = t.subtitle;
           g.updatedAt = t.updatedAt;
         }
       }
     }
-    // Title stays as the schedule's base name; the run count is
-    // surfaced separately so RecentItem can paint it in a muted
-    // accent that distinguishes the schedule meta from the title.
     for (const g of out) {
       if (!g._scheduleGroup) continue;
       g.title = g._scheduleGroup.baseTitle;
     }
-    // Sort by `updatedAt` descending so reviving a task (replying in
-    // an open task — App.jsx's handleSendInTask bumps updatedAt at
-    // send-time) or creating a new one immediately floats it to the
-    // top of recents. Without this, the panel mirrors whatever order
-    // `tasks` happens to be in: the server sorts on each fetch, but
-    // in-session edits use `prev.map(...)` which keeps the array
-    // order frozen until the next fetchSessions. Falling back to
-    // `subtitle` (a parseable timestamp on schedule-run rows) keeps
-    // legacy rows without an explicit updatedAt in roughly the right
-    // place rather than dumping them at the bottom.
+    // Sort locally: in-session task updates preserve array order until refetch.
+    // Fall back to subtitle timestamps for legacy schedule rows.
     out.sort((a, b) => _ts(b.updatedAt || b.subtitle) - _ts(a.updatedAt || a.subtitle));
     return out;
   })();
 
-  // Strict hover state for the Recents heading row only. CSS
-  // `:hover` was bleeding (or appearing to bleed) onto the recents
-  // list below; pinning this to onMouseEnter/onMouseLeave on the
-  // heading div makes the hit area exactly the heading's bounding
-  // box and nothing else.
   const [recentsHeadingHover, setRecentsHeadingHover] = useState(false);
-  // Render into the overflow container and let it scroll instead of
-  // slicing the list to whatever fits the viewport (which left older
-  // tasks unreachable). Capped at 100 to match RecentsModal; the
-  // "View all →" link covers anything beyond that.
-  // ponytail: bump the cap or virtualize if row counts get huge.
+  // Cap recents at 100; View all reaches older tasks.
   const recents = recentsAll.slice(0, 100);
-  // "Show more" hidden for now — kept the modal + state plumbing
-  // so we can flip this back on later without rewiring anything.
+  // Recents modal remains wired for the currently hidden Show more control.
   const hasMoreRecents = false;
 
   const [recentsModalOpen, setRecentsModalOpen] = useState(false);
 
-  // Anchor for the first-artifact tip — the Live Artifacts nav row (the
-  // count badge sits at its right edge, where the tip's arrow points).
   const artifactsNavRef = useRef(null);
 
 
@@ -439,17 +355,6 @@ export default function Sidebar({
       aria-hidden={collapsed || undefined}
       inert={collapsed ? true : undefined}
       style={{
-        // Dynamic-only: everything else about this transition lives in the
-        // className above. These four properties are collapsed-state-driven
-        // and can't be static Tailwind classes.
-        // Combine a gentle leftward translate with a slight scale so
-        // the sidebar reads as "settling into place" rather than just
-        // sliding. Origin pinned to the left edge so the scale grows
-        // from the dock side; the eye picks up the easing curve
-        // along with the width interpolation for a single coherent
-        // motion. Scale + filter values are subtle on purpose —
-        // they're the difference between "this animated" and
-        // "this animated nicely."
         width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
         opacity: collapsed ? 0 : 1,
         transform: collapsed
@@ -459,39 +364,19 @@ export default function Sidebar({
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
-      {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
-          padding-top reduced from 14 → 9 to bring the buttons + wordmark
-          5px upward, so they line up with the macOS traffic lights at
-          their new (x:18, y:22) position. */}
       <div
         className="anton-sidebar__chrome drag-region shrink-0"
-        // cascade-forced: overrides .anton-sidebar__chrome's default
-        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
-        // left inset that clears the macOS traffic lights in Electron).
+        // Inline padding overrides legacy chrome CSS and reserves Electron's traffic-light inset.
         style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
       >
-        {/* Right-aligned cluster: collapse + search icons, then a
-            middle-dot separator, then the ANTON wordmark. The chrome's
-            existing `justify-content: space-between` pushes the whole
-            cluster against the right edge (the left half is empty space
-            past the traffic-light pad). */}
         <div className="flex-1" />
         <div
           className="anton-sidebar__chrome-left ml-auto"
-          // cascade-forced: overrides .anton-sidebar__chrome-left's default
-          // `gap: 14px` with a tighter 4px for this cluster.
+          // Inline gap overrides the later legacy chrome CSS.
           style={{ gap: 4 }}
         >
           <div className="anton-sidebar__chrome-buttons">
-            {/* Collapse button — always mounted so the search icon
-                next to it never shifts when the host route changes
-                whether the toggle is allowed or not.
-                  • allowed   (chat task)  → fully visible, clickable
-                  • disallowed (other routes) → fades + scales out +
-                    soft blur, but the layout slot stays put so the
-                    search icon doesn't displace.
-                The transition is gentle and a touch over-eased so
-                the hide reads as deliberate without being theatrical. */}
+            {/* Keep the collapse button's slot mounted when unavailable so the search icon cannot shift. */}
             {(() => {
               const canToggle = typeof onToggleCollapsed === 'function';
               return (
@@ -504,17 +389,9 @@ export default function Sidebar({
                     tabIndex={canToggle ? undefined : -1}
                     aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
                     style={{
-                      // All dynamic (canToggle-gated), plus `transition` stays
-                      // inline: .icon-btn sets its own `transition: background
-                      // .12s, color .12s` — a Tailwind class would lose that
-                      // cascade tie (same specificity, .icon-btn declared later
-                      // in the stylesheet), silently dropping this custom
-                      // opacity/transform/filter transition.
+                      // Inline transition overrides .icon-btn's later CSS, which would discard
+                      // opacity/transform/filter transitions.
                       opacity: canToggle ? 1 : 0,
-                      // Slight scale + tilt + blur on hide so the
-                      // motion is recognisable from the corner of the
-                      // eye but never noisy. Origin pinned to center
-                      // so the slot's geometry stays symmetric.
                       transform: canToggle
                         ? 'scale(1) rotate(0deg)'
                         : 'scale(0.72) rotate(-8deg)',
@@ -558,15 +435,8 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Body — fades + slides in slightly behind the container so
-          the motion staggers. On appearance the body lags ~80ms so
-          the surrounding chrome lands first; on dismissal it leads
-          the container so the contents exit before the box does. */}
       <div
         className="flex-1 min-h-0 flex flex-col"
-        // All dynamic: opacity/transform/pointerEvents/transition-delay are
-        // collapsed-state-driven (the transition string embeds a delay that
-        // flips 0ms/80ms), so none of this can be a static Tailwind class.
         style={{
           opacity: collapsed ? 0 : 1,
           transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
@@ -585,21 +455,15 @@ export default function Sidebar({
           />
         )}
 
-        {/* The MindsHub workspace this session is scoped to. Above the CTA
-            rather than inside the account menu: the current workspace has to be
-            readable without opening anything, and the account menu is where the
-             organization selector lands. Renders nothing until the gate is on. */}
         {accountUser && <WorkspaceSelector user={accountUser} />}
 
-        {/* The primary action follows the active workspace. Code tasks stay
-            distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
           <Button
             variant="tinted"
             block
             size="lg"
             onClick={codeRoute ? onNewCodingTask : onNewTask}
-            // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
+            // Override .btn's gap to align with nav rows.
             style={{ gap: 9 }}
           >
             {Ico.plus(14)}
@@ -608,9 +472,6 @@ export default function Sidebar({
           </Button>
         </div>
 
-        {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
-            a mixed rail where switching products and navigating within one
-            product look like the same action. */}
         {!codeRoute && (
           <div className="nav-list px-2.5 flex flex-col gap-px">
             <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
@@ -620,21 +481,14 @@ export default function Sidebar({
               label="Live Artifacts"
               elementRef={artifactsNavRef}
               onClick={() => {
-                // Opening the artifacts view IS the tip's goal — count it
-                // as a dismissal, same as "Got it" / "Show me".
+                // Opening Live Artifacts also permanently dismisses the tip.
                 if (artifactTipOpen) onArtifactTipDismiss?.();
                 onNavigate('artifacts');
               }}
               active={activeRoute === 'artifacts'}
               badge={showCounters ? (artifactsCount || null) : null}
             />
-            {/* Connect Apps and Data — replaces "Customize". Reuses the
-                `customize` route key so existing in-flight links still
-                work. The page now lists connected apps + datasources in
-                a Projects-style grid.
-                Label flips to "Connected Apps" once at least one app /
-                data source is connected; the badge then reads as a
-                live "you have N connections" indicator. */}
+            {/* Retain the customize route key for existing links while the label follows connection state. */}
             <NavItem
               icon={Ico.link(15)}
               label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
@@ -642,11 +496,6 @@ export default function Sidebar({
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
             />
-            {/* Channels used to have a standalone entry here, web-only, purely
-                because the web shell hid Settings entirely — Channels lives
-                under Settings on desktop. Settings is now reachable on web too,
-                so the workaround is removed and both platforms find Channels
-                in the same place. */}
           </div>
         )}
 
@@ -681,20 +530,12 @@ export default function Sidebar({
           </>
         ) : (
         <>
-        {/* Agent — the agent's own brain: what it remembers (Memories)
-            and what it can do (Skills library). Pulled out of the old
-            bordered inset and presented as a labeled group, so it reads
-            as a category alongside Pinned / Recent instead of a drawn
-            box (fewer edges). Labels name what the user OWNS (plural
-            collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
         <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
-        {/* Pinned — only rendered when there are pinned tasks; an empty
-            section just wastes rail space. */}
         {pinnedTasks.length > 0 && (
           <>
             <div className="section-label">Pinned</div>
@@ -720,15 +561,7 @@ export default function Sidebar({
           </>
         )}
 
-        {/* Recents — heading row with a "View all →" link pinned
-            to the right end. Hidden at rest; appears on hover of
-            the *entire* row, including the empty space between
-            "Recents" and the link. CSS-driven hover (on the
-            `recents-heading` class) — using the parent's :hover
-            pseudo-class avoids the inline-mouseenter / pointer-
-            events gap that left the dead space between elements
-            non-receptive. The span flex-grows to fill the row so
-            the heading itself owns the empty space too. */}
+        {/* The heading fills the row so its empty space also reveals View all on hover. */}
         <div
           className="section-label recents-heading flex items-baseline gap-2 cursor-default w-full"
           onMouseEnter={() => setRecentsHeadingHover(true)}
@@ -741,8 +574,6 @@ export default function Sidebar({
               className="recents-viewall bg-transparent border-0 p-0 font-[family-name:var(--font-body)] text-xs tracking-[0.02em] normal-case"
               onClick={() => onNavigate?.('tasks')}
               style={{
-                // Dynamic: hover state (recentsHeadingHover), driven by the
-                // parent row's onMouseEnter/onMouseLeave above.
                 cursor: recentsHeadingHover ? 'pointer' : 'default',
                 opacity: recentsHeadingHover ? 1 : 0,
                 transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
@@ -754,13 +585,8 @@ export default function Sidebar({
           </Tooltip>
         </div>
         <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
-          {/* Keyed on `tasksWithPin`, NOT `recents`: recents deliberately
-              excludes pinned items, so keying on it told a user whose tasks
-              are all pinned that they have none — while their pinned tasks
-              were on screen above. */}
+          {/* Use tasksWithPin for emptiness; an account whose tasks are all pinned still has tasks. */}
           {tasksStatus === 'loading' && tasksWithPin.length === 0 && (
-            // Skeleton rows rather than a spinner: the list is about to be
-            // rows, so reserving their shape avoids the jump when they land.
             <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
               {[0, 1, 2, 3, 4].map((i) => (
                 <div key={i} className="px-2 py-2">
@@ -773,8 +599,7 @@ export default function Sidebar({
             </div>
           )}
           {tasksStatus === 'failed' && tasksWithPin.length === 0 && (
-            // Distinct from "No tasks yet" on purpose: an empty list after a
-            // failed fetch reads as lost work, which is the bug this fixes.
+            // A failed fetch must not look like an empty account.
             <div role="alert" className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
               <div>Couldn&rsquo;t load your tasks.</div>
               {onRetryTasks && (
@@ -795,12 +620,8 @@ export default function Sidebar({
             </div>
           )}
           {recents.map((t) => {
-            // Synthetic schedule-group entries route to the schedule
-            // detail view (where the per-run history lives). Lone
-            // tasks open the chat as before. Pin / move / delete /
-            // rename are suppressed on group entries — those actions
-            // belong to the underlying schedule, not the synthesised
-            // row, and their per-run plumbing wouldn't apply cleanly.
+            // Schedule-group rows open schedule history; per-task mutations do not apply to a
+            // synthetic group.
             const isGroup = !!t._scheduleGroup;
             return (
               <RecentItem
@@ -838,12 +659,9 @@ export default function Sidebar({
         </>
         )}
 
-        {/* Onboarding tracker — docked above the footer on every screen.
-            Hides itself once dismissed (post-completion). */}
         {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
-        {/* One banner for all three update mechanisms, chosen by
-            deriveUpdateBanner (shell-first). Exactly one banner or none. */}
+        {/* deriveUpdateBanner chooses one shell-first update notice. */}
         {updateBanner && (() => {
           const tone = UPDATE_TONE_CLASS[updateBanner.tone] || UPDATE_TONE_CLASS.ready;
           const box = `mt-0 mx-2.5 mb-1.5 py-2 px-3 border border-solid rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] ${tone.box}`;
@@ -859,7 +677,6 @@ export default function Sidebar({
             </span>
           ) : null;
 
-          // The manual installer notice is the only dismissible banner.
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
@@ -886,7 +703,6 @@ export default function Sidebar({
             );
           }
 
-          // One clickable pill; an in-flight download/install renders it disabled.
           return (
             <button
               type="button"
@@ -899,25 +715,8 @@ export default function Sidebar({
           );
         })()}
 
-        {/* Footer — the settings / backend-status controls stay
-            Electron-only: the FastAPI process IS the host on web, so
-            start/stop/diagnostics don't apply. Settings itself is NOT
-            Electron-only any more — the web shell used to hide it
-            entirely, which also hid the only workaround for ENG-1042;
-            see the gate below (ENG-932).
-
-            Normal state: a settings nav row — no server noise when everything
-            is working fine.
-            Disconnected / busy: the status pill replaces the settings row so
-            the problem is immediately visible. */}
         <div className="anton-sidebar__footer">
-          {/* The status-pill variant is Electron-only — on web the FastAPI
-              process IS the host, so there is no local server lifecycle to
-              report on. But Settings itself must be reachable on web
-              (ENG-932): it holds the reasoning-effort control, which is the
-              only user-side workaround for a turn that burns its whole
-              output budget and returns nothing (ENG-1042). So web always
-              gets the plain Settings row; only the pill is gated. */}
+          {/* Only server lifecycle status is Electron-only; Settings must remain reachable on web. */}
           {showsStatusPill ? (
               <>
                 <Tooltip content="Backend status — click for details">
@@ -955,21 +754,12 @@ export default function Sidebar({
                 </Tooltip>
               </>
             ) : showsUserMenu ? (
-              // Signed in: the account row + user menu (ENG-1408), curated to
-              // the account destinations (Settings, Billing & Usage, Members,
-              // Help & Feedback, Logout).
               <>
                 <UserMenu
                   user={accountUser}
                   onOpenSettings={() => onNavigate('settings')}
                 />
-                {/* Quick shortcut — kept visible even with the user menu
-                    present, so Settings stays one click away rather than
-                    buried behind opening the menu first. The status-pill
-                    and signed-out states already show a Settings button
-                    directly, so this only adds value here. Display
-                    settings (theme/8-bit/coding mode) moved to the
-                    floating corner button — see App.jsx. */}
+                {/* Keep Settings one click away when the account menu is present. */}
                 <Tooltip content="Settings">
                   <button
                     className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
@@ -992,13 +782,10 @@ export default function Sidebar({
             )}
         </div>
 
-        {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>
 
       <FirstArtifactTip
-        // Hold the tip while the sidebar is collapsed — the anchor is
-        // invisible (opacity 0) and the popover would point at nothing.
-        // The arm state survives, so it shows on the next expand.
+        // Hide the tip while its anchor is collapsed; retain arming until the next expansion.
         open={artifactTipOpen && !collapsed}
         anchorRef={artifactsNavRef}
         onGotIt={() => onArtifactTipDismiss?.()}
@@ -1012,8 +799,6 @@ export default function Sidebar({
         projects={projects}
         open={recentsModalOpen}
         onClose={() => setRecentsModalOpen(false)}
-        // Cap at 100 — beyond that the list is more usefully reached
-        // via global search (Cmd+K) than by scrolling.
         tasks={recentsAll.slice(0, 100)}
         onSelect={(id) => onSelectTask?.(id)}
         onDelete={(id) => onDeleteTask?.(id)}

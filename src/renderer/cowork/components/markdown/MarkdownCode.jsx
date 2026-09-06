@@ -1,10 +1,5 @@
-// react-markdown `code` slot replacement. Adapted from mdb-ai/MarkdownCode.
-// Three behaviours:
-//   - ```chartjs <full Chart.js config> → render the chart inline
-//   - ```chart  <intent JSON>          → not supported yet (no compile
-//                                        endpoint in our backend),
-//                                        shows error placeholder.
-//   - everything else                  → plain <code> with our token style
+// chartjs accepts a complete Chart.js config; chart intent blocks need an unavailable compiler and
+// show an error.
 
 import { useEffect, useMemo, useRef } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
@@ -21,38 +16,21 @@ export function MarkdownCode(props) {
   const text = String(props?.children ?? '');
   const isBlock = props?.block === true;
   const id = props?.id;
-  const complete = props?.complete !== false; // assume complete unless told otherwise
+  const complete = props?.complete !== false;
   const conversationId = props?.conversationId || null;
-  // Capability flags. Assistant turns leave these defaulted to true so
-  // existing behavior (forms, charts, parse-error pointers) is
-  // unchanged. User turns pass `false` so a typed ```data-vault-form
-  // / ```chart / ```chartjs fence falls through to the ordinary code
-  // block branch and never triggers a side-effect renderer.
+  // Disable form/chart capabilities for user turns so typed special fences render as code without
+  // side effects.
   const enableForms = props?.enableForms !== false;
   const enableCharts = props?.enableCharts !== false;
-  // Track whether this block was already complete when first mounted.
-  // Historical messages mount with complete=true immediately; live
-  // streams mount with complete=false and flip to true when the chunk
-  // finishes. We skip form-store side-effects for historical replays
-  // so navigating back to a chat doesn't re-trigger success modals.
+  // Already-complete mounts are historical; suppress form side effects so navigation cannot reopen
+  // dismissed modals.
   const wasCompleteOnMount = useRef(complete);
   const isHistorical = wasCompleteOnMount.current;
 
-  // ── ALL HOOKS FIRST ───────────────────────────────────────────────
-  // Critical: every useMemo/useEffect must run on every render of
-  // this component instance, in the same order. The earlier version
-  // had `useMemo(formSpec)` + `useEffect` followed by an early return
-  // for `data-vault-form`, which meant `useMemo(chartIntent)` below
-  // ran on some renders and not others — that's a rules-of-hooks
-  // violation that React surfaces as a max-update-depth crash.
-  //
-  // We compute every memo up front, then branch on lang for the
-  // actual return. Each branch's logic is otherwise unchanged.
+  // Run every hook before branching by language; early returns would change hook order as streamed
+  // fences evolve.
 
-  // Both `data-vault-form` (full spec) and `data-vault-form-patch`
-  // (partial update) parse the same way — just a JSON object. The
-  // difference is in how the form store consumes them: setForm
-  // replaces, patchForm merges.
+  // Full forms replace store state; form patches merge it. Both parse as JSON objects.
   const isFormLang = enableForms && (lang === 'data-vault-form' || lang === 'data-vault-form-patch');
   const parseAttempt = useMemo(() => {
     if (!isFormLang) return { spec: null, error: null };
@@ -67,24 +45,16 @@ export function MarkdownCode(props) {
     return null;
   }, [enableCharts, lang, text]);
 
-  // Highlighted output for ordinary fenced blocks. We skip the special
-  // langs (chartjs/chart/data-vault-form*) so we don't pay the hljs
-  // cost on blocks that have their own renderer. Computed unconditionally
-  // (i.e. always returning `null` for the special branches) keeps the
-  // hook count stable across renders, in line with the comment above
-  // about rules-of-hooks discipline. When charts/forms are disabled the
-  // special langs flow through here so they render as plain highlighted
-  // code blocks (and `lang` is preserved as a header label).
+  // Skip highlighting for enabled special renderers; disabled forms/charts fall back to ordinary
+  // code.
+  // Keep the memo unconditional to preserve hook order.
   const highlighted = useMemo(() => {
     const isChartLang = lang === 'chart' || lang === 'chartjs';
     const isSpecial = isFormLang || (enableCharts && isChartLang);
 
     if (isSpecial) return null;
 
-    // Inline code has no language and is not inside a <pre>, so it should
-    // remain inline. Fenced/indented code without a language is marked by
-    // MarkdownContent's pre override as `block: true` and should render as
-    // a full plaintext code block.
+    // Language-less code is inline unless MarkdownContent marks it as a fenced/indented block.
     if (!lang && !isBlock) return null;
 
     // Strip a single trailing newline left by remark — keeps Copy output
@@ -94,16 +64,10 @@ export function MarkdownCode(props) {
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
-    // Skip form-store side-effects for historical messages. When the
-    // user navigates back to a chat, every completed message re-mounts
-    // with complete=true from the start. Without this guard, all
-    // data-vault-form / data-vault-form-patch blocks replay into the
-    // store — causing dismissed success modals to reappear.
+    // Do not replay historical form updates into the store or dismissed panels would reopen.
     if (isHistorical) return;
     if (formSpec) {
-      // Patch dialect merges into the existing form (preserves the
-      // user's typed values + only changes the bits Anton specified);
-      // the full dialect replaces.
+      // Patch forms preserve existing input; full forms replace it.
       if (lang === 'data-vault-form-patch') {
         patchForm(conversationId, formSpec);
       } else {
@@ -112,10 +76,8 @@ export function MarkdownCode(props) {
       return;
     }
     if (parseError) {
-      // Push a synthetic "parse error" spec into the form store so
-      // the side panel surfaces a retry affordance instead of just
-      // a dead inline error. The user clicks "Ask Anton to retry"
-      // → DataVaultFormPanel dispatches a recovery message.
+      // Publish a parse-error form so the panel can ask Anton to retry instead of leaving a dead
+      // inline error.
       setForm(conversationId, {
         form_id: 'fm_parse_error',
         title: 'Form did not parse',
@@ -128,24 +90,18 @@ export function MarkdownCode(props) {
           { id: 'retry', label: 'Ask the agent to retry', kind: 'primary' },
           { id: 'dismiss', label: 'Dismiss', kind: 'cancel' },
         ],
-        // Carry the raw text so the panel can offer a "show raw" peek.
         _raw: text.length > 1000 ? text.slice(0, 1000) + '\n…' : text,
         _is_error: true,
       });
     }
   }, [isFormLang, lang, complete, formSpec, parseError, conversationId, text, isHistorical]);
 
-  // ── BRANCHES (no more hooks past this point) ──────────────────────
+  // No hooks below these early-return branches.
 
   if (isFormLang) {
     const isPatch = lang === 'data-vault-form-patch';
-    // Patches are pure side-channel updates (status_text changes,
-    // success/failure flips, field merges). The form panel reflects
-    // them live via the formStore subscription in the useEffect
-    // above — surfacing them in chat too would just produce a stack
-    // of "Form updated…" noise as the probe streams. So patches
-    // render NOTHING in chat. Full `data-vault-form` blocks (initial
-    // form appearance) still get a one-time pointer card.
+    // Patches update the panel silently; only full forms render a chat pointer, avoiding repeated
+    // status messages.
     if (isPatch) return null;
     if (!complete) {
       return (
@@ -178,15 +134,11 @@ export function MarkdownCode(props) {
         </Alert>
       );
     }
-    // The card is clickable: clicking re-opens the side panel when it's
-    // been closed (mirrors ConnectIntroBubble for the picker path). No-op
-    // when a form is already active for this conversation — the panel is
-    // showing, and re-publishing the original spec would clobber any
-    // in-progress input. Gated at click time via getForm() so we don't
-    // need to subscribe to the store from inside the markdown renderer.
+    // Check the store at click time before reopening; replacing an active form would destroy
+    // in-progress input.
     const reopenPanel = () => {
       if (!conversationId || !formSpec) return;
-      if (getForm(conversationId)) return; // already open
+      if (getForm(conversationId)) return;
       setForm(conversationId, formSpec);
     };
     return (
@@ -217,10 +169,8 @@ export function MarkdownCode(props) {
     );
   }
 
-  // Intent format — needs a server endpoint to compile JSON into a real
-  // Chart.js config. We don't have that yet, so surface a clear message.
-  // Gated on `enableCharts`; when disabled (user turns), fall through to
-  // the ordinary highlighted code block below.
+  // Intent charts require a server compiler that is not available yet. Disabled charts fall through
+  // to code.
   if (enableCharts && lang === 'chart') {
     if (!complete) return <ChartLoadingState />;
     if (!chartIntent || chartIntent.error) {
@@ -231,21 +181,13 @@ export function MarkdownCode(props) {
     );
   }
 
-  // Legacy / direct chartjs format — full Chart.js config in the block.
   if (enableCharts && lang === 'chartjs') {
     return complete ? <MessageChart id={id || 'chart'} text={text} /> : <ChartLoadingState />;
   }
 
-  // Ordinary fenced block — Claude-style card with a language header,
-  // a Copy button (handled by a delegated listener in MarkdownContent),
-  // and a syntax-highlighted body. MarkdownContent strips the outer
-  // <pre> for fenced children so the <div> wrapper stays valid HTML.
+  // MarkdownContent removes the outer pre so this block wrapper remains valid HTML.
   if ((lang || isBlock) && highlighted) {
     const raw = text.replace(/\n$/, '');
-    // No-language fences render via the plaintext fallback; suppress the
-    // label so the header reads as a bare Copy affordance instead of a
-    // noisy "plaintext" tag. The accessible Copy label is generalised
-    // for the same reason.
     const isPlaintext = highlighted.language === 'plaintext';
     return (
       <div className="anton-code-block" data-language={highlighted.language}>
@@ -263,11 +205,7 @@ export function MarkdownCode(props) {
             <span className="anton-code-block-copy-icon anton-code-block-copy-icon--done" aria-hidden="true">
               {Ico.check(12)}
             </span>
-            {/* aria-live="polite" so screen readers announce the Copy →
-                Copied → Copy transition without interrupting whatever
-                they were reading. The delegated click listener in
-                MarkdownContent mutates this span's textContent, which
-                is what the live region picks up. */}
+            {/* Announce delegated Copy label updates without interrupting screen-reader output. */}
             <span className="anton-code-block-copy-label" aria-live="polite">Copy</span>
           </button>
         </div>
@@ -282,10 +220,6 @@ export function MarkdownCode(props) {
     );
   }
 
-  // Inline code (single backticks) — kept visually distinct from fenced
-  // blocks: no header, lighter accent-tinted background, in-flow. Styled
-  // in globals.css so the tint can use color-mix(...) against the theme
-  // tokens (Tailwind alone can't reach the cyberpunk-accent wash we want).
   return (
     <code className="anton-inline-code">{props.children}</code>
   );
