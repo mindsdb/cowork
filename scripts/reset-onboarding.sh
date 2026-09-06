@@ -1,25 +1,7 @@
 #!/usr/bin/env bash
-# Reset MindsHub Cowork to a fresh-install state for onboarding testing.
-# Backs up existing state so it can be restored with restore-onboarding.sh.
-#
-# Since ENG-324, each build kind keeps its state in a *separate* home so builds
-# never share a SQLite DB (an older build reopening a DB a newer build advanced
-# fails to start on an unrecognized Alembic migration). Reset the home for the
-# build you're actually testing:
-#
-#   dev     → ~/.cowork-dev      (npm run dev — the default)
-#   preview → ~/.cowork-preview  (CI per-PR build)
-#   stable  → ~/.cowork-stable   (CI staging-branch build)
-#   prod    → ~/.cowork          (release build / fallback)
-#
-# The home holds the DB, .env, state.json, projects, data vault, and (for
-# non-prod kinds) the per-channel server logs and uv-installed server binary.
-# Terms consent / onboarding flags live in Electron localStorage under the
-# channel's OWN userData dir — since the per-channel app-identity split each
-# build kind has a separate userData dir (see the ELECTRON_APP_NAME map below),
-# so this clears only the localStorage of the kind you pass, not the others.
-#
-# Usage: ./reset-onboarding.sh [dev|preview|stable|prod]   (default: dev)
+# Back up and reset the selected build's config home and Electron localStorage for onboarding.
+# Usage: reset-onboarding.sh [dev|preview|stable|prod] (default dev); restore with the same build kind.
+# Keep channels isolated: an older build may not understand another build's DB migrations.
 set -euo pipefail
 
 KIND="${1:-dev}"
@@ -34,9 +16,7 @@ esac
 
 LEGACY_ANTON_DIR="$HOME/.anton"
 
-# Electron userData dir = the per-channel app name (app.setName — see
-# src/main/channels.ts appName / app-identity.ts). prod is the historical
-# 'anton'; non-prod kinds are isolated. Keep in sync with channels.ts appName.
+# Keep per-channel Electron app names aligned with src/main/channels.ts; prod retains anton.
 case "$KIND" in
   prod)    ELECTRON_APP_NAME="anton" ;;
   dev)     ELECTRON_APP_NAME="MindsHub Cowork (Dev)" ;;
@@ -48,7 +28,6 @@ ELECTRON_DIR="$HOME/Library/Application Support/$ELECTRON_APP_NAME"
 echo "=== MindsHub Cowork Onboarding Reset ($KIND) ==="
 echo "Target config home: $COWORK_DIR"
 
-# Back up the per-build config home (DB, .env, state.json, projects, data vault).
 if [ -d "$COWORK_DIR" ]; then
   if [ -d "$COWORK_DIR.backup" ]; then
     echo "⚠ $COWORK_DIR.backup already exists — removing old backup first"
@@ -60,10 +39,7 @@ else
   echo "– $COWORK_DIR not found, skipping"
 fi
 
-# Neutralize the legacy ~/.anton migration sources for prod only. On first run
-# the prod app copies these files into an empty config home (migrateLegacyHome),
-# which would re-seed credentials/provider choice and defeat the reset. Non-prod
-# homes deliberately never inherit this prod-era state, so leave it untouched.
+# Only prod migrates legacy ~/.anton files; move them aside or first launch would repopulate the reset profile.
 if [ "$KIND" = "prod" ]; then
   if [ -f "$LEGACY_ANTON_DIR/.env" ]; then
     mv "$LEGACY_ANTON_DIR/.env" "$LEGACY_ANTON_DIR/.env.backup"
@@ -79,8 +55,6 @@ if [ "$KIND" = "prod" ]; then
   fi
 fi
 
-# Clear this channel's Electron localStorage (terms consent persisted here;
-# isolated per build kind via the per-channel userData dir resolved above).
 if [ -d "$ELECTRON_DIR" ]; then
   if [ -d "$ELECTRON_DIR.backup" ]; then
     echo "⚠ Electron backup already exists — removing old backup first"
