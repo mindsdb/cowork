@@ -8,18 +8,8 @@ import {
   resumeSchedule,
 } from '../api';
 
-// Scheduled-task data and its CRUD lifecycle: the schedule list, the flat
-// session→schedule runs index, a refresh that writes both, and the
-// create/update/delete/pause/resume handlers (each refreshes so the list
-// reflects the server immediately).
-//
-// Deliberately scoped to schedule *data*. Three schedule-adjacent things
-// stay in App.jsx because they cross into other domains:
-//   - the self-adjusting poll effect (it also syncs newly-produced
-//     conversations into the task list)
-//   - `selectedScheduleId` (schedule-detail navigation state, set alongside
-//     the router in several places)
-//   - `handleRunScheduleNow` (navigates to the new run and refreshes the app)
+// Manage schedule data and its session-to-schedule index.
+// Cross-domain polling, navigation and Run now remain in App.jsx.
 export function useSchedules() {
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.

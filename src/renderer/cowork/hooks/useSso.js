@@ -2,15 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { host, getAccessToken } from '../../platform/host';
 import { trackKeyProvisioningRefused } from '../lib/analytics';
 
-// MindsHub SSO: the signed-in flag, the last sign-in error (painted on the
-// Settings account card), and the sign-in flow (login → key provisioning).
-// Authoritative connected-state comes from the main process via
-// onMindsHubAuthChanged; the settings-open probe seeds it when the card is
-// first shown.
-//
-// The caller supplies `settingsOpen` (so the probe re-runs when Settings
-// opens) plus the setters used to surface a failure on the account card and
-// the app-wide `refreshData` to run after a successful sign-in.
+// Main-process auth events are authoritative; opening Settings seeds state with a fresh probe.
+// Successful login/key provisioning refreshes app data.
 export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refreshData }) {
   const [ssoConnected, setSsoConnected] = useState(false);
   const [ssoError, setSsoError] = useState('');
@@ -23,11 +16,8 @@ export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refr
     getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
   }, [settingsOpen]);
 
-  // Authoritative signed-in state, pushed from the main process on every
-  // token-store transition (login, silent refresh, logout, session
-  // death). The UI no longer depends solely on the promise of whichever
-  // call initiated the sign-in — that promise can be lost (ENG-761)
-  // while the main process is in fact authenticated, or vice versa.
+  // Follow all main-process token transitions; the initiating sign-in promise can be lost while
+  // authentication succeeds.
   useEffect(() => {
     if (!host.isElectron) return undefined;
     return host.onMindsHubAuthChanged(({ authenticated }) => {
@@ -55,11 +45,8 @@ export function useSso({ settingsOpen, setSettingsSection, setSettingsOpen, refr
       // seconds (org bootstrap + server restart) and is not a sign-in gate.
       setSsoConnected(true);
       try {
-        // The result is still not acted on — key provisioning is not a sign-in
-        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
-        // user signed in with no working key, no BYOK route and no message; the
-        // `unhandled` outcome is how often that happens. Fixing the UX needs its
-        // own ticket; this only makes it visible.
+        // Provisioning refusal does not gate sign-in; record unhandled when authentication succeeds
+        // without a working key.
         const finalizeResult = await host.mindshubFinalize();
         if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
       } catch (e) {

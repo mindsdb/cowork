@@ -128,17 +128,14 @@ describe('useMindsOrgs', () => {
     expect(transitionMock.prepareForOrganizationReload).toHaveBeenCalledWith({
       clearTenantState: true,
     });
-    /**
-     * Reload is mocked, so this catches a local state update that would flash
-     * the new tenant before the real page is torn down.
-     */
+    /** With reload mocked, detect any local tenant update that would flash before teardown. */
     expect(result.current.activeOrg).toEqual(ACME);
   });
 
   it('clears org-scoped caches and reloads when the web switch needs recovery', async () => {
     /**
-     * The organization mutation can succeed before the forced token refresh
-     * fails. `ok: false` is not a definite refusal when reloadRequired is set.
+     * ok:false with reloadRequired can follow a committed organization mutation and failed token
+     * refresh.
      */
     hostMock.mindshubSwitchOrg.mockResolvedValue({
       ok: false,
@@ -178,11 +175,7 @@ describe('useMindsOrgs', () => {
   });
 
   it('honors a mandatory reload after the signed-in person changes', async () => {
-    /**
-     * A possibly committed tenant transition outranks the ordinary identity
-     * generation guard. The replacement session must not keep an old document
-     * whose server-side scope may have moved.
-     */
+    /** Honor possibly committed tenant reloads even after identity generation changes. */
     let releaseSwitch;
     hostMock.mindshubSwitchOrg.mockImplementation(
       () => new Promise((resolve) => { releaseSwitch = resolve; }),
@@ -256,9 +249,8 @@ describe('useMindsOrgs', () => {
   });
 
   it('keeps the organizations it already had when the switch answers without them', async () => {
-    // The switch is authoritative about which organization is active; it is
-    // not the only source of the list. Taking an empty `orgs` literally would
-    // empty the menu on a successful switch.
+    // A successful switch identifies the active organization without necessarily returning a
+    // replacement membership list.
     hostMock.mindshubSwitchOrg.mockResolvedValue({ ok: true, activeOrgId: PERSONAL.id, orgs: [] });
     const { result } = renderHook(() => useMindsOrgs(account('user-1')));
     await waitFor(() => expect(result.current.orgs).toHaveLength(2));
@@ -278,11 +270,7 @@ describe('useMindsOrgs', () => {
   });
 
   it('leaves the active organization alone when the switch is refused', async () => {
-    /**
-     * Nothing is applied optimistically: the host decides whether the switch
-     * happened, so painting the check on a row it then refuses is how the app
-     * ends up disagreeing with the organization its requests are scoped to.
-     */
+    /** Only apply server-confirmed organization switches; a refused row must not become checked. */
     hostMock.mindshubSwitchOrg.mockResolvedValue({
       ok: false,
       activeOrgId: ACME.id,
@@ -300,10 +288,7 @@ describe('useMindsOrgs', () => {
   });
 
   it('reads as no organizations when the shell is too old to answer', async () => {
-    // `src/main/**` reaches people only in a new installer while the renderer
-    // updates over the air, so a newer UI regularly runs against a main
-    // process that has never heard of these channels. The menu then renders
-    // exactly as it did before any of this existed.
+    // OTA renderers must tolerate older main processes without organization channels.
     hostMock.mindshubListOrgs.mockResolvedValue({ orgs: [], activeOrgId: null });
     const { result } = renderHook(() => useMindsOrgs(account('user-1')));
     await waitFor(() => expect(hostMock.mindshubListOrgs).toHaveBeenCalled());
@@ -312,8 +297,8 @@ describe('useMindsOrgs', () => {
 
     await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
     /**
-     * No `reachable` field is the settled legacy/Electron contract. Retrying
-     * it would make every old desktop build poll an IPC channel it cannot add.
+     * Missing reachable is a settled legacy response; retry cannot add an IPC channel to an old
+     * shell.
      */
     expect(hostMock.mindshubListOrgs).toHaveBeenCalledTimes(1);
   });
@@ -322,10 +307,7 @@ describe('useMindsOrgs', () => {
     hostMock.mindshubListOrgs
       .mockResolvedValueOnce({
         reachable: false,
-        /**
-         * Ignore even plausible-looking data on an answer that says it did not
-         * reach the source; stale rows are worse than no organization group.
-         */
+        /** Ignore plausible rows when reachable=false; they do not confirm current membership. */
         orgs: [ACME],
         activeOrgId: ACME.id,
       })
@@ -397,10 +379,7 @@ describe('useMindsOrgs', () => {
   });
 
   it('cancels the retry loop when the hook unmounts', async () => {
-    /**
-     * Cleanup runs before this first request settles. The late answer must not
-     * arm a timer after cleanup has already cleared the old timer slot.
-     */
+    /** A late response after cleanup must not arm another retry timer. */
     let release;
     hostMock.mindshubListOrgs.mockImplementationOnce(
       () => new Promise((resolve) => { release = resolve; }),

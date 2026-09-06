@@ -1,14 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 
-// Nav-shell layout state: whether the docked sidebar is collapsed, whether
-// the off-canvas popout is open, which workspace scopes allow collapsing,
-// and the derived "use the popout instead of the docked rail" flag.
-//
-// Narrow band (640–900): the docked sidebar becomes an off-canvas popout
-// opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
-// `sidebarCollapsibleRoutes` is returned (not just consumed here) because
-// the global Cmd+B shortcut, which lives with the other shortcuts in
-// App.jsx, gates on it too.
+// Manage docked and popout sidebar state; MobileShell owns phone layouts.
+// Return sidebarCollapsibleRoutes for App's Cmd+B shortcut to use the same eligibility rule.
 export function useSidebarNav({ isNarrow }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [navPopoutOpen, setNavPopoutOpen] = useState(false);
