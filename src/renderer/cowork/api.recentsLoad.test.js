@@ -1,10 +1,5 @@
-// ENG-2246 — the recents list must paint on the conversation LIST alone.
-//
-// The regression these guard: `fetchSessions` used to `Promise.all` a
-// per-conversation `/items` fan-out before resolving, so the sidebar waited on
-// 51 requests to render data that comes entirely from the first one. It also
-// collapsed a failed list into `[]`, making a broken fetch indistinguishable
-// from an empty account.
+// Resolve recents from the conversation list without waiting for per-conversation items.
+// Keep failed lists distinct from empty accounts.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const hostMock = vi.hoisted(() => ({
@@ -46,12 +41,12 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
     global.fetch = vi.fn((url) => {
       if (String(url).includes('/items')) {
         itemsRequested += 1;
-        return new Promise(() => {});   // never settles
+        return new Promise(() => {});
       }
       return Promise.resolve(jsonRes(conversations(60)));
     });
 
-    const tasks = await fetchSessions({ onItems: () => {} });   // must not hang
+    const tasks = await fetchSessions({ onItems: () => {} });
 
     expect(Array.isArray(tasks)).toBe(true);
     expect(tasks).toHaveLength(60);
@@ -61,9 +56,8 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
   });
 
   it('skips the warm-up entirely when no caller is listening', async () => {
-    // Seven of the eight call sites — every task open among them — want the
-    // list and nothing else. Warming for them fetched 50 transcripts and
-    // discarded every one.
+    // Most callers need only the list; do not fetch and discard transcripts unless warm-up is
+    // requested.
     let itemsRequested = 0;
     global.fetch = vi.fn((url) => {
       if (String(url).includes('/items')) { itemsRequested += 1; return new Promise(() => {}); }
@@ -87,11 +81,8 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
   });
 
   it('hands each warmed transcript to onItems, hydrated as the old path did', async () => {
-    // Hydration matters, and asserting only the message COUNT does not prove
-    // it happened — a user message survives raw passthrough unchanged. The
-    // load-bearing case is a failed turn: hydration replays `events` and
-    // appends the synthetic `error` row the card renders from. Raw passthrough
-    // hands over the assistant message with no card at all.
+    // Use a failed assistant turn to prove hydration appends its error row; message count alone can
+    // pass with raw user-message passthrough.
     const failedTurn = [
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: '', events: [
@@ -106,15 +97,13 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
     const seen = new Map();
     const tasks = await fetchSessions({ onItems: (id, msgs) => seen.set(id, msgs) });
 
-    // The list resolves with empty transcripts...
     expect(tasks.every((t) => t.messages.length === 0)).toBe(true);
-    // ...and the warm-up reports them afterwards, hydrated.
     await vi.waitFor(() => expect(seen.size).toBe(2));
     expect([...seen.keys()].sort()).toEqual(['c0', 'c1']);
 
     const msgs = seen.get('c0');
     const err = msgs.find((m) => m.role === 'error');
-    expect(err).toBeTruthy();                 // absent on raw passthrough
+    expect(err).toBeTruthy();
     expect(err.requestId).toBe('corr-abc');
     // The replayed assistant message loses its raw `events` and gains the
     // completion flag — the other half of what _conversationToTask used to do.
@@ -122,9 +111,7 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
   });
 
   it('drops a malformed conversation row instead of rejecting the whole list', async () => {
-    // _conversationToTask dereferences conv.disabled_connections, so a null
-    // row threw. The rejection had no .catch at the call site, so App never
-    // left 'loading': skeleton rows forever with the Retry unreachable.
+    // Ignore null rows; a conversion rejection otherwise leaves App loading with no Retry action.
     global.fetch = vi.fn((url) => String(url).includes('/items')
       ? Promise.resolve(jsonRes([]))
       : Promise.resolve(jsonRes({ conversations: [
