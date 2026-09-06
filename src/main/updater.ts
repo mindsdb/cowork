@@ -1,8 +1,5 @@
-// Unified update orchestrator for the Electron desktop app.
-// Coordinates UI bundle (OTA) and server (cowork-server) updates.
-// Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
-// env-only escape hatch (UI_UPDATE_MODE in ~/.anton/.env), not a user
-// setting. Applied together — server first, then UI, then window reload.
+// Apply server then UI updates together at boot, followed by reload. UI_UPDATE_MODE remains an
+// environment override.
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
@@ -49,11 +46,8 @@ async function applyServerUpdate(): Promise<boolean> {
   return true; // already current
 }
 
-// Resolve a live window at the moment of use. The window can be closed
-// and later recreated (on macOS, closing keeps the app alive and dock
-// re-activate reassigns mainWindow), so we must never hold a captured
-// reference across awaits or across the long-lived poll interval — a
-// stale/destroyed handle throws "Object has been destroyed" on send/reload.
+// Resolve the live window when used; macOS may recreate it while an await or polling interval is
+// pending.
 function liveWindow(getWindow: GetWindow): BrowserWindow | null {
   const win = getWindow();
   return win && !win.isDestroyed() ? win : null;
@@ -70,10 +64,7 @@ function reload(getWindow: GetWindow) {
   win.loadFile(getRendererPath());
 }
 
-// Load `filePath` and resolve true only if the main frame finishes loading
-// within the timeout. A main-frame `did-fail-load` (missing/corrupt bundle
-// assets) or a timeout resolves false — the caller rolls back on false. This
-// is the post-swap health gate (R4) for a hot-updated UI bundle.
+// Require successful main-frame load before the timeout; callers roll back on failure.
 function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
@@ -163,10 +154,8 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     checkForUIUpdate(),
     checkForServerUpdate(),
     checkForShellUpdate().catch(() => ({ available: false as const })),
-    // The stateful shell updater owns background download/install. This call
-    // coalesces the user's manual trigger with any boot/periodic check already
-    // in flight; its snapshot is folded into the summary below so a manual
-    // check can't report "up to date" while it is downloading or ready.
+    // Coalesce manual and background shell checks; include their state so an active download is not
+    // reported up to date.
     checkShellAutoUpdate('manual').catch(() => undefined),
   ]);
   // On stable the legacy prod-only checkForShellUpdate() always reports nothing,
@@ -200,12 +189,8 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
   registerShellAutoUpdateHandlers();
 }
 
-// After the boot poll (server now current), re-verify a constrained OTA cache
-// that booted bundled. If it's now compatible, swap it in through the
-// health-checked reload (loadAndVerify + rollback-on-failure), so this
-// post-verification load is protected the same way an apply-time reload is. If
-// still incompatible/unverifiable it stays deferred (bundled) — never rolled
-// back here; only a real renderer-load failure quarantines a bundle.
+// After server updates, re-check deferred cache compatibility and health-check any reload.
+// Keep incompatible caches deferred; only failed renderer loading quarantines them.
 async function settleConstrainedCache(getWindow: GetWindow): Promise<void> {
   if (isServingOta()) return; // already serving an OTA bundle (unconstrained / verified)
   const outcome = await verifyServedUiCompat();
@@ -259,10 +244,8 @@ export function initUpdater(
   startShellAutoUpdatePolling(rendererReady);
 
   async function poll(autoApply: boolean) {
-    // hasInternet() probes the OTA manifest host (GitHub Pages). The server
-    // update lives on different hosts (git remote / PyPI) with its own
-    // fail-safe checks, so a down manifest host must only skip the UI check —
-    // never suppress a server update (which may be the fix a user needs).
+    // Manifest-host failure skips only UI updates; git/PyPI server updates use independent hosts
+    // and may repair the app.
     const manifestReachable = await hasInternet();
     if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
 
@@ -272,11 +255,8 @@ export function initUpdater(
       checkForServerUpdate(),
     ]);
 
-    // Shell notices are independent of OTA and never auto-applied. Poll the
-    // ENG-849 manifest only when it's the fallback path — auto-update disabled
-    // or terminally failed. When ENG-850 auto-update is enabled and healthy it
-    // owns the shell update and its own poll+banner cover it, so this would be
-    // a second redundant boot+4h check on prod (ENG-1739).
+    // Poll the manual shell manifest only when auto-update is disabled or terminally failed;
+    // otherwise its own poll owns the notice.
     const autoSnap = getShellAutoUpdateSnapshot();
     if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
@@ -300,10 +280,8 @@ export function initUpdater(
     if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
     if (server.updateAvailable) console.log(`[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
 
-    // A UI held back only for server-compat is still a candidate when a server
-    // update is also pending: the server-first apply brings the server current,
-    // and applyUIUpdate re-checks compat against it in the same pass — so a
-    // coordinated release doesn't strand the UI until the next restart.
+    // Keep server-blocked UI updates eligible when a server update is pending; re-check after
+    // applying server first.
     const uiCandidate = ui.updateAvailable || (!!ui.skippedReason && server.updateAvailable);
     if (ui.skippedReason && server.updateAvailable) {
       console.log(`[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
@@ -331,10 +309,7 @@ export function initUpdater(
         console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
         return;
       }
-      // An anton-only server update (ENG-1094) shares cowork-server's version,
-      // so a bare version number would read as blank/wrong — name the component
-      // that's actually changing. A cowork-server (or git) update keeps the
-      // bare version it always showed.
+      // Name Anton-only updates because their cowork-server version is unchanged.
       const serverLabel = server.component === 'anton-agent' && server.latestVersion
         ? `${server.component} ${server.latestVersion}`
         : server.latestVersion;
@@ -355,10 +330,8 @@ export function initUpdater(
       console.log(`[updater] boot check (mode: ${getMode()})...`);
       await poll(true).catch(err => console.error('[updater] boot check failed:', err));
 
-      // The boot poll has now brought the server current (server-first). Re-verify
-      // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
-      // compatible, swap it in through the health-checked reload so a corrupt or
-      // hanging bundle still self-heals.
+      // After server updates, verify and health-check any previously deferred OTA cache before
+      // loading it.
       await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
     } finally {
       onBootPollComplete(); // release the loading gate, whatever the poll did

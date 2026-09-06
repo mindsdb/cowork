@@ -3,9 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Control the channel/home without pulling in electron (cowork-home imports the
-// electron `app`). Only the isolation tests below rely on this; writeUvOverrides
-// doesn't touch cowork-home.
+// Mock build kind/home to avoid Electron; writeUvOverrides itself does not use cowork-home.
 const h = vi.hoisted(() => ({ kind: 'stable', home: '/home/u/.cowork-stable' }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => h.home,
@@ -101,10 +99,8 @@ describe('uv-paths — per-channel isolation', () => {
   });
 
   it('getEnvPath includes Homebrew/MacPorts/Linuxbrew dirs on non-Windows', () => {
-    // The actual mechanism of the bug: findUv() already knew about Homebrew,
-    // but getEnvPath() — the PATH handed to the spawned cowork-server child,
-    // and everything IT spawns — didn't, so a subprocess's own PATH search
-    // (e.g. anton's shutil.which("uv")) missed it even when findUv() wouldn't.
+    // Finding uv is insufficient: the child PATH must also expose it to subprocesses such as
+    // Anton's shutil.which.
     if (process.platform === 'win32') return;
     const parts = getEnvPath().split(path.delimiter);
     expect(parts).toContain('/opt/homebrew/bin');
@@ -114,10 +110,8 @@ describe('uv-paths — per-channel isolation', () => {
   });
 
   it('getEnvPath puts the inherited PATH ahead of the hardcoded package-manager dirs', () => {
-    // A user who orders their own tools (pyenv shims, a system python3) ahead
-    // of Homebrew in their real PATH must see that SAME ordering inside
-    // cowork-server and everything it spawns — the hardcoded dirs are a
-    // fallback for when nothing else provides the binary, not an override.
+    // Keep user PATH ordering ahead of hardcoded fallback directories in the sidecar and its
+    // children.
     if (process.platform === 'win32') return;
     const original = process.env.PATH;
     process.env.PATH = '/custom/pyenv/shims';
@@ -171,11 +165,8 @@ describe('coworkServerBinCandidates — global Windows fallback is prod-only', (
   });
 });
 
-// Regression coverage for switching the POSIX lookup off the separate
-// `which` binary (not guaranteed present on a minimal Debian install) onto
-// the `command -v` shell builtin. Runs against the real shell rather than a
-// mocked execFile so it actually exercises the fix; skipped on win32, which
-// takes the unchanged `where`-based branch and has no /bin/sh.
+// Exercise the real POSIX shell builtin on minimal-system assumptions; Windows retains where and
+// has no /bin/sh.
 describe.skipIf(process.platform === 'win32')('findOnPath — POSIX lookup', () => {
   it('resolves a command that exists on PATH', async () => {
     const resolved = await findOnPath('ls');
@@ -188,9 +179,8 @@ describe.skipIf(process.platform === 'win32')('findOnPath — POSIX lookup', () 
   });
 
   it('looks up the command literally rather than interpolating it into the shell script', async () => {
-    // If the argument were ever string-interpolated into the `-c` script,
-    // this would execute `echo pwned` as a side effect instead of failing
-    // a lookup for a nonsense command name.
+    // This command name must remain an argument; interpolation into the shell script would execute
+    // its payload.
     const resolved = await findOnPath('ls; echo pwned');
     expect(resolved).toBeNull();
   });
