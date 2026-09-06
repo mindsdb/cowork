@@ -32,10 +32,8 @@ describe('collection/PageHeader', () => {
     expect(screen.getByRole('button', { name: 'New task' })).toBeInTheDocument();
   });
 
-  // The trail header floats above the body with no divider. Guard against a
-  // border creeping back in: preflight is disabled, so any `border-solid`
-  // without a `border-0` reset would leave the other three sides at the UA's
-  // default `medium` width and draw a full box (the old ENG-1038 bug).
+  // Preflight is disabled; border-solid without border-0 exposes UA medium-width borders around the
+  // header.
   it('trail shape renders no border', () => {
     const { container } = render(
       <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]} current="test" />,

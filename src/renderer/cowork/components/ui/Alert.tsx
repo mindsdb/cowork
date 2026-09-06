@@ -2,17 +2,7 @@ import type { ReactNode } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
-// Inline message block — a persistent callout for form/page errors, warnings,
-// and info notices. Distinct from `Toast` (transient, floating) and `Badge`
-// (compact status label). This consolidates the ~15 hand-rolled
-// `color-mix(var(--danger)…)` boxes scattered across the app (ENG-1146).
-//
-//   <Alert variant="danger">Couldn't save — try again.</Alert>
-//   <Alert variant="warning" title="Heads up" icon={<Ico.warn />}>…</Alert>
-//
-// Uses the dedicated -bg/-border/-text tokens (theme-aware, pre-mixed) rather
-// than Tailwind's opacity modifier — see the long note in Badge.tsx for why
-// `bg-danger/10` silently emits no CSS against a `var(--…)` color.
+// Uses pre-mixed color tokens; Tailwind opacity modifiers do not resolve these CSS variable colors.
 const alertVariants = cva(
   'flex gap-2.5 rounded-card-row border p-3 font-body text-sm leading-relaxed',
   {
@@ -32,15 +22,13 @@ export interface AlertProps
   // Omit native `title` (a string attr) so our `title` slot can take a ReactNode.
   extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'>,
     VariantProps<typeof alertVariants> {
-  // Leading icon slot (kept icon-agnostic, like Badge — caller supplies it).
   icon?: ReactNode;
-  // Optional bold heading rendered above the body.
   title?: ReactNode;
 }
 
 export function Alert({ className, variant, icon, title, role, children, ...props }: AlertProps) {
-  // Errors/warnings announce themselves to assistive tech; info/success are
-  // passive. Callers can still override via an explicit `role`.
+  // Errors and warnings announce immediately; info and success remain passive unless role is
+  // overridden.
   const resolvedRole = role ?? (variant === 'danger' || variant === 'warning' ? 'alert' : undefined);
   return (
     <div className={cn(alertVariants({ variant }), className)} role={resolvedRole} {...props}>

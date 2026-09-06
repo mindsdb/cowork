@@ -1,13 +1,4 @@
-// ⌘K (or Ctrl+K) focuses the collection's search input. Every
-// collection page wires the same shortcut today; this hook collapses
-// the four near-identical effect blocks scattered across the views
-// into one. Pass the search input's ref:
-//
-//   const searchRef = useRef(null);
-//   useCollectionShortcut(searchRef);
-//
-// The hook is a no-op when the ref is unmounted, so it's safe to
-// pair with conditional rendering (e.g. detail-mode swaps).
+// Cmd/Ctrl+K focuses the supplied search ref; an unmounted ref is safe.
 
 import { useEffect } from 'react';
 

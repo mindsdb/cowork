@@ -1,8 +1,3 @@
-// Standard search input for collection toolbars. The styling matches
-// the Projects flavour (single-line input with a leading magnifier
-// glyph and a trailing ⌘K shortcut hint). Width flexes within
-// FilterRow's flex container; pass a custom `placeholder` per view.
-
 import Ico from '../Icons';
 import { Kbd } from '../ui';
 
