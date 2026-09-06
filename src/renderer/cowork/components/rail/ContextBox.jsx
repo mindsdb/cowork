@@ -1,6 +1,3 @@
-// Context card — project + global memories. Slim variant by default
-// per spec ("one line header, no underline").
-
 import { RailCard } from './RailCard';
 import { ContextCard } from './ContextCard';
 

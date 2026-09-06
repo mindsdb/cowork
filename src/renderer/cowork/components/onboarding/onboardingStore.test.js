@@ -1,6 +1,4 @@
-// Onboarding store contract: step completion + dismissal persist to
-// localStorage and notify subscribers with a fresh snapshot identity
-// (useSyncExternalStore's requirement).
+// Persistence must notify subscribers with a fresh snapshot identity for useSyncExternalStore.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const load = async () => {

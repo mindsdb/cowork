@@ -2,11 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { ContextCard } from './ContextCard';
 
-// Regression coverage: disconnecting a Google Drive connection (from
-// Connected Apps and Data, the in-chat "Modify connection" bubble, or the
-// Utilities datasource list) must invalidate this card's own Google Drive
-// file list — previously nothing told it the connection (and its
-// _picked_files grant) was gone, so stale files kept showing.
+// Disconnect must invalidate this card's cached Drive references across every disconnect entry
+// point.
 
 const apiMock = vi.hoisted(() => ({
   fetchMemory: vi.fn().mockResolvedValue({}),
@@ -104,9 +101,7 @@ describe('ContextCard — Google Drive file list invalidation', () => {
   });
 });
 
-// ENG-1656 follow-up: Hermes has no memory system of its own — Project/
-// Global memory is an Anton concept the Context rail shouldn't show (or
-// even fetch) for a Hermes-harnessed task.
+// Hermes has no Anton memory; do not show or fetch its Project/Global memory rail.
 describe('ContextCard — showMemory=false (Hermes tasks)', () => {
   it('does not fetch memory when showMemory is false', async () => {
     await act(async () => {
@@ -464,9 +459,8 @@ describe('ContextCard — shared resource permissions', () => {
     expect(screen.queryByText(/Last modified by old@example.com/)).not.toBeInTheDocument();
   });
 
-  // Regression: a listing entry with no attribution counted as older, so the
-  // row kept the capabilities it had picked up and a revoked canDelete never
-  // reached it again.
+  // A listing without attribution must still apply revoked capabilities instead of retaining an
+  // older canDelete.
   it('accepts capabilities from a listing that carries no attribution timestamp', async () => {
     const original = {
       path: '.anton/anton.md',
@@ -575,9 +569,8 @@ describe('ContextCard — memory rail capability gates', () => {
 });
 
 describe('ContextCard — memory read ordering', () => {
-  // Regression: a memory read started before a save still applied its result
-  // when it landed after the save's forced refresh, reverting the saved text
-  // and the refreshed capabilities on screen.
+  // Discard a pre-save read that arrives after the save's refresh, preserving saved content and new
+  // capabilities.
   it('drops a pre-mutation memory read that lands after the post-mutation refresh', async () => {
     const project = { id: 'project-1', name: 'billing', path: '/projects/billing' };
     const before = {
