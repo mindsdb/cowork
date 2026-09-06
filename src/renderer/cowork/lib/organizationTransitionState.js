@@ -10,10 +10,8 @@ function recordOf(value) {
 
 function validTransitionId(value) {
   /**
-   * IDs are either crypto.randomUUID() or the timestamp/base36 fallback made
-   * by the coordinator. Constraining the persisted shape also guarantees the
-   * epoch can be encoded into a storage key without a malformed surrogate
-   * throwing during static module evaluation.
+   * Constrain persisted ids so encodeURIComponent cannot throw on malformed surrogates during
+   * module evaluation.
    */
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
@@ -67,9 +65,8 @@ export function readOrganizationTransition() {
 }
 
 /**
- * During a pending switch, cached state still belongs to the last committed
- * epoch. If the request is refused that epoch remains current; if it commits,
- * the new transition id becomes the epoch and old cache envelopes stop loading.
+ * A pending switch still belongs to the previous committed epoch; only a committed transition
+ * invalidates old caches.
  */
 export function organizationEpochForTransition(transition) {
   if (transition?.phase === 'reload') return transition.id;
@@ -82,19 +79,16 @@ export function currentOrganizationEpoch() {
 }
 
 /**
- * Keep each committed organization's browser cache on a distinct key. A late
- * write from an older document can then touch only its own epoch; localStorage
- * has no atomic compare-and-set with which a shared-key envelope could prevent
- * that write from overwriting the current organization's value.
+ * Use distinct epoch keys: localStorage has no compare-and-set to prevent an old document
+ * overwriting a shared current-tenant key.
  */
 export function storageKeyForOrganizationEpoch(baseKey, epoch) {
   return epoch === null ? baseKey : `${baseKey}:organization:${encodeURIComponent(epoch)}`;
 }
 
 /**
- * One read shared by every module in this JavaScript document. Reading once in
- * draft, settings, and coordinator modules independently creates a boot race in
- * which each can believe it belongs to a different tenant epoch.
+ * Read once per document so draft, settings, and coordinator modules cannot boot into different
+ * tenant epochs.
  */
 export const DOCUMENT_ORGANIZATION_TRANSITION = readOrganizationTransition();
 export const DOCUMENT_ORGANIZATION_EPOCH = organizationEpochForTransition(

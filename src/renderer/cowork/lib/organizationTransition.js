@@ -9,10 +9,9 @@ import {
 } from './organizationTransitionState';
 
 /**
- * Keycloak's active organization is shared by every Cowork tab, while each
- * tab's tasks, drafts, settings, and access token live in that document. Keep a
- * persisted transition marker so a second tab cannot refresh into the new
- * tenant while it still renders the old one's state.
+ * Keycloak organization is shared across tabs, but tenant state is document-local.
+ * Persist transitions so another tab cannot refresh its token while retaining the previous tenant's
+ * state.
  */
 const STORAGE_KEY = ORGANIZATION_TRANSITION_STORAGE_KEY;
 const LOCK_NAME = 'anton.organizationTransition.lock';
@@ -20,11 +19,8 @@ const PENDING_MAX_MS = 25_000;
 const LOCK_ACQUIRE_TIMEOUT_MS = 10_000;
 
 /**
- * A reload budget, because `reloadStarted` below only stops a second reload
- * inside one document and every reload starts a fresh one. A document that
- * reloads again within the window did no useful work in between, which is a
- * loop rather than a person changing organization. Held in sessionStorage so
- * it belongs to this tab and dies with it.
+ * Persist this tab's reload budget in sessionStorage: a document-local guard resets on every reload
+ * and cannot stop loops.
  */
 const RELOAD_BUDGET_KEY = 'anton.organizationReloadBudget';
 const RELOAD_BUDGET_WINDOW_MS = 10_000;
@@ -36,9 +32,8 @@ let ownedPendingId = null;
 let pendingTimer = null;
 let reloadStarted = false;
 /**
- * This is deliberately document-local. sessionStorage belongs to the tab and
- * can be shared with a bfcached predecessor or copied into a new window, so it
- * cannot prove that this particular JavaScript heap booted in the current epoch.
+ * Keep document-local: sessionStorage can be copied or shared with a bfcached predecessor and
+ * cannot prove this heap's epoch.
  */
 let appliedReloadId = DOCUMENT_ORGANIZATION_EPOCH;
 
@@ -160,11 +155,7 @@ async function acquireTransitionLock() {
   });
 }
 
-/**
- * Spend one reload from this tab's budget. Returns false once a run of
- * back-to-back reloads has used it up. A storage failure returns true: a
- * browser that denies sessionStorage must not lose the tenant-safety reload.
- */
+/** Storage failure must still permit the tenant-safety reload. */
 function consumeReloadBudget() {
   const now = Date.now();
   let spent = 0;
@@ -189,13 +180,9 @@ function consumeReloadBudget() {
 }
 
 /**
- * Clear this document's tenant state and replace it. Safe to call repeatedly.
- *
- * Tenant state is cleared before the budget is checked. An exhausted budget
- * leaves a document that cannot reload, and `reloadStarted` keeps
- * `assertOrganizationTransitionClear` throwing, so it stops making
- * authenticated requests rather than reloading forever or continuing under an
- * organization it did not start in.
+ * Clear tenant state BEFORE checking the reload budget.
+ * If exhausted, reloadStarted blocks authenticated requests so this document cannot continue under
+ * another organization.
  */
 export function prepareForOrganizationReload({
   transitionId = null,
@@ -230,9 +217,8 @@ function publishReload(id, applyLocally) {
   if (applyLocally) prepareForOrganizationReload({ transitionId: markerId });
   else {
     /**
-     * pagehide can be the only surviving outcome path. Purge its eagerly
-     * hydrated draft heap and shared cache without marking this old document
-     * current; a bfcache resurrection must still reload on pageshow.
+     * Purge old tenant state without marking the heap current: a bfcache resurrection must still
+     * reload on pageshow.
      */
     clearCachedSettings();
     clearDraftsForOrganizationSwitch();
@@ -274,9 +260,8 @@ export async function beginOrganizationTransition(subject) {
     ownedPendingId = id;
     schedulePendingExpiry(next);
     /**
-     * The lock protects the check plus durable pending write. Keeping it for
-     * the network request would let a browser-frozen owner block every future
-     * switch indefinitely; later acquirers now observe `pending` and refuse.
+     * Release after the durable pending write; holding the lock across the request lets a frozen
+     * tab block all future switches.
      */
     lockRelease();
     return id;
@@ -357,9 +342,8 @@ if (typeof globalThis.addEventListener === 'function') {
 }
 
 /**
- * `appliedReloadId` captured this document's committed epoch above. The storage
- * listener is registered before this second read, so a marker that changed
- * during module evaluation is either observed here or by the event handler.
+ * Register the listener before this second read so a transition during module evaluation cannot be
+ * missed.
  */
 const currentAtStartup = refreshTransition();
 const currentStartupEpoch = organizationEpochForTransition(currentAtStartup);
@@ -368,11 +352,9 @@ if (currentAtStartup && appliedReloadId !== currentStartupEpoch) {
 }
 
 /**
- * A document born during a pending request captures its `previousReload`, so
- * restoring a refused switch does not spuriously wipe current-org state. A
- * document born after a committed marker is fresh and its epoch-tagged caches
- * reject any old payload; an older heap has a different in-memory id and must
- * reload.
+ * Pending-startup documents retain previousReload, so a refused switch preserves their valid tenant
+ * state.
+ * Committed-startup documents use the new epoch; older heaps must reload.
  */
 if (currentAtStartup?.phase === 'pending') schedulePendingExpiry(currentAtStartup);
 

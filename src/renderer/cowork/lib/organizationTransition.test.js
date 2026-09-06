@@ -103,9 +103,8 @@ describe('organizationTransition', () => {
   });
 
   /*
-   * `reloadStarted` only stops a second reload inside one document, and every
-   * reload starts a fresh one. Simulate that by resetting module state between
-   * reloads the way a real navigation would, leaving sessionStorage alone.
+   * Reset module state but retain sessionStorage to simulate navigation and test a budget that
+   * survives documents.
    */
   it('stops reloading after a run of back-to-back reloads', () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
