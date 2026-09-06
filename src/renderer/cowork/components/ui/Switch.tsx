@@ -1,12 +1,3 @@
-// Switch — an accessible on/off control.
-//
-// Built on Base UI's Switch for proper role="switch" semantics,
-// keyboard handling (Space to toggle), and focus management.
-// Styled with cva to match the existing .toggle appearance.
-//
-//   <Switch checked={on} onCheckedChange={setOn} />
-//   <Switch checked={on} onCheckedChange={setOn} size="sm" />
-
 import { Switch as BaseSwitch } from '@base-ui/react/switch';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';

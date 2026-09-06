@@ -1,53 +1,7 @@
-// `<Select>` — token-skinned dropdown select built on Base UI.
-//
-// Why a library here: the hand-rolled selects across the app were either
-// bare native `<select>` elements (inconsistent padding/chevron per call
-// site) or a "transparent `<select>` overlaid on a styled pill" trick
-// (ConnectorPicker's `SelectPill`) that fakes a custom look while keeping
-// the OS popup — fine
-// until you want consistent styling, real keyboard support, or a divider
-// between options. Base UI's Select gives us a fully custom, accessible
-// popup (arrow keys, typeahead, focus management) while we own only the
-// skin, wired to the same design tokens (`bg-surface`, `text-ink-2`,
-// `border-line`, …) the rest of the app uses.
-//
-// Styled with `cva` + `cn()` + Tailwind's `data-[]:`/`aria-[]:` arbitrary
-// variants — the pattern `Switch.tsx`/`Checkbox.tsx` already established
-// for skinning Base UI's data-attribute-driven states (highlighted,
-// disabled, selected, open/closed). Not a runtime-injected stylesheet:
-// Tailwind's own pipeline sees and processes every class here, same as
-// any other component.
-//
-// API is options-array driven (mirrors `Menu`'s `items` prop) rather than
-// compound children — nearly every call site already builds its options
-// via `.map()` over an existing list, so handing in that array is less
-// code than wrapping each entry in a `<Select.Item>`.
-//
-//   <Select
-//     value={sortBy}
-//     onValueChange={setSortBy}
-//     options={[
-//       { value: 'name', label: 'Name' },
-//       { value: 'date', label: 'Date' },
-//       { separator: true },
-//       { value: 'x', label: 'X', disabled: true },
-//     ]}
-//   />
-//
-// Option shape: { value, label, disabled?, title?, icon? }. `icon` is an
-// optional leading glyph shown in the open list only (not echoed into the
-// closed trigger, which renders just the label via `<Select.Value>`) — use it
-// to set a mode entry like "All projects" apart from the real options beneath
-// it. `{ separator: true }` renders a divider. `{ group, options }` renders a
-// labeled group (only used if a call site needs it — none currently do).
-//
-// Three visual variants:
-//   - `variant="field"` (default) — full-width bordered control, matches
-//     the form fields it replaces (settings-select, channels-input, etc).
-//   - `variant="pill"` — compact "Label: value ⌄" control, replaces the
-//     SelectPill / customize-select overlay trick used for sort/filter.
-//   - `variant="unstyled"` — wiring only, for domain controls that use an
-//     established trigger treatment such as Composer's `meta-pill`.
+// Options: { value, label, disabled?, title?, icon? }, { separator: true }, or { group, options }.
+// Icons appear only in the popup; the trigger shows the label.
+// Variants: field (bordered form control), pill (compact labelled control), unstyled (caller
+// supplies the trigger style).
 
 import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
@@ -56,16 +10,11 @@ import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
 
-// Exported for Combobox, which renders a popup-based trigger that
-// must look identical to a Select trigger (same tokens, same variants).
+// Shared with Combobox so their closed triggers match.
 export const triggerVariants = cva(
   [
     'inline-flex items-center justify-between gap-[10px]',
-    // `border-solid` is load-bearing, not redundant: preflight is disabled
-    // (tailwind.config.js), so nothing resets the trigger `<button>`'s UA
-    // default `border-style: outset`. Tailwind's `border` sets only width,
-    // `border-line` only color — without this the 1px border renders
-    // beveled/uneven instead of a clean line.
+    // Preflight is disabled; border-solid overrides the button's UA outset border.
     'font-body bg-surface border border-solid border-line rounded-[var(--r)] text-ink',
     'cursor-pointer outline-none box-border',
     '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
@@ -86,9 +35,7 @@ export const triggerVariants = cva(
       },
     },
     compoundVariants: [
-      // Only the field variant has a distinct "sm" size — a pill's size
-      // is fixed regardless of `size` (matches the original hand-rolled
-      // SelectPill, which never took a size prop).
+      // Only field has a distinct sm size; pill size is fixed.
       { variant: 'field', size: 'sm', class: 'px-[8px] py-[5px] text-[12px]' },
     ],
     defaultVariants: { variant: 'field', size: 'md' },
@@ -109,10 +56,7 @@ const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="t
 
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
 
-// Flattens the options tree (unwrapping groups, dropping separators) into
-// the `{ value, label }` pairs Base UI's Root `items` prop wants — that's
-// what lets `<Select.Value>` resolve the selected item's label instead of
-// echoing back the raw value.
+// Root items let Select.Value resolve labels instead of displaying raw values.
 function flattenForLabels(options) {
   const out = [];
   for (const opt of options) {
@@ -182,33 +126,21 @@ function renderOptions(options) {
 export function Select({
   value,
   onValueChange,
-  // Optional controlled open state — omit for the usual uncontrolled popup
-  // (Base UI manages it internally). Lets a caller force the popup open,
-  // e.g. EffortSelect (ENG-1940) auto-opening itself the moment a model
-  // with effort levels is picked.
+  // Controlled open state; omit for the usual uncontrolled popup.
   open,
-  // Fires on open and on close. For a caller that wants to refresh `options`
-  // when the popup opens; the popup opens straight away either way, so the
-  // new options land in place rather than gating the open on a fetch.
+  // Fires on open and close; refresh options without delaying popup opening.
   onOpenChange,
   options = [],
   placeholder = 'Select…',
-  // "field" = full-width bordered control (form fields).
-  // "pill"  = compact "Label: value ⌄" control (sort/filter selectors).
   variant = 'field',
   size = 'md',
   disabled = false,
-  // Swaps the chevron for a spinner — for a caller re-fetching `options`
-  // (e.g. on open) so the trigger reflects "still loading" instead of
-  // silently showing possibly-stale data for the fetch's duration.
+  // Replace the chevron while options are loading.
   loading = false,
-  // Sets aria-invalid + a danger-tinted ring on the trigger.
   invalid = false,
-  // Pill-variant prefix, e.g. "Sort by". Falls back to `ariaLabel` when
-  // omitted so a pill always has an accessible name.
+  // Pill prefix; falls back to ariaLabel for an accessible name.
   label,
-  // Optional identity shown only inside the open popup. Composer controls
-  // use this to stay terse when closed without making a menu ambiguous.
+  // Popup-only identity for controls whose closed trigger is terse.
   menuLabel,
   ariaLabel,
   title,
@@ -216,14 +148,12 @@ export function Select({
   name,
   width,
   minWidth,
-  // Floor for the popup's width, for a compact trigger whose menu carries
-  // descriptions or metas. The popup otherwise matches the trigger's width.
+  // Minimum popup width; otherwise matches the trigger.
   menuMinWidth,
   className,
   style,
   zIndex = 95,
-  // Escape hatch — forwarded straight to the trigger button (e.g.
-  // `aria-describedby` to associate an inline error message).
+  // Props forwarded to the trigger, including aria-describedby.
   ...rest
 }) {
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
@@ -241,20 +171,14 @@ export function Select({
       name={name}
     >
       <BaseSelect.Trigger
-        // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
-        // field/pill trigger classes entirely so a caller's own className is
-        // the sole visual definition — e.g. EffortSelect's `meta-pill`
-        // (ENG-1940), which needs to look identical to ModelSelect's pill
-        // next to it and would otherwise fight the pill-variant classes.
+        // unstyled leaves visual treatment entirely to the caller's className.
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-description={(typeof selectedLabel === 'string' || typeof selectedLabel === 'number')
           ? `Selected: ${selectedLabel}`
           : undefined}
         aria-invalid={invalid || undefined}
-        // The spinner that replaces the chevron is aria-hidden, so without
-        // this a screen-reader user gets no signal that a click is being
-        // worked on and the popup just hasn't opened yet.
+        // The spinner is aria-hidden; expose loading separately to screen readers.
         aria-busy={loading || undefined}
         title={title}
         style={{ width, minWidth, ...style }}
@@ -263,11 +187,6 @@ export function Select({
         {variant === 'pill' && (label || ariaLabel) && (
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}
-        {/* Base UI stamps `data-placeholder` on this span when nothing is
-            selected — mute it to `text-ink-4` so an unselected control reads as
-            a prompt, not a value (matches Combobox's `placeholder:text-ink-4`).
-            Without this the placeholder inherited full-strength `text-ink` and
-            looked identical to a real selection. */}
         <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
           {loading
@@ -287,17 +206,7 @@ export function Select({
             style={menuMinWidth === undefined ? undefined : { minWidth: menuMinWidth }}
             className={cn(
               'min-w-[var(--anchor-width,_160px)] max-h-[var(--available-height,_320px)] overflow-y-auto',
-              // Bordered popup matching Menu's look (same var(--surface) bg,
-              // 1px var(--line) border, 10px radius). `border-solid` is
-              // load-bearing, not redundant: preflight is disabled, so a bare
-              // `border` on this <div> sets width but leaves border-style at
-              // the UA default `none` — which forces the used border-width to
-              // 0, i.e. no border renders at all. Without the border a
-              // borderless popup on the light Settings surface has only the
-              // soft shadow-sh-popup to separate it from the background, and
-              // its top edge all but vanishes. (When ENG-790 lands it drops
-              // borders from every popup — Menu and Select together — so
-              // matching Menu today keeps the two in lockstep either way.)
+              // Preflight is disabled; border-solid is required for a visible popup border.
               'bg-surface border border-solid border-line rounded-[10px] shadow-sh-popup py-[4px] outline-none font-body',
               '[transform-origin:var(--transform-origin)]',
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',

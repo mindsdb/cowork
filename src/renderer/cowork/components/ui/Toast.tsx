@@ -1,36 +1,7 @@
-// `<ToastProvider>` + `<Toast>` — the app's one transient-notification
-// system, built on Base UI's Toast (@base-ui/react/toast).
-//
-// Why a library here: the app had three independent toast-shaped things —
-// this component (single-message only, always auto-dismissing), and a
-// hand-rolled multi-item stack in App.jsx for OAuth refresh errors (which
-// needed simultaneous, independently-dismissible, non-auto-dismissing
-// notifications — capabilities this component didn't have). Base UI's
-// Toast is built around exactly that: a Provider + `useToastManager()`
-// hook that manages a real queue (add/close/update/promise, per-toast
-// `timeout` including `0` for "stays until dismissed", upsert-by-id).
-// We only own the skin.
-//
-// Mount ONCE near the app root:
-//   <ToastProvider>
-//     <App />
-//   </ToastProvider>
-// Then, from any descendant:
-//   const toastManager = useToastManager();
-//   toastManager.add({ title: 'Saved.', type: 'success' });
-//   toastManager.add({ id: 'oauth-x', title: '…', type: 'danger', timeout: 0 });
-//   toastManager.update('oauth-x', { title: 'Reconnected.', type: 'success', timeout: 5000 });
-//
-// type: 'success' | 'danger' | 'warning' | undefined (neutral).
-//
-// Styling follows the authoring convention (cn + Tailwind + data-attribute
-// variants). No cva here on purpose: the type variants are driven by Base
-// UI's `data-type` attribute on the toast, not a component prop.
+// Mount ToastProvider once near the root; descendants call useToastManager().add/update/close.
+// Use timeout: 0 for notifications that must remain until dismissed.
 
-// NOTE: @base-ui/react/toast only exports the `Toast` namespace at
-// runtime (`export * as Toast from ...`) — `useToastManager` is a member
-// of that namespace, not a separate top-level export, even though its
-// .d.ts is listed alongside the others (`export type *` is type-only).
+// useToastManager is a runtime member of the Toast namespace, not a top-level export.
 import type { ReactNode } from 'react';
 import { Toast as BaseToast } from '@base-ui/react/toast';
 import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
@@ -45,17 +16,8 @@ const CLOSE_X = <X size={12} strokeWidth={1.5} aria-hidden="true" />;
 
 const TYPE_ICON: Record<string, ReactNode> = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIRCLE };
 
-// Mount once, near the app root. Renders the portal + viewport that every
-// `useToastManager().add(...)` call from any descendant surfaces into.
-// Position: bottom-right — consolidates what were three different
-// positions across the old call sites (top-center, top-right, bottom-right)
-// into one, since a single global viewport can only have one placement.
-// Base UI defaults to a limit of three and marks older toasts inert once the
-// limit is exceeded. That is unsafe for this app because persistent OAuth
-// errors share the viewport with transient notifications: a fourth toast
-// could otherwise leave an OAuth error visible but without a working dismiss
-// button. The pre-Base-UI stacks were unlimited, so preserve that behavior at
-// the app provider while still allowing a caller to opt into a finite limit.
+// Keep the default limit unlimited: Base UI makes excess toasts inert, which would disable
+// dismissal of persistent OAuth errors when transient notifications fill the viewport.
 export function ToastProvider({
   children,
   limit = Number.POSITIVE_INFINITY,
@@ -80,8 +42,6 @@ function ToastList() {
   return toasts.map((toast) => <ToastBubble key={toast.id} toast={toast} />);
 }
 
-// The Base UI toast object carries app-defined fields (title/description/type)
-// under a broad generic; typed `any` here rather than fighting those generics.
 function ToastBubble({ toast }: { toast: any }) {
   const icon = toast.type ? TYPE_ICON[toast.type] : undefined;
   return (
@@ -93,14 +53,8 @@ function ToastBubble({ toast }: { toast: any }) {
         '[transition:opacity_180ms_ease-out,transform_180ms_ease-out]',
         'data-[starting-style]:opacity-0 data-[starting-style]:translate-y-2',
         'data-[ending-style]:opacity-0 data-[ending-style]:duration-100',
-        // Tailwind's opacity modifier (bg-x/10) only works when the color
-        // is a literal value it can see at build time — danger/warning are
-        // `var(--x)` references, so it silently produces no rule at all.
-        // The config's dedicated -bg/-border tokens exist for exactly this
-        // (already pre-mixed, no opacity modifier needed, and theme-aware
-        // — unlike `success`, which is a literal hex specifically so its
-        // opacity modifier *would* resolve, but at the cost of staying the
-        // same color in both themes).
+        // Use pre-mixed color tokens: Tailwind opacity modifiers do not resolve these CSS variable
+        // colors.
         'data-[type=success]:border-success-border data-[type=success]:bg-success-bg data-[type=success]:text-ink-2',
         'data-[type=warning]:border-warning-border data-[type=warning]:bg-warning-bg data-[type=warning]:text-warning',
         'data-[type=danger]:border-danger-border data-[type=danger]:bg-danger-bg data-[type=danger]:text-danger',

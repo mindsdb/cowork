@@ -1,67 +1,23 @@
-// `<Modal>` — single modal primitive every modal in the app uses.
-//
-// Built on Base UI's Dialog (@base-ui/react/dialog): the portal, focus trap +
-// restore, body-scroll lock, Esc/outside-press dismissal, and ARIA wiring are
-// Base UI's; the chrome, sizes, z-index layers, and fade are ours — styled to
-// reproduce the previous hand-rolled modal 1:1. Public API is unchanged.
-//
-// Structure: Dialog.Root > Portal > Backdrop (visual) + Viewport (centering) >
-// Popup (the container). Centering lives on the Viewport's flexbox — NOT a
-// transform — so nested position:fixed menus/tooltips inside a modal keep
-// working (the reason the old container avoided transforms).
-//
-// Usage (unchanged):
-//   <Modal open={open} onClose={close} size="md" layer="default" labelledBy="connect-title">
-//     <ModalHeader id="connect-title" title="Connect a tool" subtitle="…" onClose={close} />
-//     <ModalBody> …content… </ModalBody>
-//     <ModalFooter>
-//       <Button variant="subtle" onClick={close}>Cancel</Button>
-//       <Button variant="primary" onClick={save}>Save</Button>
-//     </ModalFooter>
-//   </Modal>
-//
-// All three slots are optional — pure-content modals can drop the
-// header/footer and put their own chrome inside <ModalBody>.
+// Header, body, and footer slots are optional. Base UI owns dialog accessibility and dismissal.
 
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
 
-// Opacity-only fade for the backdrop/popup on open/close (styled with
-// Tailwind's `data-[]:` variants, matching ui/Menu.jsx / Select.jsx — no
-// runtime-injected stylesheet needed). Opacity-only (no transform) on
-// purpose — a non-identity `transform` on an ancestor makes it the
-// containing block for `position: fixed` descendants, which broke
-// popovers/menus rendered inside a modal (the ArtifactViewer kebab menu
-// in particular). Driven by Base UI's `data-starting-style` so the fade
-// replays on every open; `data-ending-style` zeroes the duration so
-// close is an instant unmount (matches the previous modal, which had no
-// exit animation). The base transition is written as a full arbitrary
-// `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
-// utilities) so the easing keyword is the literal CSS `ease-out`, not
-// Tailwind's differently-curved `ease-out` utility value.
+// Use opacity only: transforms would make the modal a containing block for nested fixed popovers.
+// Keep instant close and literal CSS ease-out; Tailwind's ease-out utility uses a different curve.
 const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
 const FONT_BODY    = 'var(--font-body)';
 
-// Width × max-height. Heights are caps; modals shrink to content.
-// All three stay inside the viewport on the smallest target screen
-// (1024×640) — keeps testing the matrix tractable.
+// Dimensions are caps, tested down to a 1024×640 viewport.
 const SIZES = {
   sm: { width: 'min(480px, 92vw)',  maxHeight: 'min(480px, 86vh)' },
   md: { width: 'min(720px, 92vw)',  maxHeight: 'min(640px, 86vh)' },
   lg: { width: 'min(1080px, 94vw)', maxHeight: 'min(820px, 88vh)' },
 };
 
-// Z-index layer map. Codified so adding a new modal doesn't mean
-// guessing — pick `default` for content, `system` only when the
-// modal must overlay the title bar / legal viewer / onboarding.
-//
-//   60   sidepanels, inline overlays inside main UI
-//   80   default content modals (picker, schedule, artifact viewer)
-//   1000 title bar
-//   1100 legal / onboarding overlays
-//   1200 system modals — How-to, anything that must sit on top
+// Use default for content modals; system overlays the title bar, legal viewer, and onboarding.
 const LAYERS = {
   default: 80,
   system:  1200,
@@ -72,40 +28,29 @@ export function Modal({
   onClose,
   size = 'md',
   layer = 'default',
-  // ARIA: id of the element labelling the modal (typically the ModalHeader's
-  // title). If you don't pass either labelledBy or ariaLabel, screen readers
-  // won't announce the modal.
+  // Provide labelledBy (typically the header id) or ariaLabel so screen readers announce the modal.
   labelledBy,
   ariaLabel,
-  // Block backdrop-click closing — useful for "in-flight" states where
-  // dismissing would lose work. Maps to Base UI's outside-press dismissal.
+  // Disable outside-press dismissal while closing would lose in-flight work.
   closeOnBackdrop = true,
   closeOnEsc = true,
   // Lock body scroll while open. Base UI reference-counts this across nested
   // modals; `'trap-focus'` traps focus without locking scroll.
   lockBodyScroll = true,
-  // Optional overrides on the container's dimensions. `width` / `maxHeight`
-  // adjust within the size system. `height` pins the container to a fixed
-  // dimension — needed for surfaces like the artifact viewer where an iframe
-  // inside has to fill the available vertical space.
+  // width/maxHeight override size caps; height fixes the height for fill-content surfaces such as
+  // iframes.
   width,
   height,
   maxHeight,
-  // Full-viewport bare surface (mobile full-page): fills the screen with no
-  // card chrome (border/radius/shadow) and respects safe-area insets. Still a
-  // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
-  // and Esc dismissal a hand-rolled full-screen <div> would drop.
+  // Full viewport with safe-area insets and no card chrome; retains dialog accessibility and
+  // dismissal.
   fullBleed = false,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
   const z  = LAYERS[layer] ?? LAYERS.default;
 
-  // Base UI calls this on every open/close. We only act on close, and honour
-  // closeOnEsc by ignoring keyboard-driven closes (Esc goes through either the
-  // 'escape-key' reason or the platform CloseWatcher — 'close-watcher' — on
-  // Chromium/Electron). Backdrop opt-out is handled by disablePointerDismissal,
-  // so no outside-press reason fires when closeOnBackdrop is false.
+  // Honor both Escape reasons: Chromium/Electron may report escape-key or close-watcher.
   const handleOpenChange = (nextOpen, details) => {
     if (nextOpen) return;
     const reason = details?.reason;
@@ -165,7 +110,7 @@ export function Modal({
               display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
               outline: 'none',
-              // Backdrop is now a sibling, not an ancestor — carry the font here.
+              // The backdrop is a sibling, so the popup needs its own font.
               fontFamily: FONT_BODY,
             }}
           >
@@ -178,12 +123,7 @@ export function Modal({
 }
 
 
-// ── Header ────────────────────────────────────────────────────────────
-//
-// Standardised: Inter 18px / 600 title, optional Inter 13px
-// subtitle underneath, X close button flush right. Bottom border
-// `--line`. The id prop pairs with Modal's `labelledBy` so screen
-// readers announce the title.
+// Pair the header id with Modal labelledBy for the accessible title.
 
 export function ModalHeader({ id, title, subtitle, onClose, right }) {
   return (
@@ -245,10 +185,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 }
 
 
-// ── Body ──────────────────────────────────────────────────────────────
-//
-// Scroll region. `minHeight: 0` is the flexbox gotcha — without it,
-// `overflowY: auto` doesn't actually scroll inside a flex column.
+// minHeight: 0 allows this region to scroll inside a flex column.
 
 export function ModalBody({ children, padding = '16px 18px', background, style }) {
   return (
@@ -264,11 +201,6 @@ export function ModalBody({ children, padding = '16px 18px', background, style }
 }
 
 
-// ── Footer ────────────────────────────────────────────────────────────
-//
-// Action row. Defaults to right-aligned (primary on the right);
-// pass `align="space-between"` for forms that want a destructive
-// action on the left (e.g. Delete button on Edit modals).
 
 export function ModalFooter({ children, align = 'flex-end', style }) {
   return (

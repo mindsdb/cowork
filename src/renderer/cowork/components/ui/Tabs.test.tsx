@@ -73,16 +73,14 @@ describe('Tabs', () => {
       </Tabs>,
     );
     const list = screen.getByRole('tablist');
-    // Root carries the passed className alongside the base w-full.
     expect(list.parentElement!.className).toContain('mt-4');
-    // Each part merges its custom className with its base classes.
     expect(list.className).toContain('gap-6');
-    expect(list.className).toContain('border-b'); // base retained
+    expect(list.className).toContain('border-b');
     const tab = screen.getByRole('tab', { name: 'Overview' });
     expect(tab.className).toContain('uppercase');
-    expect(tab.className).toContain('border-b-2'); // base retained
+    expect(tab.className).toContain('border-b-2');
     const panel = screen.getByRole('tabpanel');
     expect(panel.className).toContain('pl-6');
-    expect(panel.className).toContain('pt-3'); // base retained
+    expect(panel.className).toContain('pt-3');
   });
 });
