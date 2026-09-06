@@ -1,10 +1,3 @@
-// One row inside the expanded ThinkingBlock. Vertical-line "rail" on
-// the left, icon, label, optional duration on the right.
-//
-// Adapted from mdb-ai's ThinkingStep.jsx — without jotai. We don't need
-// the side-panel scratchpad navigation here either; click handling is
-// delegated via onActivate, which the parent can wire up when ready.
-
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { StepIcon } from './StepIcon';
@@ -45,7 +38,6 @@ export function ThinkingStep({
       )}
       onClick={onActivate ? () => onActivate(step) : undefined}
     >
-      {/* Left rail — vertical line + circular marker. */}
       <div className="flex w-4 flex-col items-center">
         <div className={clsx('w-px flex-1', isFirst ? 'bg-transparent' : 'bg-line-2')} />
         <div
@@ -59,7 +51,6 @@ export function ThinkingStep({
         <div className={clsx('w-px flex-1', isLast ? 'bg-transparent' : 'bg-line-2')} />
       </div>
 
-      {/* Right column — label + meta */}
       <div
         className={clsx(
           'flex min-w-0 flex-1 items-center justify-between rounded-md py-1.5',
