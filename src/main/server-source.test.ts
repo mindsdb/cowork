@@ -16,16 +16,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// server-source lazily `require('./cowork-home')` for the build-kind ref
-// fallback. Mock it so we can drive buildKind() directly — the real one
-// memoizes its result, so an env-based approach can't vary it across tests.
-// Default 'dev' keeps every existing assertion on the `main` default path.
+// Mock buildKind directly; its real memoization prevents varying the lazy fallback through
+// environment changes alone.
 vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'dev') }));
 
-// getAppDisplayVersion lazily requires electron via bare CJS `require()`,
-// which vi.mock cannot intercept (in Node the electron package resolves to a
-// binary-path string, not the runtime API). Seed the CJS require cache with a
-// stub before the lazy require fires.
+// Seed the CJS require cache: vi.mock cannot intercept getAppDisplayVersion's lazy bare require of
+// Electron.
 import { createRequire } from 'node:module';
 const cjsRequire = createRequire(import.meta.url);
 const electronId = cjsRequire.resolve('electron');
@@ -36,10 +32,8 @@ cjsRequire.cache[electronId] = {
   exports: { app: { getVersion: () => '9.9.9' } },
 } as never;
 
-// The env is scrubbed before each test (tests/setup-env.ts), so "no env set"
-// is the true default install path. The build-ref fallback (_buildRef) is
-// exercised implicitly: ./build-channel.gen does not exist in the test env,
-// so the catch path (→ '') runs on every default-ref assertion below.
+// Environment cleanup and absent build-channel.gen exercise the empty-ref fallback in default
+// cases.
 
 describe('getChannel', () => {
   it('defaults to git when unset', () => {
@@ -117,10 +111,8 @@ describe('getChannel', () => {
   });
 });
 
-// The release workflows cannot import getChannel() without a build, so they
-// call scripts/resolve-server-channel.mjs. These tests are the sync mechanism:
-// change the precedence in one place without the other and the suite fails,
-// instead of CI baking a channel the app would resolve differently.
+// Keep scripts/resolve-server-channel.mjs precedence synchronized with runtime resolution;
+// workflows cannot import the TS module.
 describe('scripts/resolve-server-channel.mjs mirrors getChannel', () => {
   const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const SCRIPT = path.join(REPO, 'scripts/resolve-server-channel.mjs');
@@ -157,9 +149,7 @@ describe('scripts/resolve-server-channel.mjs mirrors getChannel', () => {
     expect(run({ COWORK_BUILD_KIND: 'dev' })).toBe('git');
   });
 
-  // Hand-parsed like the other workflow guards: js-yaml is only a transitive
-  // dependency. Returns the `id:` and dedented `run:` body of every step with
-  // this name.
+  // Read step ids and dedented run bodies without relying on transitive js-yaml.
   function steps(text: string, stepName: string): Array<{ id: string; run: string }> {
     const lines = text.split('\n');
     const found: Array<{ id: string; run: string }> = [];
@@ -300,11 +290,8 @@ describe('getCoworkRef / getAntonRef', () => {
 
 describe('getInstallSpec', () => {
   it('default git install adds NO anton override (regression: the "conflicting URLs" bug)', () => {
-    // On the default git channel with anton on `main`, uv must receive NO
-    // anton-agent override — cowork-server's own [tool.uv.sources] pin decides
-    // the anton version. A second URL requirement for the same package makes uv
-    // abort with "conflicting URLs" and broke every fresh install. This is the
-    // guard for that regression.
+    // Default installs use cowork-server's existing anton pin; a second URL requirement would make
+    // uv reject conflicting URLs.
     const spec = getInstallSpec();
 
     expect(spec.channel).toBe('git');
@@ -313,10 +300,8 @@ describe('getInstallSpec', () => {
   });
 
   it('non-default ANTON_REF repoints anton via a uv override (not a flag)', () => {
-    // Overrides replace cowork-server's [tool.uv.sources] anton-agent pin
-    // cleanly (no "conflicting URLs") and are honoured by every uv version —
-    // unlike the per-package `--no-sources-package` flag, which older uv builds
-    // reject with "unexpected argument".
+    // Overrides must replace the existing source pin and work on older uv versions that lack
+    // no-sources-package.
     withEnv({ ANTON_REF: 'feat/x' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('git');
@@ -360,7 +345,7 @@ describe('getInstallSpec', () => {
     withEnv({ COWORK_SERVER_REF: 'feat/y' }, () => {
       const spec = getInstallSpec();
       expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@feat/y');
-      expect(spec.overrides).toEqual([]); // anton still default → no override
+      expect(spec.overrides).toEqual([]);
     });
   });
 
@@ -389,10 +374,8 @@ describe('getInstallSpec', () => {
   });
 
   it('explicit refs yield a git spec even on the pypi channel (source-aware updater)', () => {
-    // The updater passes explicit refs only when the INSTALLED tool venv is
-    // a git install (update, rollback, repair). On a pypi-channel build
-    // those must still produce a git spec — a pypi short-circuit here would
-    // migrate git installs to the wheel and break rollback pinning.
+    // Explicit refs preserve installed git sources even on PyPI-channel builds, or rollback would
+    // migrate them to wheels.
     withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
       const spec = getInstallSpec({ coworkRef: 'abc1234' });
       expect(spec.channel).toBe('git');
@@ -419,7 +402,6 @@ describe('getInstallSpec', () => {
         () => {
           const spec = getInstallSpec();
           expect(spec.package).toBe('/local/path/cowork-server');
-          // channel still reports what the env says, but the package is literal
           expect(spec.channel).toBe('pypi');
         },
       );
@@ -440,7 +422,6 @@ describe('getInstallSpec', () => {
     it('ignores ANTON_PACKAGE when COWORK_SERVER_PACKAGE is not set', () => {
       withEnv({ ANTON_PACKAGE: '/local/anton' }, () => {
         const spec = getInstallSpec();
-        // falls through to the normal git path: no override, git package
         expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@main');
         expect(spec.overrides).toEqual([]);
       });
