@@ -1,8 +1,6 @@
 import Ico from '../Icons';
 import { Button } from '../ui';
 
-// The reward state — shown once every step is done, until the user
-// dismisses the checklist for good.
 export default function OnboardingComplete({ onDismiss }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, padding: '10px 4px 2px' }}>

@@ -79,14 +79,11 @@ describe('WorkspaceSelector — the trigger', () => {
     hookMock.useHubWorkspaces.mockReturnValue(three('ws-kiwibot'));
     const { container } = render(<WorkspaceSelector user={user} />);
 
-    // K on the trigger. The menu is closed, so this is the only one rendered.
     expect(container.textContent).toContain('K');
   });
 
   it('renders for a single workspace, where there is nothing to switch to', () => {
-    // Deliberate: "which workspace am I in" is worth answering on its own. An
-    // earlier revision hid the control below two workspaces and that is exactly
-    // the invisibility this component exists to fix.
+    // A single workspace still needs to identify the current scope.
     hookMock.useHubWorkspaces.mockReturnValue(
       state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS], activeWorkspaceId: 'ws-default' }),
     );
@@ -166,10 +163,8 @@ describe('WorkspaceSelector — the menu', () => {
   });
 
   it('tells assistive tech which row is current, not just that it is dimmed', () => {
-    // `aria-current`, not `title`. A title is the accessible DESCRIPTION, so it
-    // is spoken as a delayed hint at best and switched off at worst, leaving
-    // `aria-disabled` as the only cue: "dimmed", which reads as unavailable
-    // rather than as "you are here".
+    // Assert aria-current: title is only a description, while aria-disabled alone describes
+    // unavailability, not current scope.
     hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
     render(<WorkspaceSelector user={user} />);
     openMenu();
@@ -180,12 +175,10 @@ describe('WorkspaceSelector — the menu', () => {
 
     expect(active.getAttribute('aria-current')).toBe('true');
     expect(other.getAttribute('aria-current')).toBeNull();
-    // Titles carry the untruncated name and nothing else.
     expect(active.getAttribute('title')).toBe('Client A');
     expect(other.getAttribute('title')).toBe('Kiwibot');
-    // The tick must not reach the accessible name. Asserting the name rather
-    // than `aria-hidden` on the svg: lucide sets that itself, so the attribute
-    // assertion passed whether or not this file asked for it.
+    // Assert the accessible name excludes the icon; lucide's own aria-hidden would make a
+    // component-level attribute assertion vacuous.
     expect(active).toHaveAccessibleName('Client A');
   });
 
@@ -225,10 +218,8 @@ describe('WorkspaceSelector — when it must not render at all', () => {
   });
 
   it('when the gate is on and the hub answered, but the org has no workspace', () => {
-    // The third operand of the render guard. Before the unreachable case below
-    // grew rows, that case was what exercised `!active`; with rows it
-    // short-circuits on `!reachable` instead and this was the only branch in
-    // the guard no test reached as true.
+    // Exercise missing active workspace independently of reachability so this guard operand is
+    // covered.
     hookMock.useHubWorkspaces.mockReturnValue(
       state({ enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null }),
     );
@@ -238,13 +229,8 @@ describe('WorkspaceSelector — when it must not render at all', () => {
   });
 
   it('when the hub could not be reached, even if rows came back with it', () => {
-    // No rail placeholder: reserving space for a control that may never appear
-    // reads as a layout bug on every launch.
-    //
-    // The rows are here on purpose. With an empty list this passed whether or
-    // not the component read `reachable` at all, because the fallback to
-    // `workspaces[0]` had nothing to fall back to. Rows make `reachable` the
-    // only thing that can hide the control.
+    // Include rows while unreachable so hiding the control depends on reachable rather than an
+    // empty-list fallback.
     hookMock.useHubWorkspaces.mockReturnValue(
       state({
         enabled: true,

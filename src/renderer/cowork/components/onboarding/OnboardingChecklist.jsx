@@ -4,14 +4,7 @@ import OnboardingItem from './OnboardingItem';
 import OnboardingComplete from './OnboardingComplete';
 import Ico from '../Icons';
 
-// "Get to know Cowork" checklist — docked in the sidebar above the
-// footer, on every screen. Each row seeds a new chat with that step's
-// prompt and marks the step done; `onStartChat` is App's send-from-home
-// handler (it creates the session and routes to it).
-//
-// Collapsible: click the header to hide/show the steps; the choice
-// persists in localStorage. Card chrome lives in `.onboarding-card`
-// (theme-aware, globals.css).
+// onStartChat creates and routes to a new session seeded with the selected step prompt.
 const COLLAPSE_KEY = 'anton.onboarding.sidebarCollapsed';
 const STEPS_ID = 'onboarding-sidebar-steps';
 
@@ -27,9 +20,7 @@ export default function OnboardingChecklist({ onStartChat }) {
 
   if (dismissed) return null;
 
-  // Mark the step done first so it shows struck through afterwards, then
-  // hand its prompt to the composer to open the new chat. A done step is
-  // inert — re-clicking it must not spawn another chat (ENG-1502).
+  // Completed steps must not start another chat. ENG-1502.
   const start = (step) => {
     if (isComplete(step.id)) return;
     complete(step.id);
@@ -68,8 +59,6 @@ export default function OnboardingChecklist({ onStartChat }) {
     </button>
   );
 
-  // Always-available close — dismisses the checklist for good without
-  // requiring all the steps to be completed first (ENG-1502).
   const closeBtn = (
     <button
       type="button"
@@ -87,9 +76,6 @@ export default function OnboardingChecklist({ onStartChat }) {
     </button>
   );
 
-  // Thin progress track under the header — fills left-to-right as steps
-  // complete. Width transition (not transform) is fine here: it changes
-  // at most 4 times, ever.
   const progress = (
     <div
       aria-hidden
@@ -115,8 +101,7 @@ export default function OnboardingChecklist({ onStartChat }) {
         {header}
         {closeBtn}
       </div>
-      {/* Collapsible body: a 0fr→1fr grid row animates height open/closed
-          without hard-coding a pixel value (same idiom as OnboardingItem). */}
+      {/* Animate intrinsic height with a 0fr/1fr grid row. */}
       <div
         id={STEPS_ID}
         style={{
