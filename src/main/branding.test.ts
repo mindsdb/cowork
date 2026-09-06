@@ -2,9 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// The app was renamed from "Anton Cowork" to "MindsHub Cowork"; Anton is the
-// agent's name only. This scan keeps the old product name from creeping back
-// into any source file. Built dynamically so this test doesn't flag itself.
+// Construct the obsolete product name dynamically so this source scan cannot match its own fixture.
 const OLD_NAME = ['Anton', 'Cowork'].join(' ');
 
 function walk(dir: string): string[] {

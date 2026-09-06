@@ -15,9 +15,7 @@ function extractPortAndState(url: string): { port: number; state: string } {
   return { port: Number(parsed.port), state: parsed.searchParams.get('state') || '' };
 }
 
-// Raw http.request rather than global fetch — tests/setup-env.ts denies
-// fetch by default in every test, and these tests need a real loopback
-// round trip against the server openDrivePickerFlow itself creates.
+// Use real loopback http.request; tests/setup-env.ts denies global fetch by default.
 function postResult(port: number, state: string, body: Record<string, unknown>): Promise<void> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ state, ...body });
@@ -65,9 +63,7 @@ describe('openDrivePickerFlow', () => {
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port } = extractPortAndState(openExternalMock.mock.calls[0][0]);
 
-    // Declare a body larger than what's actually sent, then destroy the
-    // socket mid-transfer — the same "tab closed mid-request" shape the
-    // crash fix (req.on('error', ...)) guards against.
+    // Declare more bytes than sent, then destroy the socket to simulate a tab closing mid-request.
     await new Promise<void>((resolve) => {
       const socket = net.connect(port, '127.0.0.1', () => {
         socket.write(
@@ -82,10 +78,7 @@ describe('openDrivePickerFlow', () => {
       socket.on('error', () => resolve()); // ECONNRESET on our end is expected too
     });
 
-    // The flow should eventually settle (via cancel/timeout/a later valid
-    // post) rather than the aborted request having crashed the server —
-    // confirmed here by the server still being alive to accept a fresh,
-    // well-formed request afterward.
+    // The aborted request must leave the process alive and the flow cancellable.
     cancelCurrentDrivePicker();
     const result = await flowPromise;
     expect(result.ok).toBe(false);
@@ -96,10 +89,8 @@ describe('openDrivePickerFlow', () => {
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
 
-    // Malformed JSON body — same shape any local process (or a page doing
-    // a no-cors POST to this port) could send without knowing `state` at
-    // all. Must not kill the flow: the body is parsed before the state
-    // check, so this has to be handled without ever reaching resolve/reject.
+    // Malformed JSON is parsed before state validation and can arrive from any local caller; it
+    // must not kill the flow.
     await new Promise<void>((resolve, reject) => {
       const req = http.request(
         { host: '127.0.0.1', port, path: '/result', method: 'POST', headers: { 'Content-Type': 'application/json' } },
@@ -127,9 +118,7 @@ describe('openDrivePickerFlow', () => {
     const secondFlow = openDrivePickerFlow('token-2', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(2));
 
-    // The first attempt must have been cancelled by the second one starting
-    // — it should resolve (not hang for the full 5-minute timeout) with a
-    // failure, freeing its loopback server instead of leaking it.
+    // Starting a second flow must cancel the first promptly and free its loopback server.
     const firstResult = await firstFlow;
     expect(firstResult.ok).toBe(false);
 
@@ -190,12 +179,8 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('resolves with a descriptive failure (not an empty file list) given an error payload from the picker page', async () => {
-    // Server-side plumbing only: exercises the /result contract the picker
-    // page uses to report a failure (whether from Action.ERROR or the load
-    // timeout), and that it's distinguishable from a plain user cancellation,
-    // which resolves ok:true with an empty file list. This does NOT prove
-    // either detector actually fires for a real account-mismatch 403 — see
-    // the load-timeout test below for that regression coverage.
+    // This covers /result failure semantics, not Google's error detector. Load-timeout behavior is
+    // tested below.
     const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
@@ -208,17 +193,9 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('serves a load-timeout fallback that signals suspicion without closing the picker or ending the flow', async () => {
-    // ENG-1102 regression coverage: the reported failure is a static Google
-    // 403 page rendered inside the picker's iframe instead of the widget.
-    // That page has no picker JS in it, so it can never emit PICKED/CANCEL/
-    // ERROR over the postMessage relay — Action.ERROR only fires once the
-    // widget itself has loaded and then hit a problem, so it can't catch
-    // this case. The load timeout is what's supposed to catch it instead —
-    // but a first attempt at this (round 1 of ENG-1102's fix) force-closed
-    // the picker and rejected the flow on the same 9s timer, which fired
-    // just as wrongly for any user who was simply still browsing. Assert
-    // the timeout only ever signals a suspicion, never force-closes
-    // anything, so that regression can't come back.
+    // A static Google 403 iframe never runs picker JS, so Action.ERROR cannot detect it.
+    // The load timeout may signal suspicion but must not close a healthy picker while someone is
+    // still browsing.
     const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const url = openExternalMock.mock.calls[0][0] as string;
@@ -233,9 +210,7 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('does not resolve or reject the flow when the picker page only signals a suspected load failure', async () => {
-    // The signal is a guess, not proof — a user who was merely slow to
-    // pick, or whose widget loaded fine all along, must be able to still
-    // finish normally after the signal has fired.
+    // A slow user must still be able to finish after the timeout raises suspicion.
     const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
@@ -269,9 +244,8 @@ describe('buildPickerFailureReason', () => {
   });
 
   it('leaves cancellations and in-widget errors untouched even if a suspicion was flagged', () => {
-    // A genuine Action.ERROR or a user cancellation already carries its own
-    // specific reason — the suspicion should only ever augment the generic
-    // "timed out" message, not every failure mode.
+    // Append suspicion only to generic timeout errors; preserve specific Action.ERROR and
+    // cancellation reasons.
     expect(buildPickerFailureReason('Picker cancelled.', true, 'user@example.com')).toBe('Picker cancelled.');
     expect(buildPickerFailureReason('Google Picker could not open — the browser’s active Google account may not match user@example.com.', true, 'user@example.com'))
       .toBe('Google Picker could not open — the browser’s active Google account may not match user@example.com.');

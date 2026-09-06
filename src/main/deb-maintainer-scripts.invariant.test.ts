@@ -3,30 +3,16 @@ import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Regression guard: our deb postinst silently disabled Electron's own Linux
-// install steps.
-//
-// `deb.afterInstall` does not ADD a maintainer script — electron-builder passes
-// exactly one `--after-install` to fpm, and naming our own file REPLACES the
-// stock after-install.tpl. Pointing it at a script that only staged credentials
-// therefore dropped the /usr/bin symlink, the chrome-sandbox mode Electron needs
-// in order to start at all, the AppArmor profile Ubuntu 24 wants, and both
-// desktop-database updates. The deb still built, so CI saw nothing; it only
-// surfaces on an installed machine.
-//
-// The fix is to carry upstream's script verbatim and append to it, which is
-// only safe while the copy stays in step. Upstream added the AppArmor block in
-// a recent release; without this test the next such addition is lost in the
-// same silent way.
+// Custom deb hooks replace electron-builder's maintainer templates rather than extending them.
+// Keep the upstream script intact before appending credential work so symlinks, sandbox
+// permissions, AppArmor and desktop updates survive.
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TEMPLATES = path.join(REPO, 'node_modules/app-builder-lib/templates/linux');
 
 /**
- * Both maintainer scripts we override, and the upstream template each replaces.
- * after-remove.tpl is what removes the /usr/bin alternative and the AppArmor
- * profile, so overriding postrm drops those the same way postinst dropped the
- * install half.
+ * Check both overridden hooks: postrm must retain upstream alternative and AppArmor cleanup just as
+ * postinst retains installation.
  */
 const SCRIPTS = [
   { name: 'postinst', ours: 'build/deb-scripts/postinst.sh', upstream: 'after-install.tpl', block: 'stage_cowork_credentials' },
@@ -78,9 +64,8 @@ for (const script of SCRIPTS) {
       expect(ours()).toMatch(new RegExp(`${script.block} \\|\\| true`));
     });
 
-    // Best-effort work must never fail the operation — but must not swallow a
-    // failure from the steps above it either. Ending on `... || true` did
-    // exactly that: dpkg saw success no matter what upstream did.
+    // Best-effort cleanup must preserve an earlier upstream failure; a final || true would mask it
+    // from dpkg.
     it("reports the upstream steps' exit status, not our block's", () => {
       const appended = ours().slice(readFileSync(TEMPLATE, 'utf8').length);
       const firstStatement = appended.split('\n').map((l) => l.trim())

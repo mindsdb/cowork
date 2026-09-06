@@ -3,16 +3,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// buildKindStrict() is the safety gate OTA enablement rides on (ENG-670): a
-// packaged build is treated as prod ONLY when it carries an explicit, recognized
-// build kind, and anything missing/malformed/unrecognized resolves to null
-// (never prod) so a mispackaged build can't opt into production-only OTA. These
-// tests pin exactly that, standing in for the "confirm buildKindStrict resolves
-// prod in a real prod build" QA item at the logic level.
-//
-// The mock exposes a mutable `isPackaged` getter for buildKindStrict's
-// packaging checks; the seeding suite below takes explicit paths and never
-// touches `app`, so the same stub serves both.
+// Packaged OTA requires an explicit recognized build kind; missing or malformed identity must never
+// imply prod.
+// Expose isPackaged as mutable for these cases; the home-seeding tests below use explicit paths.
 const appState = { isPackaged: true };
 vi.mock('electron', () => ({
   app: {
@@ -96,10 +89,7 @@ describe('buildKindStrict', () => {
 });
 
 describe('buildKind (composed env → packaging → config resolver)', () => {
-  // buildKindStrict/readBuildConfigKind above cover the pieces; this pins the
-  // real function every consumer (coworkHome, minds-urls, server-source, …)
-  // calls, end-to-end. buildKind() caches in a module-level `_buildKind`, so
-  // each case re-imports a fresh module instance via vi.resetModules().
+  // Reimport each case because buildKind caches its result at module scope.
   async function freshBuildKind() {
     vi.resetModules();
     const mod = await import('./cowork-home');
@@ -216,10 +206,7 @@ describe('readBuildConfigKind (present-but-broken config must fail closed)', () 
 });
 
 describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
-  // ~/.anton predates the channel split, so its .env / state.json are prod-era
-  // by definition (prod-minted MindsHub credentials, prod ANTON_MINDS_URL).
-  // Seeding a non-prod channel's fresh home with it would leak prod
-  // credentials/URLs into an isolated channel — the review-flagged gap.
+  // Legacy ~/.anton contains prod credentials/URLs and must never seed a non-prod channel.
   let root: string;
   let legacyHome: string;
   let home: string;
@@ -257,7 +244,6 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
     migrateLegacyHomeInto('prod', home, legacyHome);
 
     expect(fs.readFileSync(path.join(home, '.env'), 'utf8')).toBe('ANTON_MINDS_URL=current');
-    // The absent file is still filled in.
     expect(fs.existsSync(path.join(home, 'state.json'))).toBe(true);
   });
 
@@ -268,7 +254,7 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
 
       migrateLegacyHomeInto(kind, home, legacyHome);
 
-      expect(fs.existsSync(home)).toBe(true); // dir still ensured for every kind
+      expect(fs.existsSync(home)).toBe(true);
       expect(fs.existsSync(path.join(home, '.env'))).toBe(false);
       expect(fs.existsSync(path.join(home, 'state.json'))).toBe(false);
     },

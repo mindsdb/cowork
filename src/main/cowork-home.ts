@@ -1,11 +1,5 @@
-// Single source of truth for the global Cowork config home.
-//
-// History: the desktop app, cowork-server, and the agent used to scatter
-// global config across `~/.anton` (the `.env` credentials + a state.json)
-// AND `~/.cowork` (db, projects, files, …). Everything but the `.env` and
-// state.json already lived under `~/.cowork`, so we consolidate the
-// stragglers here and migrate them on first run. Per-project agent data
-// stays workspace-relative (`<project>/.anton/…`) and is unrelated.
+// Global Cowork config home; migrate legacy ~/.anton credentials and state on first run.
+// Per-project .anton data is unrelated.
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -17,28 +11,15 @@ const LEGACY_HOME = path.join(os.homedir(), '.anton');
 
 export type { BuildKind };
 
-// Build-kind isolation: dev/preview/stable builds each get their own config home
-// (~/.cowork-<kind>) so switching builds never shares state — the desktop app
-// writes everything (tokens, .env, state.json) under coworkHome() and hands the
-// server the same path via COWORK_HOME. Critically this isolates the SQLite DB:
-// an older build reopening a DB a newer build advanced fails on the unrecognized
-// Alembic migration (ENG-324). Only prod uses ~/.cowork. The kind→home/API/branch
-// mapping lives in channels.ts; this module only resolves WHICH kind we are.
-//
-// Build kind resolves (first match wins):
-//   1. COWORK_BUILD_KIND env var (manual override)
-//   2. Unpackaged Electron (npm run dev) → "dev"
-//   3. build-config.json bundled in app resources (CI writes it pre-build)
-//   4. Packaged, no override, no config → "prod" (a legacy release)
-//
-// Fail-closed: only a genuinely ABSENT signal degrades to prod; a present-but-
-// broken config (unreadable / invalid JSON / no buildKind) or unrecognized kind
-// THROWS — pointing a non-prod build at the prod home on a typo is the hazard.
+// Non-prod channels use separate homes so credentials and database migrations cannot cross
+// channels.
+// Only prod uses ~/.cowork; channels.ts owns the mapping.
+// Resolve env override, unpackaged dev, then bundled config; only an absent config defaults to
+// prod.
 
 let _buildKind: BuildKind | undefined;
 
-// The build kind, resolved once and cached (it is fixed for the process, and
-// coworkHome() is called on many hot paths).
+// Build kind is fixed for the process; cache it for callers on hot paths.
 export function buildKind(): BuildKind {
   if (_buildKind) return _buildKind;
   _buildKind = resolveBuildKind();
@@ -46,10 +27,7 @@ export function buildKind(): BuildKind {
 }
 
 function resolveBuildKind(): BuildKind {
-  // A blank override (empty or whitespace-only — e.g. a CI templating slip
-  // emitting `COWORK_BUILD_KIND=""`) is treated as ABSENT: it falls through to
-  // config resolution rather than short-circuiting to prod. Only a non-blank
-  // value is a real override, which normalizeBuildKind accepts or THROWS on.
+  // Blank overrides fall through to config resolution; unknown non-blank values throw.
   const envKind = process.env.COWORK_BUILD_KIND;
   if (envKind && envKind.trim() !== '') {
     return normalizeBuildKind(envKind, 'COWORK_BUILD_KIND');
@@ -57,18 +35,13 @@ function resolveBuildKind(): BuildKind {
   // `app?.` (not `app.`): outside the Electron main process (tests, tooling)
   // `app` is undefined — treat as unpackaged/dev. In prod `app` is always set.
   if (!app?.isPackaged) return 'dev';
-  // Absent config → prod (legacy release); present-but-broken or unrecognized
-  // throws (readBuildConfigKind / normalizeBuildKind). See the module header.
   const configured = readBuildConfigKind();
   if (configured === undefined) return 'prod';
   return normalizeBuildKind(configured, 'build-config.json');
 }
 
-// Read `buildKind` from the bundled build-config.json. No file (ENOENT) →
-// undefined (a legacy release; the caller maps it to prod); present but
-// unreadable / invalid JSON / missing buildKind → THROW (a mispackaged build
-// fails closed). Only distinguishes "no config" from "broken config"; recognized-
-// kind validation is the caller's (normalizeBuildKind).
+// Missing config means a legacy release; unreadable or malformed config throws.
+// The caller validates the kind itself.
 export function readBuildConfigKind(): string | undefined {
   const configPath = path.join(process.resourcesPath || '', 'build-config.json');
   let raw: string;
@@ -98,22 +71,16 @@ export function readBuildConfigKind(): string | undefined {
   return String(kind);
 }
 
-/** Strict build-kind resolver for safety gates (e.g. OTA enablement). Unlike
- *  buildKind(), a missing / malformed / unrecognized packaged config resolves to
- *  `null` ("unknown") instead of prod, so a mispackaged build can never opt into
- *  production-only behavior. */
+/** For safety gates, missing or invalid packaged identity means unknown, never prod. */
 export function buildKindStrict(): BuildKind | null {
   const strict = (raw: string): BuildKind | null => {
     const kind = raw.trim().toLowerCase();
     return (BUILD_KINDS as readonly string[]).includes(kind) ? (kind as BuildKind) : null;
   };
-  // Same blank-is-absent handling as resolveBuildKind: a whitespace-only override
-  // falls through rather than being treated as an (unrecognized → null) value.
   const envKind = process.env.COWORK_BUILD_KIND;
   if (envKind && envKind.trim() !== '') return strict(envKind);
   if (!app?.isPackaged) return 'dev';
-  // Reuse the one config reader so parsing can't drift between the two resolvers;
-  // strict never throws or defaults to prod — broken (throws) or absent both → null.
+  // Strict resolution maps both missing and broken config to unknown.
   try {
     const configured = readBuildConfigKind();
     return configured === undefined ? null : strict(configured);
@@ -123,10 +90,7 @@ export function buildKindStrict(): BuildKind | null {
 }
 
 export function coworkHome(): string {
-  // Local desktop QA needs the same isolation guarantees as packaged channels,
-  // without writing into a developer's real ~/.cowork-dev. Keep this override
-  // deliberately unavailable to packaged applications and require an absolute
-  // path so a changed working directory can never redirect credentials/state.
+  // QA home overrides require an absolute path and are disabled in packaged apps.
   if (!app?.isPackaged) {
     const override = process.env.COWORK_DEV_HOME?.trim();
     if (override) {
@@ -161,10 +125,7 @@ export function readEnvFile(): Record<string, string> {
   return vars;
 }
 
-// Copy the legacy `~/.anton/.env` and `~/.anton/cowork/state.json` to the
-// current config home when they don't exist there yet, so existing installs
-// keep their credentials + provider state. Idempotent and best-effort — never
-// block startup on it.
+// Best-effort, idempotent migration of legacy credentials and provider state.
 export function migrateLegacyHome(): void {
   try {
     migrateLegacyHomeInto(buildKind(), coworkHome(), LEGACY_HOME);
@@ -173,11 +134,8 @@ export function migrateLegacyHome(): void {
   }
 }
 
-// The testable body of migrateLegacyHome (explicit kind + paths, so it's
-// unit-testable without Electron). Ensures the home dir exists for every kind,
-// but seeds legacy files into the PROD home only: ~/.anton predates the channel
-// split, so its .env carries prod-minted credentials and a prod ANTON_MINDS_URL —
-// seeding a non-prod home with it would leak prod URLs/credentials across envs.
+// Create every channel home, but migrate legacy files only into prod.
+// Legacy ~/.anton files contain production credentials and URLs.
 export function migrateLegacyHomeInto(kind: BuildKind, home: string, legacyHome: string): void {
   if (!fs.existsSync(home)) fs.mkdirSync(home, { recursive: true });
   if (kind !== 'prod') return;

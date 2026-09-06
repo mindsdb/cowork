@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CHANNELS } from './channels';
 
-// app-identity.ts runs its logic as a MODULE-LOAD side effect (it calls
-// app.setName for non-prod kinds so the userData dir is picked before token-store
-// reads it). channels.test.ts only checks the CHANNELS *data*; these tests pin
-// that app-identity correctly CONSUMES it — specifically that prod is never
-// re-named (its userData stays "anton", byte-for-byte as shipped) and every
-// non-prod kind is renamed to its channel appName. A flipped guard would
-// silently break channel isolation, so it gets a direct test.
+// Exercise module-load app.setName calls: prod must retain its historical userData name, while
+// other channels isolate state.
+// The channel-table tests alone cannot catch an inverted runtime guard.
 
 const appMock = { setName: vi.fn(), getName: vi.fn(() => 'mock-name') };
 vi.mock('electron', () => ({ app: appMock }));

@@ -1,12 +1,6 @@
 /**
- * Fire-and-forget anonymous analytics events.
- *
- * Mirrors the Python implementation in anton/analytics.py.
- * Uses a simple GET request with query parameters — no PII, no payload.
- *
- * Guarantees:
- *   - Never blocks the caller.
- *   - Never throws — all exceptions are silently swallowed.
+ * Anonymous analytics over GET query parameters; never blocks or throws.
+ * Mirrors anton/analytics.py. Do not include PII.
  */
 
 import * as https from 'https';

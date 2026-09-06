@@ -3,9 +3,8 @@ import * as path from 'path';
 import { resolveChannelIconPath } from './app-icon';
 import { BUILD_KINDS, CHANNELS } from './channels';
 
-// The runtime window/dock/taskbar icon (getIconPath in index.ts) delegates here.
-// Regression guard for the review finding: staging/preview must NOT fall back to
-// the prod icon.png after launch — the badged asset is selected instead.
+// Keep channel-badged runtime icons aligned with packaged icons; staging/preview must not fall back
+// to prod.
 const ASSETS = '/app/assets';
 const allExist = () => true;
 const noneExist = () => false;
