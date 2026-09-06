@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 
-// credential-provisioning pulls in keychain-service, which imports the
-// native `keytar` module at load time (see token-refresh.test.ts) — mocked
-// here so these tests never touch a real OS keychain.
+// Mock keychain-service before import so its native keytar dependency never touches the OS
+// keychain.
 vi.mock('./keychain-service', () => ({
   getStaticCredential: vi.fn(),
   setStaticCredential: vi.fn(),
@@ -81,12 +80,8 @@ describe('getCandidateStagingPaths', () => {
     expect(paths[0]).toContain('server-credentials.json');
   });
 
-  // A .deb installs to root-owned /opt, so — unlike Windows's per-user NSIS
-  // install — the app cannot delete a file left in its own resources dir.
-  // The deb postinst stages a user-owned copy first and removes the /opt one;
-  // the resources path stays as the fallback for the case where postinst could
-  // not identify an installing user (headless/container `dpkg -i`) and so left
-  // the original in place.
+  // Deb postinst stages user-owned credentials because /opt is root-owned.
+  // Keep the resources fallback for headless installs where no installing user could be identified.
   it('prefers the user-owned staged copy over resourcesPath on Linux', () => {
     setPlatform('linux');
     Object.defineProperty(process, 'resourcesPath', { value: '/opt/app/resources', configurable: true });
@@ -225,11 +220,8 @@ describe('loadBundledServerCredentials — unconfigured diagnostics', () => {
     vi.restoreAllMocks();
   });
 
-  // A deb installed by one user and launched by another misses BOTH paths: the
-  // postinst staged into the installer's home and deleted the /opt copy. The
-  // only symptom was "OAuth credentials not configured" with nothing in the log
-  // saying why, so say it once — but only in that genuinely-broken state, not on
-  // the every-launch path where an absent staged file is the healthy case.
+  // A different launching user can miss both staged and removed resource files. Warn only for this
+  // broken state, not healthy post-provisioning absence.
   it('says so when nothing is staged AND nothing was ever provisioned', async () => {
     vi.mocked(getStaticCredential).mockResolvedValue(null);
     await loadBundledServerCredentials();

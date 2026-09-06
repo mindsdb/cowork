@@ -1,21 +1,7 @@
-// Fallback store for keychain-service.ts, used only when keytar itself
-// throws - most commonly on Linux desktops/distros that don't ship or
-// auto-start a Secret Service provider (gnome-keyring, kwalletd) reachable
-// over D-Bus: minimal window managers, headless boxes, containers. macOS
-// Keychain and Windows Credential Manager are always present, so this path
-// is not expected to matter there.
-//
-// Same risk profile already accepted for the MindsHub login token in
-// token-store.ts (ENG-761): the derived key is NOT real cryptographic
-// protection - the file's 0600 permission bit is. Silent by design, same as
-// that precedent (a console.warn, not a user-facing notice); a follow-up
-// tracks surfacing degraded-mode status in the UI.
-//
-// Single JSON file rather than one file per entry: keychain-service.ts's
-// callers already treat their keys as one small, related set (per-connector
-// refresh tokens, plus the 15 static ENG-1241 credentials + a generation
-// marker), so one file avoids directory/many-file edge cases for a store
-// this small.
+// File fallback when the OS secure store fails, typically on Linux without a Secret Service
+// provider.
+// The derived encryption key only obscures plaintext; file mode 0600 provides the actual
+// protection.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -24,9 +10,7 @@ import { coworkHome } from './cowork-home';
 
 const FALLBACK_FILE = path.join(coworkHome(), 'keychain-fallback.json');
 
-// JSON-encode the pair rather than joining on a separator, so no choice of
-// separator character has to be proven absent from every service/account
-// value that will ever exist.
+// JSON-encode the service/account pair to avoid delimiter collisions.
 function entryKey(service: string, account: string): string {
   return JSON.stringify([service, account]);
 }

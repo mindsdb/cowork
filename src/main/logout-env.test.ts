@@ -3,9 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// writeEnvFileAtomic is #548's atomic + lock-tolerant writer (ENG-1209). Stub
-// it so we can drive the "write still fails after retries" path deterministically
-// without importing minds-auth's electron/keychain dependencies.
+// Stub the atomic writer to force exhausted retries without loading Electron/keychain dependencies.
 const writeEnvFileAtomic = vi.hoisted(() => vi.fn());
 vi.mock('./minds-auth', () => ({ writeEnvFileAtomic }));
 
@@ -42,11 +40,8 @@ describe('scrubEnvCredentials (ENG-1206)', () => {
     for (const k of KEYS) expect(process.env[k]).toBeUndefined();
   });
 
-  // A write that never lands surfaces as a rejection (so the caller can observe
-  // it) — but process.env is still scrubbed via `finally`. The logout handler
-  // treats this as best-effort and presses on: since ENG-941 the DB, not the
-  // .env, is authoritative for sign-out, so a failed scrub is not a failed
-  // sign-out — it only leaves stale keys for the standalone anton CLI.
+  // Even a failed file write must scrub process.env. Logout treats .env cleanup as best-effort
+  // because the DB owns sign-out state.
   it('rejects when the atomic write fails, but still clears process.env', async () => {
     fs.writeFileSync(envPath, 'ANTON_ANTHROPIC_API_KEY=sk-1');
     writeEnvFileAtomic.mockRejectedValue(new Error('EPERM: operation not permitted'));
@@ -62,11 +57,8 @@ describe('scrubEnvCredentials (ENG-1206)', () => {
     for (const k of KEYS) expect(process.env[k]).toBeUndefined();
   });
 
-  // The one-time migration off a minted device key reads
-  // `ANTON_MINDS_API_KEY` out of this file to decide whether it has already
-  // run, and signing out is what clears it. If the scrub misses the line the
-  // migration fires again on the next launch, and on every launch after that,
-  // signing the user out each time.
+  // Remove ANTON_MINDS_API_KEY so the one-time device-key migration cannot repeat sign-out on every
+  // launch.
   it('strips the line the boot migration uses as its marker, so it runs once', async () => {
     fs.writeFileSync(envPath, [
       'ANTON_MINDS_API_KEY=mdb_minted_by_an_older_build',

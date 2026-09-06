@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// minds-auth transitively imports server-process, which statically imports
-// `electron`. In the node test env `electron` resolves to a path string, so
-// stub it before importing the module under test.
+// Stub Electron before import; the Node test environment otherwise resolves it to a path string.
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', getVersion: () => '0.0.0-test', isPackaged: false },
   shell: { openExternal: vi.fn() },
@@ -32,20 +30,16 @@ vi.mock('./installer', () => ({
 vi.mock('./installation-id', () => ({
   getInstallationId: vi.fn(() => 'deadbeef00000000'),
 }));
-// Partial mock: only the three path functions are pinned to the test dir.
-// Everything else (buildKind, readEnvFile, …) comes from the real module —
-// a full-replacement factory breaks at file load whenever cowork-home gains
-// an export that a transitive import reads at module scope (minds-urls
-// calls buildKind() at load time).
+// Pin only the path functions; real module-load dependencies still need cowork-home's other
+// exports.
 vi.mock('./cowork-home', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./cowork-home')>()),
   coworkHome: () => '/tmp/minds-auth-lifecycle-test',
   coworkEnvPath: () => '/tmp/minds-auth-lifecycle-test/.env',
   coworkStatePath: () => '/tmp/minds-auth-lifecycle-test/state.json',
 }));
-// server-auth reads the owner token lazily from the cowork .env; pin a fixed
-// header so tests can assert the localhost settings PUTs carry it themselves
-// (main-process fetches never get the renderer's webRequest injection).
+// Pin the owner header so localhost PUT assertions verify it; main fetches do not receive renderer
+// webRequest injection.
 vi.mock('./server-auth', () => ({
   authHeader: () => ({ Authorization: 'Bearer owner-token' }),
 }));
@@ -84,9 +78,8 @@ type Route = {
   reply: (call: RoutedCall) => { status: number; body: unknown };
 };
 
-// URL-routed fetch stub. Unmatched requests get a 500 — the org-candidate
-// listing helpers swallow failures, so the flow keeps to its happy path
-// without stubbing every Keycloak endpoint.
+// Unmatched fetch routes return 500; swallowed org-list failures let unrelated tests avoid stubbing
+// every Keycloak endpoint.
 function installRoutedFetch(routes: Route[]): RoutedCall[] {
   const calls: RoutedCall[] = [];
   globalThis.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
@@ -114,12 +107,9 @@ const DEVICE_KEY_NAME = 'hub:anton:deadbeef00000000';
 
 import { revokeDeviceKeyAndEndSession, getRevokeToken } from './minds-auth';
 
-// ─── ENG-498: revoke this device's key on logout ─────────────────────
 describe('revokeDeviceKeyAndEndSession', () => {
   beforeEach(() => {
-    // Prove endKeycloakSession used the PASSED snapshot token rather than
-    // a store read — these tests pass tokens explicitly and must not
-    // depend on the token-store mocks at all.
+    // Use the supplied token snapshot rather than reading token-store state.
     (getRefreshToken as Mock).mockReturnValue(null);
   });
   afterEach(() => {
@@ -162,15 +152,12 @@ describe('revokeDeviceKeyAndEndSession', () => {
     // The snapshotted refresh token is used — clearTokens() has already
     // wiped the store by the time this detached chain runs.
     expect(calls[endSession].body).toContain('rt-snapshot');
-    // Visibility (ENG-498 review): a matched revoke logs how many keys it got.
     expect(logSpy).toHaveBeenCalledWith('[logout] revoked %d device key(s)', 2);
   });
 
   it('skips soft-revoked rows so the bounded budget is spent on the live key', async () => {
-    // Every sign-in's pre-mint cleanup soft-revokes a row, and revoked rows
-    // list forever (oldest first). Without the filter, the 5s revoke budget
-    // burns on re-deleting them and the live key — last in the list — is
-    // the first casualty of the timeout.
+    // Skip already-revoked rows so the bounded revoke budget reaches the live keys at the end of
+    // the list.
     const calls = installRoutedFetch([
       {
         method: 'GET', match: '/api-keys/',
@@ -195,11 +182,8 @@ describe('revokeDeviceKeyAndEndSession', () => {
   });
 
   it('still ends the session when the key list returns nothing', async () => {
-    // Nothing in this chain actually throws — listExistingKeys/
-    // deleteKeyByPrefix both swallow their own failures by design, so a
-    // failed list just resolves to zero matches. The try/catch around the
-    // revoke in the implementation is defensive insurance for a future
-    // change, not something this path exercises.
+    // List/delete helpers swallow failures here. This path returns zero matches and does not
+    // exercise the outer defensive catch.
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const calls = installRoutedFetch([
       // /api-keys/ list gets the default 500 → revoke matches zero keys.
@@ -207,9 +191,8 @@ describe('revokeDeviceKeyAndEndSession', () => {
     ]);
     await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
     expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
-    // Visibility (ENG-498 review): a zero-match revoke logs why it's
-    // ambiguous (list failure vs. already-gone vs. wrong org) rather than
-    // silently deleting nothing forever.
+    // A zero-match revoke must log its ambiguity: failed listing, already-gone key or wrong
+    // organization.
     expect(warnSpy).toHaveBeenCalledWith(
       '[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org',
       DEVICE_KEY_NAME,
@@ -226,10 +209,7 @@ describe('revokeDeviceKeyAndEndSession', () => {
   });
 
   it('bounds the revoke phase — end-session still fires when the key list hangs', async () => {
-    // Black-holed auth-service: the /api-keys/ GET never resolves. Without
-    // the LOGOUT_REVOKE_TIMEOUT_MS bound this would delay end-session
-    // indefinitely, leaving the IdP SSO session alive long after the user
-    // saw "signed out".
+    // Bound a black-holed key-list request so it cannot indefinitely delay IdP session logout.
     vi.useFakeTimers();
     const calls: { method: string; url: string }[] = [];
     globalThis.fetch = vi.fn((input: unknown, init?: RequestInit) => {
@@ -261,10 +241,8 @@ describe('getRevokeToken', () => {
     await expect(getRevokeToken()).resolves.toBe(TOKEN_A);
   });
 
-  // This test's fetch never resolves, so refreshTokensOnly's internal
-  // single-flight promise (`_inflightRefresh`) is left permanently
-  // pending — keep this the LAST test in the file, and never add a test
-  // after it that calls refreshTokensOnly directly or indirectly.
+  // Keep this test last: its unresolved refresh leaves _inflightRefresh pending, blocking any later
+  // direct or indirect refreshTokensOnly call.
   it('gives up after the timeout instead of hanging logout on a dead IdP', async () => {
     vi.useFakeTimers();
     (getAccessToken as Mock).mockReturnValue(null);
