@@ -16,7 +16,6 @@ describe('syncSettingsToDb', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  // ─── ENG-739 regression: models must never be bulk-synced from .env ──
   it('never PUTs planning_model / coding_model, even when present in the lines', async () => {
     await syncSettingsToDb([
       'ANTON_MINDS_API_KEY=mdb_abc',
@@ -42,12 +41,8 @@ describe('syncSettingsToDb', () => {
     expect(JSON.parse((providerCall![1] as any).body).value).toBe('minds_cloud');
   });
 
-  // ─── A real BYO endpoint is never rewritten to MindsHub ──────────────
-  //
-  // A MindsHub key is not evidence of MindsHub routing: everyone who reaches
-  // BYOK through MindsHub has both. Rewriting on the key alone stored
-  // minds_cloud beside the user's own base URL and model, so prompts meant for
-  // a local model went to the hosted gateway.
+  // A MindsHub key does not prove routing intent; preserve a BYOK base URL/model rather than
+  // redirect its prompts to the gateway.
   const providerValueFor = (calls: any[], key: string) => {
     const call = calls.find(([url]) => String(url).endsWith(`/settings/${key}`));
     return call ? JSON.parse((call[1] as any).body).value : undefined;
@@ -143,9 +138,8 @@ describe('syncSettingsToDb', () => {
     expect(providerValueFor(fetchMock.mock.calls, 'planning_provider')).toBe('minds_cloud');
   });
 
-  // ...but once an OpenAI key is set it does not, so nothing identifies the
-  // endpoint and the turn must stop at the server's gate instead of routing
-  // to the hosted gateway.
+  // With an OpenAI key and no base URL, leave routing unresolved for the server gate rather than
+  // guessing MindsHub.
   it('fails closed when an OpenAI key is set but no base URL is', async () => {
     await syncSettingsToDb([
       'ANTON_MINDS_API_KEY=mdb_abc',
@@ -246,9 +240,8 @@ describe('syncModelsToDb', () => {
     expect(await syncModelsToDb(['ANTON_MINDS_API_KEY=mdb_abc'])).toBe(true);
   });
 
-  // ENG-1358: the server now refuses a model id the live catalog doesn't list.
-  // That refusal is permanent — retrying it forever would strand onboarding on
-  // a write that can never succeed, so it must NOT read as a transient failure.
+  // A catalog model refusal is permanent; retries cannot make the value valid and would strand
+  // onboarding.
   it('treats a 400 rejection as permanent, not a retryable failure', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     fetchMock.mockResolvedValue({ ok: false, status: 400 });
@@ -262,10 +255,8 @@ describe('syncModelsToDb', () => {
     expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
   });
 
-  // Only 400/422 mean "the server refused this VALUE". A 401 is an auth state a
-  // later attempt can clear, so treating the whole 4xx class as permanent would
-  // silently drop a model write that would have succeeded. 401 is also the only
-  // other 4xx actually reachable on this route.
+  // Only 400/422 permanently reject a model value. Authentication failures can recover, so other
+  // 4xx responses must retain the retry payload.
   it('treats a 401 as retryable, not a permanent refusal', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 401 });
     expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
@@ -290,8 +281,8 @@ describe('syncModelsToDbWithRetry', () => {
 
   it('recovers from a transient failure (fails once, then succeeds on retry)', async () => {
     fetchMock
-      .mockResolvedValueOnce({ ok: false } as Response) // attempt 1
-      .mockResolvedValue({ ok: true } as Response);      // retry
+      .mockResolvedValueOnce({ ok: false } as Response)
+      .mockResolvedValue({ ok: true } as Response);
     expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 3, 0)).toBe(true);
   });
 

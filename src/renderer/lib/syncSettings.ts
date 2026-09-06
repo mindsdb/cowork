@@ -1,10 +1,6 @@
 /**
- * Sync .env-style settings lines to the cowork-server SQLite database.
- *
- * The DB is authoritative for cowork-server — .env is a legacy layer for
- * the standalone `anton` CLI and Electron's main process. Any code that
- * writes to .env (host.saveSettings) should also call one of these
- * helpers so the DB stays in sync.
+ * cowork-server's DB is authoritative; .env remains for the CLI and main process. Pair
+ * host.saveSettings with DB sync.
  */
 import { BASE, authFetch } from '../cowork/api';
 import { mindsServesOpenAiCompatible } from '../../shared/minds-endpoint';
@@ -18,25 +14,16 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MINDS_URL: 'minds_url',
   ANTON_PLANNING_PROVIDER: 'planning_provider',
   ANTON_CODING_PROVIDER: 'coding_provider',
-  // The router role (turn routing + history summarization) is a provider like
-  // any other. Without this key a role repointed elsewhere is never restored,
-  // so it stays on whatever it was last set to forever.
+  // Include the router provider so bulk sync restores routing and summarization choices.
   ANTON_ROUTER_PROVIDER: 'router_provider',
-  // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
-  // This helper runs on every login, post-install, and web token-refresh from
-  // the *full* .env, so mapping the model keys here re-pins a user who just
-  // recovered via the picker (their .env still holds the legacy `latest:` line,
-  // which we now preserve). Models enter the DB only via explicit writes —
-  // the Settings picker, or onboarding's dedicated model PUT. .env model lines
-  // are CLI-only.
+  // Exclude model keys from recurring .env sync: stale CLI model lines must not overwrite explicit
+  // picker/onboarding choices.
   ANTON_MEMORY_MODE: 'memory_mode',
   ANTON_EPISODIC_MEMORY: 'episodic_memory',
 };
 
 /**
- * Whether an `openai-compatible` provider line denotes MindsHub.
- *
- * The OpenAI key is supplied because this answer decides routing — see
+ * Pass the OpenAI key because this classification controls routing; see
  * mindsServesOpenAiCompatible.
  */
 function isMindsEndpoint(envMap: Record<string, string>): boolean {
@@ -48,14 +35,8 @@ function isMindsEndpoint(envMap: Record<string, string>): boolean {
 }
 
 /**
- * Push an array of "KEY=value" lines to the backend DB via PUT /settings/:key.
- *
- * Handles the provider-enum translation (hyphens → underscores, detection of
- * minds_cloud vs openai_compatible).
- *
- * Returns true if every mapped PUT succeeded (2xx), false if any failed or
- * the server was unreachable. Callers may use this to decide whether to retry
- * or fall back to another recovery path.
+ * Sync mapped KEY=value lines, translating provider enums. Return false if any mapped PUT fails or
+ * cannot reach the server.
  */
 export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
   const envMap: Record<string, string> = {};
@@ -95,18 +76,13 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
   return allOk;
 }
 
-// Model env keys → their dedicated DB setting keys. Intentionally SEPARATE from
-// ENV_TO_SETTING (ENG-739): models must NEVER ride the bulk .env re-sync, or a
-// routine login/token-refresh would re-pin a picker choice from the stale .env
-// `latest:` line. See the ENG-739 note on ENV_TO_SETTING above.
+// Model writes are explicit-only; never merge these keys into recurring ENV_TO_SETTING sync.
 const MODEL_ENV_TO_SETTING: Record<string, string> = {
   ANTON_PLANNING_MODEL: 'planning_model',
   ANTON_CODING_MODEL: 'coding_model',
 };
 
-// Own-key check — NOT `key in MODEL_ENV_TO_SETTING` / bracket access, which also
-// match inherited Object.prototype names (`toString`, `constructor`, …) and
-// would treat a stray `toString=…` line as a model key with a function value.
+// Exclude inherited keys such as toString and constructor.
 const isModelEnvKey = (key: string): boolean =>
   Object.prototype.hasOwnProperty.call(MODEL_ENV_TO_SETTING, key);
 
@@ -119,24 +95,10 @@ export function modelLinesFrom(lines: string[]): string[] {
 }
 
 /**
- * Explicitly write the model chosen during onboarding to the DB via the
- * dedicated PUT /settings/:key — the ONLY non-picker path allowed to set a model
- * (ENG-739). Callers must invoke this only for a genuine explicit choice
- * (onboarding), NEVER from the recurring login/post-install/token-refresh bulk
- * sync — doing so would reopen the ENG-739 picker-clobber. A minds onboarding
- * writes no model line, so this is a vacuous success there (the backend resolves
- * the tier-aware default). Kept alongside syncSettingsToDb so both model-write
- * and bulk-write logic live in one place (ENG-922).
- *
- * Returns true when every model PUT it attempted either succeeded or was
- * REFUSED on its merits (400/422 — see the branch below), and false only when a
- * write may still land on a retry. Callers MUST check this before dropping their
- * retry payload: a *lost* model write is not self-healing — model keys are
- * excluded from the bulk .env re-sync (ENG-739) AND the backend's startup
- * migration, so a silently dropped write leaves a fresh install permanently
- * config-not-ready (#455 review). A refused one is different in kind: retrying
- * it can never succeed, and the value was rejected precisely because it wouldn't
- * have worked.
+ * Persist an explicit onboarding model choice; never call from recurring bulk sync. True means
+ * every attempted write succeeded or was permanently refused (400/422), or nothing needed writing.
+ * False requires retaining the retry payload: bulk sync and startup migration cannot repair a lost
+ * model write.
  */
 export async function syncModelsToDb(lines: string[]): Promise<boolean> {
   let allOk = true;
@@ -154,24 +116,13 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value }),
       });
-      // 400 / 422 are the server REFUSING this value on its merits — for a
-      // model key, an id absent from the live catalog (ENG-1358). Permanent, so
-      // retrying burns the backoff and then strands the caller holding a payload
-      // that can never succeed. Treat it as handled and move on.
-      //
-      // Deliberately NOT the whole 4xx class: 401 in particular is an auth state
-      // that a later attempt can clear, and treating it as permanent would
-      // silently drop a model write that would have succeeded. Everything else —
-      // other 4xx, 5xx, or a response with no usable status — stays retryable,
-      // preserving the #455 contract that a genuinely lost write is reported.
+      // 400/422 refuse the value permanently and count as handled. Other failures remain retryable,
+      // including 401 because later authentication can recover.
       const status = typeof res.status === 'number' ? res.status : 0;
       if (!res.ok) {
         if (status === 400 || status === 422) {
-          // The row is left as it was: unset on a fresh install (the backend
-          // then resolves its provider default, a working config), or the
-          // PREVIOUS id if one was already stored — which for an install
-          // already holding a bad model means it stays bad until the user
-          // changes it in Settings. The turn-time card is what surfaces that.
+          // A refusal leaves the stored model unchanged; an already-invalid selection still needs
+          // user correction.
           console.warn(
             `[settings] server refused ${settingKey}="${value}" (${status}) — ` +
             'not retrying; the stored value is unchanged',
@@ -190,16 +141,9 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
- * syncModelsToDb with a few retries and exponential backoff — for the
- * post-install replay (ENG-922). The cowork-server has just been
- * installed/started, so a lone failed request is usually a transient settling
- * blip; the backoff gives it a moment to come up rather than hammering it
- * back-to-back (#455 review). Returns true once a full write succeeds, is
- * refused on its merits (400/422 — permanent, so no retry can help), or there's
- * nothing to write; false if every attempt failed for a reason a retry might
- * still clear — on false the caller MUST keep its retry payload (see the
- * syncModelsToDb note on why a lost model write doesn't self-heal).
- * `baseDelayMs` is 0 in tests to keep them fast.
+ * Retry transient post-install failures with exponential backoff. False means the caller must
+ * retain its model payload; successful or permanently refused writes count as handled. Tests use
+ * baseDelayMs=0.
  */
 export async function syncModelsToDbWithRetry(
   lines: string[],

@@ -1,18 +1,6 @@
-// Registry of app skins — the "Style" axis, orthogonal to light/dark.
-//
-// Adding a new theme is a two-step change:
-//   1. Add an entry to SKINS below.
-//   2. Add a stylesheet that re-declares the design tokens under
-//      body[data-skin="<id>"] — see styles/skin-8bit.css for the
-//      pattern (provide both [data-theme="dark"] and [data-theme="light"]
-//      blocks so the skin composes with the Theme toggle) — and import
-//      it next to skin-8bit.css in main.tsx / web-main.tsx.
-//
-// Everything else reads this registry: the Settings → Appearance →
-// Style control, the floating corner toggle (cycles through entries),
-// persistence, and the first-paint bootstrap in each entry file. An
-// unknown stored id normalizes back to the default, and an unknown
-// body[data-skin] value is harmless (no CSS matches it → normal look).
+// Skins compose with light/dark themes. Add each skin to SKINS and import its body[data-skin] token
+// stylesheet in both main.tsx and web-main.tsx, with light and dark variants. Unknown stored ids
+// fall back to the default.
 
 export interface Skin {
   id: string;
