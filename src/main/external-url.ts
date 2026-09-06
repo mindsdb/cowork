@@ -1,8 +1,6 @@
 /**
- * Normalize a renderer-provided browser URL at Electron's privileged shell
- * boundary. A string prefix check is insufficient here: URL parsing is the
- * canonical authority for schemes and prevents executable/custom handlers from
- * reaching `shell.openExternal` if a renderer call site forgets to validate.
+ * Parse renderer URLs at the privileged shell boundary; prefix checks can admit executable/custom
+ * schemes.
  */
 export function normalizeExternalBrowserUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;

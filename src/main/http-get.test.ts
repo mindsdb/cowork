@@ -33,14 +33,13 @@ describe('httpsGet bounding (ENG-749)', () => {
     expect(res.body.toString()).toBe('hello');
   });
 
-  // Regression: an update dependency (the bundle download) that never settles.
-  // A steady trickle keeps resetting the per-socket inactivity timeout, so only
-  // the absolute wall-clock deadline can end it — proving the poll can't hang.
+  // A steady trickle defeats socket inactivity timeouts; only the absolute deadline can terminate
+  // this download.
   it('rejects on the absolute deadline while the response keeps trickling', async () => {
     const port = await listen((req, res) => {
       res.writeHead(200);
       res.write('a');
-      const iv = setInterval(() => { try { res.write('a'); } catch { /* closed */ } }, 20);
+      const iv = setInterval(() => { try { res.write('a'); } catch {  } }, 20);
       req.on('close', () => clearInterval(iv));
     });
     // Inactivity 5s never fires under a 20ms trickle; absolute 150ms bounds it.
