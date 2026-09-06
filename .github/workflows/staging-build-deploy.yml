@@ -1,8 +1,5 @@
 name: Staging - Build and Deploy on push to staging
 
-# THE staging pipeline. Unit tests, the web SPA image, and both signed installers
-# in one run tree — it used to be three separate runs on the same push, so a merge
-# had three places to check and the installers reported to nobody.
 
 on:
   push:
@@ -16,8 +13,6 @@ defaults:
   run:
     shell: bash
 
-# Cancel any existing runs of this workflow on the same branch/pr
-# We always want to build/deploy/test a new commit over an older one
 concurrency:
   group: ${{ github.workflow_ref }}
   cancel-in-progress: true
@@ -40,29 +35,18 @@ jobs:
     needs: [run-unit-tests]
     uses: ./.github/workflows/build-installers.yml
     with:
-      # stable -> the PyPI rc stream, following cowork-server's publish-staging
-      # track. That track has to be live and to have published an rc; otherwise the
-      # floor resolves to the latest MAIN release.
+      # stable uses the PyPI rc stream; without a published rc it falls back to the latest main release.
       build_kind: stable
       minds_api_url: https://api.staging.mindshub.ai
-      # Still matters for machines already carrying a GIT install of cowork-server:
-      # the source-aware updater keeps them on git@staging. Fresh installs use the
-      # rc stream above.
+      # Keep git@staging for existing source-aware installs; fresh installs use the rc stream.
       server_ref: staging
       anton_ref: staging
       server_channel: pypi
     secrets: inherit
 
   notify:
-    # Alert the eng channel if ANY job in the staging pipeline fails. A called
-    # workflow reports failure when any job inside it failed, so three entries
-    # cover the whole graph.
-    # One job covers both outcomes: a `uses:` job cannot branch on status, so
-    # the aggregate result picks the failed or recovered message, and a
-    # cancelled run stays silent.
-    #
-    # It cannot cover a run that never started (`startup_failure`, zero jobs) —
-    # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
+    # Report aggregate failure/recovery, staying quiet for cancellations.
+    # pipeline-watchdog handles startup failures with no runnable jobs.
     needs: [run-unit-tests, build-deploy, build-installers]
     if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
@@ -72,10 +56,7 @@ jobs:
     with:
       env-name: "staging build + installers"
       status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
-      # A staging failure is release-blocking once the freeze window is open, and
-      # an ordinary integration-branch red before it. `freeze-scoped` keeps the
-      # red alert for the former and drops the latter to a muted notice, so the
-      # alert still means "look now" when it is styled to say so.
+      # Escalate to a release-blocking alert only during the freeze window.
       freeze-scoped: true
       runs-on: ubuntu-latest
     secrets: inherit
