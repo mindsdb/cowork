@@ -44,9 +44,7 @@ export function startRefreshLoop(
 ): void {
   const key = loopKey(engine, accountEmail);
   stopRefreshLoop(engine, accountEmail);
-  // A stale flag from a previous disconnect of this same (engine, account)
-  // pair would otherwise make the very first tick of this fresh loop kill
-  // itself immediately.
+  // Clear any prior disconnect flag before starting a new loop for this account.
   revokedConnections.delete(key);
   const expiresAtMs = new Date(expiresAtIso).getTime();
   console.log(`[token-refresh] loop started: ${key} expires ${new Date(expiresAtMs).toISOString()} refresh-in ${Math.round((expiresAtMs - PRE_REFRESH_WINDOW_MS - Date.now()) / 60000)}min`);
@@ -150,9 +148,8 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     });
 
 
-    // Google's token endpoint returns 400 { error: "invalid_grant" } for a
-    // revoked/expired refresh token (RFC 6749) — 401 is what its resource
-    // APIs return for a bad access token, not what this endpoint returns.
+    // Revoked refresh tokens return HTTP 400 invalid_grant; resource API 401 behavior does not
+    // apply here.
     const isRevoked = res.status === 401 || (
       res.status === 400 &&
       (await res.json().catch(() => null) as { error?: string } | null)?.error === 'invalid_grant'
@@ -175,9 +172,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       refresh_token?: string;
     };
 
-    // Re-check: a disconnect can land after the Google round-trip above but
-    // before we write anything — without this, we could resurrect a keychain
-    // entry (or vault token) for a connection the user just removed.
+    // Re-check disconnect after the request so a late refresh cannot resurrect removed credentials.
     if (revokedConnections.has(key)) return;
 
     const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
@@ -206,11 +201,8 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   }
 }
 
-// Mints a fresh access_token + fetches the Picker API key on demand, for
-// handoff to the renderer — the Google Picker widget runs client-side and
-// needs both to let the user browse/select files outside what drive.file
-// has already granted access to. Mirrors tick()'s refresh-token exchange
-// but returns the token instead of writing it to the vault.
+// Return a fresh access token and Picker key to the renderer without writing the token to the
+// vault.
 export async function getPickerAccess(
   engine: string,
   accountEmail: string,
@@ -271,16 +263,8 @@ export async function getPickerAccess(
   }
 }
 
-// PickerBuilder.setAppId() wants the numeric GCP project number, which is
-// just the leading digits of the OAuth client id
-// (<project-number>-<hash>.apps.googleusercontent.com) — no separate
-// credential needed. This is required for Picker to actually attribute a
-// drive.file per-file grant to this app; without it the PICKED callback
-// fires normally but no real grant gets created, and every file (old or
-// freshly picked) 404s as `notFound` when read back. Extracted as a pure
-// function so a client-id shape that doesn't match (returning '') is
-// covered by a direct test, not just exercised incidentally through the
-// full network call above.
+// Picker appId is the numeric GCP project prefix of the OAuth client ID.
+// Without it PICKED can fire without granting drive.file access; unknown formats return empty.
 export function parseAppIdFromClientId(clientId: string): string {
   return /^(\d+)-/.exec(clientId)?.[1] || '';
 }
