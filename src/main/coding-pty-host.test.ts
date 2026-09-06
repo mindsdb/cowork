@@ -5,11 +5,8 @@ const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock('node-pty', () => ({ spawn: spawnMock }));
 
 function fakePty() {
-  // Real node-pty's onData supports multiple independent listeners (each
-  // call adds one, returning its own disposable) — coding-pty-host.ts
-  // registers a second one-shot listener for initialInput timing
-  // alongside the data-forwarding one, so a mock that only remembers the
-  // latest callback would silently drop the first.
+  // Model independent onData listeners: forwarding and initialInput timing subscribe separately and
+  // must not overwrite each other.
   const dataListeners: Array<(d: string) => void> = [];
   let exitListener: ((e: { exitCode: number }) => void) | undefined;
   return {
@@ -99,10 +96,8 @@ describe('coding-pty-host', () => {
   });
 
   describe('initialInput timing', () => {
-    // Typed immediately at spawn, initialInput would land while the PTY's
-    // own line discipline is still echoing keystrokes as plain text —
-    // claude hasn't switched into raw/alt-screen mode yet the instant
-    // spawn() returns. These lock in the fix: wait for real output first.
+    // Wait for output before initialInput so PTY line discipline cannot echo it before Claude
+    // enters raw/alt-screen mode.
     afterEach(() => {
       vi.useRealTimers();
     });
@@ -118,7 +113,7 @@ describe('coding-pty-host', () => {
       expect(proc.write).not.toHaveBeenCalled();
 
       proc.emitData('splash screen output');
-      expect(proc.write).not.toHaveBeenCalled(); // still not yet — one more short beat
+      expect(proc.write).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(150);
       expect(proc.write).toHaveBeenCalledWith('hi\r');
     });
@@ -147,7 +142,7 @@ describe('coding-pty-host', () => {
       await vi.advanceTimersByTimeAsync(150);
       expect(proc.write).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(1500); // fallback timer was cleared — must not fire again
+      await vi.advanceTimersByTimeAsync(1500);
       expect(proc.write).toHaveBeenCalledTimes(1);
     });
 

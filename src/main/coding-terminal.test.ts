@@ -54,9 +54,7 @@ function fakeSender() {
   return { send: vi.fn() } as any;
 }
 
-// startCodingTerminal awaits detectClaudeCode/revealMindsApiKey (both mocked
-// promises) before registering listeners and posting 'start' — wait for that
-// to actually happen before emitting host-process events at it.
+// Wait for asynchronous detection/key lookup to register host listeners before emitting events.
 async function waitForStartPosted(child: FakeUtilityProcess) {
   await vi.waitFor(() => expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'start' })));
 }
@@ -110,10 +108,7 @@ describe('coding-terminal', () => {
   });
 
   it('strips inherited CLAUDE_CODE_*/ANTHROPIC_* vars so a nested session cannot leak in', async () => {
-    // e.g. this exact scenario in dev: launching the app from inside a
-    // Claude Code session's own shell inherits CLAUDE_CODE_CHILD_SESSION,
-    // which makes the embedded CLI think it's a child session and disables
-    // its own transcript saving.
+    // An inherited CLAUDE_CODE_CHILD_SESSION makes the embedded CLI disable transcript saving.
     process.env.CLAUDE_CODE_CHILD_SESSION = '1';
     process.env.CLAUDE_CODE_SESSION_ID = 'outer-session';
     process.env.CLAUDECODE = '1';
@@ -272,9 +267,8 @@ describe('coding-terminal', () => {
     const { startCodingTerminal } = await import('./coding-terminal');
     const sender = fakeSender();
 
-    // A caller violating the TS contract (e.g. a bug in untyped renderer
-    // code forwarding the model object instead of its id) is exactly what
-    // this guard exists to catch — hence the deliberate `as any`.
+    // Untyped renderer callers can violate the TS contract; pass a model object deliberately to
+    // exercise the runtime guard.
     const badOpts = { projectPath: '/proj', message: '', model: { id: 'mindshub_air', name: 'MindsHub Air' } } as any;
     const result = await startCodingTerminal('task-objmodel', badOpts, 80, 24, sender);
 
