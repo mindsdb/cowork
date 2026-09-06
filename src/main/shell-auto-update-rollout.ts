@@ -1,13 +1,8 @@
 export type ShellAutoUpdateBuildKind = 'prod' | 'stable' | string | null;
 
 /**
- * Both stable and prod auto-update by default. Stable led the rollout; prod
- * followed once the signed N → N+1 swap-on-relaunch smoke passed (macOS and
- * Windows) and its observation window closed.
- *
- * An explicit false value is the emergency kill switch (either ring). Unknown
- * non-empty values fail closed so a misspelled override cannot accidentally
- * enable it.
+ * Enable stable/prod by default. Explicit false disables either ring; unknown nonempty overrides
+ * fail closed.
  */
 export function shellAutoUpdateEnabledFor(
   buildKind: ShellAutoUpdateBuildKind,

@@ -6,10 +6,8 @@ import {
   type ShellUpdaterAdapter,
 } from './shell-auto-updater';
 
-// Mirror electron-updater's real module shape: a CommonJS module exposing
-// `autoUpdater` as a named export, `__esModule: true`, and NO default export.
-// This is what makes the default-import interop form resolve `.default` to
-// undefined and throw in the packaged app (see createDefaultElectronUpdaterAdapter).
+// Mirror electron-updater's CommonJS named autoUpdater export with no default; a default-export
+// mock would hide broken packaged interop.
 const fakeAutoUpdater = vi.hoisted(() => ({
   autoDownload: true,
   autoInstallOnAppQuit: false,
@@ -160,12 +158,8 @@ describe('createShellAutoUpdater', () => {
   });
 
   it('classifies a foreign-signed installer (ERR_UPDATER_INVALID_SIGNATURE) as terminal', async () => {
-    // The real electron-updater rejection: NsisUpdater.verifySignature throws
-    // this exact message shape with code ERR_UPDATER_INVALID_SIGNATURE. The
-    // message deliberately contains none of the integrity substrings
-    // (signature/sha512/checksum), so classification must fall back to `code`
-    // — otherwise a refused foreign-signed installer reads as a recoverable
-    // network error and the UI offers Retry instead of refusing terminally.
+    // Use the real invalid-signature code with no matching integrity words so classification must
+    // use code, not message text.
     const signer = setup();
     await signer.updater.check('boot');
     const rejected = Object.assign(
@@ -186,9 +180,7 @@ describe('createShellAutoUpdater', () => {
   });
 
   it('keys the signer rejection on `code`, not the message text', async () => {
-    // Isolates the code-based branch: a message with none of the integrity
-    // phrases (no "not signed"/"sha512"/"checksum") must still be terminal via
-    // `code` alone — so the check can't silently regress behind the text match.
+    // Omit integrity phrases to isolate terminal classification by error code.
     const signer = setup();
     await signer.updater.check('boot');
     signer.adapter.emit(
@@ -203,10 +195,8 @@ describe('createShellAutoUpdater', () => {
   });
 
   it('classifies a transient TLS leaf-signature error as recoverable, not terminal', async () => {
-    // Node's TLS failure carries code UNABLE_TO_VERIFY_LEAF_SIGNATURE and the
-    // message "unable to verify leaf signature" — both contain "signature". A
-    // broad substring match would wedge the updater terminally on a transient
-    // proxy/TLS hiccup; it must stay recoverable so the UI offers Retry.
+    // TLS errors can contain signature in both code and message; retain retryability rather than
+    // misclassifying them as installer integrity failures.
     const tls = setup();
     await tls.updater.check('boot');
     tls.adapter.emit(
@@ -223,9 +213,7 @@ describe('createShellAutoUpdater', () => {
   });
 
   it('classifies a permanent updater misconfiguration code as terminal', async () => {
-    // ERR_UPDATER_INVALID_CHANNEL (and its invalid-version/provider siblings)
-    // can never succeed on retry, so they must be terminal rather than offering
-    // an endless Retry from the generic recoverable bucket.
+    // Invalid channel/version/provider configuration cannot improve on retry and must be terminal.
     const cfg = setup();
     await cfg.updater.check('boot');
     cfg.adapter.emit(
@@ -249,12 +237,8 @@ describe('createShellAutoUpdater', () => {
 });
 
 describe('createDefaultElectronUpdaterAdapter', () => {
-  // Regression guard for the packaged-build crash: importing electron-updater's
-  // (absent) default export and destructuring `autoUpdater` off it threw
-  // "Cannot destructure property 'autoUpdater' of '…default' as it is undefined",
-  // which silently disabled shell auto-update in every signed build. The unit
-  // suite missed it because every other test injects a FakeAdapter and never
-  // constructs the real electron-updater-backed adapter.
+  // Construct the real adapter: injected fakes cannot catch importing electron-updater's
+  // nonexistent default export.
   it('builds an adapter from the named autoUpdater export without crashing', () => {
     const adapter = createDefaultElectronUpdaterAdapter(true);
     expect(adapter).toBeDefined();

@@ -44,19 +44,9 @@ function defaultClassifyError(error: Error): { code: string; recoverable: boolea
   const rawCode = (error as { code?: unknown }).code;
   const code = typeof rawCode === 'string' ? rawCode.toUpperCase() : '';
 
-  // Integrity failures are terminal — a refused artifact is refused again, so
-  // Retry can't help and the UI must offer manual Download instead.
-  //
-  // Match electron-updater's EXACT machine codes, not substrings. The signer
-  // rejection (NsisUpdater `ERR_UPDATER_INVALID_SIGNATURE`) throws "New version
-  // … is not signed by the application owner: …", whose message contains none
-  // of the integrity words, so the `code` is what identifies it. A broad
-  // `code.includes('SIGNATURE')` / `text.includes('signature')` would also
-  // swallow Node's TLS error `UNABLE_TO_VERIFY_LEAF_SIGNATURE` ("unable to
-  // verify leaf signature") — a *transient* proxy/TLS failure — and wedge the
-  // updater terminally until relaunch. So the code match is exact and the text
-  // fallback is limited to phrases that appear only on a real integrity failure
-  // (checksum mismatches carry no stable code, only an sha512/checksum message).
+  // Integrity failures require manual download. Match exact updater codes so TLS signature errors
+  // remain retryable.
+  // Checksum failures lack stable codes, so retain their specific message fallback.
   if (
     code === 'ERR_UPDATER_INVALID_SIGNATURE'
     || code === 'ERR_CHECKSUM_MISMATCH'
@@ -67,10 +57,7 @@ function defaultClassifyError(error: Error): { code: string; recoverable: boolea
     return { code: 'artifact-verification-failed', recoverable: false };
   }
 
-  // Permanent misconfiguration — an invalid version/channel/provider config or a
-  // disabled web installer fails identically on every retry, so it's terminal
-  // too (manual Download, not an endless Retry). Keyed on electron-updater's
-  // stable codes; the text fallback keeps the pre-existing "unsupported" cases.
+  // Permanent configuration errors cannot recover through retry; offer manual download.
   if (
     code === 'ERR_UPDATER_INVALID_VERSION'
     || code === 'ERR_UPDATER_INVALID_CHANNEL'
@@ -86,11 +73,8 @@ function defaultClassifyError(error: Error): { code: string; recoverable: boolea
 }
 
 /**
- * Serialized effect runner around electron-updater.
- *
- * electron-updater remains responsible for signature/hash verification and
- * platform installation; this boundary owns lifecycle truth and coalesces
- * concurrent boot, periodic and manual requests.
+ * Serialize lifecycle effects and coalesce requests; electron-updater owns integrity checks and
+ * installation.
  */
 export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellAutoUpdater {
   const listeners = new Set<(snapshot: ShellUpdateSnapshot) => void>();
@@ -224,19 +208,12 @@ export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
   };
 }
 
-/**
- * Default production adapter. Kept as a factory so importing this module in
- * tests does not start update work or attach process-global listeners.
- */
+/** Create the production adapter lazily so imports do not start work or attach global listeners. */
 export function createDefaultElectronUpdaterAdapter(
   autoInstallOnAppQuit: boolean,
 ): ShellUpdaterAdapter {
-  // electron-updater is a CommonJS module that exposes `autoUpdater` as a named
-  // (lazy) export and has NO default export. Under tsc's esModuleInterop the
-  // default import resolves to `undefined`, so the old `const { autoUpdater } =
-  // electronUpdater` form threw `Cannot destructure … of '…default' as it is
-  // undefined` in every packaged build — silently disabling the whole feature.
-  // Import the named export directly (accessed lazily here, not at module load).
+  // Use the named autoUpdater export lazily; electron-updater’s CommonJS module has no default
+  // export.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = autoInstallOnAppQuit;
   autoUpdater.allowDowngrade = false;
