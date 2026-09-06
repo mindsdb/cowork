@@ -3,19 +3,9 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Regression guard: a PR platform that is not label-gated publishes on every push.
-//
-// The upload jobs in build-installers.yml carry no `if:` of their own — they
-// only `needs:` their build — so a platform's label gate is what stops the
-// upload too. `upload-installer-to-s3.yml` runs on `mdb-prod` and writes a
-// preview build into `previews/` in the production installer bucket, then the
-// PR comment posts its public CloudFront URL. Leaving linux ungated therefore
-// published two downloadable debs from the prod bucket on every internal push,
-// which reads as a build-cost question and is not one.
-//
-// An earlier version of this file's gate also looked for a label name that did
-// not exist (`linux-deb` vs `build-linux-deb`), so the job silently never ran.
-// Both failures are invisible in a green CI run, hence a test.
+// Platform label gates also control their dependent upload jobs; an ungated PR build publishes
+// downloadable installers on every push.
+// Verify exact label names too: a nonexistent label silently disables the platform build.
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CALLER = path.join(REPO, '.github/workflows/dev-build-deploy.yml');

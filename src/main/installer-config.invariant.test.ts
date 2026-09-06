@@ -2,18 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 
-// Regression guard for ENG-1367: Windows taskbar pins are destroyed on manual
-// installer upgrades whenever the assisted installer is built with
-// allowToChangeInstallationDirectory. With that option compiled in, a
-// non-auto-update run skips the --keep-shortcuts handoff to the previous
-// version's uninstaller, which then unregisters the AppUserModelID and deletes
-// the Start-Menu shortcut the pin references. Upgrades reuse the registry
-// InstallLocation regardless, so dropping the chooser does not break
-// custom-directory installs (the /D installer switch remains as an override).
-//
-// Deliberately hand-parsed, like minds-urls.workflows.test.ts: js-yaml is only
-// present transitively (via electron-builder) and could disappear on any bump,
-// which is not a dependency this guard should own.
+// NSIS allowToChangeInstallationDirectory skips keep-shortcuts during manual upgrades, destroying
+// taskbar pins.
+// Existing InstallLocation is reused without the chooser; /D remains an override.
+// Hand-parse config rather than rely on transitive js-yaml.
 const yml = readFileSync(
   fileURLToPath(new URL('../../electron-builder.yml', import.meta.url)),
   'utf8',

@@ -6,10 +6,8 @@ import * as os from 'os';
 import * as path from 'path';
 import type { BrowserWindow } from 'electron';
 
-// Integration-style tests of the runInstaller orchestration (mirroring
-// server-updater.test.ts): fs/child_process mocked so nothing touches real
-// binaries or the network; electron and the sibling orchestration modules
-// are stubbed to their contracts.
+// Mock filesystem, processes and orchestration boundaries so installer tests cannot reach real
+// binaries or the network.
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('electron', () => ({
@@ -283,9 +281,7 @@ describe('runInstaller — failure and fallback scenarios', () => {
   });
 
   it('verification failure from an undeterminable version names the binary it found', async () => {
-    // The regression that hid the real cause from the reporter for days: the
-    // binary IS there, but uv reports no version for it — the message must say
-    // exactly that instead of "binary not found".
+    // An existing binary with no reported version must not be misdiagnosed as missing.
     setupMachine({
       uvOnPath: PATH_ONLY_UV,
       // uv tool list never reports cowork-server (e.g. a different tool dir).
@@ -318,11 +314,8 @@ describe('runInstaller — failure and fallback scenarios', () => {
 });
 
 describe('inspectCoworkServerInstall — binary candidate resolution', () => {
-  // Regression: inspectCoworkServerInstall and server-process.getCoworkServerBin
-  // used to disagree on where the binary may live. A prod Windows install whose
-  // binary sits only at the legacy %LOCALAPPDATA%\bin fallback (not on PATH)
-  // starts fine via server-process, but this check fell through to findOnPath
-  // and missed it — reporting binary-missing and triggering a needless reinstall.
+  // Keep install inspection aligned with server startup: a Windows binary at the legacy
+  // LOCALAPPDATA fallback must not trigger reinstall.
   const originalPlatform = process.platform;
   const originalLocalAppData = process.env.LOCALAPPDATA;
   const LOCALAPPDATA = 'C:\\Users\\u\\AppData\\Local';

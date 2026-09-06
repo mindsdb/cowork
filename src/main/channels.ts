@@ -1,12 +1,4 @@
-// Canonical build-channel model: the single source of truth mapping each build
-// "kind" (dev / preview / stable / prod) to its data home, MindsHub API host, env
-// slug (stamped on cowork-server as ENV), and default server/anton branch. Both
-// runtime and CI derive from — and validate against — this table.
-//
-// It exists because those axes used to drift: nothing tied `buildKind` to the
-// baked API host, so a build could ship `preview` while pointed at PROD.
-// Pure (no electron/fs/env) so it's testable and cycle-free; which kind is THIS
-// process is resolved in cowork-home.ts.
+// Shared channel mapping for runtime and CI. cowork-home.ts resolves the current build kind.
 
 export const BUILD_KINDS = ['dev', 'preview', 'stable', 'prod'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
@@ -23,16 +15,12 @@ export interface ChannelSpec {
   readonly envSlug: string;
   /** Default cowork-server / anton git branch this channel builds from. */
   readonly serverRef: string;
-  /** Electron app name → the userData dir, set via app.setName so build kinds get
-   *  separate localStorage / consent / token-store state and install as distinct
-   *  apps. prod is FROZEN to 'anton' (applied by NOT calling setName — see
-   *  app-identity.ts). Build-time identity lives in scripts/channel-identity.mjs. */
+  /**
+   * Runtime app name isolates userData. Leave prod named "anton"; see app-identity.ts.
+   * Packaged identity lives in scripts/channel-identity.mjs.
+   */
   readonly appName: string;
-  /** Basename (under assets/) of the RUNTIME window/dock icon. Non-prod kinds ship
-   *  a badged icon-<kind>.png; prod/dev use the base icon.png. Set at runtime
-   *  because the window/dock icon is chosen in code (the packaged bundle icon
-   *  alone doesn't govern it); channels.test.ts drift-guards it against the
-   *  build-time icon in channel-identity.mjs. */
+  /** Runtime window/dock icon under assets/. Keep aligned with channel-identity.mjs. */
   readonly iconName: string;
 }
 
@@ -54,10 +42,7 @@ export const CHANNELS: Record<BuildKind, ChannelSpec> = {
   prod: { kind: 'prod', homeDirName: '.cowork', apiHost: API_PROD, envSlug: '', serverRef: 'main', appName: 'anton', iconName: 'icon.png' },
 };
 
-/** Coerce a raw string (env / build-config.json / CI input) to a BuildKind.
- *  Fail-closed: an empty value → "prod" (legacy releases carry no signal); a
- *  present but unrecognized value THROWS rather than defaulting to prod, so a
- *  typo can't silently point non-prod code at the production home and API. */
+/** Missing kind means legacy prod; reject unknown values to avoid using production state by mistake. */
 export function normalizeBuildKind(raw: string, source: string): BuildKind {
   const kind = raw.trim().toLowerCase();
   if (kind === '') return 'prod';
@@ -69,19 +54,16 @@ export function normalizeBuildKind(raw: string, source: string): BuildKind {
   );
 }
 
-/** The env slug ('staging' | 'dev' | '') encoded in a MindsHub API host; mirrors
- *  minds-urls.ts's MINDS_ENV_SLUG so the two never disagree. Returns '' for BOTH
- *  the prod host and any non-MindsHub host, so it must NOT decide consistency (an
- *  unknown host would look like prod) — checkChannelConsistency compares origins. */
+/**
+ * Returns an empty slug for both prod and unknown hosts. Use checkChannelConsistency for
+ * validation.
+ */
 export function envSlugForApiHost(apiHost: string): string {
   const m = apiHost.match(/^https?:\/\/api\.([a-z0-9-]+)\.mindshub\.ai/i);
   return m ? m[1] : '';
 }
 
-/** Normalize an API host to a bare, lowercased origin for exact comparison. An
- *  empty/blank input normalizes to '' (an unset CI minds_api_url = the
- *  intentional prod default). A value carrying a path or trailing slash is
- *  reduced to its origin so it compares equal to the canonical host. */
+/** Normalize to a lowercased origin, ignoring paths. Blank means the default prod host. */
 export function normalizeApiOrigin(apiHost: string): string {
   const s = (apiHost || '').trim();
   if (s === '') return '';
@@ -101,19 +83,15 @@ export interface ChannelConsistency {
   readonly actualApiHost: string;
 }
 
-/** Cross-check that the API host a build actually points at matches the env its
- *  build kind is supposed to target. Guards the defect class where the two axes
- *  disagree — a `preview` build aimed at the prod API, or a `prod` build aimed
- *  at staging. Pure: the caller supplies the resolved host (from minds-urls),
- *  so this stays testable and import-cycle-free. */
+/**
+ * Require the API origin to match the build kind; a slug alone cannot distinguish prod from an
+ * unknown host.
+ */
 export function checkChannelConsistency(kind: BuildKind, actualApiHost: string): ChannelConsistency {
   const spec = CHANNELS[kind];
   const actualOrigin = normalizeApiOrigin(actualApiHost);
   const expectedOrigin = normalizeApiOrigin(spec.apiHost);
-  // An empty host = no API explicitly configured (unset CI minds_api_url), the
-  // intentional prod default — consistent ONLY for prod. Otherwise require an
-  // EXACT origin match: the old slug-only check called any unrecognized host
-  // "ok" (its slug was '' == prod's), making a typo indistinguishable from prod.
+  // An unset host is the prod default. Every explicit host must match the channel origin exactly.
   const ok = actualOrigin === '' ? kind === 'prod' : actualOrigin === expectedOrigin;
   return {
     ok,

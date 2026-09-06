@@ -208,10 +208,7 @@ function sendInstallCancelled(win: BrowserWindow) {
   } catch {}
 }
 
-// Discriminated result so the installer's verify step can say WHAT failed.
-// The old boolean collapsed three distinct states into one, and the verify
-// error then claimed "binary not found" even when the binary was sitting on
-// disk with an undeterminable version (ENG-1293/ENG-1323).
+// Distinguish missing binary, unknown version and outdated version in verification errors.
 export type ServerInstallCheck =
   | { installed: true; binary: string | null }
   | { installed: false; reason: 'binary-missing' }
@@ -227,18 +224,11 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
       : path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
     if (fileExists(path.join(devDir, 'pyproject.toml'))) return { installed: true, binary: null };
   }
-  // Same candidate list server-process.getCoworkServerBin() starts from (the
-  // prod+win32 %LOCALAPPDATA%\bin fallback included) — otherwise this check
-  // and the thing it's gating could disagree: a prod Windows install whose
-  // binary sits only at the legacy location, off PATH, would start fine but
-  // report binary-missing here and trigger a needless reinstall.
+  // Use the same candidate paths as server-process so verification agrees with startup.
   const binary = coworkServerBinCandidates().find(fileExists) ?? await findOnPath('cowork-server');
   if (!binary) return { installed: false, reason: 'binary-missing' };
 
-  // Binary exists — verify the installed version meets the minimum.
-  // An outdated version may be missing new dependencies (e.g. alembic)
-  // and crash on import, so we treat it as "not installed" to trigger
-  // the installer which does --force --reinstall.
+  // Treat versions below the release floor as uninstalled so setup repairs missing dependencies.
   const version = await getInstalledVersion();
   if (!version) {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
@@ -258,16 +248,12 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
   return (await inspectCoworkServerInstall()).installed;
 }
 
-// Convenience wrapper used by the boot flow IPC. Returns the full
-// readiness picture so the renderer can branch cleanly.
 export async function checkInstallStatus(): Promise<{
   antonInstalled: boolean;
   serverDepsReady: boolean;
 }> {
   const installed = await checkCoworkServerInstalled();
-  // Both fields report the same value — cowork-server is a single
-  // package that includes all server dependencies. The two-field
-  // shape is kept for renderer compatibility with the old boot flow.
+  // Retain both fields for older renderers; server dependencies now ship in one package.
   return { antonInstalled: installed, serverDepsReady: installed };
 }
 
@@ -303,9 +289,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
 
     const plan = installerStepPlan(process.platform, getChannel());
 
-    // Step 0 (macOS, git channel only): Xcode Command Line Tools. PyPI
-    // installs are wheel-only and never invoke git, so a stock Mac skips
-    // this entirely.
+    // Only git installs need Xcode Command Line Tools; PyPI installs use wheels.
     if (plan.needsXcodeStep) {
       setStep('xcode', 'running');
       sendLog(win, '--- Checking for Xcode Command Line Tools ---\n');
@@ -339,11 +323,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
 
     if (abortIfRequested()) return false;
 
-    // Step 1: Check git. Only shown on the git channel, where uv shells out
-    // to fetch a git+https source. A pypi install is wheels-only, so the git
-    // step is skipped entirely (no "Checking for git" row/log) — git is at
-    // most a runtime nice-to-have for agent tasks there, not an install
-    // prerequisite worth surfacing.
+    // Only git-channel installs require git; omit this step for wheel-only PyPI installs.
     if (plan.showGitStep) {
       setStep('git', 'running');
       sendLog(win, '--- Checking for git ---\n');
@@ -360,10 +340,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           sendInstallError(win, 'git is required but not found.');
           return false;
         } else if (process.platform !== 'win32') {
-          // Linux/other: the deb declares git as a package dependency, so
-          // this only triggers if git was removed after install. No winget
-          // here, and auto-installing via the right package manager is
-          // guesswork — tell the user what to run.
+          // Do not guess a Linux package manager if git was removed after the deb installed it.
           setStep('git', 'error');
           sendLog(win, '\nERROR: git is not installed.\n');
           sendLog(win, 'Install it with your package manager, e.g.:\n');
@@ -387,10 +364,8 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
             sendInstallError(win, 'Failed to install git.');
             return false;
           }
-          // winget can install git machine-wide (C:\Program Files\Git\cmd) or
-          // per-user (%LOCALAPPDATA%\Programs\Git\cmd) depending on elevation.
-          // Probe both since winget updates the registry PATH but not the running
-          // process's inherited env — we must inject the real path ourselves.
+          // winget may install git per-user or machine-wide without updating this process’s PATH;
+          // probe both.
           const gitCandidates = [
             'C:\\Program Files\\Git\\cmd',
             path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd'),
@@ -419,7 +394,6 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       setStep('git', gitStatus);
     }
 
-    // Step 2: Check/install uv
     if (abortIfRequested()) return false;
     setStep('uv', 'running');
     sendLog(win, '\n--- Checking for uv ---\n');
@@ -470,24 +444,18 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     }
     setStep('uv', 'done');
 
-    // Step 3: Install cowork-server
     if (abortIfRequested()) return false;
     setStep('cowork-server', 'running');
     sendLog(win, `\n--- Installing cowork-server v${getMinServerVersion()}+ ---\n`);
 
-    // The same binary the uv step resolved and logged ("uv found at X") —
-    // re-deriving here could execute a different uv than the one reported.
+    // Reuse the uv binary the preceding step resolved and reported.
     const uvBin = uvPath;
     const spec = getInstallSpec();
     sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
 
-    // PyPI installs resolve the exact target version up front (stream-aware:
-    // prod = latest stable, staging = latest rc) plus the direct anton pin
-    // its wheel requires — an rc wheel's transitive `anton-agent==<rc>` pin
-    // is unresolvable unless restated as a direct requirement. Falls back to
-    // the floor spec when PyPI is unreachable (prod-equivalent behavior; a
-    // staging machine then converges onto the rc stream at the next update
-    // poll).
+    // Resolve the channel’s exact server version and restate its anton rc pin as a direct
+    // requirement.
+    // If PyPI is unavailable, install the floor; staging can converge at the next update poll.
     let packageSpec = spec.package;
     let withArgs: string[] = [];
     if (spec.channel === 'pypi') {
@@ -510,20 +478,13 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     ];
 
     /*
-     * UV_PYTHON_PREFERENCE=only-managed — without this uv builds the tool
-     * venv on whatever base interpreter it discovers on PATH (Anaconda /
-     * Miniconda, the Windows Store python stub, …). Those bases are not
-     * self-contained, so the resulting venv can be broken or fail to launch
-     * outside their activation shell. A uv-managed standalone CPython has no
-     * such dependency, and uv fetches it on demand if absent.
+     * Use uv-managed CPython so the tool works outside Conda activation shells and Windows Store
+     * stubs.
      */
     const uvEnv: NodeJS.ProcessEnv = {
       UV_PYTHON_PREFERENCE: 'only-managed',
-      // No prerelease flag anywhere: rc reachability comes only from exact
-      // specifiers (`cowork-server==<rc>` and the restated
-      // `--with anton-agent==<rc>` above). A resolution-wide
-      // UV_PRERELEASE=allow would let TRANSITIVE deps (fastapi, pydantic…)
-      // resolve to alphas/betas prod never sees.
+      // Allow rc versions only through exact direct pins; a global prerelease flag would also admit
+      // alpha/beta dependencies.
       ...writeUvOverrides(spec.overrides),
     };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
@@ -542,7 +503,6 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, 'cowork-server installed.\n');
     setStep('cowork-server', 'done');
 
-    // Step 4: Verify
     if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
@@ -563,7 +523,6 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, 'cowork-server is ready!\n');
     setStep('verify', 'done');
 
-    // Step 5: Start the server
     if (abortIfRequested()) return false;
     setStep('server', 'running');
     sendLog(win, '\n--- Starting server ---\n');
