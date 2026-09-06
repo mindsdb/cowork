@@ -1,13 +1,5 @@
-// A chat delete the server refuses used to read as success: the row is hidden
-// before the call, the failure went to console.error, and the tombstone in
-// deletedTaskIdsRef kept the row hidden for the life of the mount. The user
-// deleted the same chat again on their next visit and only found out on a
-// reload. Nothing but this test stands between the rollback and that silence.
-//
-// Mounting pattern copied from App.keyProvisioning.test.jsx, which took it from
-// App.askUser.send.test.jsx, because performDeleteTask is an inner closure and
-// not an exported helper. Third copy of the block; a shared fixture is worth
-// doing on the next one.
+// A refused delete must restore the row and clear its optimistic tombstone; logging alone leaves it
+// hidden until reload.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -47,9 +39,8 @@ vi.mock('./api', async (importOriginal) => ({
   deleteConversation: (...args) => spies.deleteConversation(...args),
 }));
 
-// Spread the real host and override only what a mount needs. isElectron stays
-// false, so every real host method returns its no-Electron default rather than
-// reaching for a bridge.
+// Spread the real web-safe host and override mount dependencies; isElectron:false keeps real
+// methods off the bridge.
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -78,17 +69,10 @@ vi.mock('../platform/host', async (importOriginal) => {
 import App from './App';
 import { __resetDraftsForTests } from './lib/draftStore';
 
-/** Mounts App and drives the sidebar's Delete all the way through the confirm.
- *
- *  The kebab is revealed on hover and carries `pointer-events: none` until then,
- *  so the row has to be entered before it can be clicked. fireEvent rather than
- *  user.hover: userEvent's pointer model refuses to move onto an element that
- *  still has pointer-events none, which is the very state the hover clears.
- *  Every row has a kebab, hence scoping the lookup to this row.
- *
- *  `beforeConfirm` runs after the mount's own fetches have settled and right
- *  before the confirm click — the seam for re-pointing a mock at the state
- *  the delete itself should see. */
+/**
+ * Hover the scoped row with fireEvent before clicking its pointer-disabled kebab.
+ * Run beforeConfirm after mount fetches settle to install the delete-time response fixture.
+ */
 async function deleteFromSidebar(user, title, { beforeConfirm } = {}) {
   render(<App />);
   const row = await screen.findByRole('button', { name: title });
@@ -135,11 +119,8 @@ describe('deleting a chat from the sidebar', () => {
     expect(screen.queryByText(/Couldn't delete this chat/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
 
-    // The tombstone must survive a later refetch, or the row comes straight
-    // back: the server still lists the conversation until its delete
-    // propagates everywhere, and the mock here still returns it. Nothing in
-    // the delete flow itself refetches on success, so drive one through the
-    // projects-changed listener, the same consumer path the app uses.
+    // Refetch through projects-changed while the mock still lists the deleted row to prove the
+    // successful tombstone survives stale server data.
     const callsBefore = spies.fetchSessions.mock.calls.length;
     window.dispatchEvent(new Event('anton:projects-changed'));
     await waitFor(() => {
@@ -154,11 +135,7 @@ describe('deleting a chat from the sidebar', () => {
     const user = userEvent.setup();
     spies.deleteConversation.mockRejectedValue(new Error('Delete failed (500)'));
 
-    // fetchSessions resolves rather than rejecting: `[]` for an empty
-    // account, `{ error: true }` for a failed list (ENG-2246). This is the
-    // empty-answer arm — the delete failing AND the refetch coming back
-    // empty. The restore must re-seat the deleted row from the captured
-    // task, not blank the sidebar with the empty answer.
+    // An empty successful refetch cannot restore the row; rollback must reinsert the captured task.
     await deleteFromSidebar(user, 'Daily report run', {
       beforeConfirm: () => spies.fetchSessions.mockResolvedValue([]),
     });
@@ -174,15 +151,9 @@ describe('deleting a chat from the sidebar', () => {
     const user = userEvent.setup();
     spies.deleteConversation.mockRejectedValue(new Error('Delete failed (500)'));
 
-    // The other arm: since ENG-2246 a failed list resolves `{ error: true }`,
-    // not `[]`. What this pins is the re-seat — the toast says the chat is
-    // back in the list, and on this path the refetch brings nothing to put
-    // it back with. Mutation-verified: dropping the `merged.unshift(task)`
-    // re-seat fails this test and its empty-answer sibling.
-    //
-    // It does NOT pin the shape guard above it. mergeTasksFromServer returns
-    // `local` for any non-array input, so passing the error object straight
-    // through would also be safe — checked by mutation before writing this.
+    // A failed list returns {error:true}; rollback must reinsert the captured task.
+    // This proves reinsertion, not the array-shape guard: mergeTasksFromServer already tolerates
+    // non-array input.
     await deleteFromSidebar(user, 'Daily report run', {
       beforeConfirm: () => spies.fetchSessions.mockResolvedValue({ error: true, status: 500 }),
     });
@@ -196,10 +167,8 @@ describe('deleting a chat from the sidebar', () => {
 });
 
 describe('the recents list tells loading, empty and failed apart end-to-end (ENG-2246)', () => {
-  // The Sidebar states and the api return shape each had their own tests, but
-  // nothing asserted App wires them: deleting both `setTasksStatus` calls from
-  // refreshData left the whole suite green. These mount the real App so the
-  // wiring itself is load-bearing.
+  // Mount App to verify task-status wiring; isolated Sidebar and API tests cannot detect omitted
+  // state updates.
   it('shows a retry when the list fetch fails, and recovers when it succeeds', async () => {
     const user = userEvent.setup();
     spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 500 });
@@ -221,10 +190,8 @@ describe('the recents list tells loading, empty and failed apart end-to-end (ENG
   });
 
   it('warms the transcripts once per session, not once per refreshData', async () => {
-    // The warm-up is the fix's actual win: without the gate a desktop cold
-    // start fires 100 /items instead of 50. refreshData re-enters on the
-    // serverOnline false->true flip that its OWN fetchHealth causes, so the
-    // gate only holds if warmedRef is set before that second entry.
+    // Claim warm-up before fetchHealth can reenter refreshData through serverOnline, or desktop
+    // cold boot fetches every transcript twice.
     spies.fetchSessions.mockReset().mockImplementation(
       async () => spies.sessions.map((s) => ({ ...s })),
     );
@@ -237,9 +204,7 @@ describe('the recents list tells loading, empty and failed apart end-to-end (ENG
   });
 
   it('still warms after a failed first list — the claim is released', async () => {
-    // The gate is claimed synchronously to survive the re-entry above, which
-    // means a first list that FAILS would otherwise hold the claim forever and
-    // leave the Retry that fixes it warming nothing for the rest of the session.
+    // Release the synchronous warm-up claim after list failure so Retry can warm transcripts.
     const user = userEvent.setup();
     spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 500 });
 
@@ -257,10 +222,7 @@ describe('the recents list tells loading, empty and failed apart end-to-end (ENG
   });
 
   it('recovering into a genuinely empty account says so, and drops the alert', async () => {
-    // The two terminal states must stay distinguishable through a real
-    // transition, not just as isolated props: retrying a failed fetch into an
-    // account that really has no tasks has to land on "No tasks yet", never on
-    // a lingering alert.
+    // Retry from failure to an empty account must replace the alert with the empty state.
     const user = userEvent.setup();
     spies.fetchSessions.mockReset().mockResolvedValue({ error: true, status: 503 });
 

@@ -8,19 +8,15 @@ const spies = vi.hoisted(() => ({
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
-  // Default matches the real fn under this file's denied-network env (an
-  // unavailable result, which the render ignores for locally-present tasks);
-  // the deep-link test overrides it to control loader resolution.
+  // Default to the denied-network unavailable result; deep-link tests override it to control loader
+  // settlement.
   fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
-  // Backs loadSessionMessagesWithRetry's reload after a stream error — empty
-  // by default (a turn that recovered), so a test that wants trackTurnFailed
-  // to fire on a real failure overrides it with an error-role message.
+  // Default post-error reloads to a recovered turn; failure-tracking tests supply an error-role
+  // message explicitly.
   fetchSession: vi.fn(async () => ({ messages: [] })),
 }));
 
-// The live stream handles are captured per streamMessage call so the test can
-// push real SSE events (including `response.ask_user`) through App's own
-// reducer instead of reaching into its internals.
+// Capture each stream's handle to feed SSE events through App's real reducer.
 const streams = [];
 
 vi.mock('./api', async (importOriginal) => ({
@@ -92,16 +88,8 @@ vi.mock('./api', async (importOriginal) => ({
   },
 }));
 
-// Spread the real host rather than listing methods, and override only what
-// these tests need to control. A hand-listed mock breaks whenever App gains a
-// host call in a mount effect — `getShellAutoUpdate` / `onShellAutoUpdate`
-// (ENG shell auto-update) did exactly that, and every test in this file died on
-// `host.getShellAutoUpdate is not a function` even though none of them touch
-// updates. This file is the only place that mocks the host and renders the
-// whole App, so there is no shared fixture to keep in sync; spreading the real
-// module is what makes it stop being a tripwire. Safe because every real host
-// method is web-aware: `isElectron` is false under jsdom, so each one returns
-// its no-Electron default instead of reaching for a bridge.
+// Spread the real web-safe host and override controlled methods; hand-listing App's unrelated mount
+// dependencies makes this fixture drift.
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -185,10 +173,8 @@ async function send(user, composer, text) {
 }
 
 /**
- * Resolves once a stream handle newer than `after` exists. Opening a task only
- * awaits the composer; reconnectInFlight has an extra await (the in-flight
- * probe) before it reaches tailInFlight, so reading streams[] straight after
- * navigating is a race.
+ * Wait for a new stream handle: reconnectInFlight awaits its probe after the composer mounts, so
+ * navigation alone does not settle the tail.
  */
 async function waitForStream(after = null) {
   return waitFor(() => {
@@ -220,9 +206,7 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
-  // App uses createBrowserRouter under jsdom, which writes the shared window
-  // history that happy-dom keeps across tests — so a URL one test pushes leaks
-  // into the next. Reset to '/' so each test starts on Home.
+  // Reset shared browser history to Home so router navigation cannot leak between tests.
   window.history.replaceState(null, '', '/');
   // Composer text lives in a module-level, per-surface store (lib/draftStore),
   // so unsent text from the previous test would otherwise still be in the box.
@@ -254,9 +238,7 @@ describe('composer send while a question is pending', () => {
     expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
       text: 'the postgres one',
     });
-    // Consumed: the send is over. No second turn, nothing left in the
-    // composer, and — the whole point of the interception — nothing queued
-    // behind the turn that cannot finish until this question is answered.
+    // Answer consumption must leave no draft or queued send behind the turn blocked on that answer.
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(composer.value).toBe(''));
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
@@ -275,13 +257,9 @@ describe('composer send while a question is pending', () => {
     await send(user, composer, 'still worth saying');
 
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
-    // The text was NOT discarded — it fell through to the normal send path,
-    // which (a stream still being in flight) queues it for the next turn.
     expect(await screen.findByText('still worth saying')).toBeInTheDocument();
     await waitFor(() => expect(composer.value).toBe(''));
 
-    // And the interception was released, so the send after that is a plain
-    // send too rather than a second doomed submitAnswer.
     await send(user, composer, 'and this as well');
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
   });
@@ -291,22 +269,18 @@ describe('composer send while a question is pending', () => {
     const composer = await openTask(user);
 
     await send(user, composer, 'first message');
-    // Two questions live at once on the same conversation. Only possible once
-    // the agent is allowed to ask in parallel — but the release below must not
-    // depend on that never happening.
+    // Release one question without assuming a conversation can never have two pending questions.
     await emit(ASK_EVENT);
     await emit({ ...ASK_EVENT, question_id: 'ask:2' });
 
-    // The newest question is the one a send answers, and it turns out to be dead.
     spies.submitAnswer.mockImplementationOnce(async () => ({ status: 'not_found' }));
     await send(user, composer, 'answer for the second');
     expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:2', {
       text: 'answer for the second',
     });
 
-    // ask:1 is still pending, so the composer must still be hijacked by it. A
-    // blanket clear of the mirror would silently un-hijack it here and this send
-    // would be queued behind a turn that cannot finish.
+    // Keep the sibling question's interception; clearing the whole mirror queues input behind a
+    // turn waiting for it.
     await send(user, composer, 'answer for the first');
     expect(spies.submitAnswer).toHaveBeenLastCalledWith('conv-a', 'ask:1', {
       text: 'answer for the first',
@@ -324,7 +298,6 @@ describe('composer send while a question is pending', () => {
     await send(user, composer, 'my answer');
 
     expect(await screen.findByText(/could not send your answer/i)).toBeInTheDocument();
-    // Text kept for a retry, and nothing was queued or sent as a message.
     expect(composer.value).toBe('my answer');
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
@@ -341,13 +314,9 @@ describe('composer send while a question is pending', () => {
 
     await send(user, composer, 'wait, show me the table schema first');
 
-    // Nothing was submitted, so no 400 and no "that answer was rejected" toast
-    // about a message that was never an answer.
     expect(spies.submitAnswer).not.toHaveBeenCalled();
     expect(await screen.findByText(/one of the options above/i)).toBeInTheDocument();
-    // The words are kept — the user can still copy them out or press Skip.
     expect(composer.value).toBe('wait, show me the table schema first');
-    // And it was not smuggled into the queue behind the blocked turn either.
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
   });
@@ -403,7 +372,6 @@ describe('composer send while a question is pending', () => {
 
     await send(user, composer, 'a brand new message');
 
-    // Only the card's own click hit submitAnswer — the send was not intercepted.
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
   });
@@ -415,14 +383,12 @@ describe('composer send while a question is pending', () => {
     await send(user, composer, 'first message');
     await emit(ASK_EVENT);
 
-    // A network blip or a 500. The card clears `busy` so the button comes back,
-    // which on its own reads as "nothing happened" — while the agent stays
-    // blocked until the 300 s server timeout.
+    // Restoring the button after submit failure is insufficient feedback while the agent remains
+    // blocked.
     spies.submitAnswer.mockImplementationOnce(async () => ({ status: 'error' }));
     await user.click(await screen.findByRole('button', { name: /postgres/i }));
 
     expect(await screen.findByText(/could not send your answer/i)).toBeInTheDocument();
-    // Still answerable: the question was not retired, so a retry submits again.
     await user.click(screen.getByRole('button', { name: /postgres/i }));
     expect(spies.submitAnswer).toHaveBeenCalledTimes(2);
   });
@@ -452,7 +418,6 @@ describe('composer send while a question is pending', () => {
     await attach(user, 'notes.txt');
     await send(user, composer, 'use this one');
 
-    // The text became the answer — and submitAnswer carries `{text}` only.
     expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
       text: 'use this one',
     });
@@ -473,13 +438,11 @@ describe('queue drain when a question appears', () => {
     await send(user, composer, 'queued one');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
 
-    // …and the user has started typing something else in the meantime.
     await user.click(composer);
     await user.keyboard('half-written thought');
 
     await emit(ASK_EVENT);
 
-    // Appended, not replaced: the in-progress draft survives.
     await waitFor(() => expect(composer.value).toBe('half-written thought\nqueued one'));
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
 
@@ -520,7 +483,6 @@ describe('a background task draining files while another is on screen', () => {
 
     let composer = await openByTitle(user, 'Beta task');
     const streamB = await waitForStream();
-    // Queued behind Beta's running turn, carrying a file.
     await attach(user, 'beta-notes.txt');
     await send(user, composer, 'queued for beta');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
@@ -529,9 +491,8 @@ describe('a background task draining files while another is on screen', () => {
     composer = await openByTitle(user, 'Alpha task');
     await waitForStream(streamB);
 
-    // Beta drains while Alpha is on screen. Staging into the app-wide list would
-    // put Beta's file on Alpha's composer as a chip — and sending in Alpha would
-    // upload and send it against Alpha's conversation.
+    // Beta's drained file must remain task-owned; staging it globally would let Alpha send it in
+    // the wrong conversation.
     await emitOn(streamB, { ...ASK_EVENT, question_id: 'ask:beta' });
     await waitFor(() => expect(composer.value).toBe(''));
     expect(screen.queryByText('beta-notes.txt')).toBeNull();
@@ -571,9 +532,8 @@ describe('reconnected background stream (tailInFlight)', () => {
 
     await send(user, composer, 'a brand new message');
 
-    // Released: still just the one submit from before the stream died, and the
-    // text went to the queue (the aborted controller is still parked) rather
-    // than into a dead question.
+    // After release, text must enter the queue rather than the dead question; the aborted
+    // controller still occupies the stream slot.
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
     expect(screen.getByText('a brand new message')).toBeInTheDocument();
@@ -599,7 +559,6 @@ describe('two tasks draining while only one is on screen', () => {
     expect(streamA).not.toBe(streamB);
     await send(user, composer, 'queued for alpha');
 
-    // Beta drains while Alpha is on screen — nothing consumes it.
     await emitOn(streamB, { ...ASK_EVENT, question_id: 'ask:beta' });
     expect(composer.value).toBe('');
 
@@ -608,9 +567,7 @@ describe('two tasks draining while only one is on screen', () => {
     await emitOn(streamA, { ...ASK_EVENT, question_id: 'ask:alpha' });
     await waitFor(() => expect(composer.value).toBe('queued for alpha'));
 
-    // One Composer instance serves every conversation, but its text comes from
-    // the per-surface draft store, so opening Beta shows Beta's restored text on
-    // its own — Alpha's must not be spliced in front of it…
+    // The shared Composer must display Beta's own restored draft without splicing in Alpha's text.
     composer = await openByTitle(user, 'Beta task');
     await waitFor(() => expect(composer.value).toBe('queued for beta'));
 
@@ -630,11 +587,9 @@ describe('a superseded stream\'s late abort', () => {
     const staleStream = streams[streams.length - 1];
     await emitOn(staleStream, ASK_EVENT);
 
-    // Stop bumps the stream generation and kills that run's question.
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
 
-    // A fresh turn on the same conversation, with its own question.
     await send(user, composer, 'second message');
     const freshStream = streams[streams.length - 1];
     expect(freshStream).not.toBe(staleStream);
@@ -691,9 +646,7 @@ describe('turn failure telemetry', () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
 
-    // Default mock: the reload comes back with no error message — the
-    // stream dropped mid-answer, but the server had already finished the
-    // turn, so the user sees a normal answer and this must not count.
+    // A dropped stream followed by successful server recovery must not count as a failed turn.
     await send(user, composer, 'do something');
     const handle = await waitForStream();
 
@@ -709,9 +662,8 @@ describe('turn failure telemetry', () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
 
-    // An older turn left a persisted error row, but the reload's last
-    // message is this turn's real answer — `some()` over the whole
-    // conversation would find the stale error and count it forever.
+    // Only the current turn's error counts; scanning all historical messages would repeatedly count
+    // an older failure.
     spies.fetchSession.mockImplementation(async () => ({
       messages: [
         { role: 'user', content: 'turn 1' },
@@ -736,9 +688,8 @@ describe('turn failure telemetry', () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
 
-    // Default mock: reload comes back empty (not yet persisted, or racing
-    // the failure). A response.failed the server itself sent is
-    // authoritative and must count regardless.
+    // A server response.failed is authoritative even if the subsequent reload has not persisted it
+    // yet.
     await send(user, composer, 'do something');
     const handle = await waitForStream();
 
@@ -755,9 +706,8 @@ describe('turn failure telemetry', () => {
 describe('new-session stream (send from home)', () => {
   it('releases a pending question when the new turn is aborted', async () => {
     const user = userEvent.setup();
-    // Open a task first, then go back home: App passes skipIntro once the
-    // backend has been online, so HomeView mounts straight at 'idle' with the
-    // composer present instead of playing the boot choreography.
+    // Open a task before Home so skipIntro bypasses boot choreography and mounts the composer
+    // immediately.
     await openTask(user);
     await user.click(screen.getByRole('button', { name: /new task/i }));
     const composer = await waitFor(() => {
@@ -836,9 +786,7 @@ describe('a queue filed under a pre-adoption tmp- id', () => {
     await emitOn(handle, { type: 'response.created', conversation_id: 'conv-new' });
     await emitOn(handle, ASK_EVENT);
 
-    // The drain has to find the queue under the dead tmp- key and still hand
-    // the text back to conv-new, which is the id ChatView renders — joining the
-    // draft, because the rename did not make it another conversation's.
+    // Find the queue under its old tmp- key, but restore text to the adopted ID's existing draft.
     await waitFor(() => expect(composer.value).toBe('still typing this\nqueued before adoption'));
   });
 });
@@ -853,13 +801,8 @@ describe('two events in one synchronous burst', () => {
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
 
     const handle = streams[streams.length - 1];
-    // Both events in the same tick, with no await between them — the burst the
-    // exactly-once property has to survive. It holds for two independent
-    // reasons: the drainedQuestionsRef entry added for this question_id, and
-    // the flushSync at the end of onEvent, which commits clearQueueForTask and
-    // resyncs messageQueueRef before the second event runs. This test locks the
-    // observable property; it does NOT isolate either mechanism (see the
-    // report's note on the drained-set write).
+    // Deliver both events in one tick to test exactly-once behavior.
+    // This does not distinguish the drained-question set from flushSync's queue synchronization.
     await act(async () => {
       handle.opts.onEvent(ASK_EVENT);
       handle.opts.onEvent({ ...ASK_EVENT, question_id: 'ask:1' });
@@ -872,10 +815,8 @@ describe('two events in one synchronous burst', () => {
 });
 
 describe('superseded data-vault stream', () => {
-  // The fourth stream site. It is the only one whose callbacks used to run
-  // unguarded, and the standing defence ("that stream cannot carry ask_user")
-  // is a claim about today's server, not about this code: its onEvent pushes
-  // through the same updateLiveStepsAndDrainQueue and reduceStream.
+  // Guard the data-vault stream too; its events reach the same reducer even if today's server does
+  // not send questions there.
   afterEach(() => clearDataVaultForm('conv-a'));
 
   /** Opens the connect form for conv-a and submits it, returning the stream. */
@@ -904,14 +845,12 @@ describe('superseded data-vault stream', () => {
     const composer = await openTask(user);
     const vault = await submitConnectForm(user);
 
-    // Stop supersedes the stream: bump, then abort.
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
-    // A late event from the aborted stream. Without the generation guard on
-    // onEvent this writes a pending question into liveStepsRef and the next
-    // send is routed into submitAnswer against a run that no longer exists.
+    // Ignore late events from aborted generations so they cannot revive interception for a
+    // nonexistent run.
     await emitOn(vault, ASK_EVENT);
 
     await send(user, composer, 'a brand new message');
@@ -929,14 +868,11 @@ describe('superseded data-vault stream', () => {
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
-    // A new turn on the same conversation, blocked on a question.
     await send(user, composer, 'first message');
     const live = await waitForStream(vault);
     await emitOn(live, ASK_EVENT);
 
-    // The dead data-vault stream finally terminates. Unguarded, its onDone
-    // deletes liveStepsRef['conv-a'] — the newer run's entry — and the
-    // interception silently stops working.
+    // A stale data-vault completion must not delete the newer run's liveStepsRef entry.
     await act(async () => { vault.opts.onDone(); await Promise.resolve(); });
 
     await send(user, composer, 'the postgres one');
@@ -960,18 +896,14 @@ describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
     const betaComposer = await openByTitle(user, 'Beta task');
     await send(user, betaComposer, 'queued for beta');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).toHaveBeenCalledTimes(1); // still only Alpha's
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
 
-    // Back to Alpha and press Stop. Freeing the slot must sweep Beta's queue —
-    // Stop bumps the generation and silences Alpha's cancelled callback, so
-    // without an explicit drain Beta strands at "waiting for Anton" with no
-    // future turn to release it.
+    // Stop suppresses the cancelled callback, so it must explicitly drain other tasks' queues when
+    // releasing the slot.
     await openByTitle(user, 'Alpha task');
     await user.click(await screen.findByRole('button', { name: /stop/i }));
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
 
-    // Beta's queued message is now sent against its own conversation, and its
-    // queue chip is gone.
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
     expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
     expect(spies.streamMessage.mock.calls[1][1]).toBe('queued for beta');
@@ -1022,12 +954,10 @@ describe('Stop when the cancel request never lands (ENG-1919)', () => {
 describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
   it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
     const user = userEvent.setup();
-    const composer = await openTask(user); // Alpha (conv-a)
+    const composer = await openTask(user);
 
-    // Beta sends with a file. Its upload is held open, parking Beta's send
-    // between reserving the shared slot (activeStreamingTaskIdRef = conv-b) and
-    // assigning its stream controller — the exact window where the old guard,
-    // keyed to `=== id`, let a different task slip through.
+    // Hold Beta's upload between slot reservation and controller assignment to expose cross-task
+    // sends entering that gap.
     let releaseUpload;
     uploadAttachments.mockImplementationOnce(
       () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
@@ -1035,13 +965,10 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     const betaComposer = await openByTitle(user, 'Beta task');
     await attach(user, 'beta-notes.txt');
     await send(user, betaComposer, 'beta with file');
-    // Parked on the upload: no stream has started for anyone yet.
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage).not.toHaveBeenCalled();
 
-    // A manual send to Alpha lands in that window. anton-core runs one turn at
-    // a time, so it must queue behind Beta's reservation, not launch a second
-    // parallel stream.
+    // Alpha must queue behind Beta's reservation because anton-core runs one turn at a time.
     await openByTitle(user, 'Alpha task');
     await send(user, composer, 'manual alpha');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
@@ -1066,20 +993,16 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // conv-a, project general
 
-    // Turn 1 holds the slot.
     await send(user, composer, 'first message');
     const stream = streams[streams.length - 1];
 
-    // Queue a second message carrying a file.
     await attach(user, 'shot.png');
     await send(user, composer, 'queued with file');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
     const streamCallsBefore = spies.streamMessage.mock.calls.length;
 
-    // The drained send will fail to upload.
     uploadAttachments.mockRejectedValue(new Error('Upload failed (500)'));
 
-    // Turn 1 completes → drain fires → the queued send throws.
     await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
 
     // The message is NOT lost — it's back on the queue — and no doomed stream
@@ -1107,9 +1030,8 @@ describe('attachment send that would strand at "Queued"', () => {
 
   it('bootstraps a project and sends instead of stranding the file (no project set)', async () => {
     const user = userEvent.setup();
-    // A task with no project, and no projects loaded — so nothing is
-    // auto-selected and resolveComposerAttachmentsForSend would otherwise throw
-    // "Pick a project…", leaving the image stuck at "Queued".
+    // Start without any project so the attachment send must bootstrap one instead of leaving the
+    // file queued.
     fetchSessions.mockResolvedValue([
       { id: 'conv-np', title: 'No project task', messages: [], status: 'idle' },
     ]);
@@ -1124,21 +1046,18 @@ describe('attachment send that would strand at "Queued"', () => {
     await waitFor(() => expect(createProject).toHaveBeenCalledWith('general'));
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-np');
-    // The staged file was consumed by the send, not left stranded.
     await waitFor(() => expect(screen.queryByText('shot.png')).toBeNull());
   });
 
   it('surfaces a toast when the attachment upload fails, instead of failing silently', async () => {
     const user = userEvent.setup();
-    const composer = await openTask(user); // conv-a, project general
+    const composer = await openTask(user);
     uploadAttachments.mockRejectedValueOnce(new Error('Upload failed (500)'));
 
     await attach(user, 'shot.png');
     await send(user, composer, 'here it is');
 
-    // Before the toast this failure was silent — nothing visible surfaced (the
-    // image just kept sitting at "Queued"). The toast is now the one thing that
-    // tells the user the upload failed.
+    // An upload failure must show a toast instead of leaving the image silently queued.
     expect(await screen.findByText(/upload failed/i)).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     // Text and the staged file are kept for a retry, not silently dropped.
@@ -1170,31 +1089,20 @@ describe('attachment send that would strand at "Queued"', () => {
 
 describe('a requested conversation id not present locally (ENG-1233 Major 4)', () => {
   it('renders a loading state, never the tasks[0] recent-conversation fallback', async () => {
-    // The render condition the fix targets: route === 'task' with a requested
-    // activeTaskId that isn't in `tasks` and hasn't errored. We reach it stably
-    // via the optimistic deep link (the loader returns { optimistic } and
-    // openConversation deliberately doesn't merge it into `tasks`) — the same
-    // "requested id, unresolved" state a deep link / scheduled-run open passes
-    // through transiently. The old `tasks[0]` fallback would have rendered
-    // "Alpha task" (conv-a) here; the fix shows the loading state.
+    // Use an optimistic deep link to hold the requested task outside tasks; the unresolved route
+    // must not render tasks[0].
     markOptimisticConversation('conv-ghost');
     window.history.replaceState(null, '', '/c/conv-ghost');
     render(<App />);
 
-    // Loading shows — which means currentTask did NOT fall back to a recent.
     await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
 
     clearOptimisticConversation('conv-ghost');
   });
 });
 
-// ─── ENG-2246: a server refresh must not blank the open transcript ──────────
-//
-// fetchSessions now resolves on the conversation LIST alone, so every row it
-// returns carries `messages: []`. Two call sites still replaced `tasks`
-// wholesale with that, which wiped the transcript of whatever chat was open —
-// ChatView renders the task, and nothing refetches on a `tasks` change, so
-// there was no way back short of a reload. Both now merge.
+// Session-list refreshes return messages:[]; both call sites must merge instead of erasing an open
+// transcript.
 describe('a background refresh must not blank the open transcript (ENG-2246)', () => {
   const LINE = 'remember this line';
   const rows = (messages) => ([
@@ -1217,18 +1125,14 @@ describe('a background refresh must not blank the open transcript (ENG-2246)', (
     moveTaskToProject.mockClear();
   });
 
-  /** Opens the sidebar row's kebab menu. The kebab carries pointer-events:none
-   *  until the row is hovered, which userEvent's pointer model refuses to
-   *  traverse — hence fireEvent for the hover. */
+  /** Use fireEvent to hover; the kebab starts pointer-disabled and userEvent refuses to traverse it. */
   async function openRowMenu(user) {
     // Scoped to the sidebar: the chat header carries the same accessible name.
     const sidebar = within(document.querySelector('aside'));
     const row = sidebar.getByRole('button', { name: 'Alpha task' });
     fireEvent.mouseEnter(row.parentElement);
-    // fireEvent, not user.click: opening the chat above already moved
-    // userEvent's virtual pointer, so its move onto the kebab fires the
-    // hoverProps mouseleave first — which re-hides the kebab (pointer-events:
-    // none) a moment before userEvent asserts it is clickable.
+    // Use fireEvent for the kebab click; userEvent's pointer move would trigger mouseleave and hide
+    // it before clicking.
     fireEvent.click(within(row.parentElement).getByRole('button', { name: 'Task menu' }));
   }
 

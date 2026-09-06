@@ -106,10 +106,8 @@ describe('planQueueDrain', () => {
   });
 
   it('redirects to the current id even when the queue is under an alias', () => {
-    // enqueueMessage filed the messages under the task's pre-adoption tmp- id;
-    // adoptServerId renamed the task without re-keying the queue. The queue has
-    // to be found under the dead key, but the text must be handed back to the
-    // id the task has now, or ChatView will never match it.
+    // Look up queued messages under the pre-adoption tmp- ID but restore them to the task's current
+    // ID.
     const plan = planQueueDrain(
       [askStep()],
       ['conv-new', 'tmp-1'],
@@ -151,10 +149,8 @@ describe('planQueueDrain', () => {
 
 describe('retireQuestionFromSteps', () => {
   it('removes only the named question', () => {
-    // The point of the granularity: a card that 404s must not take a sibling
-    // question the turn is genuinely blocked on down with it. Nothing re-arms
-    // the interception — while a question is pending no stream event arrives to
-    // rewrite the mirror.
+    // Retire only the failed question; no stream event arrives to rearm a still-blocking sibling's
+    // interception.
     const steps = [
       askStep(),
       askStep({ question_id: 'ask:2' }),
@@ -202,9 +198,8 @@ describe('resolvePendingAnswer', () => {
   });
 
   it('blocks the send for a select-only question, without submitting', async () => {
-    // allow_custom:false means the card renders nowhere to type, the server
-    // rejects free text with INVALID_OPTION, and the user's words are usually
-    // not an answer at all. Decided before the network call.
+    // With allow_custom:false, reject composer free text before the network call; the card and
+    // server accept options only.
     const submit = vi.fn();
     const outcome = await resolvePendingAnswer({
       steps: [askStep({ allow_custom: false })],
