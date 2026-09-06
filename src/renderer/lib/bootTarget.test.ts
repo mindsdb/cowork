@@ -15,11 +15,8 @@ function makeHost(over: Partial<BootHost> = {}): BootHost {
 }
 
 describe('resolveBootTarget', () => {
-  // ENG-817 regression: in the hosted web build /settings/raw is loopback-gated
-  // and 403s, so host.readSettings degrades to {} (see host.ts). A configured
-  // instance with local consent must still boot into the app — the empty server
-  // settings must NOT strand it on the auth screen (the original inline logic
-  // treated a readSettings failure as fatal → auth).
+  // Hosted readSettings falls back to {} when its loopback-only endpoint is forbidden; local
+  // consent plus configuration must still permit app boot.
   it('boots a configured instance to terminal when server settings are empty but local consent is set', async () => {
     const host = makeHost({ readSettings: async () => ({}) });
     expect((await resolveBootTarget(host, /* hasLocalConsent */ true)).target).toBe('terminal');
@@ -32,13 +29,8 @@ describe('resolveBootTarget', () => {
     expect((await resolveBootTarget(host, /* hasLocalConsent */ false)).target).toBe('terminal');
   });
 
-  // ENG-2167: on hosted web, readSettings degrades to {} (ENG-817 above) and
-  // cowork-server has no ANTON_TERMS_CONSENT of its own, so server-side consent
-  // can never be present there. That left localStorage as the only surviving
-  // source, which is per-browser: the same account on a second browser or a
-  // cleared profile was asked to agree again. Registration already collected
-  // consent to the same Terms and Privacy Policy, so it counts as a third
-  // source here.
+  // Hosted registration consent must survive a new browser/profile where neither server consent nor
+  // localStorage is available.
   it('honors registration consent when server settings are empty and there is no local flag', async () => {
     const host = makeHost({ readSettings: async () => ({}) });
     expect(
@@ -66,9 +58,7 @@ describe('resolveBootTarget', () => {
     expect((await resolveBootTarget(host, false)).target).toBe('setup');
   });
 
-  // ENG-749: the terminal route must not resolve until the boot sequence gate
-  // (awaitBootReady) has settled — otherwise the loading screen hands off to the
-  // chat UI before a boot-time server update has finished restarting the sidecar.
+  // Keep the terminal route gated until boot-time server updates and restarts finish.
   it('holds the terminal route until awaitBootReady resolves', async () => {
     let released = false;
     let release!: () => void;
@@ -100,9 +90,7 @@ describe('resolveBootTarget', () => {
     expect(gateAwaited).toBe(false);
   });
 
-  // A genuine failure (Electron IPC bridge error, or the server unreachable)
-  // still routes to auth — only the web loopback-gated read is degraded, and
-  // that happens in host.ts, not here.
+  // Real IPC/server failures route to auth; only host.ts degrades expected web loopback refusals.
   it('routes to auth when readSettings throws (e.g. Electron bridge failure)', async () => {
     const host = makeHost({
       readSettings: async () => {
@@ -121,9 +109,7 @@ describe('resolveBootTarget', () => {
     expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
-  // ENG-1232: when BOTH concurrent checks reject (server fully unreachable on
-  // boot) we still route to auth — the single-rejection cases above don't cover
-  // both failing at once.
+  // Cover both concurrent checks failing, independently of the single-failure cases.
   it('routes to auth when both readSettings and checkConfigured reject', async () => {
     const host = makeHost({
       readSettings: async () => {
@@ -136,12 +122,8 @@ describe('resolveBootTarget', () => {
     expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
-  // ENG-1232: pin the parallelization — readSettings() and checkConfigured()
-  // must be in flight at the same time. Each resolves only once BOTH have
-  // started (via the cross-awaited "started" barriers), so a regression back to
-  // serial awaits — where checkConfigured() isn't called until readSettings()
-  // resolves — would deadlock and fail this test via timeout rather than pass
-  // silently.
+  // Cross-awaited start barriers deadlock if readSettings and checkConfigured become serial,
+  // proving they must overlap.
   it('runs readSettings and checkConfigured concurrently, not serially', async () => {
     let markSettingsStarted!: () => void;
     let markConfiguredStarted!: () => void;
@@ -166,9 +148,8 @@ describe('resolveBootTarget', () => {
     expect((await resolveBootTarget(host, false)).target).toBe('terminal');
   });
 
-  // ENG-1232: readSettings + checkConfigured now run concurrently to save an
-  // ingress round-trip, but checkInstall stays conditional — the auth path (not
-  // configured) must not pay an extra request for an install status it won't use.
+  // Keep checkInstall conditional despite concurrent configuration reads; auth routing does not
+  // need its request.
   it('does not call checkInstall when the instance is not configured', async () => {
     let installChecked = false;
     const host = makeHost({
@@ -199,9 +180,8 @@ describe('resolveBootTarget orgMode', () => {
     expect((await resolveBootTarget(host, true)).orgMode).toBe(false);
   });
 
-  // A thrown checkConfigured routes to auth; the mode is then UNKNOWN, and the
-  // caller must not read that as "standalone" - in a web build that would render
-  // desktop-only artifact actions in an org deployment whose /health blipped.
+  // A failed configuration check leaves mode unknown; treating it as standalone would expose
+  // desktop actions in org mode.
   it('reports orgMode null when the health read failed', async () => {
     const host = makeHost({
       checkConfigured: async () => {
@@ -215,11 +195,8 @@ describe('resolveBootTarget orgMode', () => {
 });
 
 describe('resolveRegistrationConsent', () => {
-  // The keycloak module is imported dynamically at every call site precisely so
-  // keycloak-js never loads on Electron (see the auto-finalize effect in
-  // OnboardingScreen). Returning early must therefore happen BEFORE the loader
-  // is touched, not after — asserting the return value alone would not catch a
-  // regression that awaited the import and then discarded it.
+  // Assert the loader is untouched before the Electron early return; checking only the result would
+  // allow keycloak-js to load unnecessarily.
   it('returns false on Electron without invoking the keycloak loader', async () => {
     let loaded = false;
     const load = async () => { loaded = true; return { keycloak: { authenticated: true } }; };
@@ -238,9 +215,8 @@ describe('resolveRegistrationConsent', () => {
     expect(await resolveRegistrationConsent(true, load)).toBe(false);
   });
 
-  // Must not throw and escape init() — same discipline as hasLocalTermsConsent
-  // (ENG-848 review note). A chunk-load failure degrades to "not consented",
-  // which routes to auth rather than stranding the boot.
+  // A chunk-load failure degrades to unconsented and routes to auth instead of escaping init and
+  // stranding boot.
   it('returns false when the keycloak module fails to load', async () => {
     const load = async () => { throw new Error('chunk load failed'); };
     expect(await resolveRegistrationConsent(true, load)).toBe(false);

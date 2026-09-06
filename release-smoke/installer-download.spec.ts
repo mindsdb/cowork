@@ -4,57 +4,29 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 /*
- * What a user gets when they click Download, checked against the live CDN.
- *
- * Two kinds of assertion, deliberately:
- *
- *   - A real Chromium download, for the things only a browser can prove. That
- *     the saved file is named after the version, and that the bytes Chromium
- *     wrote match the checksum the release published, are properties of the
- *     browser's own download path, not of an HTTP client's.
- *
- *   - Raw HTTP, for resumption. Interrupting a real download at a byte offset
- *     is not something a browser exposes, and simulating it with timing is the
- *     kind of test that fails on a slow runner rather than on a real defect.
- *     Requesting the tail with the validator a resume would replay asks the
- *     same question deterministically.
- *
- * Nothing here is mocked. Every byte comes from downloads.mindshub.ai.
+ * Check live CDN downloads without mocks: Chromium verifies saved filenames and bytes; raw HTTP
+ * verifies resumption deterministically using ranges and validators.
  */
 
 const CDN = (process.env.DOWNLOADS_BASE ?? 'https://downloads.mindshub.ai').replace(/\/+$/, '');
 const SHA256 = /^[0-9a-f]{64}$/;
 
 /*
- * Where a transfer is cut before resuming. Aim deep into the object: the
- * further in, the more parts of a multipart upload the resume has to span,
- * and spanning them is where a validator mismatch shows up.
- *
- * 500 MB is the target, and the clamp is what actually applies today, because
- * the installers are around 220 MB and a Range starting past the end answers
- * 416 rather than resuming. Three quarters in leaves a real tail on the other
- * side of the cut. If an installer ever grows past ~667 MB the target takes
- * over on its own.
+ * Resume deep in the object to span multipart boundaries: clamp the 500 MB target to three quarters
+ * of the file so a smaller installer still has a valid tail.
  */
 const INTERRUPT_TARGET = 500 * 1024 * 1024;
 const interruptAt = (sizeBytes: number) => Math.min(INTERRUPT_TARGET, Math.floor(sizeBytes * 0.75));
 
 /*
- * Pulling a whole installer is minutes of transfer, and Playwright's default
- * is 30 seconds per request no matter what `timeout` is set on the test: the
- * built-in `request` fixture is newContext() with no options. Four workers
- * pulling at once share one runner NIC, so the default turns a slow night into
- * a failed release. Still bounded, so a hung connection fails inside the
- * 15-minute test timeout rather than hanging the job.
+ * Large concurrent downloads need a request timeout beyond Playwright's default 30 seconds, still
+ * bounded inside the test's 15-minute limit.
  */
 const BODY_TIMEOUT = 10 * 60_000;
 
 /*
- * The version this run published, when the release pipeline passes one. Every
- * other assertion here is self-consistent: the manifest agrees with the object
- * it names. That stays true of the PREVIOUS release's manifest, so a manifest
- * upload that silently no-opped passes the whole suite. This is the one check
- * that ties what is served to what just shipped.
+ * Compare with the pipeline's published version; manifest/object consistency alone also passes for
+ * a stale previous release.
  */
 const EXPECTED_VERSION = (process.env.RELEASE_SMOKE_VERSION ?? '').trim().replace(/^v/, '');
 
@@ -94,16 +66,8 @@ const ALL_CHANNELS: Channel[] = [
 ];
 
 /*
- * Which channels this run checks.
- *
- * The prod release passes `prod`, and that is not a convenience. `staging.json`
- * is published by a push to `staging` and says nothing about the release that
- * just ran, so asserting it from the release pipeline fails a release that
- * worked and pages the eng channel for it. The nightly run passes nothing and
- * gets both.
- *
- * An unrecognised name throws rather than quietly selecting nothing: a suite
- * that runs zero tests reports green, which is the worst answer available.
+ * Release runs check their published channel; nightly runs check both. Reject unknown channels so
+ * selecting zero tests cannot pass silently.
  */
 const REQUESTED = (process.env.RELEASE_SMOKE_CHANNELS ?? 'prod,stable')
   .split(',')
@@ -124,9 +88,8 @@ const aliasUrl = (p: Platform, c: Channel) =>
   `${CDN}/mindshub-cowork/${p.name}/mindshub-cowork-${c.alias}.${p.ext}`;
 
 /*
- * The body is what gets checked, not the status. A missing key answers 404 now,
- * but it answers with the same 665-byte HTML redirect page it always did, and a
- * correct status still cannot tell a current manifest from a stale one.
+ * Check manifest contents: an HTTP status cannot distinguish a current manifest from stale data or
+ * an HTML fallback.
  */
 async function fetchManifest(
   request: APIRequestContext,
@@ -198,14 +161,8 @@ for (const platform of PLATFORMS) {
         expect(head.status(), `${manifest.url} should resolve`).toBe(200);
         const headers = head.headers();
         /*
-         * The header this channel actually sets, not one of them. A prod
-         * version is cut once and its URL goes out to users, so it is
-         * advertised as immutable. A stable snapshot is named after a commit
-         * and is rewritten whenever the build re-runs, so it carries the short
-         * alias TTL: advertising a key as immutable while overwriting it is
-         * what strands a stale copy at the edge. What both have to prove is
-         * that SOME explicit Cache-Control survives to the edge, because
-         * without one CloudFront applies its own hour.
+         * Require explicit Cache-Control at the edge: release keys are immutable, but rewritten
+         * snapshot keys need the short alias TTL to avoid stale builds.
          */
         const cacheControl = headers['cache-control'] ?? '';
         const immutable = channel.kind === 'prod';
@@ -220,9 +177,7 @@ for (const platform of PLATFORMS) {
         const etag = headers['etag'];
         expect(etag, 'a resume needs a validator to replay').toBeTruthy();
 
-        // The bug this release fixes: a resume whose validator still matches
-        // must come back as a 206 carrying only the tail, not a 200 with the
-        // whole installer.
+        // A matching resume validator must return 206 with only the requested tail.
         const cut = interruptAt(manifest.size_bytes);
         const resumed = await request.get(manifest.url, {
           headers: { Range: `bytes=${cut}-${cut + 1023}`, 'If-Range': etag },
@@ -296,9 +251,8 @@ for (const platform of PLATFORMS) {
     });
   }
 
-  // The full download runs on the prod channel only. It is the same code path
-  // on both, and pulling a second ~220 MB build per platform to prove it twice
-  // buys nothing the checks above have not already covered.
+  // Download the full prod installer only; both channels share the path and the checks above cover
+  // their metadata and ranges.
   test(`prod ${platform.name}: a real browser download saves the versioned file name and the published bytes`, async ({
     page,
   }, testInfo) => {
