@@ -1,8 +1,5 @@
-// ENG-1533: Settings holds two routes to the billing page, and they are not the
-// same event to a reader. The no-credits notice follows a failed provider test
-// (the wallet is empty right now); the locked-model hint follows picking a model
-// the wallet cannot pay for (nothing is broken yet). Separate triggers, so the
-// two are not read as one.
+// Distinguish an empty wallet after provider testing from selecting an unaffordable model in
+// billing telemetry.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -91,7 +88,7 @@ describe('SettingsView — no-credits notice route (ENG-1533)', () => {
     render(<Harness initialSettings={noCredits()} />);
 
     await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
-    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled(); // render is not a click
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
 
     await user.click(screen.getAllByRole('button', { name: /Top up balance/ })[0]);
 
@@ -105,9 +102,7 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     ...baseSettings(),
     providerStatus: { 'minds-cloud': 'ok' },
     providerStatusDetails: {},
-    // The selected model is listed by MindsHub as unpayable. Its row is closed
-    // off, and because it is the CURRENT model the top-up hint renders under the
-    // picker — the stranded-pin case, which is the only one that hint covers.
+    // The top-up hint applies to the currently selected, unaffordable model.
     modelEnabled: { 'gpt-5.6-sol': false },
   });
 

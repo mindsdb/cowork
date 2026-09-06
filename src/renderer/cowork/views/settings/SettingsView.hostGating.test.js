@@ -1,11 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Importing SettingsView pulls in the whole settings surface — `api.js` calls
-// `host.getApiOrigin()` at module scope — so the API and platform bridge are
-// stubbed the same way the sibling SettingsView tests do. Only the nav-filter
-// decision is under test. `navItemsForHost` takes `isWeb` as an argument rather
-// than reading `host` itself, precisely so it can be tested directly without
-// re-mocking the module per case.
+// Stub module-load API and host dependencies to exercise the host nav predicate directly.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -49,27 +44,22 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
   });
 
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
-    // The whole point of the ticket: reasoning effort is the only user-side
-    // workaround for a turn that spends its entire output budget on internal
-    // reasoning and returns nothing (ENG-1042). If Agent ever drops off the
-    // web nav, hosted users lose their only recourse again.
+    // Web users need Agent settings to reduce reasoning effort when internal reasoning exhausts the
+    // output budget.
     expect(ids(navItemsForHost(true, true, true))).toContain('agent');
   });
 
   it('omits the three sections web cannot act on', () => {
     const web = ids(navItemsForHost(true, true, true));
-    // backend — start/stop/diagnostics of a server the user doesn't control.
-    // updates — App-shell version / OTA source are meaningless on hosted.
-    // account — a second sign-in surface for an already-authenticated user.
+    // Hosted users cannot control the local backend or shell updates and already have a sign-in
+    // surface.
     expect(web).not.toContain('backend');
     expect(web).not.toContain('updates');
     expect(web).not.toContain('account');
   });
 
   it('omits rather than disables — a row that opens a dead end is worse', () => {
-    // Pins the intent from the ticket: absent, not present-and-inert. The old
-    // renderBackendSection web branch rendered a "managed server-side" panel,
-    // which is a dead end the user had to discover by clicking.
+    // Unavailable sections must be absent from navigation, not lead to an inert panel.
     expect(navItemsForHost(true, true, true).some((i) => i.id === 'backend')).toBe(false);
   });
 
@@ -86,9 +76,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const a = navItemsForHost(true, true, true);
     a.pop();
     expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels']);
-    // Desktop returns a copy too — without the spread it would hand back the
-    // module-level NAV_ITEMS itself, and this pop() would corrupt every
-    // later call on both platforms.
+    // Return a copy so callers cannot mutate shared NAV_ITEMS.
     const b = navItemsForHost(false, true, true);
     b.pop();
     expect(ids(navItemsForHost(false, true, true))).toEqual([
@@ -124,7 +112,6 @@ describe('navItemsForHost — Code Mode availability and opt-in', () => {
 describe('shouldRevealStoredKey — the key-reveal gate (ENG-932)', () => {
   const base = { isWeb: false, show: false, revealName: 'anthropic', isSentinel: true, alreadyRevealed: false };
 
-  // ── The direction a web-only change is most likely to break silently ──
   it('still reveals on desktop — the pre-existing behaviour must be intact', () => {
     expect(shouldRevealStoredKey(base)).toBe(true);
   });
@@ -140,7 +127,6 @@ describe('shouldRevealStoredKey — the key-reveal gate (ENG-932)', () => {
     expect(shouldRevealStoredKey({ ...base, isWeb: true })).toBe(false);
   });
 
-  // ── The pre-existing conditions, unchanged by this ticket ──
   it('does not fetch when the field is already showing', () => {
     expect(shouldRevealStoredKey({ ...base, show: true })).toBe(false);
   });

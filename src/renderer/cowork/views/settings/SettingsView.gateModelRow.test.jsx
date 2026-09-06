@@ -30,9 +30,7 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 
 import SettingsView from './SettingsView';
 
-// One factory: only the provider card, the role's provider, and `gate` decide
-// what the router row says. Everything else in a real settings payload falls
-// back inside SettingsView and does not touch this row's copy.
+// Only the provider card, role provider and gate affect this row; other settings use view defaults.
 const settingsFor = (type, card, gate) => ({
   modelMode: 'default',
   planningProvider: type,

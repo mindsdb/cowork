@@ -18,13 +18,10 @@ function defaultComputerName(platform: string): string {
 }
 
 
-// The command is pasted into whichever shell the other computer has — bash,
-// zsh, PowerShell or cmd.exe — and no escaping rule is shared by all four. A
-// double-quoted string is safe in every one of them only while it contains no
-// character any of them treats specially, so the name is reduced to that
-// alphabet instead of being escaped. argparse would read a leading dash as an
-// option.
-// ComputerRegistrationRequest.name is capped at 120 code points on the server.
+// Restrict names to characters safe inside double quotes in bash, zsh, PowerShell, and cmd;
+// escaping rules differ.
+// Remove leading dashes so argparse cannot treat the name as an option. The server caps names at
+// 120 code points.
 export function shellSafeComputerName(name: string): string {
   const points = Array.from(name
     .replace(/[^\p{L}\p{M}\p{N} ._'-]/gu, '')
