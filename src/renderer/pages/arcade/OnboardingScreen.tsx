@@ -1,10 +1,3 @@
-// Provider onboarding ("POWER UP"), arcade edition.
-//
-// The logic is a 1:1 port of the previous Onboarding page — same phase
-// machine (choose / validating / minds-no-llm / success / error), same
-// host calls, same .env lines, same backend sync — re-skinned as the
-// stage where you plug a power source into the coworker you just chose.
-
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '../../../shared/minds-orgs';
@@ -19,10 +12,8 @@ import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
-// 'signup-wait': browser is on Keycloak's registration flow, possibly parked
-// on email verification for minutes (ENG-917). 'signup-verify': that wait
-// timed out — the account likely exists and is verified, one Sign-in click
-// finishes; deliberately an info state, never an error.
+// signup-wait may last through email verification; timeout becomes signup-verify, an informational
+// sign-in prompt.
 type Phase = 'choose' | 'validating' | 'pick-org' | 'signup-wait' | 'signup-verify' | 'minds-no-llm' | 'success' | 'error';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
@@ -40,34 +31,27 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
-// only non-picker path allowed to set a model (ENG-739) — so both onboarding and
-// the post-install replay (ENG-922) share one implementation.
+// Use syncModelsToDb for model writes so onboarding and post-install replay share the permitted
+// non-picker path.
 
 export interface PersistDeps {
   /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
   saveSettings: (content: string) => Promise<boolean>;
   /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
   syncToDb: (lines: string[]) => Promise<boolean>;
-  /** Best-effort model write here (result ignored on the success path — server
-   *  is up); the return type is widened so syncModelsToDb's boolean fits. */
+  /** Model sync is best-effort after the authoritative config write. */
   syncModels: (lines: string[]) => Promise<unknown>;
   syncHarness: () => Promise<void>;
 }
 
 export type PersistResult =
   | { ok: true }
-  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
-  // thrown error — so callers can tell "the write was rejected/unreachable"
-  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  // Distinguish a rejected/unreachable DB write from a thrown .env/IPC failure for
+  // resolveFinalizeOutcome.
   | { ok: false; error: string; dbSyncFailed?: true };
 
-// Run the onboarding persist sequence and report whether the config actually
-// landed. The .env write is best-effort (host.saveSettings tolerates the web
-// loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
-// means the settings did NOT persist, so onboarding must not advance to
-// success over an unsaved config (raised in ENG-817 review). Exported pure so
-// the success/failure decision is unit-tested without rendering the component.
+// The DB write is authoritative; best-effort .env persistence alone must never advance onboarding
+// to success.
 export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
@@ -83,14 +67,10 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
-    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
-    // model/harness sync must NOT bounce the user to the error screen over a
-    // saved config (ENG-848). Each gets its own catch so one failing can't
-    // skip the other (#435 review). Logged because a dropped model write does
-    // NOT self-heal (model keys ride neither the bulk re-sync nor the startup
-    // migration — ENG-739/922).
+    // Model and harness writes are best-effort after config persists; failure in one must not skip
+    // the other.
+    // Log failures because omitted model writes do not self-heal through bulk sync or startup
+    // migration.
     try {
       await deps.syncModels(lines);
     } catch (e) {
@@ -112,16 +92,9 @@ export type FinalizeOutcome =
   | { action: 'defer' }
   | { action: 'error'; error: string };
 
-// Decide what finalizeSettings should do with a persistOnboarding result. A
-// `dbSyncFailed` result while the server isn't installed/ready yet is the
-// EXPECTED shape of the onboarding/install race (the DB endpoint has no one
-// to answer until the server finishes starting) — defer rather than error,
-// so the caller proceeds to onComplete and lets handleAuthComplete's own
-// checkInstall gate route to the setup screen (handlePostAuth retries this
-// same sync once install finishes). Any other failure — a real .env/IPC
-// error, or a DB sync that failed against an ALREADY-ready server — is a
-// genuine, user-facing failure. Exported pure so the branch is unit-tested
-// without an install IPC round-trip.
+// Defer DB failure only while install/startup is incomplete; onComplete routes to setup and retries
+// after install.
+// A ready-server DB refusal or .env/IPC error must remain user-visible.
 export function resolveFinalizeOutcome(
   res: PersistResult,
   installStatus: { antonInstalled: boolean; serverDepsReady: boolean } | null,
@@ -132,10 +105,6 @@ export function resolveFinalizeOutcome(
   return { action: 'error', error: res.error };
 }
 
-// The provider→validation-target and provider→env-vars mappings are
-// identical whether BYOK runs directly (Stage 1) or as the LLM step after
-// MindsHub (Stage 2). Shared here so the two call sites can't drift (they
-// previously diverged on the openai-compatible "not-needed" fallback).
 function resolveValidationTarget(
   bp: ByokProvider,
   customBaseUrl: string,
@@ -189,10 +158,8 @@ export default function OnboardingScreen({
   /** Cartridge chosen on the select screen; persisted with the settings. */
   coworker: { id: string; label: string; sprite: SpriteName };
   /**
-   * Advance out of onboarding. On the setup-deferral path (fresh install, server
-   * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
-   * post-install handshake can replay them once (ENG-922); omitted on every
-   * other path.
+   * On setup deferral, pass the chosen ANTON_*_MODEL lines to onComplete for one post-install
+   * replay.
    */
   onComplete: (deferredModelLines?: string[]) => void;
   /** Optional — returns to the coworker-select screen. */
@@ -200,7 +167,6 @@ export default function OnboardingScreen({
 }) {
   const [provider, setProvider] = useState<Provider>('minds');
   const [byokProvider, setByokProvider] = useState<ByokProvider>('anthropic');
-  // Seeded once the backend's recommended-model lists load (see effect below).
   const [selectedModel, setSelectedModel] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -210,42 +176,28 @@ export default function OnboardingScreen({
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
   const [skippedMinds, setSkippedMinds] = useState(false);
-  // Which stage's layout to render. Decoupled from `phase` so the
-  // validating spinner shows in the right place without inferring it
-  // from whether the API-key field happens to be non-empty.
+  // Track layout separately from phase so validating renders in the correct stage.
   const [step, setStep] = useState<'minds' | 'byok'>('minds');
-  // Latches once onboarding finalizes so the web Keycloak auto-finalize
-  // effect (which re-runs on `provider` toggles) can't double-save /
-  // double-fire onComplete.
+  // Latch finalization so provider toggles cannot make the web auto-finalize effect save and
+  // complete twice.
   const finalizedRef = useRef(false);
-  // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
-  // Which MindsHub organization the API key gets minted in. Only ever asked
-  // when the account belongs to more than one company organization: with a
-  // single one there is no choice to make, and the success screen names it
-  // anyway. `orgChoices` empty means the question was never worth asking.
+  // Ask for an organization only when there are multiple company choices; an empty list means no
+  // question.
   const [orgChoices, setOrgChoices] = useState<MindsOrg[]>([]);
   const [pickedOrgId, setPickedOrgId] = useState('');
-  // The organization the key actually landed in, which the ranking asks for
-  // and the entitlement fallback can still move.
+  // The organization finalized by main, which entitlement fallback may change.
   const [mintedOrg, setMintedOrg] = useState<MindsOrg | null>(null);
 
-  // ENG-912: a console-hosted (web) instance is pre-provisioned server-side
-  // (config_ready:true, key seeded), but the browser can't read that key
-  // (/settings/raw 403s, ENG-457) — so the provider/key-entry flow would ask a
-  // ready user for a MindsHub key they were never given. Detect config_ready
-  // (the ungated /health signal) and offer consent-only entry instead. `null`
-  // = still checking; only meaningful in web (Electron uses the SSO flow, so it
-  // starts false and takes the normal path).
+  // Hosted config_ready deployments already have an unreadable server-held key; offer consent-only
+  // entry.
+  // null means the health check is pending; Electron follows SSO instead.
   const [webConfigured, setWebConfigured] = useState<boolean | null>(host.isWeb ? null : false);
-  // True once the keycloak auto-finalize path (authenticated standalone/localhost)
-  // takes over. Tracked as STATE — not the finalizedRef ref — so the boot returns
-  // below yield to it deterministically; a ref mutation doesn't re-render, which
-  // let the provider form flash / the consent button go inert during
-  // finalization (PR #445 review). Org deployments never take that path.
+  // Use state for Keycloak auto-finalization so boot routing re-renders; a ref alone can flash the
+  // form.
+  // Org deployments do not use this path.
   const [autoFinalizing, setAutoFinalizing] = useState(false);
-  // Server serves organizations (provider config is admin-owned there, so the
-  // client must not write it). `null` = still checking.
+  // Org deployments own provider config on the server; null means the check is pending.
   const [orgMode, setOrgMode] = useState<boolean | null>(host.isWeb ? null : false);
   useEffect(() => {
     if (!host.isWeb) return;
@@ -264,14 +216,10 @@ export default function OnboardingScreen({
     return () => { cancelled = true; };
   }, []);
 
-  // Per-provider model lists, owned by cowork-server and fetched at runtime
-  // (same source minds-cloud already uses) — no model names are hardcoded
-  // here. Empty until the fetch resolves; the picker degrades to a free-text
-  // input in that window (and if the backend is unreachable).
+  // Fetch recommendations from cowork-server; missing or unreachable lists fall back to free-text
+  // model entry.
   const [recModels, setRecModels] = useState<Record<string, string[]>>({});
-  // Catalog display labels by id. Without these the BYOK select derived every
-  // name from the id, so it could disagree with the Settings picker for the
-  // same model (ENG-1638).
+  // Use catalog labels so model names match the Settings picker.
   const [recLabels, setRecLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
@@ -296,14 +244,11 @@ export default function OnboardingScreen({
         ? OPENAI_MODELS
         : [];
 
-  // A provider's default model id: its first recommended entry, or the
-  // free-text sentinel when the list is empty (so resolvedModel reads from
-  // the custom field rather than a stale id).
+  // Use the free-text sentinel for an empty recommendation list so resolvedModel cannot retain a
+  // stale id.
   const firstModelId = (list: ProviderModel[]) => list[0]?.id ?? CUSTOM_MODEL;
 
-  // Seed the model field once lists load (or after a provider switch left it
-  // blank). Skips when the user has already picked something, including
-  // Custom… — so we never clobber a manual choice.
+  // Seed only an empty model field; preserve explicit choices, including Custom.
   useEffect(() => {
     if (selectedModel) return;
     if (byokProvider === 'openai-compatible') return;
@@ -342,13 +287,7 @@ export default function OnboardingScreen({
     }
   };
 
-  // Persist the built settings lines and advance to success — but only if the
-  // authoritative DB write succeeded. A failed DB sync while the server isn't
-  // installed/ready yet is deferred (not errored) to onComplete, whose own
-  // checkInstall gate correctly routes to the setup screen instead of
-  // stranding the user on a "could not save" error mid-download (see
-  // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
-  // Shared by every finalize path so they can't drift.
+  // Share authoritative persistence and install-deferral decisions across every finalize path.
   const finalizeSettings = async (lines: string[]) => {
     const res = await persistOnboarding(
       {
@@ -362,20 +301,15 @@ export default function OnboardingScreen({
     const installStatus = res.ok ? null : await host.checkInstall().catch(() => null);
     const outcome = resolveFinalizeOutcome(res, installStatus);
     if (outcome.action === 'error') {
-      finalizedRef.current = false; // allow a retry
+      finalizedRef.current = false;
       setPhase('error');
       setErrorMsg(outcome.error);
       return;
     }
     if (outcome.action === 'defer') {
-      // Server isn't up yet — skip the "success" flash (misleading here) and
-      // let onComplete's checkInstall gate show the setup/install screen.
-      // persistOnboarding stopped at the failed DB sync, BEFORE syncModels, so
-      // the chosen model never reached the DB and the post-install bulk .env
-      // re-sync deliberately excludes model keys (ENG-739). Hand the just-chosen
-      // model lines up so the post-install handshake replays them once —
-      // otherwise a non-Anthropic BYOK user lands config-not-ready ("Select a
-      // model"). In-memory choice, never a .env re-read (ENG-922).
+      // The deferred DB write skipped model sync, and bulk .env replay excludes model keys.
+      // Pass the in-memory model choice to onComplete for one post-install replay, then route
+      // directly to setup.
       onComplete(modelLinesFrom(lines));
       return;
     }
@@ -384,7 +318,7 @@ export default function OnboardingScreen({
   };
 
   const saveFinal = async (lines: string[]) => {
-    if (finalizedRef.current) return; // guard double-finalize (see finalizedRef)
+    if (finalizedRef.current) return;
     finalizedRef.current = true;
     lines.push('ANTON_MEMORY_MODE=autopilot');
     lines.push('ANTON_EPISODIC_MEMORY=true');
@@ -404,14 +338,9 @@ export default function OnboardingScreen({
         return;
       }
 
-      // The key goes to the main process, which stores it in the OS keychain
-      // and hands it to the sidecar at runtime. Writing it as an env line here
-      // would put a long-lived bearer back in `~/.cowork/.env`, which is the
-      // thing this whole path exists to stop.
-      //
-      // The web shell has no main process to route it to, so it keeps writing
-      // the line: there the server holds the credential either way, and the
-      // runtime hand-over is a desktop mechanism.
+      // Desktop keys go through main's keychain and sidecar hand-over; do not write long-lived
+      // bearers to .env.
+      // Web has no main process and persists the key on the server.
       const stored = await host.mindshubSetUserKey(apiKey.trim());
       if (stored.supported && !stored.ok) {
         setPhase('error');
@@ -425,17 +354,12 @@ export default function OnboardingScreen({
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
-      /* One probe, not two. The check above is already a small chat
-       * completion against this same host on the free model, so it has proved
-       * reachability, the key, and that inference answers. A second probe used
-       * to re-send the same request on the recommended *paid* model, which an
-       * empty wallet denies; that denial read as "MindsHub does not work" and
-       * sent a brand-new user to bring-your-own-key with a valid MindsHub key
-       * already saved. Whether the wallet can afford a paid model is not
-       * something onboarding should decide. */
-      // Set only the provider; the backend resolves the default
-      // planning/coding model on load and reports it back to the UI
-      // (apply_model_defaults), so we never write model names.
+      /*
+       * The free-model probe already proved reachability and credentials. Do not probe a paid
+       * model:
+       * an empty wallet would wrongly reject a valid MindsHub setup.
+       */
+      // Set provider only; the backend resolves and reports default models.
       const lines = [
         ...mindsLines,
         'ANTON_PLANNING_PROVIDER=minds-cloud',
@@ -473,10 +397,8 @@ export default function OnboardingScreen({
       resolveValidationTarget(byokProvider, customBaseUrl);
     const key = llmApiKey.trim() || (byokProvider === 'openai-compatible' ? 'not-needed' : '');
 
-    // Validate against the backend when it's reachable. In the login-first
-    // flow the cowork-server may not be installed yet (install runs after
-    // auth), so a network failure here isn't a rejection — defer validation
-    // and let the backend validate on first use.
+    // Before installation, an unreachable backend defers validation until first use; it is not a
+    // credential rejection.
     let result: { ok: boolean; error?: string } | null = null;
     try {
       result = await host.validateProvider(
@@ -486,7 +408,7 @@ export default function OnboardingScreen({
         resolvedModel
       );
     } catch {
-      result = null; // server unreachable — proceed, validate later
+      result = null;
     }
 
     if (result && !result.ok) {
@@ -495,8 +417,8 @@ export default function OnboardingScreen({
       return;
     }
 
-    // Merge the new LLM vars onto the existing settings (the MindsHub
-    // keys saved in Stage 1 stay intact for publishing/connectors).
+    // Preserve Stage 1 MindsHub settings for publishing and connectors while merging the new LLM
+    // settings.
     const existing = await host.readSettings();
     const merged: Record<string, string> = {
       ...existing,
@@ -504,8 +426,7 @@ export default function OnboardingScreen({
     };
     merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
     merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
-    // Continuing past the auth screen records terms consent (the standalone
-    // terms screen is gone — consent is implicit per the "by continuing" line).
+    // Continuing records the consent disclosed by the visible terms line.
     merged.ANTON_TERMS_CONSENT = 'true';
 
     if (finalizedRef.current) return;
@@ -523,9 +444,8 @@ export default function OnboardingScreen({
       const reason = String(loginResult.reason || '');
       const reloadKey = host.isMac() ? 'Cmd+R' : 'Ctrl+R';
       if (/timed out/i.test(reason)) {
-        // The loopback callback never arrived — usually the sign-in
-        // happened in a STALE browser tab from an earlier app launch
-        // (the callback port changes every launch).
+        // A missing callback often means sign-in used a stale tab: the loopback port changes each
+        // launch.
         setErrorMsg(
           `Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older "You're authorized" tabs), or press ${reloadKey} to reload.`,
         );
@@ -539,11 +459,8 @@ export default function OnboardingScreen({
     await completeMindsAuth();
   };
 
-  // Sign-up (ENG-917): the same loopback PKCE flow as sign-in, entered
-  // through Keycloak's registration form. The browser leg legitimately
-  // pauses on email verification — sometimes minutes — so the pending
-  // state gets its own copy, and the eventual timeout degrades to a
-  // "verified? just sign in" nudge instead of an error.
+  // Registration can pause for minutes at email verification; timeout offers sign-in instead of an
+  // error.
   const handleMindsSignup = async () => {
     setPhase('signup-wait');
     setErrorMsg('');
@@ -551,9 +468,7 @@ export default function OnboardingScreen({
     if (!result.ok) {
       const reason = String(result.reason || '');
       if (/cancelled/i.test(reason)) {
-        // Explicit cancel, or superseded by a Sign-in click (the flows are
-        // single-flight in main). Whoever took over owns the phase — only
-        // reset if the wait screen is still the one showing.
+        // A replacement flow owns phase; cancel must only reset a still-visible signup wait screen.
         setPhase((p) => (p === 'signup-wait' ? 'choose' : p));
         return;
       }
@@ -568,26 +483,16 @@ export default function OnboardingScreen({
     await completeMindsAuth();
   };
 
-  // Post-auth completion shared by sign-in and sign-up: once Keycloak hands
-  // back tokens the two flows are identical — provision the LLM key, route
-  // free users to the paywall/BYOK, commit the env on success.
-  // Between signing in and minting, ask which organization the key belongs to —
-  // but only when the answer is not already obvious. One company organization
-  // is a label rather than a choice, and an account with nothing but its own
-  // personal organization sees the app exactly as it did before this existed.
+  // Sign-in and sign-up share finalization; ask organization only when multiple company choices
+  // exist.
   const completeMindsAuth = async () => {
-    setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
+    setPhase('validating');
     const { orgs } = await host.mindshubListOrgs();
-    // `canPickOrganization` is a shell check, not a feature flag: an older main
-    // process drops the "a person chose this" flag and its entitlement fallback
-    // overrides the answer, so asking would promise something that cannot be
-    // kept. Those installs get the ranking, exactly as they did before the
-    // picker existed, until the next installer (ENG-2199).
+    // Older shells cannot preserve an explicit organization choice; keep ranked selection until an
+    // installer upgrade.
     if (needsOrgPick(orgs) && host.canPickOrganization()) {
       const ranked = rankMindsOrgs(orgs);
       setOrgChoices(ranked);
-      // Ranked, so this is the first company organization — the answer the
-      // ranking would have reached on its own.
       setPickedOrgId(ranked[0].id);
       setPhase('pick-org');
       return;
@@ -595,10 +500,8 @@ export default function OnboardingScreen({
     await mintMindsKey();
   };
 
-  // `pick` is present only when a person answered the organization question on
-  // the picker below. Without it the organization is whatever the ranking or the
-  // stored preference resolves to, and main stays free to move the session to
-  // one that can pay; with it, their answer is final (ENG-2199).
+  // Only an explicit picker answer sets chosenByUser; main may otherwise choose an entitled
+  // organization.
   const mintMindsKey = async (pick?: { organizationId: string; chosenByUser: boolean }) => {
     setPhase('validating');
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
@@ -609,22 +512,13 @@ export default function OnboardingScreen({
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
       return;
     }
-    // No LLM credits — account authenticated but the app could not set MindsHub
-    // up. Save terms consent and redirect to BYOK so the user can pick a
-    // provider.
-    //
-    // Nothing produces this any more: the refusal it detected came from the
-    // key mint, and the app no longer mints. A user with no entitlement now
-    // signs in and meets the gateway's top-up card on their first message
-    // instead. Kept because the branch costs nothing and the shape is still
-    // declared across the bridge.
+    // Legacy bridge response: redirect upgradeRequired to BYOK and preserve consent.
+    // Current shells no longer mint keys; entitlement failures surface at the gateway on first use.
     if (finalizeResult.upgradeRequired) {
-      // ENG-1533: on the commonest path — first run — a provisioning refusal
-      // shows no paywall at all, it offers BYOK. That is why the refusal is its
-      // own event with an `outcome` rather than a paywall trigger.
+      // Provisioning refusal offers BYOK, so record its outcome separately from paywall triggers.
       trackKeyProvisioningRefused('byok_offered');
-      // Best-effort in web (loopback-gated; consent also persists client-side
-      // on completion). See host.saveSettings / ENG-817.
+      // Web .env consent is best-effort; completion also persists it client-side (see
+      // host.saveSettings).
       await host.saveSettings('ANTON_TERMS_CONSENT=true');
       setStep('byok');
       setPhase('minds-no-llm');
@@ -635,10 +529,8 @@ export default function OnboardingScreen({
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
       return;
     }
-    // Provider only — the backend resolves the default model on load, and
-    // finalize hands the credential straight to the sidecar rather than
-    // returning one for us to write. There is deliberately no
-    // ANTON_MINDS_API_KEY line here any more.
+    // Set provider only: backend owns default models and main hands credentials directly to the
+    // sidecar.
     const lines = [
       'ANTON_TERMS_CONSENT=true',
       'ANTON_MINDS_ENABLED=true',
@@ -650,24 +542,20 @@ export default function OnboardingScreen({
     await saveFinal(lines);
   };
 
-  // Web: ReactKeycloakProvider with onLoad:'login-required' redirected to
-  // Keycloak before the app rendered; on remount keycloak.authenticated is
-  // already true and the token keys were written by web-main.tsx. Here we
-  // just write the config keys to complete onboarding. On Electron the
-  // early return fires before the import, so keycloak-js never loads.
+  // Web Keycloak authenticates before mounting and web-main.tsx writes token keys; finalize only
+  // config here.
+  // Electron returns before importing keycloak-js.
   useEffect(() => {
     if (!host.isWeb) return;
     if (provider !== 'minds') return;
-    // Not in an org deployment: these lines are org-classified (admin-only), so
-    // a member gets a 403 whose error phase then bypasses the consent-only
-    // branch below. `!== false` — `null` means the check is still in flight.
+    // Do not write admin-owned provider config in org deployments; null means the deployment check
+    // is pending.
     if (orgMode !== false) return;
-    if (finalizedRef.current) return; // already completed — don't re-finalize
+    if (finalizedRef.current) return;
     let cancelled = false;
     import('../../lib/keycloak').then(({ keycloak }) => {
       if (cancelled || finalizedRef.current || !keycloak.authenticated) return;
-      setAutoFinalizing(true); // drive the boot returns via state, not the ref
-      // Provider only — the backend resolves the default model on load.
+      setAutoFinalizing(true);
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
         'ANTON_MINDS_ENABLED=true',
@@ -679,16 +567,12 @@ export default function OnboardingScreen({
     return () => { cancelled = true; };
   }, [provider, orgMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Full-screen Terms/Privacy reader (opened from the consent line).
   if (legalDoc) {
     return <LegalViewer doc={legalDoc} onClose={() => setLegalDoc(null)} />;
   }
 
-  // ENG-912: web + already-configured → skip the provider/key flow (the key is
-  // seeded server-side and unreadable here). Hold a minimal welcome while the
-  // config_ready check is in flight OR the keycloak auto-finalize path is
-  // completing, so neither the provider form nor the consent screen flashes.
-  // success/error fall through to their own screens below.
+  // Hold while config_ready or Keycloak finalization is pending to avoid flashing provider/consent
+  // screens.
   if (host.isWeb && (webConfigured === null || autoFinalizing) && phase !== 'success' && phase !== 'error') {
     return (
       <ArcadeShell title="Welcome" subtitle="getting things ready">
@@ -698,11 +582,8 @@ export default function OnboardingScreen({
       </ArcadeShell>
     );
   }
-  // Configured cloud instance: consent-only entry. The Terms/Privacy line is
-  // kept so consent is still shown (never silently recorded); Continue records
-  // it client-side (via onComplete → rememberTermsConsent) and enters the app.
-  // Skipped when auto-finalizing — a keycloak-authenticated user's auto-finalize
-  // effect handles consent + entry itself (loading above, then success below).
+  // Configured web deployments need only visible consent; auto-finalizing Keycloak handles entry
+  // separately.
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
       <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
@@ -730,11 +611,7 @@ export default function OnboardingScreen({
     );
   }
 
-  // ── Pick an organization ───────────────────────────────────────────
-  // Only reached when the account belongs to more than one company
-  // organization. The key is minted into whichever is picked here, and that
-  // is what pays for every turn afterwards, which is why the copy says so in
-  // those words rather than naming the key.
+  // Ask which organization pays only when multiple company organizations are available.
   if (phase === 'pick-org') {
     return (
       <ArcadeShell title="Choose an organization" subtitle="who pays for your usage">
@@ -776,7 +653,6 @@ export default function OnboardingScreen({
     );
   }
 
-  // ── Victory ────────────────────────────────────────────────────────
   if (phase === 'success') {
     return (
       <ArcadeShell title="All set" subtitle="you're signed in">
@@ -798,7 +674,6 @@ export default function OnboardingScreen({
     );
   }
 
-  // ── Validating overlay content (shared) ────────────────────────────
   const validatingBlock = (
     <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
       <PixelSprite name="bolt" size={44} title="Validating" />
@@ -809,10 +684,7 @@ export default function OnboardingScreen({
     </div>
   );
 
-  // ── Sign-up pending overlay (ENG-917) ──────────────────────────────
-  // Shown while the browser owns the registration flow. The email-verify
-  // pause means this can sit for minutes — the copy sets that expectation,
-  // and Cancel tears the loopback listener down via the main process.
+  // Registration may wait minutes for email verification; Cancel tears down the loopback listener.
   const signupWaitBlock = (
     <div className="arc-stack arc-fade-in" style={{ gap: 14, padding: '12px 0' }}>
       <PixelSprite name="bolt" size={44} title="Waiting for sign-up" />
@@ -828,8 +700,6 @@ export default function OnboardingScreen({
     </div>
   );
 
-  // ── Stage 2: bring-your-own key ────────────────────────────────────
-  // Driven by the explicit `step`, not by inferring from form contents.
   if (step === 'byok' && (phase === 'minds-no-llm' || phase === 'validating')) {
     const showLlmForm = phase === 'minds-no-llm';
     return (
@@ -840,11 +710,6 @@ export default function OnboardingScreen({
           {showLlmForm && (
             <>
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
-                {/* Two arms, not three. Reaching this screen means either
-                    "Continue without an account" (skippedMinds) or a finalize that
-                    came back upgradeRequired. The third arm used to cover a valid
-                    key whose paid-model probe failed, and that probe is gone, so
-                    the flag that told the two credit cases apart went with it. */}
                 {skippedMinds
                   ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).</>
                   : <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>}
@@ -966,10 +831,6 @@ export default function OnboardingScreen({
     );
   }
 
-  // ── Stage 1: MindsHub ──────────────────────────────────────────────
-  // First-run framing (ENG-914): most people seeing this screen have never
-  // used the app, so creating an account leads and signing in is one click
-  // away — not the other way round.
   return (
     <ArcadeShell title="Get started" subtitle="create a free account or sign in to continue">
       <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
@@ -1000,9 +861,7 @@ export default function OnboardingScreen({
               >
                 {phase === 'validating' ? 'One moment…' : 'Create a free account'}
               </button>
-              {/* Stays clickable during signup-wait on purpose — the flows are
-                  single-flight in main, so a Sign-in click supersedes a parked
-                  sign-up (ENG-917). */}
+              {/* Sign-in stays available to supersede a parked signup; main owns a single flight. */}
               <button
                 type="button"
                 className="arc-btn-ghost arc-btn-ghost-stacked"
@@ -1072,9 +931,8 @@ export default function OnboardingScreen({
             type="button"
             className="arc-link"
             onClick={() => {
-              // Leaving for BYOK abandons any parked sign-up — tear its
-              // loopback listener down so a later email-link click can't
-              // yank the user back into the MindsHub path.
+              // Cancel parked signup before BYOK so a later email-link callback cannot change the
+              // chosen path.
               if (phase === 'signup-wait') host.oauthCancel();
               setProvider('byok');
               setStep('byok');

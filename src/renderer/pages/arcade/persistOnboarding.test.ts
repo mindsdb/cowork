@@ -22,9 +22,7 @@ describe('persistOnboarding', () => {
     const d = makeDeps({ syncToDb: vi.fn(async () => false) });
     const res = await persistOnboarding(d, ['ANTON_X=1']);
     expect(res.ok).toBe(false);
-    // dbSyncFailed distinguishes "the write was rejected/unreachable" from a
-    // thrown error, so finalizeSettings can defer to the install check
-    // instead of erroring when the server just isn't up yet.
+    // Only dbSyncFailed identifies a deferrable database write failure.
     if (!res.ok) expect(res.dbSyncFailed).toBe(true);
     expect(d.syncModels).not.toHaveBeenCalled();
     expect(d.syncHarness).not.toHaveBeenCalled();
@@ -51,9 +49,7 @@ describe('persistOnboarding', () => {
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
 
-  // ENG-848: syncModels/syncHarness run AFTER the authoritative DB write and are
-  // best-effort — a throw there must not bounce a user whose config already
-  // persisted to the onboarding error screen.
+  // After the authoritative write, model and harness synchronization is best effort.
   it('still succeeds when syncModels throws after the DB write lands', async () => {
     const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
@@ -79,9 +75,7 @@ describe('resolveFinalizeOutcome', () => {
     expect(resolveFinalizeOutcome(OK, null)).toEqual({ action: 'success' });
   });
 
-  // The onboarding/install race: the DB write was rejected because the local
-  // server hasn't finished installing/starting yet — this must defer to the
-  // setup screen, not block the user with a "could not save" error.
+  // Cover the race where installation delays the database write.
   it('defers when the DB sync failed and the server is not installed/ready', () => {
     expect(resolveFinalizeOutcome(DB_FAIL, NOT_READY)).toEqual({ action: 'defer' });
   });
@@ -91,9 +85,7 @@ describe('resolveFinalizeOutcome', () => {
     expect(resolveFinalizeOutcome(DB_FAIL, READY)).toEqual({ action: 'error', error: DB_FAIL.error });
   });
 
-  // checkInstall itself failed (finalizeSettings passes null) — can't confirm
-  // a not-ready race, so fail safe with the existing error instead of
-  // silently deferring.
+  // An unknown installation-check result must remain an error.
   it('errors when install status could not be determined', () => {
     expect(resolveFinalizeOutcome(DB_FAIL, null)).toEqual({ action: 'error', error: DB_FAIL.error });
   });

@@ -1,12 +1,5 @@
-// CHOOSE YOUR DISPLAY — theme picker, shown right after the coworker
-// cartridge is chosen and before POWER UP.
-//
-// Four preset "monitors", each a miniature render of the app in that
-// palette: MIDNIGHT (normal dark), DAYLIGHT (normal light), GAME BOY
-// (8-bit light), ARCADE (8-bit dark). One pick sets both axes
-// (skin + light/dark). A footer points at Settings → Appearance, where
-// the user can mix the axes freely or design their own Custom theme —
-// deliberately NOT on this screen, to keep onboarding one decision.
+// Each onboarding preset chooses both skin and light/dark; custom combinations are configured in
+// Settings.
 
 import { useEffect, useRef, useState } from 'react';
 import { ArcadeShell, PressPrompt } from './components';
@@ -24,9 +17,6 @@ export interface ThemePreset {
   scanlines: boolean;
 }
 
-// Order = the slots on screen: the standard looks lead (dark first,
-// matching the CRT chooser itself), the 8-bit skins follow, and the
-// CREATE YOUR OWN card below always sits last.
 export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'midnight',
@@ -70,9 +60,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
 ];
 
-// The 5th card — not a preset: it advertises the in-app Custom designer
-// (Settings → Appearance → Style → Custom). Focusable so the detail
-// panel can explain it, but not pickable from this screen.
+// The custom-designer card is focusable for its explanation but cannot be selected during
+// onboarding.
 const CUSTOM_SLOT = {
   id: 'custom-slot',
   name: 'CREATE YOUR OWN',
@@ -81,7 +70,6 @@ const CUSTOM_SLOT = {
   color: '#a78bfa',
 };
 
-/** Mini "designer" visual for the CREATE YOUR OWN card: paint swatches. */
 function MiniDesigner({ height = 64 }: { height?: number }) {
   const swatches = ['#3dd6f5', '#4ade80', '#fbbf24', '#f87168', '#a78bfa', '#f472b6'];
   return (
@@ -101,7 +89,6 @@ function MiniDesigner({ height = 64 }: { height?: number }) {
   );
 }
 
-/** Miniature app render: sidebar strip, heading, accent line, input box. */
 function MiniApp({ preset, height = 64 }: { preset: ThemePreset; height?: number }) {
   const { p, skin } = preset;
   const r = skin === '8bit' ? 1 : 3;
@@ -131,8 +118,6 @@ export default function ThemeSelect({
   onSelect: (preset: ThemePreset) => void;
   onBack?: () => void;
 }) {
-  // Slots 0..3 are the presets; the last slot is the CREATE YOUR OWN
-  // card (focusable for its explainer, not pickable here).
   const SLOT_COUNT = THEME_PRESETS.length + 1;
   const customIdx = THEME_PRESETS.length;
   const [focus, setFocus] = useState(0);
@@ -161,11 +146,8 @@ export default function ThemeSelect({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Live-preview the focused preset: the whole chooser re-skins as you
-  // browse (Game Boy card → Game Boy page, etc.). The CREATE YOUR OWN
-  // slot has no preset, so fall back to the neutral arcade default.
-  // ARCADE's id has no palette block — it IS the default — so setting
-  // it is equivalent to clearing.
+  // The custom slot uses the neutral arcade preview; ARCADE has no palette block because it is the
+  // default.
   useEffect(() => {
     const id = THEME_PRESETS[focus]?.id;
     if (id) document.body.dataset.arcadePreset = id;
@@ -210,7 +192,6 @@ export default function ThemeSelect({
             );
           })}
 
-          {/* CREATE YOUR OWN — explainer card for the in-app designer */}
           <div className="arc-cart-wrap" key={CUSTOM_SLOT.id}>
             {isCustomSlot && (
               <div className="arc-brackets" style={{ '--cart-color': CUSTOM_SLOT.color } as React.CSSProperties}>
@@ -237,7 +218,6 @@ export default function ThemeSelect({
           </div>
         </div>
 
-        {/* Focused slot description */}
         <div
           className="arc-panel"
           key={focused ? focused.id : CUSTOM_SLOT.id}
@@ -258,8 +238,7 @@ export default function ThemeSelect({
               type="button"
               className="arc-link"
               onClick={() => {
-                // Leaving without picking — drop the live preview so the
-                // coworker screen we return to shows the neutral CRT.
+                // Clear the preview when returning without a selection.
                 delete document.body.dataset.arcadePreset;
                 onBack();
               }}

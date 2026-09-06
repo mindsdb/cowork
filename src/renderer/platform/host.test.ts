@@ -1,17 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// host.ts resolves `window.antontron` into module-level constants at IMPORT
-// time (bridge/isElectron/isWeb), so every test must (1) set up or remove the
-// bridge, (2) vi.resetModules(), (3) dynamically import a fresh copy.
+// Bridge/platform flags are captured at import; configure window.antontron and reset modules before
+// loading each case.
 async function importHost() {
   vi.resetModules();
   return await import('./host');
 }
 
-// The web branches of logout()/getAccessToken() dynamically import
-// ../lib/keycloak; mock it so tests never construct a real keycloak-js client
-// (its module ctor touches window). getAccessToken returns null, matching real
-// keycloak when unauthenticated — the state every test here runs under.
+// Mock Keycloak to avoid its browser constructor; return null tokens by default for unauthenticated
+// cases.
 const keycloakMock = vi.hoisted(() => ({
   logout: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => null),
@@ -179,11 +176,8 @@ describe('MindsHub organizations', () => {
 });
 
 describe('mindshubFinalize() across shell versions', () => {
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a newer renderer against an older shell is routine. An
-  // older shell's `mindshubFinalize` takes only `organizationId` and silently
-  // drops a second argument, which is how an explicit pick would reach main
-  // without the flag that protects it (ENG-2199).
+  // OTA renderers routinely run against older shells whose one-argument finalize method silently
+  // drops explicit-choice provenance.
 
   it('routes an explicit pick through the method that proves the shell carries it', async () => {
     const finalize = vi.fn(async () => ({ ok: true }));
@@ -405,10 +399,8 @@ describe('electron mode (bridge present)', () => {
   });
 
   it('awaitBootReady stays gated while the bridge is pending — no renderer-side fail-open (ENG-749)', async () => {
-    // The authoritative budget lives in main (boot-gate.ts). The renderer must
-    // NOT race a shorter timeout, or a legitimately slow reinstall would release
-    // the loading screen while the sidecar is still down. Advancing well past the
-    // old 45s cap must not resolve the wait.
+    // Main owns the boot budget; a shorter renderer timeout would release the loading screen while
+    // reinstall is still running.
     vi.useFakeTimers();
     try {
       (window as unknown as Record<string, unknown>).antontron = {
@@ -463,22 +455,14 @@ describe('electron mode (bridge present)', () => {
     expect(oauthCancelPicker).toHaveBeenCalledOnce();
   });
 
-  // ---- web Drive Picker (in-page overlay) --------------------------------
-  //
-  // The web flow renders Google's Picker inside the SPA's own already-
-  // authenticated document. There is no second window anywhere in it, which
-  // is what removed the whole class of popup-blocked / expired-click-
-  // activation / header-less-navigation failures the previous design had.
+  // The web Drive Picker runs inside the authenticated SPA, avoiding popup activation and
+  // headerless navigation.
 
-  /** Installs a fake Google Picker SDK the way a real page load leaves it:
-   *  the api.js <script> already in the document and `window.gapi` present,
-   *  so host.ts takes its "already loaded" branch synchronously. Returns the
-   *  hooks a test needs to drive the widget. */
+  /** Seed the loaded Google Picker SDK branch and return controls for driving the widget. */
   function installFakeGooglePicker() {
     const script = document.createElement('script');
-    // Non-JS type so happy-dom's script loader ignores the src (it refuses
-    // real network loads and would log a DOMException per test); host.ts
-    // finds it by the src attribute either way.
+    // Use a non-JS script type so happy-dom skips network loading; host detection needs only its
+    // src attribute.
     script.type = 'text/plain';
     script.setAttribute('src', 'https://apis.google.com/js/api.js');
     document.head.appendChild(script);
@@ -607,10 +591,7 @@ describe('electron mode (bridge present)', () => {
   });
 
   it('an in-widget ERROR resolves the pick instead of hanging it forever', async () => {
-    // Without an Action.ERROR branch nothing settles the promise and the
-    // caller waits forever. The common trigger is an active-account
-    // mismatch: the widget renders under whichever Google account is
-    // ambient in the browser, not the one the token is scoped to.
+    // Picker Action.ERROR must settle the promise, including ambient Google-account mismatches.
     const { built, cleanup } = installFakeGooglePicker();
     stubPickerFetch();
     const host = await importHost();
@@ -625,10 +606,8 @@ describe('electron mode (bridge present)', () => {
   });
 
   it('a picker that never reports anything is settled by the stuck backstop, not left hanging', async () => {
-    // The failure the callback cannot see: a static Google 403 inside the
-    // widget's iframe runs no picker JS, so PICKED/CANCEL/ERROR never fire.
-    // The popup flow this replaced survived it because the user could close
-    // the window; in-page there is nothing to close.
+    // An iframe's static 403 emits no Picker callback; the in-page flow still needs a way to
+    // settle.
     vi.useFakeTimers();
     try {
       const { built, cleanup } = installFakeGooglePicker();
@@ -782,15 +761,12 @@ describe('electron mode (bridge present)', () => {
     (window as unknown as Record<string, unknown>).antontron = {
       getUIVersion: async () => ({ app: '2.26.7.20.1', ui: null, source: 'bundled' }),
     };
-    // Published shell equals installed → not strictly newer.
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion: '2.26.7.20.1' }) })));
     let host = await importHost();
     await expect(host.getShellUpdate()).resolves.toBeNull();
-    // Manifest carries no shellVersion (a UI-only publish).
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ version: '2.26.7.30.1' }) })));
     host = await importHost();
     await expect(host.getShellUpdate()).resolves.toBeNull();
-    // The fetch itself fails.
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
     host = await importHost();
     await expect(host.getShellUpdate()).resolves.toBeNull();
@@ -893,10 +869,8 @@ describe('electron mode (bridge present)', () => {
 });
 
 describe('web settings access — loopback-gated /raw (ENG-817)', () => {
-  // In the console-hosted web build the browser reaches cowork-server from the
-  // docker bridge, not loopback, so /settings/raw 403s. The .env is legacy and
-  // the DB is authoritative, so these reads/writes must degrade, not throw —
-  // otherwise boot/onboarding aborts (ENG-817).
+  // Hosted /settings/raw reads and writes can be loopback-forbidden; degrade this legacy .env path
+  // because the DB is authoritative.
   function stubStatus(status: number, detail = 'err') {
     vi.stubGlobal(
       'fetch',
@@ -920,9 +894,7 @@ describe('web settings access — loopback-gated /raw (ENG-817)', () => {
     await expect(host.saveSettings('ANTON_TERMS_CONSENT=true')).resolves.toBe(false);
   });
 
-  // Org mode's tenancy gate returns 501 and runs before the loopback check, so
-  // hosted /raw answers 501, never 403. Degrading only 403 stranded every hosted
-  // user on the auth screen (resolveBootTarget → 'auth' if a boot probe rejects).
+  // Org tenancy returns 501 before the loopback 403 check; degrade both so hosted boot can proceed.
   it('readSettings degrades to {} on the org-mode tenancy 501', async () => {
     stubStatus(501, 'not available in org deployments');
     const host = await importHost();
