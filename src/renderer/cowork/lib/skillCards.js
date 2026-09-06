@@ -1,10 +1,4 @@
-// Conversation-level dedup for inline skill cards.
-//
-// The agent refines a skill over several turns; the server re-emits a
-// `response.skill_created` card whenever SKILL.md changes, so the same slug can
-// appear as a Skill step in multiple messages. We want ONE card per skill, at
-// the LATEST turn that produced it — earlier copies disappear and the card
-// follows the conversation down to the newest version.
+// Show only the latest turn's card per skill slug; refinements re-emit the same skill across turns.
 
 /**
  * Scan messages in chronological order (append the live streaming message last)
