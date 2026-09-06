@@ -1,16 +1,5 @@
-// Comments inbox panel — 1:1 with the published-viewer inbox (Figma 515-2287):
-// a docked 342px review surface on desktop (full-width on compact screens),
-// holding the header, the Open/Resolved/All segmented tabs (with counts),
-// card list, and a pinned composer for whole-artifact comments.
-// Anchored comments are created on the artifact via comment mode; the full
-// thread opens in the on-artifact popover when a card is clicked.
-//
-// State (initial load + realtime SSE + mutations) lives in the shared
-// `useArtifactComments` hook, instantiated once in ArtifactViewer so the SAME
-// set also backs the on-artifact marker layer; this panel receives that state
-// and the layer's imperative controls as props. Tabs ride Base UI's
-// ToggleGroup (radiogroup semantics, arrow-key navigation) with the
-// reference's segmented-control skin.
+// ArtifactViewer owns one useArtifactComments instance for both the inbox and marker layer.
+// Card clicks focus the full on-artifact thread; this panel receives state and layer controls.
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
@@ -22,15 +11,10 @@ import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
 
-// Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
-// fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
-// lives in globals.css alongside every other keyframe in the app.
-// `motion-reduce:!animate-none` (Tailwind's built-in variant) honors
-// reduced-motion; the `!` is required to beat the inline `animation` style.
+// Reduced-motion animation overrides need !important to beat the inline animation style.
 
 const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
 
-// Empty-state copy — exact reference strings.
 const EMPTY_COPY = {
   open: 'No open comments',
   resolved: 'No resolved comments',
@@ -63,9 +47,8 @@ export function CommentsPanel({
 }) {
   const [tab, setTab] = useState('open');
   const listRef = useRef(null);
-  // Pending delete confirmation, panel-level so there's ONE modal instance.
-  // ConfirmModal instead of window.confirm — the native dialog steals
-  // webContents focus in Electron and leaves inputs dead afterwards.
+  // Use one ConfirmModal: window.confirm can steal Electron webContents focus and leave inputs
+  // unresponsive.
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const groups = useMemo(() => {
@@ -96,7 +79,6 @@ export function CommentsPanel({
         font-[family-name:var(--font-body)] motion-reduce:!animate-none"
       style={{ animation: 'cw-comments-panel-in .3s cubic-bezier(.16,1,.3,1)' }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <span className="text-[18px] font-semibold leading-[28px] text-ink">Comments</span>
         <Tooltip content="Close comments panel">
@@ -113,7 +95,6 @@ export function CommentsPanel({
         </Tooltip>
       </div>
 
-      {/* Notices */}
       {expired && (
         <div className="shrink-0 rounded-[6px] px-2 py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]">
           Session expired — reload to see new comments.
@@ -125,7 +106,6 @@ export function CommentsPanel({
         </div>
       )}
 
-      {/* Segmented tabs: Open / Resolved / All, with counts. */}
       <BaseToggleGroup
         value={[tab]}
         onValueChange={(next) => {
@@ -160,7 +140,6 @@ export function CommentsPanel({
         })}
       </BaseToggleGroup>
 
-      {/* Card list — scrollbar hugs the panel edge instead of stealing card width. */}
       <div ref={listRef}
         className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-1 overscroll-contain">
         {visible.length === 0 && (
@@ -188,8 +167,7 @@ export function CommentsPanel({
         ))}
       </div>
 
-      {/* Pinned composer — general (unanchored) comments, selector: null.
-          New threads are open and sort newest-first, so scroll to top. */}
+      {/* New unanchored threads sort first, so scroll to the top after creating one. */}
       <UnanchoredComposer
         onCreate={onCreate}
         kind={viewer?.role === 'reviewer' ? 'issue' : 'review'}

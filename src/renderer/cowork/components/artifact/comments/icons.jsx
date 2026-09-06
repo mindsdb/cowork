@@ -1,8 +1,4 @@
-// Figma-exact icon set for the comments chrome (toolbar + inbox panel),
-// lifted 1:1 from the published-viewer redesign (ENG-472) so the in-app
-// chrome renders the same glyphs: 16px grid, 1px stroke (1.5px where the
-// design says so). Feature-local on purpose — these are not the app-wide
-// Iconoir-style icons in components/Icons.jsx.
+// Keep these feature-local glyphs aligned with the published viewer's comments chrome.
 
 export const CommentIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

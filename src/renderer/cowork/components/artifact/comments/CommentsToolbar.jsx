@@ -1,20 +1,10 @@
-// Floating comments toolbar — 1:1 with the published-viewer glass toolbar
-// (Figma 604-1423): a 32px light glass pill floating 34px off the bottom,
-// centered over the artifact.
-//
-//   [ 💬 comment-mode ] [ 🗄 inbox ] │ Hide/Show comment │ [ ✕ ]
-//
-// The viewer top bar only ACTIVATES this chrome; everything else — entering
-// comment-placement mode, opening the inbox panel, hiding markers, leaving —
-// happens here. Built on Base UI's Toolbar (arrow-key navigation, toolbar
-// semantics) + Tooltip; the skin is the reference's fixed light palette so
-// the pill reads identically over any artifact, in either app theme.
+// Use the published viewer's fixed light palette so controls remain consistent over arbitrary
+// artifact themes.
 
 import { Toolbar } from '@base-ui/react/toolbar';
 import { Tooltip } from '../../ui';
 import { CommentIcon, InboxIcon, XIcon } from './icons';
 
-// Reference shadows (Figma "NewShadow"): outer stack + glass insets.
 const SHADOW_TOOLBAR =
   '0 0 0 0.5px rgba(0,0,0,0.12),0 2px 2px -1px rgba(0,0,0,0.04),'
   + '0 4px 4px -2px rgba(0,0,0,0.04),'
@@ -22,16 +12,8 @@ const SHADOW_TOOLBAR =
   + 'inset 0 -0.5px 0 rgba(255,255,255,0.16),'
   + 'inset 0 0.5px 0 rgba(255,255,255,0.24)';
 
-// Entrance animation — the `cw-act-bar-in` keyframe lives in globals.css
-// alongside every other keyframe in the app. `motion-reduce:!animate-none`
-// (Tailwind's built-in variant) honors reduced-motion; the `!` is required
-// to beat the inline `animation` style.
+// Reduced-motion animation overrides need !important to beat the inline animation style.
 
-/**
- * 32px hit-target wrapping a 24px circle — the circle carries the hover /
- * active-press / ON states so the pill keeps its tight visual rhythm
- * (.act-tb-btn / .act-tb-c in the reference).
- */
 function ToolButton({ label, on = false, dim = false, onClick, children }) {
   return (
     <Tooltip content={label}>
