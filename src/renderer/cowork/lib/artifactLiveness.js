@@ -1,32 +1,7 @@
-// Is the artifact behind this card still there?
-//
-// Split from artifactsStore.js on purpose: the store owns state, network and the
-// React subscription, this file owns the decision — so the decision is testable
-// as a table instead of through a mounted component with a mocked fetch.
-//
-// The whole file is built around one rule: NEVER report a deletion we are not
-// sure of. A card wrongly marked "Deleted" loses the user their artifact from
-// the UI while the bytes are still on disk, which is worse than the stale-card
-// bug this exists to fix. So every guard below fails open, and `true` is only
-// returned when a loaded, in-scope index provably lacks the card.
-//
-// Matching is deliberately many-keys-against-many-indices rather than one
-// computed key compared for equality. Two shapes of card meet here:
-//
-//   * SERVER cards, from `/artifacts/` (cowork-server `card_for_folder`): carry
-//     `folder` (the artifact root) and `path` (the primary file `_pick_primary`
-//     chose inside it).
-//   * CHAT cards, from `artifactStepToCard` (ENG-1680): no folder, and the path
-//     is whatever the stream announced in `step.data.file_path`.
-//
-// Their paths legitimately disagree — a fullstack artifact keeps its entry point
-// in `static/`, one level below the root — so paths are matched against FOLDERS
-// with a prefix test, not compared to each other. And a card persisted before
-// ids were widened carries the short eight-character id rather than the full
-// identity, so a card can carry an id of a different sort than its counterpart;
-// a one-sided key would miss and the miss would read as a deletion. The
-// widening kept the short id as the full id's first eight characters, so both
-// spellings are indexed and both are looked up.
+// Fail open: report deletion only when a loaded, in-scope index provably lacks the card.
+// Server cards identify root folders; chat cards can identify nested files, so compare folder
+// prefixes.
+// Bridge legacy eight-character hex ids to full ids; a missed match must not hide a live artifact.
 
 function textValue(value) {
   return value == null ? '' : String(value).trim();
@@ -60,12 +35,8 @@ export function emptyArtifactIndex() {
 // ARTIFACT_ID_SLUG_PREFIX_LEN.
 const ID_PREFIX_LEN = 8;
 
-// Ids are hex: 32 characters since the widening, eight before it. Only those
-// shapes get bridged by prefix. Any other `id` a card might carry — a slug, a
-// composite key — shares its first eight characters with every sibling spelled
-// alike (`q3-launch-…` vs `q3-launch-…`), and bridging those would silently
-// match unrelated artifacts, so a card whose artifact really is gone would
-// keep reading as "still there".
+// Bridge only hex ids: taking a slug prefix would falsely match unrelated artifacts with the same
+// name prefix.
 const HEX_ID = /^[0-9a-f]+$/;
 
 /** Every way this card can be recognised. Absent keys are `''`, never null, so
@@ -77,11 +48,8 @@ export function artifactKeys(card) {
   const path = textValue(card?.canonicalPath) || textValue(card?.file_path) || textValue(card?.path);
   return {
     id,
-    // Bridges the two id spellings: a widened server card and the pre-widening
-    // chat card for the same artifact share these eight characters. Indexing
-    // both can only ever produce a false "still there", never a false
-    // "deleted" — the direction this file is built to fail in. Hex only, so
-    // the bridge cannot reach past the widening it exists for.
+    // Legacy and widened ids share this prefix. Collisions can retain a deleted card, never hide a
+    // live one.
     idPrefix: HEX_ID.test(id) && id.length >= ID_PREFIX_LEN ? id.slice(0, ID_PREFIX_LEN) : '',
     // Only a PAIR identifies an artifact: a slug is unique within a project's
     // conversation at best (see ENG-1678), never globally.
@@ -152,14 +120,9 @@ function isInScope(card, scope) {
 }
 
 /**
- * `true` only when a loaded, in-scope index provably lacks this card.
- *
- * Order is load-bearing:
- *   - tombstone first, so an artifact created AND deleted in one session reads
- *     as deleted rather than as newborn;
- *   - `live`/born next, so an artifact the agent just made is not judged by an
- *     index that predates it (§4.5);
- *   - then the fail-open guards, then the index itself.
+ * Check tombstones before newborn/live exemptions, so same-session deletions win.
+ * Exempt newborn cards before consulting an older index, then fail open on unknown or out-of-scope
+ * state.
  */
 export function isArtifactDeleted(card, { index, tombstones, born, scope, live } = {}) {
   if (!card) return false;

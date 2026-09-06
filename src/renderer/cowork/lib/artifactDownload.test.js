@@ -1,14 +1,7 @@
 /*
- * Which URL saves an artifact, and — the part a mocked anchor cannot prove —
- * over WHICH TRANSPORT.
- *
- * The review on #764 executed the first version of this module against the
- * live web deployments: the draft-URL save was a bare anchor navigation, a
- * navigation attaches no Authorization header, and the browser saved nginx's
- * 401 page under the artifact's filename. These tests pin the transport
- * split: `serveUrl` keeps the streaming anchor (no auth needed on the
- * loopback/local server), `draftUrl` must go through the authenticated
- * fetch-then-Blob path and must never reach an anchor directly.
+ * Assert download transport: serveUrl streams through an anchor, while draftUrl requires
+ * authenticated fetch and Blob saving.
+ * An anchor alone would save the draft endpoint's unauthorized page under the artifact filename.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 

@@ -1,28 +1,10 @@
-// Trigger a browser save-as dialog for an artifact file.
-//
-// Two URLs can carry the bytes, and they need DIFFERENT transports:
-//
-//   - `serveUrl` — the sidecar's stateless `/v1/artifacts/serve/...`. Desktop
-//     and the local web build have it, and a plain anchor navigation works:
-//     the native `<a download>` flow streams, no Blob in memory, no size cap.
-//   - `draftUrl` — the authenticated `/api/v1/artifacts/drafts/...` route, set
-//     on every card with a primary file. On an org deployment it is the ONLY
-//     route to the bytes (ENG-2044) — and it cannot be a navigation: the
-//     browser attaches no Authorization header to one, so a bare anchor saves
-//     nginx's 401 page under the artifact's filename. It goes through
-//     `downloadAuthenticatedResource`, which fetches with the same bearer +
-//     organization boundary as JSON APIs and saves the Blob. The tradeoff is
-//     buffering: a very large .zip/.xlsm is held in memory before the save.
-//
-// `?download=1` is appended to both, but only the drafts route honours it
-// (Content-Disposition: attachment) — and only a direct HTTP client such as
-// `curl -OJ` ever reads that header: this module's Blob transport names the
-// file from `downloadFilename` client-side, and `response.blob()` discards
-// headers. The serve route ignores the param entirely; desktop's anchor save
-// works regardless because the Electron shell disables webSecurity, which
-// lets the cross-origin `download` attribute apply. Resolves false — with no
-// side effects beyond a failed fetch — when the artifact has neither URL or
-// the authenticated fetch fails; caller surfaces a friendly message.
+// Desktop serve URLs stream through an anchor; org draft URLs require an authenticated Blob fetch.
+// A bare draft navigation lacks Authorization and saves a 401 page; large authenticated downloads
+// buffer in memory.
+// Only drafts honor ?download=1. Blob filenames come from downloadFilename; desktop's disabled
+// webSecurity permits cross-origin anchor downloads.
+// Return false when no URL exists or authenticated fetching fails; the caller supplies the error
+// UI.
 
 import { host } from '../../platform/host';
 import { downloadFilename, downloadUrl } from './browserDownload';
@@ -34,10 +16,8 @@ function withDownloadParam(rel) {
 }
 
 /**
- * The absolute URL that saves this artifact's primary file, or '' when there
- * is none. Exposed for presence checks; `downloadArtifactFile` decides the
- * transport, so do not feed this to an anchor yourself — for a draft URL that
- * navigation is exactly the 401 this module exists to avoid.
+ * URL for presence checks only. Use downloadArtifactFile to download: draft URLs need
+ * Authorization, which anchors omit.
  */
 export function artifactDownloadUrl(artifact) {
   const rel = artifact?.serveUrl || artifact?.draftUrl || '';

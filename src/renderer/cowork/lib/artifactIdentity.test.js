@@ -17,11 +17,8 @@ describe('artifact identity', () => {
     expect(artifactIdentity({ id: FULL })).toBe(FULL);
   });
 
-  // A conversation recorded before the widening replays cards carrying the
-  // short id plus the retired `stableId`. The server adopts that field as the
-  // artifact's id, so the client has to as well — otherwise reopening an old
-  // conversation shows preview-only for a fully migrated artifact, and Delete
-  // sends an id the endpoint cannot resolve.
+  // Adopt legacy stableId like the server so migrated cards remain addressable despite their old
+  // short id.
   it('adopts a replayed card\'s stableId when its id is still short', () => {
     expect(artifactIdentity({ id: '7db94eb8', stableId: DASHED })).toBe(FULL);
   });
@@ -36,10 +33,8 @@ describe('artifact identity', () => {
   });
 });
 
-// The comments key is the one string that binds a thread across the private
-// draft and every published version. The server, the publish response and the
-// upload lambda all spell it as a dashed UUID; a client-derived key that used
-// bare hex would fork the threads.
+// Use the server's dashed UUID comments key across drafts and publications; bare hex would split
+// the thread identity.
 describe('artifact comments key', () => {
   it('derives the canonical dashed key from a bare-hex id', () => {
     expect(artifactCommentsKey(FULL)).toBe(`artifact/${DASHED}`);

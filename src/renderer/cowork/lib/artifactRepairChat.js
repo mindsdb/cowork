@@ -1,25 +1,12 @@
-// Which chat an "Address with agent" repair runs in.
-//
-// cowork-server binds a repair handoff to the conversation id the repair record
-// was created with: at the end of a turn it only finishes handoffs whose
-// `conversationId` matches that turn (`has_queued_agent_repair`). So the target
-// chat has to be settled BEFORE the repair exists — resolving it afterwards
-// would leave the handoff queued forever, with the viewer stuck on "Agent is
-// thinking…".
-//
-// Inside a chat the answer is trivially "this chat". Opened from the artifacts
-// list there is none, so we resume the conversation that created the artifact
-// (`originConversationId`, derived server-side from metadata provenance) and
-// only mint a fresh one when that chat can't be reached: deleted, another
-// tenant's, or an artifact older than provenance.
+// Resolve the target chat BEFORE creating a repair: cowork-server finishes handoffs only for the
+// bound conversationId.
+// Prefer the artifact's origin chat when reachable; otherwise the caller creates a new chat.
 
 /** @typedef {{ id: string, task: object|null }} RepairTarget */
 
-// A turn only looks for queued handoffs under its own conversation's project
-// (`index_turn_artifacts` scans that project's artifacts root), so a chat that
-// has since moved to another project can't finish this repair — the artifact
-// isn't there to edit. Compare on whichever identity both sides carry; an
-// unknown project is not evidence of a mismatch.
+// Turns scan only their conversation's project for repairs; a moved chat cannot finish the original
+// artifact's repair.
+// Reject known project mismatches, but do not infer a mismatch from missing identity.
 function sameProject(artifact, task) {
   const artifactId = String(artifact?.projectId || '');
   const taskId = String(task?.projectId || '');
