@@ -1195,20 +1195,11 @@ export default function ChatView({
   queuedMessages = [],
   onRemoveFromQueue,
   agentLabel,
-  // Conversation ids the server currently has an active producer for
-  // (App.jsx's cross-client sync feed). Used to decide whether an
-  // unanswered AskUser card is still live or "expired" — replay
-  // resurrects unanswered questions from persisted history, and a
-  // click on one with no live run behind it would 404.
+  // Server producer IDs determine whether replayed unanswered questions can still be answered.
   inFlightSet,
-  // Pending composer redirects from App.jsx, keyed by conversation id:
-  // {[taskId]: {text, attachments, bump}}. A question appeared while messages
-  // were queued for that task, so their text and files are handed back to its
-  // composer instead of being auto-sent as the answer or left queued to
-  // deadlock. Only this task's entry is read, and consuming it calls
-  // onComposerRedirectConsumed(taskId, attachments) so the parent stages the
-  // files against THIS task and deletes the entry, which is also what stops it
-  // re-firing on a later remount.
+  // Per-task { text, attachments, bump } redirects restore queues to the composer.
+  // Consume through onComposerRedirectConsumed so files stage for this task and the entry cannot
+  // replay on remount.
   composerRedirects,
   onComposerRedirectConsumed,
   // Lets App.jsx release a dead question's grip on the composer (see
@@ -1221,31 +1212,18 @@ export default function ChatView({
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
-  // Composer prefill — set by clicking Edit on a user message, or by this
-  // task's entry in App.jsx's `composerRedirects` (a question appeared while
-  // messages were queued). `bump` is a monotonically-increasing nonce so the
-  // Composer's sync effect runs even when re-editing/re-redirecting the same
-  // text.
+  // Bump forces prefill to apply even when the user edits or restores identical text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
-  // Forward App.jsx's redirect for THIS task into the same prefill state Edit
-  // uses, so Composer only has to react to one prefill prop. Consuming the entry
-  // (deleting it in the parent) is what stops a stale drain re-applying on
-  // remount.
+  // Consume this task’s redirect through prefill and delete it in the parent to prevent remount
+  // replay.
   useEffect(() => {
     const redirect = redirectForTask(composerRedirects, task?.id);
     if (!redirect) return;
     const restored = redirect.text || '';
     if (restored) {
-      // `append` unconditionally, and there is nothing left to decide: since
-      // ENG-1221 the composer's text comes from `lib/draftStore` keyed by
-      // surface (Composer's `useDraft(conversationId)`, and this view passes
-      // `conversationId={task.id}`), so the value on screen IS this task's own
-      // draft — another conversation's draft can no longer be in the box, which
-      // is the state the old `draftTaskRef` ownership check existed to detect.
-      // A drain hands the user's own queued text BACK to them, so it joins that
-      // draft instead of destroying it. Do not reintroduce a guard here: with a
-      // per-surface store, "not ours" is unreachable, and a guard that misfires
-      // silently deletes text the user is mid-typing.
+      // Always append restored queue text: useDraft is keyed by conversation, so the visible draft
+      // already belongs
+      // to this task. Replacing it would destroy text being typed.
       setComposerPrefill((prev) => ({
         text: restored,
         bump: (prev?.bump || 0) + 1,
@@ -1264,11 +1242,6 @@ export default function ChatView({
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
-  // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
-  // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
-  // but render via the inline text path (no iframe, no OS handoff).
-  // Anything else still routes through the Electron OS handler via
-  // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
@@ -1347,10 +1320,6 @@ export default function ChatView({
     setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
   }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
-  // Source of truth for the rail Progress card: the live streaming
-  // message's steps if a request is in flight, otherwise the steps
-  // from the most recent assistant turn. Both come from the SSE
-  // adapter so the shape is identical.
   const railSteps = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingMsg.steps;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -1360,14 +1329,9 @@ export default function ChatView({
     return [];
   })();
 
-  // Per-message stable key for prefixing step ids in the scratchpad
-  // pool. Each message generates step ids that start over at "step-1"
-  // for that message — so two messages can share an id like "step-1".
-  // Without prefixing, the pooled list passed to ScratchpadModal has
-  // duplicate keys (React warning + occasional render glitch) AND the
-  // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
-  // the FIRST match, which can be the wrong message's step. Prefixing
-  // makes the pool unique and keeps focus correlation tight.
+  // Step IDs restart per message. Prefix them in the pooled scratchpad list to prevent duplicate
+  // keys and
+  // focus lookup selecting another message’s step.
   const messageKey = (m, i) =>
     `m:${m?.id || `idx-${i}`}`;
   const streamingKey = streamingMsg
@@ -1382,10 +1346,7 @@ export default function ChatView({
     }
     return null;
   })();
-  // Build the unified scratchpad pool with prefixed ids. The modal
-  // groups by `_scratchpadTabId` so each tab still only contains its
-  // own cells; this prefix is purely for global-uniqueness of step
-  // ids across the conversation's pooled history.
+  // Prefixes make step IDs unique across history; _scratchpadTabId still determines tab grouping.
   const scratchpadStepsPool = useMemo(() => {
     const out = [];
     visibleMessages.forEach((m, i) => {
@@ -1415,22 +1376,12 @@ export default function ChatView({
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [task.messages.length, isStreaming]);
 
-  // Outer ref + conv-column ref. The orb canvas binds to the conv
-  // column so the floating orb is naturally clipped to that area
-  // (can't leak into the rail visually when a slot is near the right
-  // edge). chatRef stays as the panel-level ancestor.
+  // Bind the orb canvas to the conversation column so it cannot paint into the rail.
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) for as long as there's real work
-  // going on — steps and thoughts keep streaming above the growing
-  // answer text throughout, so the orb stays put for the whole turn
-  // rather than handing off once body text starts. Shares
-  // isThinkingActive with ThinkingBlock's own header so the two can't
-  // drift out of sync again the way they did before (ENG-1107/1109):
-  // whatever keeps the steps panel expanded is exactly what should keep
-  // the orb anchored.
+  // Share isThinkingActive with the steps header so the orb stays anchored while work continues,
+  // even after answer text begins.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
     if (!isThinkingActive(streamingMsg.streamStatus)) return { state: null, activeSlot: null };
@@ -1440,18 +1391,9 @@ export default function ChatView({
   return (
     <div
       ref={chatRef}
-      // minmax(0, 1fr) is critical — bare `1fr` lets the grid track EXPAND
-      // past its allocated size when an unbreakable child (e.g. a very long
-      // task title) demands more width, which pushes the rail off-screen and
-      // causes content to bleed visually behind the rail. minmax(0, …) tells
-      // grid the column can shrink to 0, so the conv col stays inside its
-      // track and content clips. On narrow screens the rail is always a
-      // fixed overlay, so the grid is always single-column.
-      // gridTemplateRows: without an explicit row, the implicit row is sized
-      // to content, so the scroll region's inner content height grows the
-      // row past the container — the scroll bar never appears. 1fr forces
-      // the row to fill the container height so the inner overflowY can
-      // create a real scroll context.
+      // minmax(0,1fr) lets long content shrink without pushing the rail off-screen. An explicit row
+      // constrains
+      // height so inner overflow can scroll; the narrow overlay uses a single-column grid.
       className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
@@ -1464,10 +1406,7 @@ export default function ChatView({
       {/* ─── Conversation column ─── */}
       <div
         ref={convRef}
-        // Grid auto/1fr is more deterministic than nested flex+min-height
-        // for the "header + scrollable body" layout — the 1fr row pins
-        // the scroll area to the column's available height, so the inner
-        // overflowY can actually scroll.
+        // Constrain the body row to available height so its overflow can scroll.
         className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
       >
         {/* Floating expand-rail button — appears on the right edge of
@@ -1478,11 +1417,8 @@ export default function ChatView({
             type="button"
             onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
             aria-label="Expand panel"
-            // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
-            // rail-open state, and the transition's per-state delay) stay inline —
-            // resting/hover color+background moved to className below so the
-            // hover: utility can win (an inline color/background at rest would
-            // otherwise out-specificity any stylesheet hover rule).
+            // Keep resting colors in classes so hover utilities can override them; only
+            // state-dependent geometry stays inline.
             style={{
               opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
@@ -1497,36 +1433,18 @@ export default function ChatView({
           </button>
         </Tooltip>
 
-        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
-            breadcrumbs drop below the macOS traffic lights (and the floating
-            open-sidebar button) whenever the sidebar isn't docked over that
-            corner, staying left-aligned with the transcript below. `--titlebar-
-            safe-top` is set on <main> by the shell and is 0 when the sidebar/
-            rail covers the zone, so max() keeps the normal 14px padding then. */}
+        {/*
+ * Honor the shell’s titlebar inset to clear traffic lights/sidebar controls while keeping
+ * breadcrumbs aligned with the transcript.
+ */}
         <div
-          // Belt + suspenders: even if a flex child miscalculates by a
-          // pixel, min-w-0 + overflow-hidden prevents the header from
-          // visually pushing past the conv-col grid track (which is what
-          // was making the icons appear to slide behind the right rail).
+          // Constrain header overflow so its icons cannot extend behind the rail.
           className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
         >
-          {/* Left side: [Project] › [Task] for chat tasks, or
-              [Apps] › [Task] for connect-data flows (Connect Gmail,
-              Modify gmail-prod, …). The connect-data flow is
-              detectable from the synthetic `connect_intro` message
-              that handleConnectorPicked / handleModifyConnection
-              inject as the first assistant message — that's stable
-              across the lifetime of the task whether or not the
-              form is currently mounted in the rail. */}
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             {(() => {
-              // The "Apps" crumb only makes sense while the form
-              // panel is on screen — the user is mid-flow connecting
-              // or modifying a connection. Once the panel is closed
-              // (X button or post-save), the chat is a normal chat
-              // pinned to a project, so the breadcrumb pivots to the
-              // standard `Projects > <project>` shape and the Apps
-              // context falls away.
+              // Use the Apps crumb only while the connection form is open; after dismissal the task
+              // uses its normal project context.
               const hasConnectIntro = Array.isArray(task?.messages)
                 && task.messages.some((m) => m && m._kind === 'connect_intro');
               if (hasConnectIntro && formActive) {
@@ -1585,10 +1503,8 @@ export default function ChatView({
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  // Match the breadcrumb links (Crumb = 13px) — this is the
-                  // current crumb, so it's a CrumbCurrent sibling in every
-                  // way but its interactivity (click opens the task menu,
-                  // dbl-click edits), hence not the component itself.
+                  // Match Crumb typography while retaining this title’s click-menu and
+                  // double-click-edit behavior.
                   className="flex-1 min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
@@ -1651,17 +1567,8 @@ export default function ChatView({
             </div>
           </div>
 
-          {/* Right side reserved for future header chips. The kebab
-              and rail toggle moved out; pin lives inline with the
-              title now (above) so it stays visually attached to the
-              task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
         </div>
-        {/* Task menu — anchored to the kebab next to the title.
-            Items: Pin/Unpin · Rename · Delete. Move-to-project,
-            Schedule and Turn-into-skill are intentionally excluded
-            here — the focused three-action set matches the project
-            detail header's pattern. */}
         <TaskMenu
           task={task}
           projects={projects}
@@ -1698,16 +1605,10 @@ export default function ChatView({
           />
         ) : (
         <>
-        {/* Scrollable conversation.
-            Bottom padding clears the floating composer so every
-            message is reachable when scrolled to the end. Sized
-            generously (~180px) because the composer grows multi-line
-            as the user types longer drafts, plus the attachments
-            row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions.
-            `marginBottom: 25` shortens the scroll container so the
-            chat surface ends with a calm gap above the window edge
-            instead of butting flush against it. */}
+        {/*
+ * Leave room below messages for the floating multiline composer and attachments so the final reply
+ * remains reachable.
+ */}
         <div
           ref={scrollRef}
           data-scroll="true"
@@ -1715,26 +1616,15 @@ export default function ChatView({
         >
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
+              // Track user-input indices as well as assistant positions so orphan user messages
+              // retain a valid delete action.
               let assistantTurnIdx = -1;
               let userInputIdx = -1;
-              // Skip + orphan rules live together in lib/turnVisibility so a
-              // user message whose only assistant bubble is skipped keeps the
-              // delete affordance the hidden bubble used to carry (ENG-1304,
-              // PR #580 review).
+              // Share skip/orphan rules so hiding a failed assistant bubble preserves deletion on
+              // its user message.
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
-              // Index of the last user or assistant message that renders —
-              // its actions stay always-visible (Claude pattern: most recent
-              // exchange shows its toolbar). Skipped failed-assistant bubbles
-              // don't count (PR #580 review), so a final failed turn keeps
-              // the toolbar on the user message. When streaming, nothing
-              // needs isLast since the streaming turn has no actions yet.
+              // Keep actions visible on the last rendered turn; skip hidden failed bubbles and
+              // suppress this during streaming.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
@@ -1756,10 +1646,6 @@ export default function ChatView({
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
-                      // Pull the message text back into the composer
-                      // for refine-and-resend. Each click bumps the
-                      // nonce so identical text re-fills the input
-                      // even after the user has cleared it.
                       setComposerPrefill((prev) => ({
                         text,
                         bump: (prev?.bump || 0) + 1,
@@ -1769,14 +1655,8 @@ export default function ChatView({
                 );
               }
               if (m.role === 'activity') {
-                // Activity rows normally live in the rail's Progress
-                // only. Exception: when this is the just-sent
-                // "thinking" placeholder AND no streaming row exists
-                // yet (some code path stripped the stub injected by
-                // `withThinkingPlaceholder`, or a future caller adds
-                // an activity without the stub), surface it inline as
-                // a thinking bubble so the chat scroll never goes
-                // silent between user-send and first SSE chunk.
+                // Show a thinking placeholder if no streaming row exists yet, avoiding a silent gap
+                // before the first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
                     <AnswerTurn key={i} state="thinking" showActions={false}>
@@ -1787,17 +1667,9 @@ export default function ChatView({
                 return null;
               }
               if (m._kind === 'connect_intro') {
-                // The card is clickable: clicking it re-opens the
-                // form panel when it's been closed. We stash the
-                // original spec on the message at creation time
-                // (App.jsx) so re-publishing is a one-liner. If the
-                // form is currently active there's nothing to do —
-                // the panel is already on the right rail.
                 const cachedSpec = m._form_spec || null;
-                // Card click re-publishes the cached spec if the user
-                // dismissed/submitted the form — the modal re-mounts.
-                // If the form is already active the modal is visible,
-                // so no action is needed.
+                // Reuse the cached spec to reopen a dismissed form; an already active form needs no
+                // action.
                 const reopenForm = cachedSpec && !formActive
                   ? () => setDataVaultForm(task?.id, cachedSpec)
                   : undefined;
@@ -1807,10 +1679,6 @@ export default function ChatView({
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
-                    // Modify-flow extras: when set, the bubble
-                    // renders Cancel + Disconnect buttons next to
-                    // the card. Plain connect intros (no `_modify`)
-                    // keep the original layout.
                     modify={!!m._modify}
                     onCancel={m._modify ? () => onCancelModify?.(task?.id) : undefined}
                     onDisconnect={
@@ -1822,12 +1690,7 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
-                // Out-of-credits: render an actionable card instead of a
-                // plain error. Reused for ANY turn that fails with the
-                // `token_limit` code — the first message on a fresh account
-                // that's spent its free tokens, or a mid-session exhaustion.
-                // Single CTA on purpose (ENG-1169): the out-of-credits
-                // moment funnels to top-up; BYOK setup stays in Settings.
+                // Credit exhaustion leads to top-up; BYOK configuration remains in Settings.
                 if (m.code === 'token_limit') {
                   return (
                     <ActionCard
@@ -1841,10 +1704,8 @@ export default function ChatView({
                       buttons={[
                         {
                           label: 'Top up balance',
-                          // ENG-1533: the click, not an impression. token_cap_hit
-                          // already counts the impression once per receipt in the
-                          // stream adapter; an impression here would re-fire on
-                          // every paint.
+                          // Track clicks here; the stream adapter already records the impression
+                          // once per receipt.
                           onClick: () => {
                             trackBillingOpened('token_limit');
                             host.openExternal(MINDS_BILLING_URL);
@@ -1869,11 +1730,10 @@ export default function ChatView({
                     />
                   );
                 }
-                /* Legacy model-403 (pre-wallet gateways only): current
-                 * gateways report wallet denials as `token_limit`, rendered
-                 * by the out-of-credits card above. Offer Top up balance and,
-                 * while Air is payable, a one-click switch that resends the
-                 * failed message on it — never "try again". */
+                /*
+                 * Keep legacy model-403 handling for older gateways; current wallet denials use
+                 * token_limit.
+                 */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
@@ -1911,25 +1771,15 @@ export default function ChatView({
                     />
                   );
                 }
-                /* A model the provider can't serve (404 `model_not_found`) —
-                 * removed, renamed, or never existed (a provider name pasted
-                 * where an alias belongs). Credits can't fix it; the next step
-                 * is picking a real model.
-                 *
-                 * The body quotes the RAW id, not modelLabel's prettified
-                 * version: the point is for the user to recognise the exact
-                 * string sitting in their settings, and prettifying an id that
-                 * isn't a real model would obscure the typo (ENG-1358).
-                 * `failedModel` is absent from a server too old to send it, so
-                 * the copy degrades to the unnamed wording rather than
-                 * rendering an empty quote. */
-                /* `unknown_model` is the pre-rename code. Accept BOTH: the
-                 * renderer updates OTA and can lead a pinned server (a server
-                 * update isn't always pending, so updater.ts applies the UI
-                 * alone), and dropping the old code would regress those users to
-                 * the buttonless danger alert ENG-1282 removed. It also covers
-                 * disabled-auto-update and git-pinned installs, which no
-                 * minServerVersion bump would reach. */
+                /*
+                 * Show the raw invalid model ID so users can recognize a settings typo. Credits
+                 * cannot fix model availability;
+                 * older servers may omit failedModel, so keep unnamed fallback copy.
+                 */
+                /*
+                 * Accept unknown_model alongside model_not_found because OTA renderers can lead
+                 * pinned or non-updating servers.
+                 */
                 if (m.code === 'model_not_found' || m.code === 'unknown_model') {
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
@@ -1941,16 +1791,8 @@ export default function ChatView({
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
                         : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      // Open Settings only. A "Switch to MindsHub Air" button was
-                      // tried here and removed: it routes through
-                      // handleSendInTask's `modelOverride`, which the in-process
-                      // harness ignores entirely (stream_response takes no
-                      // `model` — harness.py), so the turn would rerun on the
-                      // same dead id while the composer chip claimed otherwise.
-                      // The neighbouring model-denial card has the same latent
-                      // problem; making that switch real is a product decision
-                      // (it means writing the global planning_model setting),
-                      // tracked separately rather than faked here.
+                      // Use Settings: the in-process harness ignores per-turn modelOverride, so a
+                      // local switch could retry the same invalid model.
                       buttons={[
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
                       ]}
@@ -1971,14 +1813,9 @@ export default function ChatView({
                     />
                   );
                 }
-                // Content-shaped provider rejection (`content_recovery`,
-                // ENG-1992): distinct from `image_format` on purpose — this
-                // is an internal serialization mismatch, not anything wrong
-                // with the image itself, and the server has ALREADY stripped
-                // the offending content from this conversation's history by
-                // the time this code reaches the client. Re-uploading fixes
-                // nothing here, so the card offers "Try again" instead —
-                // the same message now sends clean.
+                // content_recovery means the server already removed invalid serialized content from
+                // history. Retry the same message;
+                // reuploading is unnecessary, unlike image_format failures.
                 if (m.code === 'content_recovery') {
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
@@ -2012,14 +1849,10 @@ export default function ChatView({
                     />
                   );
                 }
-                /* The turn never reached the agent (`worker_unresponsive`):
-                 * the worker stopped answering before anything ran. Kept apart
-                 * from anton_error, which means the agent DID run and raised
-                 * something we don't recognise. The difference is what the user
-                 * should do: retry works here, and reporting an agent bug does
-                 * not. Copy lives in the renderer rather than echoing m.content
-                 * so it can be improved OTA, same as the other retryable cards
-                 * (ENG-2126). */
+                /*
+                 * worker_unresponsive means the turn never reached the agent; offer Retry. Keep
+                 * copy local so OTA can improve it.
+                 */
                 if (m.code === 'worker_unresponsive') {
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
@@ -2035,10 +1868,7 @@ export default function ChatView({
                     />
                   );
                 }
-                // Spent FREE monthly allowance (gateway 429
-                // `included_allowance_exhausted`): not a drained wallet, so it
-                // names the reset date as a free alternative and says what
-                // credits actually unlock (ENG-1537).
+                // Show the free allowance reset as an alternative to adding credits.
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <ActionCard
@@ -2050,11 +1880,8 @@ export default function ChatView({
                       buttons={[
                         {
                           label: 'Add credits',
-                          // ENG-1533: the click, not an impression — same rule as
-                          // the drained-wallet card above. token_cap_hit already
-                          // counts this impression once per receipt in the stream
-                          // adapter, so every route to billing is counted exactly
-                          // once and this one is not the exception.
+                          // Track billing clicks here; the adapter records allowance impressions
+                          // once per receipt.
                           onClick: () => {
                             trackBillingOpened('included_allowance_exhausted');
                             host.openExternal(MINDS_BILLING_URL);
@@ -2081,20 +1908,10 @@ export default function ChatView({
                     />
                   );
                 }
-                // `anton_error` and anything unmapped: a deliberately generic
-                // bucket with no known next step, so no card — but still a
-                // failure, rendered as a danger alert so it never reads as a
-                // finished answer. Richer treatment is ENG-1093's review.
-                // `requestId` is the one thing this bucket can still offer —
-                // the turn's own server-side correlation id, so a report of
-                // this generic message can be pinned to actual logs.
-                //
-                // Deliberately scoped to this bucket only: every carded code
-                // above (rate_limited, model_not_found, etc.) also hydrates
-                // `requestId` but doesn't render it — a card already tells
-                // the user what to do, so a raw id there would be noise, not
-                // help. A user who wants to report a CARDED failure still has
-                // nothing to quote; that's an intentional gap, not a bug.
+                // Render unmapped failures as danger alerts with the server request ID for log
+                // correlation.
+                // Actionable cards above omit that diagnostic ID because they already provide a
+                // recovery path.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Alert variant="danger">
@@ -2133,18 +1950,13 @@ export default function ChatView({
                 );
               }
               assistantTurnIdx += 1;
-              // A turn that failed before producing anything renders no
-              // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Count before skipping empty failed assistant bubbles so indexing and orphan
+              // deletion stay consistent.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
+              // delete_turn uses the initiating user-input index; assistant indices diverge when
+              // stopped turns leave orphans.
               const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
@@ -2172,10 +1984,8 @@ export default function ChatView({
                   <StepQuestions
                     steps={m.steps}
                     conversationId={task.id}
-                    // A completed turn by construction — `visibleMessages`
-                    // excludes the `_streaming` row — so no question rendered
-                    // here belongs to the live turn, whatever else is in flight
-                    // on this conversation.
+                    // visibleMessages excludes the live streaming row, so its historical questions
+                    // are not actionable.
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
                   />
@@ -2203,12 +2013,8 @@ export default function ChatView({
                     slotId="header:streaming"
                     currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
-                      // The header stays the WORKING message (active step
-                      // label, else "Thinking…") — never the live thought
-                      // text. The thought has its own distinct line at the
-                      // bottom of the steps; letting it also drive the
-                      // header made the working message flicker/overwrite
-                      // as each reasoning delta streamed in.
+                      // Keep active-step labels in the header; live thoughts have their own line
+                      // and would make the header flicker.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
                       return active?.label || null;
                     })()}
@@ -2224,17 +2030,11 @@ export default function ChatView({
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                 />
-                {/* Bridge state: between the first stream event arriving
-                    (which strips the activity placeholder) and the first
-                    step, thought, or body chunk landing, the AnswerTurn
-                    would otherwise render empty — the user sees the
-                    message "appear, vanish, then come back" once
-                    scratchpad output starts. Keep the working indicator
-                    visible whenever there's nothing else occupying the
-                    same slot yet. `_placeholderLabel` is set by the
-                    pre-first-event stub in App.jsx
-                    `withThinkingPlaceholder` ("Creating task…" for new
-                    tasks, "Thinking…" for replies). */}
+                {/*
+ * Keep the working indicator between the first event removing the placeholder and the first
+ * step/thought/text.
+ * _placeholderLabel preserves Creating task versus Thinking during that gap.
+ */}
                 {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
                   <WorkingIndicator
                     slotId="header:streaming"
@@ -2258,12 +2058,7 @@ export default function ChatView({
           </div>
         </div>
 
-        {/* Floating composer — no gradient fade behind it. Earlier we
-            had a 220px linear-gradient(transparent → var(--bg)) overlay
-            so messages would soften into the bg above the composer, but
-            with the gravity-field showing through it read as a dark
-            band at the bottom of the chat. The composer's own border +
-            shadow give enough visual separation on its own. */}
+        {/* Avoid a composer fade overlay: it forms a dark band over the gravity-field background. */}
         <div className="chat-floating-composer absolute left-7 right-7 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
@@ -2359,11 +2154,7 @@ export default function ChatView({
           opacity: effectiveRailOpen ? 1 : 0,
         }}
       >
-        {/* Rail header bar — collapse button. Stays visible on mobile
-            so the user has an explicit way to dismiss the rail (which
-            on phone hosts the data-vault form fullscreen). The
-            FLOATING expand button outside is the one hidden via
-            .chat-rail-toggle in globals.css. */}
+        {/* Keep the collapse button on mobile so fullscreen form rails have an explicit dismiss action. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
           <Tooltip content="Collapse panel">
             <button
@@ -2371,10 +2162,7 @@ export default function ChatView({
               className="chat-rail-close"
               onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
               aria-label="Collapse panel"
-              // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-              // buttons — every property here stays co-located with the reset, and
-              // the hover color/background mutation needs a subsequent inline write
-              // to win over the reset.
+              // Keep reset properties and hover writes inline to override all: unset.
               style={{
                 all: 'unset', cursor: 'pointer',
                 width: 26, height: 26, borderRadius: 6,
