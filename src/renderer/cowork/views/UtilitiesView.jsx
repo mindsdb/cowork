@@ -67,20 +67,14 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
     setData(null);
     setSelected(null);
     setStatus('');
-    // Memory listing is universal: Global plus every project on disk,
-    // grouped in the sidebar. We don't pass project?.path here so the
-    // page shows the full picture regardless of which project is
-    // active in the rail.
+    // Omit project scoping so memory includes global and all project files.
     if (kind === 'memory')  fetchMemory().then(setData).catch((err) => setStatus(err.message));
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
   const [title, subtitle] = TITLES[kind] || ['Utility', ''];
 
-  // Memory kind owns its own scrolling: the sidebar list and the
-  // viewer pane each scroll independently so flipping through a long
-  // file doesn't push the file list around. The legacy kinds keep
-  // the original "page scrolls" behaviour.
+  // Memory list and viewer scroll independently so navigating a long file keeps the list in place.
   const isMemoryKind = kind === 'memory';
   const wrapperStyle = isMemoryKind
     ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
@@ -601,16 +595,10 @@ const inputStyle = {
   color: 'var(--ink)',
 };
 
-// Editor and viewer share the same fixed min-height + typography so
-// flipping between read and edit doesn't shift the layout. `--ink`
-// keeps the text readable in both light and dark themes (the bug
-// before this change was relying on the browser default text color,
-// which rendered black-on-dark in dark mode).
+// Match viewer/editor minimum heights to avoid layout shifts; use theme text colors for dark-mode
+// readability.
 const memoryEditorClass = 'w-full min-h-[520px] border border-solid border-[var(--border-01)] rounded-[7px] p-3 font-mono text-sm leading-[1.55] outline-none bg-[var(--surface-0)] text-ink resize-y select-text';
 
-// Container for the MarkdownContent renderer in view mode. Keeps the
-// minHeight matched to the editor textarea so flipping between read
-// and edit doesn't shift the layout. Body styling (font, line-height,
-// colours) is left to MarkdownContent itself so headings, lists, and
-// code fences render with the same chat-column rhythm.
+// Match editor height, but let MarkdownContent own typography so headings, lists, and fences match
+// chat rendering.
 const memoryViewerClass = 'min-h-[520px] px-[14px] py-3 border border-solid border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';

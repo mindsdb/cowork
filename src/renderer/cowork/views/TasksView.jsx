@@ -1,20 +1,3 @@
-// All-tasks page. Reached via the sidebar's Recents → "View all →"
-// affordance. Replaces the previous RecentsModal which capped at 100
-// rows and didn't surface filtering / sorting. Mirrors the slick-
-// table rhythm we use on Projects, Live Artifacts, and Scheduled
-// (status dot · primary text · per-row meta · hover-only kebab).
-//
-// List view only — there's no useful "grid" presentation for a flat
-// list of conversations.
-//
-// Columns (left to right):
-//   • dot       — green pulse when task is currently streaming.
-//   • Title     — task title (clickable; whole row routes to chat).
-//   • Project   — project name; clickable, routes to project detail.
-//   • Updated   — relative timestamp (mono).
-//   • trash     — appears on row hover, opens the existing delete
-//                 confirm modal via the parent's onDeleteTask.
-
 import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
@@ -38,10 +21,7 @@ const SORT_OPTIONS = [
   { id: 'project', label: 'Project' },
 ];
 
-// 24px dot · title (2.4fr) · project (1.2fr) · updated (110px) ·
-// trash slot (28px). Fixed-width slots stop the column stops from
-// shifting between hover/non-hover so the trash icon doesn't
-// shove the timestamp left when it appears.
+// Fixed action slots prevent timestamps shifting when hover actions appear.
 const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
 
 function ListHeaderRow() {
@@ -82,10 +62,8 @@ function TaskRow({
     ? projects.find((p) => p.name === projectName) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard on the row. This is what a
-  // person reads. `projectLabel(null)` is null, so an unresolved project falls
-  // back to the slug exactly as before (ENG-1676).
+  // Keep projectName as the identity slug; use projectDisplay for labels with the slug as an
+  // unresolved fallback.
   const projectDisplay = projectLabel(projectMatch) || projectName;
 
   const isActive = task.status === 'active';
@@ -216,10 +194,8 @@ function ScheduleGroupRow({
     ? projects.find((p) => p.name === projectName) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-  // `projectName` stays the slug -- the `p.name === projectName` match above
-  // needs it, and so does the truthiness guard on the row. This is what a
-  // person reads. `projectLabel(null)` is null, so an unresolved project falls
-  // back to the slug exactly as before (ENG-1676).
+  // Keep projectName as the identity slug; use projectDisplay for labels with the slug as an
+  // unresolved fallback.
   const projectDisplay = projectLabel(projectMatch) || projectName;
 
   // Latest run → drives the timestamp + the "open the actual chat"
@@ -314,10 +290,6 @@ function ScheduleGroupRow({
         color: 'var(--ink-4)', letterSpacing: '0.04em',
       }}>{updated}</div>
 
-      {/* Action slot — hover-revealed "Open latest" so the user can
-          jump straight to the most recent run instead of going
-          through schedule detail. The card click itself routes to
-          the schedule view (where per-run history lives). */}
       <div onClick={stop} onMouseDown={stop} style={{
         display: 'flex', justifyContent: 'flex-end',
         opacity: hover ? 1 : 0,
@@ -343,10 +315,7 @@ function ScheduleGroupRow({
 export default function TasksView({
   tasks = [],
   projects = [],
-  // Schedules + flat sessionId→scheduleId index. When a task carries
-  // a `scheduledId` (or its id is keyed in the index), we collapse
-  // every run of that schedule into a single grouped row showing
-  // "Schedule: <title> · N runs". Click → open the latest run.
+  // Group schedule runs by scheduledId or the session-to-schedule index.
   schedules = [],
   scheduleRunsIndex = {},
   onOpenTask,
@@ -360,14 +329,8 @@ export default function TasksView({
   const searchRef = useRef(null);
   useCollectionShortcut(searchRef);
 
-  // First pass: collapse all runs of a single schedule into one
-  // synthetic group row. Without this the page reads as a wall of
-  // duplicate "Daily digest" entries — one per execution — which
-  // makes scanning impossible. The group row's title comes from
-  // the schedule itself; meta carries the most recent run's
-  // timestamp + a "N runs" tag. Click the group row → routes to
-  // the schedule's detail page (where the per-run history already
-  // lives) instead of opening one specific run.
+  // Collapse repeated schedule executions into one group; its row opens schedule history and its
+  // action opens the latest run.
   const schedulesById = useMemo(() => {
     const out = new Map();
     for (const s of schedules || []) {
@@ -414,17 +377,9 @@ export default function TasksView({
     return Number.isFinite(t) ? t : 0;
   };
 
-  // Compute a row-shape representative for filtering / sorting that
-  // works for both lone tasks AND collapsed schedule groups.
-  // Group rows expose:
-  //   title:     the schedule's own title (falls back to the latest
-  //              run's title if the schedule isn't in the registry)
-  //   project:   the schedule's project (or the runs' shared project)
-  //   updatedAt: max(updatedAt across all runs)
-  // Orphan-schedule fallback: any task or schedule run that traces
-  // back to a schedule without an explicit project resolves to the
-  // `general` project — matches the server's _run_schedule fallback so
-  // the UI doesn't dangle scheduled tasks under a missing project.
+  // Group metadata uses the schedule title/project and newest run time, falling back to run
+  // metadata.
+  // Projectless schedules use general, matching the server’s run fallback.
   const ORPHAN_SCHEDULE_PROJECT = 'general';
   const rowMeta = (row) => {
     if (row.kind === 'task') {
@@ -471,10 +426,6 @@ export default function TasksView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grouped, search, sort, projectFilter, schedulesById]);
 
-  // Project filter dropdown options. "All projects" + every project
-  // present in the projects list, sorted by name. We only show
-  // projects that actually have at least one task to keep the
-  // filter compact — tracked via a Set built from the live tasks.
   const projectsWithTasks = useMemo(() => {
     const set = new Set();
     for (const t of tasks) {

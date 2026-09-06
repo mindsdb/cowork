@@ -1,11 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-// Regression (ENG-1154 follow-up, flagged in review on PR #532): the
-// "Copy URL" button on a published artifact called
-// navigator.clipboard?.writeText() directly — unawaited, with no success or
-// failure feedback either way. It now goes through the shared `copyText`
-// helper (lib/clipboard) and reports the outcome via the page's status line.
+// Await the shared copy helper and report its result.
 const { copyText } = vi.hoisted(() => ({ copyText: vi.fn() }));
 vi.mock('../lib/clipboard', () => ({ copyText }));
 
@@ -54,11 +50,7 @@ describe('UtilitiesView — publish artifact Copy URL button', () => {
     expect(await screen.findByText(/Couldn't copy — select the URL above/)).toBeInTheDocument();
   });
 
-  // Regression (review follow-up on #532): the status line renders via
-  // Alert (components/ui/Alert.tsx), whose danger variant sets role="alert";
-  // but this banner is passive status, so a screen reader has no guarantee it
-  // announces the failure text unless the line is explicitly marked as a
-  // live region.
+  // A live region announces passive copy failures.
   it('marks the failure status line as a live region for screen readers', async () => {
     copyText.mockResolvedValueOnce(false);
 
