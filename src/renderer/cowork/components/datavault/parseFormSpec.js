@@ -1,26 +1,12 @@
-// Tolerant JSON parser for `data-vault-form` blocks.
-//
-// (Note: the markdown layer also pre-normalises the fenced block so
-// that an opening ```data-vault-form glued to the end of a sentence
-// becomes a real fenced code block instead of inline code.)
-//
-// LLMs are loose with JSON — trailing commas, smart quotes, single
-// quotes, JS-style comments, code-fence prefixes that bleed into
-// the body. Strict `JSON.parse` rejects all of these even though
-// the user's intent is unambiguous. We try strict first, then a
-// series of best-effort cleanups, and finally give up with the
-// original error message so the UI can surface it for retry.
-//
-// Returns { spec, error }:
-//   spec  — parsed object on success, null on failure
-//   error — null on success, error message string on failure
+// Try strict JSON before repairing common model-generated syntax. Return the original parse error
+// if recovery fails.
+// Markdown preprocessing separately repairs opening fences glued to prose.
 
 export function parseFormSpec(rawText) {
   if (typeof rawText !== 'string' || !rawText.trim()) {
     return { spec: null, error: 'empty spec' };
   }
 
-  // Step 1 — strict.
   try {
     const parsed = JSON.parse(rawText);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -28,7 +14,6 @@ export function parseFormSpec(rawText) {
     }
     return { spec: null, error: 'Spec must be a JSON object (got ' + (Array.isArray(parsed) ? 'array' : typeof parsed) + ')' };
   } catch (strictErr) {
-    // Step 2 — tolerant pass.
     const cleaned = _looseClean(rawText);
     try {
       const parsed = JSON.parse(cleaned);
@@ -45,18 +30,10 @@ export function parseFormSpec(rawText) {
   }
 }
 
-// Pull the FULL `data-vault-form` block out of a streamed assistant
-// markdown body and parse it. Used by the stream-completion handler
-// to open the side panel deterministically — the in-markdown
-// MarkdownCode path can't, because the just-completed message mounts
-// already-`complete` and its "historical replay" guard suppresses the
-// form-store dispatch (see App.jsx onDone). Matches the LAST
-// `data-vault-form` fence (initial form appearance); deliberately
-// ignores the `data-vault-form-patch` dialect (those merge into an
-// already-open form and don't need to trigger the panel).
-//
-// Returns { spec, error, found }: found=false when no full-form fence
-// is present (the common case — most turns carry no form at all).
+// Extract the last full form fence for live onDone handling; MarkdownCode treats already-complete
+// mounts
+// as historical and suppresses dispatch. Ignore form patches, which update an existing panel.
+// Returns { spec, error, found }; found is false when no full-form fence exists.
 export function extractFormSpec(markdown) {
   if (typeof markdown !== 'string' || !markdown) {
     return { spec: null, error: null, found: false };
@@ -72,36 +49,27 @@ export function extractFormSpec(markdown) {
   return { spec, error, found: true };
 }
 
-// Apply a series of cheap, deterministic fixups for common LLM
-// mistakes. Order matters — stripping comments before fixing
-// trailing commas, etc.
+// Fix common LLM JSON errors in order: strip comments before removing trailing commas.
 function _looseClean(s) {
   let out = String(s);
 
-  // Strip a stray fenced-code preamble if the LLM included it inside
-  // the block content (e.g. "```json\n{...}\n```").
+  // Remove a nested code fence accidentally included in the block body.
   out = out.replace(/^\s*```(?:json|data-vault-form|js|javascript)?\s*\n/, '');
   out = out.replace(/\n\s*```\s*$/, '');
 
-  // Normalise smart quotes → ASCII.
   out = out
     .replace(/[‘’‚‛′‵]/g, "'")
     .replace(/[“”„‟″‶]/g, '"');
 
-  // Strip JS-style comments. Conservative — only outside strings.
   out = _stripCommentsOutsideStrings(out);
 
-  // Single-quoted string values → double-quoted. Only when clearly
-  // a JSON value (after `:` or inside an array). Conservative: skip
-  // the swap if the content already contains a double quote (would
-  // need escaping). Picks up the common cases without breaking JSON
-  // strings that legitimately contain apostrophes.
+  // Normalize single-quoted JSON values only where recognized; leave embedded double quotes alone
+  // to avoid invalid escaping.
   out = out.replace(/(:\s*|,\s*|\[\s*)'((?:[^'\\]|\\.)*)'/g, (_, prefix, val) => {
     if (val.includes('"')) return `${prefix}'${val}'`;
     return `${prefix}"${val}"`;
   });
 
-  // Trailing commas before `}` or `]`.
   out = out.replace(/,(\s*[}\]])/g, '$1');
 
   return out;
@@ -139,12 +107,10 @@ function _stripCommentsOutsideStrings(s) {
       continue;
     }
     if (c === '/' && next === '/') {
-      // Line comment — skip to newline.
       while (i < s.length && s[i] !== '\n') i += 1;
       continue;
     }
     if (c === '/' && next === '*') {
-      // Block comment — skip to */.
       i += 2;
       while (i < s.length - 1 && !(s[i] === '*' && s[i + 1] === '/')) i += 1;
       i += 2;

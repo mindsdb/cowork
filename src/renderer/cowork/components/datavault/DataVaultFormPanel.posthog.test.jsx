@@ -1,8 +1,4 @@
-// Regression coverage for the PostHog project-discovery flow
-// (ENG-1602). Nothing in DataVaultFormPanel.test.jsx built a spec
-// with `_connector_id: 'posthog'`, so a guard bug that only manifests
-// on that path — re-running discovery instead of submitting once a
-// project is picked — shipped with a green CI. See PR #657 review.
+// Use a PostHog-identified spec so submitting a selected project cannot restart project discovery.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -83,7 +79,6 @@ describe('DataVaultFormPanel — PostHog project discovery', () => {
     await user.click(screen.getByRole('button', { name: /submit/i }));
     await screen.findByRole('combobox', { name: /posthog project/i });
 
-    // Manual entry, ignoring the discovered select entirely.
     await user.type(screen.getByPlaceholderText('12345'), '999');
     await user.click(screen.getByRole('button', { name: /submit/i }));
 

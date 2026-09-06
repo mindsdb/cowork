@@ -1,20 +1,5 @@
-// Tiny pub/sub for the latest active `data-vault-form` per
-// conversation. The markdown extension calls `setForm(cid, spec)`
-// each time it parses a `data-vault-form` block; the side panel
-// subscribes via `useActiveForm(cid)` and re-renders.
-//
-// Why a side store instead of just rendering inline in the message:
-//
-// 1. The form needs a tall, sticky surface (right rail) so the user
-//    can carry on a long conversation about a single connection
-//    without losing the form. Inline would scroll out of view.
-// 2. Multiple forms can appear over the course of a conversation
-//    (initial → retry with errors → new fields); we always want to
-//    show the LATEST. A store gives us that "single source of
-//    truth" without coordinating between sibling React trees.
-// 3. The same form needs to remain usable while a stream is in
-//    flight emitting more text — keeping it out of the streaming
-//    body insulates it from re-renders that would reset its inputs.
+// Store the latest form per conversation outside streaming markdown so sibling views share it
+// and stream updates cannot reset in-progress inputs.
 
 const _byConversation = new Map();
 const _listeners = new Map(); // cid → Set<fn>
@@ -28,11 +13,8 @@ const _listeners = new Map(); // cid → Set<fn>
 const _formStateByConversation = new Map();
 const _formStateListeners = new Map(); // cid → Set<fn>
 
-// Selected-method tracking for multi-method forms. Lifted out of
-// DataVaultForm so the panel chrome (header / breadcrumb) can read it
-// AND clear it ("back to options"). DataVaultForm subscribes to read,
-// and writes via `setSelectedMethod` whenever the user picks or backs
-// out. Falls back to `spec.selected_method` when no override is set.
+// Share method selection with panel breadcrumbs; absent overrides fall back to
+// spec.selected_method.
 const _selectedMethodByConversation = new Map();
 const _selectedMethodListeners = new Map(); // cid → Set<fn>
 
@@ -110,9 +92,8 @@ export function subscribeFormState(conversationId, fn) {
 
 export function setForm(conversationId, spec) {
   if (!conversationId || !spec || typeof spec !== 'object') return;
-  // Guard against churn — JSON.parse always returns a new object,
-  // so callers may invoke setForm with structurally-identical specs
-  // each render. Skip the notification when nothing actually changed.
+  // Skip notifications for structurally identical specs; parsed JSON gets a new identity on every
+  // render.
   const prev = _byConversation.get(conversationId);
   if (prev && _shallowFormEqual(prev, spec)) return;
   _byConversation.set(conversationId, spec);
@@ -163,10 +144,7 @@ function _mergeNamedList(existing, patchMap) {
 
 function _shallowFormEqual(a, b) {
   if (a === b) return true;
-  // Compare the form_id + a stringified field+actions snapshot.
-  // Any genuine update from anton bumps either form_id or one of
-  // these structural fields, so this catches the no-op case
-  // (re-parse of unchanged markdown) without missing real updates.
+  // Skip unchanged form reparses without notifying subscribers.
   if (a?.form_id !== b?.form_id) return false;
   try {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -225,11 +203,11 @@ export function patchForm(conversationId, patch) {
     for (const m of existing) {
       if (Object.prototype.hasOwnProperty.call(patch.methods, m.id)) {
         const mp = patch.methods[m.id];
-        if (mp === null) continue; // deletion
+        if (mp === null) continue;
         if (!mp || typeof mp !== 'object') { merged.push(m); continue; }
         const out = { ...m };
         for (const k of Object.keys(mp)) {
-          if (k === 'fields') continue; // handled below
+          if (k === 'fields') continue;
           if (mp[k] === null) delete out[k];
           else out[k] = mp[k];
         }
@@ -241,14 +219,11 @@ export function patchForm(conversationId, patch) {
         merged.push(m);
       }
     }
-    // New methods appended in the order they appear in the patch.
     for (const id of Object.keys(patch.methods)) {
       if (!existing.some((m) => m.id === id)) {
         const mp = patch.methods[id];
         if (mp && typeof mp === 'object') {
-          // If the new method declares fields as a name-keyed map
-          // (consistent with patch shape), normalise into the
-          // array-of-objects shape the rest of the app expects.
+          // Normalize new methods’ name-keyed field patches to the array shape used by the form.
           const newMethod = { id, ...mp };
           if (mp.fields && typeof mp.fields === 'object' && !Array.isArray(mp.fields)) {
             newMethod.fields = _mergeNamedList([], mp.fields);
@@ -270,13 +245,8 @@ export function patchForm(conversationId, patch) {
 export function clearForm(conversationId) {
   if (!conversationId) return;
   _byConversation.delete(conversationId);
-  // Closing / clearing the form also clears the redacted state
-  // snapshot — once the form is gone, there's nothing to inject
-  // into chat messages.
   clearFormState(conversationId);
-  // Drop any selected-method override so the next form opens at
-  // its picker (or default state) rather than inheriting the prior
-  // form's choice.
+  // Clear the method override so the next form does not inherit this form’s selection.
   setSelectedMethod(conversationId, null);
   const subs = _listeners.get(conversationId);
   if (subs) for (const fn of subs) {

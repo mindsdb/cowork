@@ -1,9 +1,4 @@
-// Error boundary specifically for the data-vault form panel. The
-// panel renders user-controlled markdown blocks (the `data-vault-form`
-// JSON spec from anton's response) — a malformed spec or a render
-// glitch shouldn't take down the whole chat surface. Anything that
-// throws inside DataVaultFormPanel falls through to a small inline
-// notice with the error message; the rest of the app keeps working.
+// Contain malformed agent-supplied form specs so a failed panel cannot take down the chat.
 
 import { Component } from 'react';
 import { Alert } from '../ui';

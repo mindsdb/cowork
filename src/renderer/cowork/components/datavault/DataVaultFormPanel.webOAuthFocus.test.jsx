@@ -1,8 +1,5 @@
-// Regression coverage (ENG-2190): after a web-app OAuth connect succeeds,
-// the app tab should reclaim focus on its own — mirroring desktop, whose
-// Electron window regains OS-level focus the moment it detects success
-// through its own poll. The web app has no native equivalent, so it has to
-// ask for focus explicitly once polling reports success.
+// Web must explicitly request app-tab focus when OAuth polling succeeds; Electron's native window
+// behavior is separate.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
@@ -26,9 +23,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
 
 const CID = 'conv-datavault-web-oauth-focus';
 
-// Mirrors specs/google_drive.json's recommended, no-fields method — the
-// ordinary "click Connect" path most users take, distinct from the
-// separate BYOK "oauth"/oauth_launch method elsewhere in this file.
+// Use the recommended no-fields builtin method, separate from BYOK oauth_launch.
 const DRIVE_BUILTIN_SPEC = {
   form_id: 'drive-builtin-f1',
   _connector_id: 'google_drive',

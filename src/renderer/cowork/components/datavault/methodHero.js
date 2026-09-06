@@ -1,16 +1,7 @@
-// Pure decision logic for the connect-form method picker's "hero"
-// promotion (ENG-1534), extracted so it's unit-testable without
-// rendering. Given a connector's methods + spec, decides which method
-// to lead with as a prominent "Authorize with <Provider>" button, what
-// copy it carries, whether it can launch in one click, and which
-// methods fall under "See other options".
-
 const OAUTH_BUILTIN_ID = 'browser_oauth_builtin';
 
-// Exact display casing for the connector ids that ship the in-browser
-// OAuth method — used as a fallback when neither `label` nor `title`
-// carries the name, so we never fall all the way to a generic word for
-// a known provider. Prettifying the id would give "Github"/"Gcp".
+// Preserve provider brand casing when specs omit labels/titles; prettifying IDs would produce
+// Github/Gcp.
 const KNOWN_PROVIDER_NAMES = {
   github: 'GitHub',
   gmail: 'Gmail',
@@ -30,14 +21,10 @@ function prettifyEngine(engine) {
     .join(' ');
 }
 
-/** Human connector name for user-facing copy ("GitHub", "Google Drive").
- *  Resolution order: `spec.label` (the connector name — populated on some
- *  paths) → the form title with a leading "Connect " stripped → the
- *  connector id (`engine` / `_connector_id`) with known display casing →
- *  a generic word. The label is empty in the browser-OAuth form spec (it
- *  lives at the connector level, not inside `form`), which is why the
- *  title/id fallbacks matter — without them the success message reads
- *  "Provider connected" instead of "GitHub connected" (ENG-1534). */
+/**
+ * Resolve provider names from label, title, then known ID casing. OAuth form specs can omit the
+ * connector-level label.
+ */
 export function providerNameFromSpec(spec) {
   if (!spec) return 'the provider';
   if (spec.label) return spec.label;
@@ -78,9 +65,7 @@ export function computeHeroView(methods, spec) {
 
   const heroIsOAuth = hero.id === OAUTH_BUILTIN_ID;
   const fields = Array.isArray(hero.fields) ? hero.fields : [];
-  // One-click only when there's nothing to fill first. A method with a
-  // required field (e.g. Google Ads' developer token) reveals its fields
-  // on click instead, so we never skip required input.
+  // Require input before authorization when the method has required fields.
   const heroOneClick = heroIsOAuth && !fields.some((f) => f && f.required);
   const heroLabel = heroIsOAuth ? `Authorize with ${providerName}` : (hero.label || hero.id);
   const heroHelper = heroIsOAuth

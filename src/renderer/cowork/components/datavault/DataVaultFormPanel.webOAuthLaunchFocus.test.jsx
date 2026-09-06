@@ -1,10 +1,5 @@
-// Regression coverage (ENG-2190) for the separate BYOK "oauth"/oauth_launch
-// method (e.g. google_drive.json's "Sign in with Google", distinct from the
-// recommended browser_oauth_builtin method covered in
-// DataVaultFormPanel.webOAuthFocus.test.jsx). This path keeps its own popup
-// window reference, so on success it should both close that popup and
-// reclaim focus for the app tab — not rely solely on the callback page's
-// own self-close script the way the builtin method has to.
+// BYOK oauth_launch owns a popup reference, unlike builtin OAuth.
+// On success it must close that popup and request app-tab focus.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
