@@ -77,9 +77,8 @@ beforeEach(() => {
 });
 
 describe('isMindsCredentialSidecarReachable', () => {
-  // `pushMindsCredentialNow` flattens "no sidecar yet" and "the sidecar
-  // refused" into the same false. Only the second deserves a warning and a
-  // retry timer, so this predicate has to answer for both liveness states.
+  // Distinguish an absent sidecar from a refused handoff even though pushMindsCredentialNow returns
+  // false for both.
   it('is true while the sidecar runs', () => {
     (isServerRunning as Mock).mockReturnValue(true);
     (isServerStarting as Mock).mockReturnValue(false);
@@ -128,9 +127,8 @@ describe('resolveMindsCredential', () => {
 
 describe('pushMindsCredential', () => {
   it('PUTs the value to the sidecar carrying the server bearer token', async () => {
-    // authHeader() matters: a main-process fetch never passes through the
-    // renderer's webRequest injection hook, so without it the PUT 401s under
-    // COWORK_REQUIRE_AUTH and the app looks unconfigured with no visible cause.
+    // Main-process fetch bypasses renderer auth injection; the PUT must supply authHeader under
+    // COWORK_REQUIRE_AUTH.
     const calls = installFetch();
     expect(await pushMindsCredential('a-token')).toBe(true);
     expect(calls).toHaveLength(1);
@@ -229,9 +227,8 @@ describe('pushMindsCredential', () => {
   });
 
   it('does not call a sidecar that reports running with no port yet', async () => {
-    // startServer resolves the port after the process is up, so there is a
-    // window where the flags say running and the port is still 0. Sending to
-    // `127.0.0.1:0` would hang the caller rather than fail.
+    // Running flags can precede port resolution; do not send a credential handoff to loopback port
+    // 0.
     (getServerPort as Mock).mockReturnValue(0);
     const calls = installFetch();
     expect(await pushMindsCredential('a-token')).toBe(false);
@@ -257,10 +254,8 @@ describe('pushMindsCredential', () => {
   });
 
   it('names an older sidecar as the cause when the route is not there', async () => {
-    // The app updates in one step and the sidecar in another, so a build can
-    // talk to a sidecar that predates the hand-over route. Reported as a 404
-    // with no explanation, that surfaces to a signed-in user as a card telling
-    // them to connect a provider — a wiring failure dressed as a billing one.
+    // App and sidecar update independently; an older sidecar's missing handoff route must not look
+    // like provider misconfiguration.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     installFetch(404);
 
@@ -280,9 +275,8 @@ describe('syncMindsCredential', () => {
   });
 
   it('never rejects, because two callers start it with void', async () => {
-    // The refresh path and the invalid-grant path both fire this without
-    // awaiting, so a rejection surfaces as an unhandled promise rejection in
-    // the main process rather than as a failed push.
+    // Refresh and invalid-grant callers do not await this operation; rejection must not escape as
+    // an unhandled promise.
     (getMindsApiKey as Mock).mockRejectedValue(new Error('keychain exploded'));
     installFetch();
     await expect(syncMindsCredential()).resolves.toBe(true);
@@ -319,11 +313,7 @@ describe('syncUsableMindsCredential', () => {
     await expect(syncUsableMindsCredential()).resolves.toBe(false);
   });
 
-  // The usable/landed quadrant the other three cases miss: they all hold
-  // landed = true and vary only usable, so nothing discriminated the `landed`
-  // half of the conjunct. A refused hand-over is precisely the ENG-2116
-  // failure, and this is the single boolean deciding whether a held turn may
-  // go out. The sibling `clearUserSuppliedMindsKey` already pins the same idea.
+  // Hold usable=true while landed=false to discriminate the landed half of the resume guard.
   it('does not call a usable credential ready when the sidecar refuses it', async () => {
     (getAccessToken as Mock).mockReturnValue('fresh-session-token');
     (isAccessTokenExpired as Mock).mockReturnValue(false);
@@ -381,10 +371,7 @@ describe('a user-supplied key', () => {
 
 describe('forgetMindsCredential (sign-out)', () => {
   it('still clears the sidecar when the keychain delete throws', async () => {
-    // keychain-fallback's write is unguarded, so on a machine with no OS secure
-    // store this can throw. Letting it through would skip the step that
-    // actually stops this install's turns — and, at the sign-out call site,
-    // everything after it too.
+    // A fallback-keychain write can throw; still execute the step that stops this install's turns.
     (deleteMindsApiKey as Mock).mockRejectedValue(new Error('no secret service'));
     const calls = installFetch();
 
@@ -393,9 +380,8 @@ describe('forgetMindsCredential (sign-out)', () => {
   });
 
   it('clears the keychain AND the sidecar, not one or the other', async () => {
-    // Clearing the sidecar alone leaves the keychain entry, and the next
-    // sidecar start pushes it straight back — a signed-out install quietly
-    // running on a credential again.
+    // Clearing only the sidecar would let the next startup restore the keychain credential after
+    // sign-out.
     (getMindsApiKey as Mock).mockResolvedValue('mdb_users_own');
     const calls = installFetch();
     await forgetMindsCredential();
@@ -405,15 +391,11 @@ describe('forgetMindsCredential (sign-out)', () => {
   });
 });
 
-// Boot routing is held across this call, and `resolveBootTarget` reads
-// `config_ready` before it ever reaches `awaitBootReady()` — so whatever this
-// decides is what the launch routes on. Nothing about it is visible at runtime:
-// a push that silently stops happening looks exactly like a signed-out app.
+// Boot reads config_ready before awaitBootReady; credential push determines its initial routing.
 describe('establishMindsCredential (boot)', () => {
   it('hands over a key the user supplied even with no Keycloak session', async () => {
-    // The regression this exists to stop. Gating the boot push on a refresh
-    // token left a BYOK install unconfigured after every restart: the key is in
-    // the keychain and there is no session at all.
+    // A BYOK install can have a keychain key without any refresh token; boot must still push that
+    // key.
     (getRefreshToken as Mock).mockReturnValue(null);
     (getAccessToken as Mock).mockReturnValue(null);
     (getMindsApiKey as Mock).mockResolvedValue('mdb_users_own');

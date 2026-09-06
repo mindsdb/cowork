@@ -1,32 +1,6 @@
-// The MindsHub credential the sidecar runs on, held in this process and pushed
-// over loopback instead of written to disk.
-//
-// The sidecar is a separate Python process, so a credential has to cross that
-// boundary somehow. It used to cross as a file: a minted `mdb_` key written to
-// `~/.cowork/.env` and to the settings table, where it sat with no expiry. A
-// 10-minute access token cannot live there, and this is what replaces it —
-// main holds the value and pushes it to `PUT /api/v1/runtime-credential/minds`,
-// which the sidecar keeps in memory and overlays onto its settings.
-//
-// The same hand-over carries both credentials the app supports. A user who
-// supplies their own `mdb_` key gets it stored in the OS keychain and pushed
-// down the same path, so choosing BYOK does not put a long-lived bearer back on
-// disk either.
-//
-// **Nothing here survives the sidecar restarting**, which is the point and also
-// the trap. The sidecar restarts for an auto-update, a health failure, a crash
-// and every app launch, and a credential held only in its memory is gone each
-// time. Every one of those paths has to hand the credential over again, so it
-// is not wired per path: `index.ts` registers
-// `handOffMindsCredentialToStartedSidecar` with `setServerStartedHook`, and
-// `startServer` runs it after every successful start. Sign-in and the
-// token-refresh tick push on top of that, because both produce a new credential
-// without restarting anything.
-//
-// This module deliberately does not import from minds-auth: that module calls
-// into this one after every token refresh, and importing back would be a cycle.
-// The current token is read straight from the store, which minds-auth has
-// already written by the time it calls.
+// Push session or user-supplied credentials over loopback; the sidecar holds them only in memory.
+// Re-push after every sidecar start via setServerStartedHook, and after sign-in or token refresh.
+// Read tokens from the store rather than importing minds-auth, which would create a cycle.
 
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
@@ -47,10 +21,7 @@ async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredentia
     const supplied = await getMindsApiKey();
     if (supplied) return { value: supplied, userSupplied: true, usable: true };
   } catch (error) {
-    // A keychain that cannot be read must not cost a signed-in user their
-    // session credential too. keychain-service already falls back to its
-    // encrypted file when keytar throws, so reaching here means both stores
-    // failed — fall through and present the token rather than nothing.
+    // If both keychain stores fail, fall back to the signed-in session credential.
     console.warn('[minds-credential] could not read the stored key', error);
   }
   const accessToken = getAccessToken();
@@ -61,13 +32,7 @@ async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredentia
   };
 }
 
-/**
- * The credential the sidecar should present, or null when there is none.
- *
- * A key the user supplied by hand wins over the session credential: it is an
- * explicit choice, and someone who pasted their own key expects their turns to
- * run on it even while they are also signed in.
- */
+/** A user-supplied key takes precedence over the session credential. */
 export async function resolveMindsCredential(): Promise<string | null> {
   return (await resolveMindsCredentialSelection()).value;
 }
@@ -77,9 +42,7 @@ export async function hasUserSuppliedMindsCredential(): Promise<boolean> {
   return (await resolveMindsCredentialSelection()).userSupplied;
 }
 
-// Every caller crosses the same sidecar endpoint. Serialize those PUTs so an
-// older, slower request can never finish after a newer refresh/logout handoff
-// and restore the credential the newer operation just replaced.
+// Serialize PUTs so a late request cannot restore a credential replaced by refresh or sign-out.
 let _credentialPushTail: Promise<void> = Promise.resolve();
 
 function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
@@ -89,23 +52,16 @@ function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Hand `value` to the sidecar. A null or empty value clears it there.
- *
- * Returns whether the push landed. Refresh waits for this answer before it can
- * report success and schedules a handoff-only retry on failure; boot and sign-in
- * use the same signal to avoid claiming the sidecar is configured prematurely.
+ * Push or clear the credential. Report whether it landed so callers do not claim readiness
+ * prematurely.
  */
 export function pushMindsCredential(value: string | null): Promise<boolean> {
   return enqueueCredentialPush(() => pushMindsCredentialNow(value));
 }
 
 /**
- * Whether a sidecar exists to receive a hand-over right now.
- *
- * `pushMindsCredentialNow` returns the same `false` for "no sidecar yet" and
- * "the sidecar refused", which are different failures: only the second is worth
- * warning about or retrying on a timer. Boot refreshes tokens before it starts
- * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ * Distinguish an absent sidecar from a refused push; only the latter needs a timed retry.
+ * The start hook handles credentials once a sidecar becomes available.
  */
 export function isMindsCredentialSidecarReachable(): boolean {
   return isServerRunning() || isServerStarting();
@@ -116,9 +72,8 @@ async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
   const port = getServerPort();
   if (!port) return false;
   try {
-    // authHeader(): a main-process fetch never passes through the renderer's
-    // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
-    // would 401 and the app would look unconfigured with no visible cause.
+    // Main-process fetches bypass renderer header injection, so authenticated sidecars need
+    // authHeader explicitly.
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/runtime-credential/minds`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -126,12 +81,8 @@ async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
       signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // Never log the value, only the outcome. A 404 is worth naming: the route
-      // is registered unconditionally in the sidecar's router, so its absence
-      // means this sidecar predates the build talking to it — which the app
-      // otherwise surfaces to a signed-in user as a card telling them to go and
-      // connect a provider. The next start after the sidecar updates re-pushes,
-      // because `setServerStartedHook` in index.ts runs this on every start.
+      // Log outcomes, never credentials. A 404 means an older sidecar; its next start will retry
+      // the handoff.
       if (res.status === 404) {
         console.warn('[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
       } else {
@@ -147,13 +98,8 @@ async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
 }
 
 /**
- * Resolve the current credential and push it. The one call every trigger uses.
- *
- * Never rejects, and there is no try/catch here doing it: both halves already
- * swallow their own failures, so adding one would be a branch nothing can
- * reach. Awaited refresh and boot callers therefore receive a simple landed/not
- * landed result, and fire-and-forget lifecycle hooks cannot create an unhandled
- * rejection. `minds-credential.test.ts` pins the contract.
+ * Resolve and push the current credential. Both steps absorb failures, so lifecycle hooks may call
+ * without awaiting.
  */
 export interface MindsCredentialSyncResult {
   landed: boolean;
@@ -162,8 +108,8 @@ export interface MindsCredentialSyncResult {
 
 /** Resolve and synchronize once, retaining whether the selected value exists. */
 export function syncMindsCredentialSelection(): Promise<MindsCredentialSyncResult> {
-  // Resolve inside the queue. Otherwise an older sync stalled on an async
-  // keychain read could enqueue its stale selection after a newer refresh.
+  // Resolve inside the queue so a slow keychain read cannot enqueue a stale selection after a newer
+  // refresh.
   return enqueueCredentialPush(async () => {
     const credential = await resolveMindsCredentialSelection();
     return {
@@ -178,9 +124,8 @@ export async function syncMindsCredential(): Promise<boolean> {
 }
 
 /**
- * Synchronize the selected credential and report whether a usable value landed.
- * Unlike `syncMindsCredential`, clearing the sidecar successfully returns false:
- * a resumed turn cannot proceed merely because an empty hand-over succeeded.
+ * Report true only when a nonempty credential landed; successfully clearing it does not permit a
+ * resumed turn.
  */
 export async function syncUsableMindsCredential(): Promise<boolean> {
   const result = await syncMindsCredentialSelection();
@@ -188,22 +133,11 @@ export async function syncUsableMindsCredential(): Promise<boolean> {
 }
 
 /**
- * Get the sidecar onto a credential the gateway will accept, at boot.
- *
- * Boot routing is held across this: `serverConfigured()` reads `config_ready`
- * the moment `bootServerSettled` resolves, and `resolveBootTarget` consults it
- * before it ever reaches `awaitBootReady()`, so a launch that releases the gate
- * first routes a signed-in user into onboarding while the push is in flight.
- *
- * `refresh` is injected rather than imported because it lives in minds-auth,
- * which imports this module — see the note at the top of the file.
- *
- * Two things it deliberately does NOT gate on. Not the refresh token: someone
- * running on a key they supplied by hand has one in the keychain and no
- * Keycloak session, and gating on the session leaves those installs
- * unconfigured after every restart. And not success: having nothing to hand
- * over is a real state, and pushing a blank there would only clear what the
- * sidecar already lacks.
+ * Refresh and hand off before releasing boot routing, or a signed-in user can be sent to
+ * onboarding.
+ * Do not require a Keycloak session: BYOK installs also need their credential restored after
+ * restart.
+ * Inject refresh to avoid the minds-auth import cycle.
  */
 export async function establishMindsCredential(
   refresh: () => Promise<unknown>,
@@ -226,13 +160,7 @@ export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
   return landed;
 }
 
-/**
- * Forget a user-supplied key and fall back to the session credential.
- *
- * The push is not optional: without it the sidecar keeps running on the key the
- * user just removed until something else happens to push. So the delete cannot
- * be allowed to skip it — see `forgetMindsCredential` for why that is possible.
- */
+/** Forget the supplied key and always push the session fallback, even if deletion fails. */
 export async function clearUserSuppliedMindsKey(): Promise<boolean> {
   await forgetStoredKey();
   const result = await syncMindsCredentialSelection();
@@ -241,12 +169,8 @@ export async function clearUserSuppliedMindsKey(): Promise<boolean> {
 }
 
 /**
- * Drop the stored key, reporting failure rather than raising it.
- *
- * `keychain-service` swallows every keytar error and falls through to its
- * encrypted file, but that file's WRITE is unguarded, so on a machine with no
- * OS secure store a delete can still throw. Both callers below have a second
- * step that matters more than this one, and neither may be skipped by it.
+ * Report deletion failure without throwing: a fallback-file write can fail, but must not skip the
+ * sidecar push.
  */
 async function forgetStoredKey(): Promise<void> {
   try {
@@ -257,14 +181,8 @@ async function forgetStoredKey(): Promise<void> {
 }
 
 /**
- * Sign-out: forget every MindsHub credential this process can hand over.
- *
- * Both halves are load-bearing. Clearing the sidecar alone would leave the
- * keychain entry behind, and the next sidecar start would push it straight back
- * — a signed-out install quietly running on a credential again. Deleting the
- * keychain entry alone would leave the sidecar holding the value it already has
- * until something else pushed. So a failing delete must not skip the push, which
- * is what `forgetStoredKey` is for.
+ * Clear both the stored key and sidecar credential. A failed delete must not skip the push.
+ * Clearing only one lets the current sidecar or a subsequent restart keep using the key.
  */
 export async function forgetMindsCredential(): Promise<void> {
   await forgetStoredKey();

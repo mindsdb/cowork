@@ -12,9 +12,8 @@ vi.mock('./token-store', () => ({
   getRefreshToken: vi.fn(),
   clearTokens: vi.fn(),
   getTokenStoreVersion: vi.fn(),
-  // A successful refresh hands the new token to the sidecar, which reads it
-  // back from here. Omitting it makes that call reject unhandled rather than
-  // fail a test, which reads as four mystery errors on an otherwise green run.
+  // The successful refresh handoff rereads the token store; stub that read to avoid unrelated
+  // unhandled rejections.
   getAccessToken: vi.fn(),
   isAccessTokenExpired: vi.fn(() => false),
 }));
@@ -25,9 +24,7 @@ import {
   SIGNUP_CALLBACK_TIMEOUT_MS,
 } from './minds-auth';
 
-// ENG-917: sign-up enters Keycloak through /registrations but must ride the
-// exact same realm + flow as sign-in — a drifted path would 400 or land on
-// the wrong realm's form.
+// Registration must use the same realm and flow as login.
 describe('Keycloak endpoint family (ENG-917)', () => {
   it('registration entry is the auth endpoint with only the last segment swapped', () => {
     expect(KEYCLOAK_AUTH_URL.endsWith('/protocol/openid-connect/auth')).toBe(true);

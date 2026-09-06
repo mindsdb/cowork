@@ -1,9 +1,4 @@
-// Resolving "who is this account" after an OAuth token exchange completes —
-// needed as the OS keychain key and the vault record's display name. The
-// response shape genuinely differs per provider (REST userinfo vs GraphQL),
-// so this is the one piece of OAuth-builtin onboarding that can't be pure
-// spec-JSON data — it's provider-specific code, not configuration. New
-// OAuth-builtin connectors add one entry to FETCHERS below.
+// Provider-specific account identity for keychain keys and vault labels. Add built-ins to FETCHERS.
 
 export interface OAuthIdentity {
   email: string;
@@ -20,12 +15,8 @@ async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> 
   return { email: data.email || '' };
 }
 
-// Deliberately a separate request from fetchLinearIdentity's viewer query,
-// not one combined query: unlike the viewer query (required — no identity,
-// no connection), the workspace lookup is best-effort, so a
-// broken/unverified `organization` field degrades to "no workspace split"
-// instead of failing the whole connection. Mirrors cowork-server's
-// _fetch_linear_workspace (oauth/google.py) and auth's counterpart.
+// Keep workspace lookup separate and best-effort so failure cannot prevent the required identity
+// lookup.
 async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; name: string }> {
   try {
     const res = await fetch('https://api.linear.app/graphql', {
@@ -49,12 +40,8 @@ async function fetchLinearWorkspace(accessToken: string): Promise<{ id: string; 
   }
 }
 
-// Unlike Google, a Linear account isn't one-account-one-email: the same
-// email can belong to several workspaces. Folding the workspace id (from
-// fetchLinearWorkspace, best-effort) into the returned identity — the same
-// trick fetchSupabaseIdentity below uses for its own per-organization
-// identity — means connecting a second workspace gets its own connection
-// tile instead of silently overwriting the first.
+// Include the workspace ID so connecting the same email to another Linear workspace does not
+// overwrite it.
 async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
@@ -71,9 +58,6 @@ async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> 
   const workspace = await fetchLinearWorkspace(accessToken);
   return {
     email: workspace.id ? `${email}:${workspace.id}` : email,
-    // Workspace name first, matching fetchSupabaseIdentity's
-    // per-organization identity convention below — the tile shows the
-    // workspace/org, not the connecting individual.
     name: workspace.name || data.data?.viewer?.name || undefined,
   };
 }
@@ -87,39 +71,16 @@ async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> 
   });
   if (!res.ok) return { email: '' };
   const data = await res.json() as { email?: string; login?: string };
-  // GitHub's email is frequently null (this app only requests `read:user`, not
-  // `user:email`, and even then a user can keep it private) — `login` is
-  // always present and unique, so it's the fallback identity, matching the
-  // server-side _fetch_userinfo_github fallback.
+  // GitHub email may be private or unavailable under read:user; use the unique login as fallback.
   return { email: data.email || data.login || '' };
 }
 
-// PostHog's OAuth authorize/token endpoints are region-agnostic
-// (oauth.posthog.com), but the resource API is split by region
-// (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
-// guaranteed to be accepted by the other's host. Used by the identity fetch
-// below, which tries US Cloud first (the default/most common case) and falls
-// back to EU Cloud. Note: OAuth-connected PostHog accounts don't currently
-// resolve a project_id (unlike the personal-API-key path) — there's no
-// project-discovery step here.
+// PostHog OAuth is global, but resource tokens may work only on their regional API. Try US then EU.
+// This path does not discover a project_id.
 export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
 
-// Deliberately a separate request from fetchPostHogIdentity's user query,
-// not one combined call: the organization lookup is best-effort, so an
-// unexpected response shape degrades to "no organization split" instead of
-// failing the whole PostHog connection. Mirrors cowork-server's
-// _fetch_posthog_organization (oauth/google.py). Queries the SAME regional
-// host the user lookup already succeeded against, for the reason
-// fetchPostHogIdentity documents above.
-//
-// PostHog's consent screen lets a user select multiple organizations in a
-// single authorization — unlike Linear, where one grant is exactly one
-// workspace — so `name` joins every organization the token can see (e.g.
-// "Acme, Other Org"), not just the first, so the tile accurately shows
-// everything the connection actually covers. `id` still keys off the first
-// organization only: it's used solely for dedup, and a full
-// multi-organization-aware dedup key is a separate, not-yet-scoped
-// improvement.
+// Look up organizations best-effort on the same regional host that accepted the identity request.
+// Display every granted organization, but dedup currently uses only the first organization ID.
 async function fetchPostHogOrganization(accessToken: string, apiHost: string): Promise<{ id: string; name: string }> {
   try {
     const res = await fetch(`${apiHost}/api/organizations/`, {
@@ -139,12 +100,7 @@ async function fetchPostHogOrganization(accessToken: string, apiHost: string): P
   }
 }
 
-// Unlike Google, a PostHog account isn't one-account-one-email: the same
-// email can belong to several organizations. Folding the organization id
-// (from fetchPostHogOrganization, best-effort) into the returned identity —
-// the same trick fetchSupabaseIdentity below uses for its own
-// per-organization identity — means connecting a second organization gets
-// its own connection tile instead of silently overwriting the first.
+// Include organization ID so a second PostHog organization does not overwrite the first connection.
 async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity> {
   for (const apiHost of POSTHOG_API_HOSTS) {
     const res = await fetch(`${apiHost}/api/users/@me/`, {
@@ -157,9 +113,6 @@ async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity>
       const organization = await fetchPostHogOrganization(accessToken, apiHost);
       return {
         email: organization.id ? `${email}:${organization.id}` : email,
-        // Organization name first, matching fetchSupabaseIdentity's
-        // per-organization identity convention below — the tile shows the
-        // org, not the connecting individual.
         name: organization.name || name || undefined,
       };
     }
@@ -236,31 +189,21 @@ export interface RevokeRequest {
   body: string;
 }
 
-// engine -> custom revoke request builder, for providers whose revoke
-// endpoint doesn't fit the generic RFC-7009 form-body shape (a bare
-// `token=<refresh_token>` POST) every other connector uses. Mirrors
-// cowork-server's `_REVOKE_HANDLERS` (oauth/google.py) — kept here rather
-// than in the spec JSON because the request shape is genuinely
-// provider-specific code, the same reasoning FETCHERS above already
-// documents for identity resolution.
+// Provider-specific revoke requests; engines without a builder use the RFC-7009 form body.
+// Keep aligned with cowork-server’s _REVOKE_HANDLERS.
 const REVOKE_REQUEST_BUILDERS: Record<
   string,
   (refreshToken: string, clientId: string, clientSecret: string) => RevokeRequest
 > = {
-  // Supabase's /v1/oauth/revoke takes a JSON body naming client_id,
-  // client_secret, and specifically refresh_token — not the generic
-  // form-encoded `token` param. Revoking only an access_token isn't
-  // supported and wouldn't remove mindshub from the user's Supabase-side
-  // Authorized Apps list, since that reflects the underlying grant.
+  // Supabase revokes grants with JSON client credentials and refresh_token, not a form-encoded
+  // access token.
   supabase: (refreshToken, clientId, clientSecret) => ({
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }),
   }),
 };
 
-/** Request body/headers to POST to a connector's revoke_url. Falls back to
- * the generic RFC-7009 shape (`token=<refresh_token>`, form-encoded) for any
- * engine without a custom builder above. */
+/** Build revoke headers/body, defaulting to the RFC-7009 token=<refresh_token> form. */
 export function buildRevokeRequest(
   engine: string, refreshToken: string, clientId: string, clientSecret: string,
 ): RevokeRequest {

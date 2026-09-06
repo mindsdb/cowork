@@ -1,16 +1,6 @@
-// Environment-aware MindsHub URL family for the main (Node) process. Unlike the
-// renderer mirror (which reads Vite's baked import.meta.env), main is compiled
-// with plain `tsc` and reads the value baked into build-channel.gen.ts.
-//
-// Resolution order (highest priority first):
-//   process.env.MINDS_API_HOST     — explicit runtime override (dev / tests)
-//   BUILD_MINDS_API_URL            — baked at build time (packaged apps)
-//   CHANNELS[buildKind()].apiHost  — the resolved channel's canonical host
-//
-// That last step lets the channel model drive MAIN, not just the renderer:
-// `npm run dev` bakes nothing, and main used to hard-code a PROD fallback while
-// the renderer fell back to staging (a split-brain). prod is unchanged either
-// way. Hosts follow api/auth/console.<env>.mindshub.ai (bare for prod).
+// Main uses tsc’s build-channel values rather than the renderer’s Vite environment.
+// Resolve runtime override, baked host, then channel host so clean dev builds do not default to
+// prod.
 
 import { CHANNELS } from './channels';
 import { buildKind, type BuildKind } from './cowork-home';
@@ -25,9 +15,7 @@ function bakedApiUrl(): string {
   }
 }
 
-// Normalize to a bare origin ("https://api.staging.mindshub.ai") so a value
-// that arrives with a path (e.g. ".../v1") or trailing slash can't leak into
-// the derived auth/console hosts.
+// Strip paths and trailing slashes before deriving auth and console origins.
 function toOrigin(u: string): string {
   try {
     return new URL(u).origin;
@@ -36,8 +24,6 @@ function toOrigin(u: string): string {
   }
 }
 
-// Pure so the resolution (incl. the "clean npm run dev" case) is unit-testable
-// without electron/module-load gymnastics.
 export function resolveApiHost(envHost: string, bakedUrl: string, kind: BuildKind): string {
   const chosen = envHost.trim() || bakedUrl.trim() || CHANNELS[kind].apiHost;
   return toOrigin(chosen);
@@ -48,17 +34,8 @@ const API_HOST = resolveApiHost(process.env.MINDS_API_HOST ?? '', bakedApiUrl(),
 export const MINDS_API_HOST = API_HOST;
 
 /*
- * Auth and console are derived from the API host, and the two roles do NOT
- * derive the same way. Auth keeps a service prefix in every environment
- * (`auth.staging.…`, `auth-pr-42.dev.…`); the console has one only in the
- * permanent environments, because argocd-envs serves a per-PR console at
- * `<envName>.dev.mindshub.ai` with no prefix at all. So a `console-pr-42.…`
- * built by swapping the token is a host that does not resolve, and every
- * console deep link from the main process 404s in a PR environment.
- *
- * `src/renderer/lib/mindsUrls.ts` derives the same two hosts for the renderer
- * and has to agree with this. Two copies rather than one because main and
- * renderer resolve their base from different inputs; keep them in step.
+ * PR console hosts omit the service prefix; auth hosts retain it.
+ * Keep derivation aligned with src/renderer/lib/mindsUrls.ts, which reads different base inputs.
  */
 export const MINDS_AUTH_HOST = API_HOST.replace(/:\/\/api([.-])/, '://auth$1');
 export const MINDS_CONSOLE_HOST = API_HOST.includes('://api-')
@@ -70,37 +47,14 @@ export const MINDS_AUTH_SERVICE_URL = `${MINDS_AUTH_HOST}/v1`;
 export const MINDS_LLM_BASE_URL = `${API_HOST}/v1`;
 
 /*
- * The model every provider probe sends to MindsHub, and the mirror of
- * cowork-server's MINDS_PROBE_MODEL (cowork/services/providers.py).
- *
- * It has to be a model any valid key can call. MindsHub bills per model, so a
- * paid model is denied for an account whose wallet is empty, and that denial
- * arrives as an ordinary error the probe cannot tell apart from a bad key:
- * onboarding then tells a brand-new user their working key does not work.
- * MindsHub Air draws the monthly included allowance instead of the wallet, so
- * the probe reports reachability and key validity, which is what it is for.
- *
- * Two copies of this value exist because main is compiled Node with no import
- * path into the Python sidecar. They have drifted once already: an earlier fix
- * moved the sidecar onto the free model and left this side probing a paid one,
- * which is the defect this replaces. Change one and change the other.
+ * Use an included-allowance model for probes so an empty wallet does not look like an invalid key.
+ * Keep aligned with cowork-server’s MINDS_PROBE_MODEL in cowork/services/providers.py.
  */
 export const MINDS_PROBE_MODEL = 'mindshub_air';
 
 /*
- * True when `url` points at a MindsHub inference host. Mirrors is_minds_host in
- * cowork-server's providers.py, including the deliberate choice to compare the
- * parsed hostname rather than test a substring of the URL: a substring test also
- * matches `mindshub.ai.example.test` and a query parameter carrying our host,
- * and the base URL reaching the openai-compatible probe is partly user-supplied.
- *
- * A self-hosted gateway on another hostname does not match, and keeps the
- * generic default it has today.
- *
- * Matching an `mdb.ai` host picks the model, not the path: the openai-compatible
- * probe appends `/v1` generically and never applies validateMinds's `mdb.ai` ->
- * `/api/v1` rule, so a bare `mdb.ai` base is still probed where that host does not
- * serve. Same caveat as the sidecar's is_minds_host.
+ * Match parsed hostnames, not substrings; self-hosted gateways retain generic defaults.
+ * This selects a model only: it does not rewrite mdb.ai’s generic /v1 probe path to /api/v1.
  */
 export function isMindsHost(url: string | null | undefined): boolean {
   const raw = (url || '').trim();
@@ -120,16 +74,7 @@ export function isMindsHost(url: string | null | undefined): boolean {
   }
 }
 
-// The environment slug embedded in the API host ("staging"/"dev"), or "" for
-// prod. Used to stamp ENV on the cowork-server subprocess we spawn so the
-// server's own env-aware defaults (cowork-server app_settings._env_slug)
-// resolve to the same environment as the desktop client.
-//
-// Both host shapes, for the same reason the two derivations above take both: on
-// a per-PR host the service label carries the env name (`api-pr-cowork-763`) and
-// the environment is the label after it. Matching only `api.` left a PR-env
-// desktop build with no slug, so `startServer` stamped no ENV at all and the
-// sidecar it spawned resolved prod MindsHub defaults while the client
-// authenticated against the PR environment.
+// Stamp the API host’s environment onto the sidecar. Handle both permanent and per-PR host shapes
+// so a PR client does not start a sidecar with production defaults.
 const slugMatch = API_HOST.match(/^https?:\/\/api[.-][a-z0-9-]*?\.?([a-z0-9-]+)\.mindshub\.ai/i);
 export const MINDS_ENV_SLUG = slugMatch ? slugMatch[1] : '';

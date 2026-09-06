@@ -13,21 +13,9 @@ export function mindsRuntimeCredentialRequirementFromHealth(data: unknown): bool
 }
 
 /**
- * Response routes whose renderer reservation could be stranded if the Minds
- * credential is not settled before the request reaches the sidecar.
- *
- * `/responses` starts a turn. `/responses/answer` releases a turn parked on an
- * elicitation card, whose next model call runs on whatever credential the
- * sidecar holds — a sleep shorter than the elicitation timeout but longer than
- * the access token's life lands exactly there. Reads, cancels and the SSE tail
- * are deliberately absent: none of them spends the credential, and gating the
- * cancel would make Stop unusable while the barrier is up.
- *
- * `/connectors/submissions` is intentionally outside this wake barrier. It is
- * a retryable connector probe, not a response turn governed by the renderer's
- * reservation/reap lifecycle that forces the 12-second ceiling here. Its Anton
- * calls still use cowork-server's live per-request credential contract; adding
- * a form-submission hold would be a separate UX contract.
+ * Gate response creation and elicitation answers, which can spend a stale credential after wake.
+ * Do not gate reads, cancels or SSE tails; Stop must remain usable.
+ * Connector probes are retryable and outside the renderer’s response reservation/reap deadline.
  */
 const GATED_RESPONSE_PATHS = new Set([
   '/api/v1/responses',
@@ -49,9 +37,8 @@ export function isMindsResponseCreationRequest(
 }
 
 /**
- * Start the asynchronous resume gate when this is a response-creation request.
- * Returns false for every other loopback request so the caller can forward it
- * synchronously and untouched.
+ * Gate response requests asynchronously; return false to forward other loopback requests
+ * immediately.
  */
 export function gateMindsResponseCreationRequest(
   details: LoopbackRequestDetails,
