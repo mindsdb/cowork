@@ -85,9 +85,8 @@ describe('Collapsible', () => {
       </Collapsible>,
     );
     const trigger = screen.getByRole('button', { name: /advanced/i });
-    // Base UI marks disabled accessibly (aria-disabled + data-disabled) rather
-    // than with the native attribute, so the control stays focusable. The
-    // disabled affordance styling keys off data-disabled, not `:disabled`.
+    // Base UI keeps disabled controls focusable via aria/data-disabled; styling must not rely on
+    // native :disabled.
     expect(trigger.getAttribute('aria-disabled')).toBe('true');
     expect(trigger.hasAttribute('data-disabled')).toBe(true);
     fireEvent.click(trigger);

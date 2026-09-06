@@ -1,33 +1,13 @@
-// Token-driven surface containers — the one card system (ENG-791).
-//
-// The look lives in the `.card` classes in globals.css; this component just
-// assembles the modifier tokens (via cva) and merges a layout-only className
-// (via cn). Deliberately a flexible *shell* — it does NOT impose
-// title/body/footer structure, so every caller keeps its own internal layout.
-// (ENG-1018: retrofitted onto the cva + cn + TS authoring convention.)
-//
-//   <Card>…</Card>                              // static panel, 24px pad, --sh-1
-//   <Card padding="compact">…</Card>            // 16px  ('snug'=12, 'cozy'=14/16)
-//   <Card flat>…</Card>                         // no resting shadow
-//   <Card interactive onActivate={open}>…</Card>// canonical hover/active/focus
-//   <Card as="button" interactive onClick={…}/> // native button (no nested btns)
-//   <Card selected tinted>…</Card>              // accent border (+ --accent-bg)
-//   <Card variant="glass" flat>…</Card>         // backdrop-blur panel
-//   <Card variant="dashed" interactive>…</Card> // empty-state / dropzone
-//   <CardRow onActivate={open}>…</CardRow>      // flat interactive list row
-//   <Bubble>…</Bubble>                          // glassy floating surface
-//
-// The single hover/active animation is ELEVATION ONLY (lift + soft shadow,
-// neutral border). Accent is reserved for the selected state, never hover.
+// Surface styles live in globals.css; callers own the internal layout and use className for layout
+// only.
+// Hover uses neutral elevation; accent indicates selection.
 
 import { forwardRef } from 'react';
 import type { ComponentPropsWithoutRef, ElementType, KeyboardEvent } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
-// cva assembles the legacy `.card` modifier tokens. `tinted` is only
-// meaningful alongside `selected`, so it carries no class of its own — the
-// compound variant emits `tinted` only when both are set.
+// tinted only applies when selected.
 const cardVariants = cva('card', {
   variants: {
     interactive: { true: 'interactive', false: '' },
@@ -49,7 +29,6 @@ export interface CardVariantProps extends VariantProps<typeof cardVariants> {
   className?: string;
 }
 
-// Pure — exported so the class logic can be unit-tested directly.
 export function cardClasses({ className, ...variants }: CardVariantProps = {}): string {
   return cn(cardVariants(variants), className);
 }
@@ -59,9 +38,7 @@ interface ActivationOpts {
   onActivate?: (e?: unknown) => void;
 }
 
-// Pure — a11y wiring for a card that must behave like a button but can't BE one
-// (a `<div>` that nests its own buttons; HTML forbids nested interactive
-// content). Native `<button>` cards handle keyboard activation themselves.
+// Non-button cards need keyboard activation when nested controls prevent using a native button.
 export function cardActivationProps({ as, onActivate }: ActivationOpts = {}) {
   if (!onActivate) return {};
   if (as === 'button') return { onClick: onActivate };
@@ -98,10 +75,7 @@ export const Card = forwardRef<HTMLElement, CardProps>(function Card({
   const classes = cardClasses({ interactive, selected, tinted, flat, variant, padding, className });
   const activation = cardActivationProps({ as: As, onActivate });
   const typeProp = As === 'button' ? { type: 'button' } : {};
-  // Polymorphic element — `any` sidesteps the well-known ref-typing friction
-  // of a dynamic component; runtime behaviour is unchanged.
-  // Polymorphic tag — typed `any` to sidestep the well-known polymorphic
-  // ref/props friction; runtime behaviour is unchanged.
+  // Dynamic tags require a shared ref/props escape hatch.
   const Comp: any = As;
   return (
     <Comp ref={ref} className={classes} {...typeProp} {...activation} {...rest}>
@@ -129,8 +103,6 @@ export const CardRow = forwardRef<HTMLElement, CardRowProps>(function CardRow({
   const classes = cn('card-row', selected && 'selected', className);
   const activation = cardActivationProps({ as: As, onActivate });
   const typeProp = As === 'button' ? { type: 'button' } : {};
-  // Polymorphic tag — typed `any` to sidestep the well-known polymorphic
-  // ref/props friction; runtime behaviour is unchanged.
   const Comp: any = As;
   return (
     <Comp ref={ref} className={classes} {...typeProp} {...activation} {...rest}>

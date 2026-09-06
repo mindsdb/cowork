@@ -1,22 +1,4 @@
-// Token-driven text input + textarea.
-//
-// `Input` wraps Base UI's <Input> for native input semantics and future
-// Field integration (label / validation / error a11y), styled with the
-// existing `.field-input` class so the look is unchanged. Base UI ships no
-// textarea primitive, so `Textarea` stays a native <textarea> with
-// `.field-textarea`. Both keep the app's `(value, event)` onChange signature.
-//
-//   <Input value={v} onChange={(next) => ...} placeholder="..." />
-//   <Input variant="mono" size="sm" />
-//   <Textarea value={v} onChange={(next) => ...} rows={4} />
-//
-// Input-group (ENG-1035): pass `leading`/`trailing` to place an icon, shortcut
-// hint, or reveal button inside the same box as the control. When present, a
-// `.field-group` wrapper carries the chrome and the inner input goes
-// borderless; with neither, the input renders exactly as before.
-//
-//   <Input leading={<SearchIcon/>} trailing={<Kbd>⌘K</Kbd>} value={q} onChange={setQ} />
-//   <Input type="password" trailing={<RevealButton/>} value={pw} onChange={setPw} />
+// Input and Textarea use onChange(value, event), rather than the native event-only signature.
 
 import { forwardRef } from 'react';
 import { Input as BaseInput } from '@base-ui/react/input';
@@ -32,13 +14,12 @@ export interface InputProps
   onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void;
   variant?: InputVariant;
   size?: InputSize;
-  // Applies to the <input> in every case (unchanged with or without adornments).
+  // className always applies to the input, including inside a group.
   className?: string;
-  // Optional in-field adornments. Any value renders the input-group wrapper.
+  // Truthy adornments enable the input-group wrapper.
   leading?: ReactNode;
   trailing?: ReactNode;
-  // Layout-only class for the group wrapper (e.g. a flex-basis). Only used when
-  // `leading`/`trailing` is set; ignored otherwise.
+  // Layout-only class for the wrapper; ignored without leading/trailing adornments.
   wrapperClassName?: string;
 }
 
@@ -61,10 +42,7 @@ export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(func
     />
   );
 
-  // No adornments → render exactly as before (backward compatible). Test for
-  // truthiness, not `!= null`: the common `leading={cond && <Icon/>}` idiom
-  // yields `false` when off, which must NOT open the group or render an empty
-  // (gap-consuming) addon slot.
+  // Falsy adornments (e.g. leading={condition && <Icon/>}) must not create an empty input group.
   const hasLeading = Boolean(leading);
   const hasTrailing = Boolean(trailing);
   if (!hasLeading && !hasTrailing) return control;

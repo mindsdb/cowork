@@ -1,23 +1,11 @@
-// Checkbox — an accessible ticked/unticked control.
-//
-// Built on Base UI's Checkbox (role, Space-to-toggle, focus, hidden form
-// input) and styled to the design system to match Switch's visual language
-// (cva + cn + CSS vars + data-[checked]). Replaces ad-hoc native
-// `<input type="checkbox">` with one consistent, branded, accessible box.
-//
-//   <Checkbox checked={on} onCheckedChange={setOn} />
-//   <Checkbox checked={on} onCheckedChange={setOn} size="sm" disabled />
-
 import { Checkbox as BaseCheckbox } from '@base-ui/react/checkbox';
 import { Check, Minus } from 'lucide-react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 const boxVariants = cva(
-  // `border-solid` is explicit because this app disables Tailwind's preflight
-  // (which is what normally sets `border-style: solid`) — without it the
-  // `border` utility sets a width but no style, so the box renders borderless
-  // and the unchecked state is invisible against a light surface.
+  // Preflight is disabled, so border width alone leaves the checkbox border invisible; set
+  // border-solid.
   'inline-flex shrink-0 items-center justify-center rounded-[4px] border border-solid cursor-pointer outline-none transition-colors duration-150',
   {
     variants: {

@@ -1,50 +1,9 @@
-// `<Menu>` — token-skinned dropdown menu built on Base UI.
-//
-// Why a library here: the hand-rolled menus (TaskMenu, the ArtifactViewer
-// kebab popover, HoverMenu) each re-implemented the same hard parts —
-// portal positioning, flip-on-collision, Escape, click-outside, focus
-// return, plus a fragile hover-corridor submenu — and none of them had
-// real keyboard support (arrow keys, typeahead, focus loop). That
-// behavior is exactly what an unstyled primitive layer is for. Base UI
-// gives us all of it; we own only the skin, wired to the same design
-// tokens (`bg-surface`, `text-ink-2`, `border-line`, `text-danger`) the
-// rest of the app uses — so it's visually identical to the menus it
-// replaces, with no new styling philosophy.
-//
-// Styled with `cva` + `cn()` + Tailwind's `data-[]:` arbitrary variants —
-// the pattern `Switch.tsx`/`Checkbox.tsx`/`Select.jsx` use to skin Base
-// UI's data-attribute-driven states (highlighted, disabled, open/closed).
-// Not a runtime-injected stylesheet: every class here is real source
-// text Tailwind's own pipeline sees and processes.
-//
-// Two mounting modes:
-//
-//   1. Trigger mode — pass a `trigger` element; Base UI owns open state
-//      and anchors the popup to the trigger.
-//        <Menu trigger={<button>⋯</button>} items={…} />
-//
-//   2. Anchored mode — the call site owns the trigger AND the open state,
-//      and hands us a rect to position against (the pattern the legacy
-//      TaskMenu / HoverMenu used, so those wrappers port with no call-site
-//      churn). Drive it with `open` + `anchor` (a DOMRect or any
-//      `{ getBoundingClientRect }`) + `onClose`.
-//        <Menu open={open} anchor={rect} onClose={close} items={…} />
-//
-// Item shape — matches the legacy hand-rolled menus so call sites port
-// 1:1: { icon?, label, onClick?, danger?, disabled?, hint?, title?, aria?,
-//        divider?|separator?, submenu?: Item[], heading?, id?|key? }.
-// `aria` is an object spread onto the rendered item, for state a screen reader
-// has to hear. `title` cannot carry it: the row's accessible NAME comes from its
-// label, so a title is demoted to the accessible description, which VoiceOver
-// speaks only as a delayed hint and NVDA users can switch off entirely. Anything
-// that changes what the row IS (`aria-current` on the row you are already on)
-// belongs here instead.
-// An item with a `submenu` array renders a nested fly-out (replaces
-// TaskMenu's hand-rolled "Move to project" corridor).
-// An item with a `heading` node renders as a non-interactive group label
-// (Base UI Group + GroupLabel — announced by screen readers, skipped by
-// arrow-key navigation). Used for identity headers like the user menu's
-// email/org block.
+// Trigger mode: pass trigger; Base UI owns opening and positioning.
+// Anchored mode: pass open, anchor (DOMRect or getBoundingClientRect), and onClose.
+// Items: { icon?, label, onClick?, danger?, disabled?, hint?, title?, aria?,
+// divider?|separator?, submenu?: Item[], heading?, id?|key? }.
+// Use aria for accessible state; title is only a description that screen readers may omit.
+// submenu creates a fly-out; heading creates a non-interactive, announced group label.
 
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -53,9 +12,6 @@ import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
-// Popup shell — background/radius/shadow + the open/close fade+scale.
-// Borderless and token-shadowed per ENG-790; this keeps that visual
-// treatment while replacing the runtime-injected CSS mechanism.
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
@@ -72,13 +28,8 @@ const itemVariants = cva(
   {
     variants: {
       danger: {
-        // Two full utilities per branch (not a base + override) so only
-        // one `data-[highlighted]:bg-*` utility is ever present on a
-        // given item — Tailwind utilities are equal-specificity, so a
-        // "base rule + more-specific override" (the old CSS's
-        // `.danger[data-highlighted]` beating `[data-highlighted]`)
-        // doesn't reliably translate; picking one utility per branch
-        // sidesteps needing that specificity order at all.
+        // Choose one highlighted background utility per branch; equal-specificity Tailwind rules
+        // cannot guarantee overrides.
         true:  'text-danger data-[highlighted]:bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]',
         false: 'text-ink-2 data-[highlighted]:bg-surface-2',
       },
@@ -87,15 +38,11 @@ const itemVariants = cva(
   },
 );
 
-// Chevron for submenu triggers. Lucide directly so the primitive stays
-// free of any app-icon dependency.
+// Keep the primitive independent of product icons.
 const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 
-// Maps the item array to Base UI nodes. Recursive so `submenu` items
-// nest cleanly. `z` rises by one per level so deeper fly-outs always
-// stack above their parent popup. `onActivate` fires after a leaf
-// item's own onClick — anchored mode passes its `onClose` here so a
-// pick reliably dismisses even though Base UI isn't driving the close.
+// Increase z for nested fly-outs; invoke onActivate after leaf actions so controlled anchored menus
+// close.
 function renderItems(items, z, onActivate) {
   return items.filter(Boolean).map((it, i) => {
     const key = it.id || it.key || it.label || i;
@@ -169,15 +116,11 @@ export function Menu({
   // element to position against. Used with `open` + `onClose`.
   anchor,
   items = [],
-  // Positioning — Base UI handles collision flipping/shifting itself.
   side = 'bottom',
   align = 'end',
   sideOffset = 6,
-  // Min width of the popup (px). Items can still push it wider.
   width = 200,
-  // z-index of the positioner. Default sits above default-layer modals
-  // (Modal.jsx `default` layer is 80) so a kebab inside a modal stacks
-  // over the modal chrome. Bump for menus inside system-layer modals.
+  // Default stacks above content modals. Raise z for menus inside system-layer modals.
   zIndex = 95,
   ariaLabel,
   // Controlled open state. Pass for anchored mode (the call site owns
@@ -190,12 +133,8 @@ export function Menu({
 }) {
   const controlled = open !== undefined;
 
-  // Anchored mode = controlled open against a trigger we don't own (the
-  // legacy TaskMenu / HoverMenu pattern). Base UI's Menu only wires
-  // dismiss when it owns a <Menu.Trigger>; with none it opens/positions
-  // fine but never closes itself, so we supply dismiss here — and ONLY
-  // here (overlay + Escape + item activation). Trigger mode is left to
-  // Base UI (the ArtifactViewer kebab).
+  // Without a Base UI trigger, anchored menus need explicit outside-press, Escape, and item
+  // dismissal.
   const anchoredMode = controlled && !trigger;
 
   const rootProps = controlled
@@ -203,27 +142,20 @@ export function Menu({
         open,
         onOpenChange: (next, details) => {
           onOpenChange?.(next, details);
-          // Critical: do NOT close an anchored menu on Base UI's own
-          // signal. With no trigger, Base UI's focus/hover-out heuristics
-          // misfire and emit onOpenChange(false) when the pointer merely
-          // leaves the popup — which would slam the menu shut on hover.
-          // Our explicit handlers are the only closers in anchored mode.
+          // Ignore Base UI closes in anchored mode: its triggerless hover heuristics close on
+          // merely leaving the popup.
           if (!next && !anchoredMode) onClose?.();
         },
       }
     : {};
 
-  // Normalise the anchor into a virtual element Base UI/Floating UI
-  // accepts. A raw DOMRect has no `getBoundingClientRect`, so wrap it;
-  // an element or existing virtual element passes through untouched.
+  // Wrap DOMRects as virtual elements; existing elements and virtual elements pass through.
   const anchorEl = useMemo(() => {
     if (!anchor) return undefined;
     if (typeof anchor.getBoundingClientRect === 'function') return anchor;
     return { getBoundingClientRect: () => anchor };
   }, [anchor]);
 
-  // Escape closes. Keyboard events fire regardless of drag regions, so a
-  // listener is fine here (unlike mouse events — see the overlay below).
   useEffect(() => {
     if (!anchoredMode || !open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
@@ -233,16 +165,10 @@ export function Menu({
 
   return (
     <>
-      {/* Outside-press dismiss for anchored mode. We can't use a document
-          mousedown listener: the whole window is `-webkit-app-region:
-          drag` (App.jsx), and Electron swallows mouse events over drag
-          regions — so clicking the empty canvas would never reach a
-          listener. A transparent `no-drag` layer painted just under the
-          popup DOES receive those presses, so it dismisses on a click
-          anywhere outside the popup — including drag regions and the
-          trigger itself. Because the press lands on this layer (not the
-          trigger), the trigger's own onClick never fires, so re-clicking
-          it can't flicker the menu back open. */}
+      {/*
+ * Electron drag regions swallow document mouse events. A no-drag overlay receives outside presses
+ * and prevents the trigger from reopening the menu on the same click.
+ */}
       {anchoredMode && open && createPortal(
         <div
           onMouseDown={() => onClose?.()}
@@ -258,9 +184,8 @@ export function Menu({
       <BaseMenu.Root {...rootProps}>
         {trigger && (
           <BaseMenu.Trigger
-            // !important beats the trigger's own inline background,
-            // which an onMouseOut handler would otherwise reset the
-            // moment the pointer leaves to travel into the menu.
+            // Override the trigger's inline background so its mouse-out handler cannot reset the
+            // open state.
             className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
             render={trigger}
           />

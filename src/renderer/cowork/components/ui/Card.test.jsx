@@ -64,7 +64,7 @@ describe('cardActivationProps', () => {
 
     const other = ev('a'); props.onKeyDown(other);
     expect(other.preventDefault).not.toHaveBeenCalled();
-    expect(onActivate).toHaveBeenCalledTimes(2); // unchanged
+    expect(onActivate).toHaveBeenCalledTimes(2);
   });
 });
 

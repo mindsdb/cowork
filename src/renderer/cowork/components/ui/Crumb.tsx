@@ -1,13 +1,6 @@
 import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/cn';
 
-// Breadcrumb primitives. `Crumb` is the clickable ancestor link, `CrumbSep`
-// the "›" divider, and `CrumbCurrent` the trailing "you are here" page — same
-// size/tracking as the link so the row reads as one unit.
-//
-// No variants, so the convention here is plain cn() + Tailwind + TS (not cva).
-// Note the hover treatment is now a `hover:` utility, replacing the old
-// onMouseOver/onMouseOut style-mutation handlers.
 
 export interface CrumbProps extends ComponentPropsWithoutRef<'button'> {
   label: string;
@@ -51,9 +44,6 @@ export interface CrumbCurrentProps extends ComponentPropsWithoutRef<'span'> {
   maxWidth?: number | string;
 }
 
-// The trailing "you are here" crumb — the current page. Same size (13) and
-// tracking (0) as the link so the row reads as one unit; the only differences
-// are colour (ink, not ink-3) and that it isn't a button.
 export function CrumbCurrent({ label, title, maxWidth, className, style, ...rest }: CrumbCurrentProps) {
   return (
     <span

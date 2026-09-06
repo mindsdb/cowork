@@ -1,14 +1,3 @@
-// Shared empty-state — the "nothing here yet" panel used by collection
-// views (Projects, Scheduled, …). Composes `Card` for the `bordered`
-// (dashed dropzone-style) look; plain views just center the content in
-// a min-height box. Adoption of this in the existing per-view local
-// EmptyState defs is a later PR — this is the primitive only.
-//
-//   <EmptyState icon={<Ico.folder(32)/>} title="No projects yet"
-//     description="Create your first project to start grouping…"
-//     action={<Button variant="primary" onClick={onNew}>New project</Button>} />
-//   <EmptyState bordered icon={…} title="…" description="…" />
-
 import { Card } from './Card.tsx';
 
 const FONT_BODY = 'var(--font-body)';
