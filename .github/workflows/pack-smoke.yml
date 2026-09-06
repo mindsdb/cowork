@@ -1,9 +1,6 @@
 name: Pack smoke
 
-#  run the real electron-builder
-# --dir pack on macOS and assert the packaged output contains the main entry,
-# the renderer bundle, and extraResources. Catches "packaging silently
-# dropped a file" — invisible to typecheck/unit tests/vite build.
+# Verify real electron-builder output: missing packaged resources are invisible to typecheck and unit tests.
 
 on:
   schedule:
@@ -27,13 +24,9 @@ jobs:
         with:
           command: npm ci
 
-      # ENG-1241: macOS no longer embeds server-credentials.json via
-      # extraResources at all (it's Windows-only now, staged instead by a
-      # pkgbuild postinstall script that this --dir smoke build never runs),
-      # so there's nothing to place before packing on this platform.
+      # macOS credentials are staged by pkg postinstall, which this directory-only smoke build does not run.
 
-      # Unsigned build: no certs in this workflow — codesign warnings are
-      # expected (CLAUDE.md), notarize.js self-skips without APPLE_* env.
+      # Unsigned smoke build: signing warnings are expected; notarization skips without APPLE_* credentials.
       - name: Pack (electron-builder --dir)
         run: npm run pack
 

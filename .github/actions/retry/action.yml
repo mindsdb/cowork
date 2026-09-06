@@ -24,8 +24,7 @@ runs:
   steps:
     - shell: bash
       working-directory: ${{ inputs.working-directory }}
-      # command goes through env, never interpolated into the script body, so a
-      # command with quotes/specials can't break or inject into the runner.
+      # Pass command via env so its contents cannot alter the runner script.
       env:
         _CMD: ${{ inputs.command }}
         _ATTEMPTS: ${{ inputs.attempts }}

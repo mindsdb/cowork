@@ -114,9 +114,7 @@ jobs:
     outputs:
       artifact_name: ${{ steps.name.outputs.artifact_name }}
     steps:
-      # Full clone so git describe can walk history to the nearest CalVer
-      # tag. Staging builds (untagged commits) need the distance calculation
-      # (e.g. "2.26.6.30.1-3-g1a2b3c4"); a shallow clone can't do this.
+      # Full history is required for git describe distances from the nearest CalVer tag.
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -158,11 +156,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      # ENG-1241: written to build/pkg-scripts/ (checked-in postinstall's
-      # sibling), NOT the repo root — pkgbuild's --scripts flag packages this
-      # directory into the installer, and postinstall stages it outside the
-      # signed .app bundle at install time. Never embedded via extraResources
-      # on macOS (that entry is Windows-only in electron-builder.yml).
+      # Stage credentials through pkg scripts outside the signed app so the user can delete them after keychain provisioning.
       - name: Write server credentials
         env:
           GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
@@ -207,9 +201,7 @@ jobs:
         run: >-
           node -e 'require("fs").writeFileSync("build-config.json", JSON.stringify({ buildKind: process.env.BUILD_KIND }))'
 
-      # The precedence rule (explicit channel > feature server_ref selects git
-      # > packaged kinds use PyPI) lives in scripts/resolve-server-channel.mjs,
-      # which mirrors getChannel() in src/main/server-source.ts under test.
+      # Use the drift-tested scripts/resolve-server-channel.mjs.
       - name: Resolve install channel
         id: channel
         env:
@@ -222,12 +214,7 @@ jobs:
           echo "channel=$CH" >> "$GITHUB_OUTPUT"
           echo "Install channel: $CH (build_kind=$COWORK_BUILD_KIND)"
 
-      # PyPI-channel builds bake the latest published cowork-server version
-      # as the install floor: every fresh install starts from a release that
-      # existed (and was presumably healthy) at build time, while the
-      # auto-updater still moves installs forward as new versions publish.
-      # Failing the build on a PyPI outage is deliberate — better than
-      # shipping an unknown floor.
+      # Bake a published install floor; fail on lookup failure rather than ship an unknown floor.
       - name: Resolve cowork-server version floor (pypi channel only)
         if: steps.channel.outputs.channel == 'pypi'
         id: server_floor
@@ -265,10 +252,7 @@ jobs:
           COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
-          # Activates the build-time channel guard in gen-build-channel.mjs:
-          # fail the build if this kind and VITE_MINDS_API_URL target different
-          # environments (e.g. preview baked against the prod API).
-          # Also consumed by run-electron-builder.mjs to resolve the shell update feed.
+          # Validate build-kind/API pairing and resolve the shell-update feed.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
         run: npm run release:mac:pkg:notarized
 

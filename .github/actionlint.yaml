@@ -1,8 +1,4 @@
-# actionlint needs to be told about self-hosted runner labels, or every
-# `runs-on:` in this repo is an error and the real findings drown in the noise.
-#
-#   mdb-dev   newdev EKS pod, IRSA into the build/ECR account (builds, staging)
-#   mdb-prod  newprod EKS pod (prod migrate + deploy)
+# Allow the self-hosted runner labels so actionlint can report real workflow errors.
 self-hosted-runner:
   labels:
     - mdb-dev

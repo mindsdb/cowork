@@ -1,24 +1,5 @@
-# Build (and upload) the desktop installers for all platforms, defined once.
-#
-# The three per-event installer workflows each wired up the same shape of jobs —
-# build-<platform>, upload-<platform> — differing only in `build_kind`, the API
-# host, and whether a PR label gated them. That is a lot of boilerplate
-# expressing three inputs.
-#
-# mac, windows, and linux stay SEPARATE called workflows rather than a matrix,
-# because they genuinely differ below the surface: different runner OS (linux
-# additionally needs two native runners, one per arch, since keytar can't
-# cross-compile), different signing material, different notarisation and EV
-# steps — linux ships unsigned. A matrix would have to branch on
-# `matrix.platform` in every step, which is the duplication moved rather than
-# removed. What is shared is the shape — build, then upload, then hand back a URL —
-# and that is what lives here.
-#
-# Every platform is independently switchable — macOS and Windows because a pull
-# request builds them only when a signing-cost label asks for them, while a
-# staging or prod run builds both; linux_amd64/linux_arm64 because they run as
-# separate native runners regardless. Linux is unsigned and comparatively cheap,
-# so both default to on everywhere.
+# Separate platform workflows preserve native builds, signing, and per-architecture outputs.
+# Each platform is independently switchable; PR callers must opt in before publishing installer URLs.
 
 name: Build installers
 
