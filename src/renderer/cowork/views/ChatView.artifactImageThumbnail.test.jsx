@@ -1,12 +1,5 @@
-// ENG-1998: an agent-generated image artifact rendered with a generic
-// doc/sparkle icon instead of a thumbnail of the actual image, because
-// ArtifactCard's icon slot had no branch for image artifacts at all.
-//
-// This drives the whole chain a live turn produces: the artifact card
-// carries `serveUrl` (see responseStreamAdapter.test.js's "carries the serve
-// URL through"), and the card fetches it (same CSP workaround as
-// AttachmentThumbnail — a direct loopback <img src> is blocked, so the bytes
-// are fetched and rendered via a blob: URL) to paint a real thumbnail.
+// Exercise serveUrl through blob-backed thumbnail loading; CSP blocks direct loopback image
+// sources.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -85,9 +78,7 @@ describe('inline artifact banner thumbnail for an image artifact', () => {
   });
 
   it('opening the card shows the image in the in-app preview, not just a download', async () => {
-    // The end-to-end version of the reported bug: generate an image, then
-    // "show it to me" — before this fix the card had no preview action at
-    // all for an image artifact (ArtifactViewer had no image case either).
+    // Generated images must retain a preview action.
     const fakeBlob = new Blob(['fake-png-bytes'], { type: 'image/png' });
     globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => fakeBlob }));
 

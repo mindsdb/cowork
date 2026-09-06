@@ -2,9 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// "configured" only means every required field has SOME value — a garbage
-// bot token reads as configured today. "Test connection" is the live check:
-// does the platform actually accept it.
+// Configured means fields are present; only a live test validates the token.
 const SLACK = {
   channel_type: 'slack', display_name: 'Slack', credentials: [], webhook_paths: ['/events'],
   capabilities: { supports_verify: true }, org_ready: true,

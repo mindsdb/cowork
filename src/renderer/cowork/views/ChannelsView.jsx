@@ -1,14 +1,6 @@
-// `<ChannelsView>` — connect messaging channels (Telegram/Slack/Discord/
-// WhatsApp) to the agent. Master–detail layout: a left rail lists the
-// channels with their status, the right pane shows the selected channel's
-// credentials plus its routes. Capability flags from the server decide which
-// fields/buttons render. Secrets are masked on read (is_set / value:null) and
-// only sent when the operator types a new value.
-//
-// Connect flow: save credentials, then `setup` when the channel supports
-// webhook registration (Telegram), otherwise `reload` to bring the live
-// adapter online — channels without setup must have their webhook URL
-// registered on the platform side (we surface the path for that).
+// Render server-advertised capabilities; masked secrets are sent only when replaced.
+// After saving credentials, setup registers supported webhooks; otherwise reload the adapter and
+// let the user register the webhook externally.
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
@@ -81,10 +73,7 @@ function ChannelAgentSelect() {
   );
 }
 
-// Brand thumb served from the static `logos/` dir (vite public assets). The
-// filename is derived from channel_type, which matches the logo set; if the
-// image is missing the generic chats glyph keeps the row aligned. The white
-// chip behind the mark keeps dark brand colours legible in dark themes.
+// Keep the white logo backing for dark-theme contrast; missing assets fall back to the chat glyph.
 function ChannelLogo({ type, size = 26 }) {
   const [failed, setFailed] = useState(false);
   return (

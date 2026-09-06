@@ -2,10 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// A channel with no per-org webhook routing key (Telegram, WhatsApp) reports
-// org_ready: false from the server in org/cloud mode — nothing else changes
-// its shape. The card must say so and refuse to let someone configure it
-// into a state that will silently never deliver.
+// Without org webhook routing, saved fields cannot make channel configuration usable.
 const SLACK = {
   channel_type: 'slack', display_name: 'Slack', credentials: [], webhook_paths: ['/events'],
   capabilities: {}, org_ready: true,
@@ -50,9 +47,7 @@ describe('ChannelsView — channels not yet available in org mode', () => {
   it('leaves an org-ready channel fully interactive', async () => {
     render(<ChannelsView />);
 
-    // Slack is plugins[0] — selected by default, nothing to click. Telegram's
-    // own nav row still says "Coming soon" regardless — scope to the detail
-    // card so that doesn't make this assertion vacuous.
+    // Scope to the detail card; navigation also contains 'Coming soon'.
     const card = (await screen.findByRole('button', { name: /Connect/ })).closest('section');
     expect(within(card).getByRole('button', { name: /Connect/ })).toBeEnabled();
     expect(within(card).queryByText('Coming soon')).not.toBeInTheDocument();

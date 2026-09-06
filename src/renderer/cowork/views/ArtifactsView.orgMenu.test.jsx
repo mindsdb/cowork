@@ -1,15 +1,5 @@
-// The org-mode action gate has to be applied at BOTH menu sites.
-//
-// ArtifactsView builds its kebab menu twice: the list view's `ArtifactMenu`
-// component owns its own item list, and the grid view's items are assembled
-// inline by the page-level shared `HoverMenu`. They are separate arrays, so
-// wiring the gate into one leaves the other offering filesystem and publish
-// controls on a deployment where none of them can work. Preview is available
-// only when an authenticated draft URL is present.
-//
-// lib/artifactActions.test.js covers the gate's own logic. It cannot catch a
-// caller that never asks, which is exactly how the grid menu was missed, so these
-// tests drive the real component through both views.
+// Exercise both grid and list menus: separate action arrays can drift even when their shared
+// predicate passes.
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -36,12 +26,7 @@ vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 // below can assert the toast actually fired.
 const toastAdd = vi.hoisted(() => vi.fn());
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
-/*
- * Transport-level mock: lib/artifactDownload stays REAL, so these tests prove
- * the wiring row/menu → downloadArtifactFile → authenticated fetch, not a stub
- * of it. Async matters — the components await the result, and a sync stub
- * would leave a dropped `await` invisible (review pass 2).
- */
+/* Keep the real download helper and an async transport mock so a missing await remains observable. */
 const downloadAuthenticatedResource = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('../lib/authenticatedResource', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -73,9 +58,8 @@ const cloudDraft = {
 };
 
 /*
- * The exact ENG-2044 artifact: not previewable in org mode, not publishable
- * (autopublish is HTML/MD-only), no serve URL — the draft URL is the one route
- * to the bytes. Grid and List must both reach it; List missed it in pass 1.
+ * A draft-only XLSX has no preview or published URL; both menus must still offer its server
+ * download.
  */
 const cloudXlsx = {
   id: '55555555555555555555555555555555',
@@ -123,11 +107,7 @@ describe.each([
   });
 
   it('offers Download for an artifact with a draft URL, shared or not (ENG-2044)', () => {
-    /*
-     * The draft URL is the one route to a non-HTML file's bytes on an org
-     * deployment. Both menu sites must offer it: the grid is the default view
-     * and the only one on mobile, so a list-only item leaves phones stuck.
-     */
+    /* Exercise draft-only downloads in both grid and list menus. */
     render(<ArtifactsView artifacts={[cloudDraft]} />);
     openKebab();
     expect(screen.getByText('Download')).toBeInTheDocument();
@@ -142,10 +122,7 @@ describe.each([
 });
 
 describe('list view kebab in org mode', () => {
-  /*
-   * The row itself previews now, so the menu's first item is the page a
-   * collaborator opens, and its label has to say which of the two it is.
-   */
+  /* The card body previews the artifact; the menu opens its shared page. */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', 'list');
     setOrgMode(true);
@@ -174,9 +151,7 @@ describe('list view kebab in org mode', () => {
 });
 
 describe('grid view kebab on desktop', () => {
-  // The gate must not be a blanket removal: the same menu on a desktop
-  // deployment keeps everything, which is what makes the org-mode assertion
-  // above meaningful rather than vacuously true.
+  // Retain desktop actions too, so removing every menu cannot satisfy this regression.
   it('still offers Preview', () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(false);
@@ -196,10 +171,7 @@ describe.each([
     host.openExternal.mockClear();
   });
 
-  /*
-   * A click means "show me this artifact" here too, and the draft URL carries
-   * its own access check, so it does not wait on a publish either.
-   */
+  /* Authenticated draft preview must work without publishing. */
   it('opens the viewer when the card body is clicked', () => {
     render(<ArtifactsView artifacts={[cloudDraft]} />);
     fireEvent.click(screen.getByText('Weather Dashboard'));
@@ -257,11 +229,7 @@ const imageDraft = {
   path: '/proj/.anton/artifacts/revenue/chart.png',
 };
 
-/*
- * Markdown is publishable (cowork-server PUBLISHABLE_STATIC_SUFFIXES is
- * .html + .md) and org mode auto-publishes, so a shared .md is the ordinary
- * case rather than an edge one.
- */
+/* Published Markdown carries both HTML and Markdown paths. */
 const publishedMarkdown = {
   ...cloudDraft,
   id: '44444444444444448444444444444444',
@@ -276,13 +244,7 @@ describe.each([
   ['grid', 'grid'],
   ['list', 'list'],
 ])('%s view shared link in org mode', (_name, view) => {
-  /*
-   * The card body previews the draft now, so the menu owns the route to the
-   * page a collaborator opens. The grid menu used to gate that item on the
-   * artifact being HTML, which is the one test a .md fails, so a shared
-   * report had no route to its URL from the grid at all — and grid is the
-   * default view and the only view on a phone.
-   */
+  /* The grid's shared-page action must also support Markdown artifacts. */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
@@ -309,10 +271,8 @@ describe.each([
 
 describe('grid view shared link when the bridge rejects', () => {
   /*
-   * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
-   * is async, so the item has to await it for its catch to fire — unawaited,
-   * this fallback was dead code. The list row routes through `openUrl`, which
-   * already awaits.
+   * The grid must await openExternal to catch rejection; the list uses a separate async openUrl
+   * handler.
    */
   it('falls back to window.open', async () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
@@ -336,10 +296,7 @@ describe('grid view shared link when the bridge rejects', () => {
 });
 
 describe('grid view shared link on desktop', () => {
-  /*
-   * The widening is org-only: on desktop a .md still gets the reveal item, not
-   * an "Open in browser" pointing at a page that may not exist.
-   */
+  /* Org shared-link widening must not add a browser action to desktop Markdown cards. */
   it('keeps the HTML-only rule', () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(false);
@@ -400,9 +357,7 @@ describe.each([
 });
 
 describe('grid view preview item on desktop', () => {
-  // The viewer renders images (ENG-1998) and this menu is the only way to reach
-  // that: a click on an image card hands the file to the OS. Gating the item on
-  // the text/iframe predicate alone dropped them.
+  // Images need a menu preview action even when the card body hands off to the OS.
   it('keeps Preview for an image', () => {
     localStorage.setItem('anton:artifacts-view', 'grid');
     setOrgMode(false);
@@ -440,12 +395,8 @@ describe('list view preview item on desktop', () => {
 });
 
 describe('deleting a published artifact', () => {
-  // The panel unpublishes before deleting so a delete never leaves an orphaned
-  // public copy. In org mode that call hits DELETE /publish, which is
-  // desktop-only and answers 501 — the await threw and the delete never ran, so
-  // the user got "Delete failed: not available in org deployments" for an
-  // artifact the server was perfectly able to remove. It only became reachable
-  // once auto-publishing started giving artifacts a publishedUrl.
+  // Org deletion already unpublishes server-side; the client's unsupported DELETE /publish must not
+  // block it.
   beforeEach(() => {
     api.unpublishArtifact.mockClear();
     api.deleteArtifact.mockClear();
@@ -477,10 +428,7 @@ describe('deleting a published artifact', () => {
 
 
 describe('delete gives feedback while it runs', () => {
-  // Delete unpublishes remotely before removing anything (and in org mode mints
-  // a turn key first), so it takes seconds. Without a phase the card looked
-  // untouched the whole time and the only feedback was the row vanishing at the
-  // end — indistinguishable from a click that did not register.
+  // Keep the deleting state visible while remote unpublish is pending.
   const deferred = () => {
     let resolve;
     const promise = new Promise((r) => { resolve = r; });
@@ -497,7 +445,7 @@ describe('delete gives feedback while it runs', () => {
 
     fireEvent.click(screen.getByText('Delete'));
 
-    await screen.findByText('Deleting…');          // the menu item
+    await screen.findByText('Deleting…');
     expect(screen.getAllByText('Deleting…').length).toBeGreaterThan(0);
 
     gate.resolve();
@@ -524,12 +472,7 @@ describe.each([
   ['grid', 'grid'],
   ['list', 'list'],
 ])('%s view org download of an unshared non-previewable draft (ENG-2044)', (_name, view) => {
-  /*
-   * Review pass 2 on #764: the grid card got the download fallback and the
-   * list row — 250 lines below in the same file — did not, so the identical
-   * .xlsx downloaded in Grid and silently did nothing in List. Same fixture,
-   * both view modes, so they cannot drift again.
-   */
+  /* Exercise the draft-only XLSX fallback in both menus. */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
@@ -554,11 +497,7 @@ describe.each([
   });
 
   it('the kebab Download item reports through a toast when the fetch fails', async () => {
-    /*
-     * 401 (expired bearer), 403, a file deleted server-side, offline: the
-     * transport rejects, downloadArtifactFile resolves false, and discarding
-     * that left the click with no feedback of any kind (review pass 2).
-     */
+    /* An asynchronous download failure must produce toast feedback. */
     downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
     render(<ArtifactsView artifacts={[cloudXlsx]} />);
     openKebab();

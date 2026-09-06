@@ -50,10 +50,7 @@ const option = (qid) => screen.getByRole('button', { name: new RegExp(`pg-${qid}
 
 describe('ask_user card expiry is per question, not per conversation', () => {
   it('leaves an earlier turn\'s unanswered card dead while a new turn runs', () => {
-    // The whole point: conversation-level liveness ("something is streaming on
-    // conv-a") used to re-enable a card from a finished turn. Clicking it 404s,
-    // and the 404 handler then retires a question — so a stale card could take
-    // the live one down with it.
+    // A live conversation must not revive a question from an earlier turn.
     render(
       <ChatView
         task={taskWith([
@@ -104,16 +101,12 @@ describe('ask_user card expiry is per question, not per conversation', () => {
         inFlightSet={new Set()}
       />,
     );
-    // `_streaming` is present, so the conversation IS live here and the last
-    // unanswered question stays clickable — the liveness signal is unchanged,
-    // only its granularity is.
+    // The newest unanswered question stays active during its streaming turn.
     expect(option('ask:new')).toBeEnabled();
   });
 
   it('only the last unanswered question of a live turn is answerable', () => {
-    // Anton never publishes a second question while one is outstanding, but
-    // this repo cannot enforce that cross-repo invariant — so if two ever land
-    // in one turn, the earlier one is treated as dead rather than clickable.
+    // Retire the earlier question if two arrive in one turn.
     render(
       <ChatView
         task={taskWith([

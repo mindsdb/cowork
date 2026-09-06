@@ -1,9 +1,5 @@
-// `<ChannelBindings>` — the routing rules that wire an external chat/thread
-// to the agent. Most rows are auto-created on first inbound message, so this
-// panel is mainly for editing them (label, trigger rule, pinned project) and
-// removing stale ones; a manual "Add route" form is provided for pre-wiring a
-// known chat id. When `channelType` is given the panel is scoped to that one
-// channel: rows are filtered and new routes are created on it.
+// Most routes are created on first inbound message. channelType scopes both displayed and newly
+// created routes.
 
 import { useEffect, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
