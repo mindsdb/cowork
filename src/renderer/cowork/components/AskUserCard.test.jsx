@@ -67,10 +67,7 @@ describe('AskUserCard', () => {
   });
 
   it('multi-select marks a picked option as selected before Send, not just after', async () => {
-    // Before this, `chosen` (derived from the server-confirmed answer, which
-    // doesn't exist yet in multi-select until Send) drove both the styling
-    // class and data-chosen — so clicking had no visible effect until the
-    // round trip completed.
+    // Multi-select must show local choices before Send confirms them server-side.
     const user = userEvent.setup();
     renderCard({ select: 'many' });
     const pg = screen.getByRole('button', { name: /postgres/i });
@@ -95,9 +92,7 @@ describe('AskUserCard', () => {
   });
 
   it('says typing will not work when the question is select-only', () => {
-    // Without this line the card shows nothing where the free-text hint would
-    // be, so the user's only way to learn that the composer refuses their text
-    // is to type it and be told no.
+    // Explain disabled free text before the user tries the composer, not only after rejection.
     renderCard({ allow_custom: false });
     expect(screen.queryByText(/type your own answer below/i)).toBeNull();
     const hint = screen.getByText(/won.t be accepted/i);
@@ -114,16 +109,13 @@ describe('AskUserCard', () => {
       'data-chosen',
       'true',
     );
-    // `data-chosen` had no styling anywhere, so "highlights the choice" was not
-    // true on screen: the chosen option has to LOOK different from the others.
+    // The chosen option must have visible styling, not only a data attribute.
     expect(screen.getByRole('button', { name: /postgres/i }).className)
       .not.toBe(screen.getByRole('button', { name: /mysql/i }).className);
   });
 
   it('names the choice for a card that was answered by clicking an option', () => {
-    // The reload / second-tab case. Only `answer.text` used to be rendered, so
-    // an option-answered card showed the prompt, greyed buttons, and nothing
-    // about what was chosen.
+    // Reloaded option answers must show the confirmed choices, not just disabled buttons.
     renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
     expect(screen.getByText(/answered: postgres/i)).toBeInTheDocument();
   });
@@ -152,17 +144,14 @@ describe('AskUserCard', () => {
     renderCard({}, { onAnswered });
     await user.click(screen.getByRole('button', { name: /postgres/i }));
     expect(await screen.findByText(/no longer active/i)).toBeInTheDocument();
-    // The card's own conversation id AND question id ride along, so the
-    // listener never has to assume the card belongs to the currently-open
-    // conversation, nor that it is the only question that conversation asked.
+    // Include conversation and question ids; listeners cannot assume this is the active chat's only
+    // question.
     expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' }, 'conv-1', 'ask:1');
   });
 
   it('disables every control while a submission is in flight', async () => {
-    // This is the guard that actually decides the double-click case in a
-    // browser (and in this DOM): `disabled={settled || busy}`. Asserted on its
-    // own so the double-click test below is not silently proving this instead
-    // of what its name says.
+    // Assert the disabled DOM guard separately; it can account for the double-click result without
+    // exercising the handler guard.
     let release;
     submitAnswer.mockImplementationOnce(() => new Promise((r) => { release = r; }));
     renderCard();
@@ -174,10 +163,8 @@ describe('AskUserCard', () => {
   });
 
   it('stays disabled between the 200 and the answered event', async () => {
-    // `settled` needs step.data.answer, which only response.ask_user_answered
-    // supplies. Clearing `busy` on success re-enabled every control in the gap
-    // between the two, and a click in that window submits again and 409s —
-    // which then retires the question.
+    // Keep controls busy after HTTP success until ask_user_answered confirms settlement, preventing
+    // a second submission in the gap.
     const user = userEvent.setup();
     renderCard();
     await user.click(screen.getByRole('button', { name: /mysql/i }));
@@ -197,9 +184,7 @@ describe('AskUserCard', () => {
   });
 
   it('ties the options to the prompt and announces the card arriving', async () => {
-    // The only interactive control in an otherwise static stream, appearing
-    // unprompted and blocking the agent — a screen-reader user gets no signal
-    // that it is their turn without this.
+    // Announce an unexpected blocking question so screen-reader users know input is required.
     renderCard();
     expect(screen.getByRole('group')).toHaveAccessibleName('Which database?');
     expect(await screen.findByRole('status'))
@@ -217,11 +202,8 @@ describe('AskUserCard', () => {
   });
 
   it('submits only once for a rapid double click', async () => {
-    // End-to-end statement of the property, not of a specific mechanism: in
-    // this DOM the deciding factor is the `disabled` attribute committed by
-    // the first click (asserted above); the `if (settled || busy) return;`
-    // check in send() is the belt-and-braces layer for callers that reach the
-    // handler without going through the DOM. Both must hold for this to pass.
+    // Test observable duplicate prevention. The committed disabled attribute can satisfy this
+    // without isolating send's own guard.
     renderCard();
     const button = screen.getByRole('button', { name: /mysql/i });
     act(() => { fireEvent.click(button); });
