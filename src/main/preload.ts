@@ -1,9 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 
-// ENG-439: main resolves a per-OS-user server port and passes it to the
-// renderer process via additionalArguments. Parse it once here so the host
-// abstraction can address our own sidecar instead of a hardcoded 26866.
+// Use the per-user sidecar port passed by main, not the historical fixed port.
 function parseServerPort(): number | null {
   const arg = process.argv.find((a) => a.startsWith('--cowork-server-port='));
   if (!arg) return null;
@@ -17,10 +15,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Optional reachable control-plane origin for connecting another physical
   // computer. The renderer validates this before placing it in setup commands.
   codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
-  // Deployment capability, deliberately separate from the user's local
-  // opt-in. Desktop builds expose Code unless an emergency rollout kill
-  // switch explicitly disables it; hosted web receives no Electron bridge
-  // and therefore cannot expose the feature.
+  // Deployment capability is separate from local opt-in; hosted web has no Electron bridge.
   codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
@@ -35,9 +30,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Diagnostics — last start error + tail of stdout/stderr. Used
   // by the renderer's "why is the backend offline?" help modal.
   serverDiagnostics: () => ipcRenderer.invoke('server:get-diagnostics'),
-  // PKCE OAuth — accepts either the builtin shape { engine, name } (main
-  // handles credentials + full flow) or the BYOK shape { authUrl, ... }
-  // (returns tokens to renderer). Returns the resulting tokens or an error.
+  // Built-in OAuth keeps credentials in main; BYOK returns tokens to the renderer.
   oauthConnect: (opts: { engine: string; name?: string } | {
     authUrl: string; tokenUrl: string; clientId: string;
     clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>;
@@ -61,29 +54,21 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
   oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 
-  // MindsHub onboarding — see main/index.ts for the rationale on
-  // why these are split out from the generic oauth:connect bridge.
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
   mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
     ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
-  // Deliberately a separate method rather than the second argument above.
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a new renderer routinely runs against an older shell —
-  // and an older shell's `mindshubFinalize` silently drops a second argument.
-  // A method the old preload does not have is something the renderer can
-  // actually test for, which the established `typeof bridge.x === 'function'`
-  // checks in host.ts already rely on (ENG-2199).
+  // Use a separate method so OTA renderers can detect older preloads.
+  // An older mindshubFinalize silently ignores a new second argument.
   mindshubFinalizeChosen: (organizationId: string) =>
     ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, true),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
   mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
-  // Fires whenever the MindsHub session state changes in the main
-  // process (login, silent refresh, logout, session death). Returns an
-  // unsubscribe function.
+  // Session-change notifications include silent refresh and session death; returns an unsubscribe
+  // function.
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => {
     const listener = (_: any, payload: any) => cb(payload);
     ipcRenderer.on(IPC.MINDSHUB_AUTH_CHANGED, listener);

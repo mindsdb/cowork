@@ -3,15 +3,9 @@ import { readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Regression guard for PR #528: the desktop renderer is built by several CI
-// workflows, and the OTA bundle (publish-ui.yml) drifted from the installers —
-// it dropped a VITE_* var, silently gutting the shipped bundle with no failure.
-//
-// Enforces PARITY: every workflow that bakes VITE_* vars into the renderer must
-// bake the SAME set, so any drift fails (for any var). The contract list also
-// catches a var dropped from every build at once. Scoped to the desktop builds
-// by keying on step-`env:` injection; the web/Docker build passes build-args
-// via `build-push-ecr` (a different profile, tracked in ENG-1163).
+// Require identical VITE_* inputs across desktop installer and OTA workflows, plus the contract
+// list to detect omissions from every build.
+// Web/Docker uses a separate build-arg profile.
 
 // The renderer build-var contract. Update deliberately when the renderer's
 // build-time inputs change; the parity check then enforces it everywhere.
@@ -28,9 +22,8 @@ const WORKFLOWS_DIR = path.resolve(
 
 const read = (file: string): string => readFileSync(path.join(WORKFLOWS_DIR, file), 'utf8');
 
-// VITE_* vars injected via a step `env:`. The trailing `\S` requires a value,
-// so a reusable-workflow `secrets:` declaration (`VITE_...:` with nothing after
-// the colon) is not counted.
+// Require a nonempty step-env value so reusable-workflow secret declarations do not count as
+// injected variables.
 const injectedViteVars = (text: string): Set<string> =>
   new Set([...text.matchAll(/^[ \t]+(VITE_[A-Z0-9_]+):[ \t]+\S/gm)].map((m) => m[1]));
 

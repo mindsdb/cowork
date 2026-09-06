@@ -1,13 +1,5 @@
-// Orchestration tests for the sidecar start path. The budget decision itself
-// is tested directly in update-logic.test.ts; what's covered here is the wiring
-// the decision depends on — that a spawn failure and an early exit actually
-// reach the diagnostics, that a timed-out start reaps the whole process tree on
-// Windows, and that the port-holder lookup survives a non-English Windows.
-//
-// server-process pulls in electron; fs/child_process/http are mocked so nothing
-// spawns a real process or touches the network. process.kill is stubbed for the
-// same reason: killTree's POSIX branch signals a process GROUP, and the fake
-// child's pid is not ours to signal.
+// Test sidecar startup orchestration; update-logic.test.ts covers pure decisions.
+// Mock processes, network and process.kill so fake pids cannot signal real process groups.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as cp from 'child_process';
@@ -33,10 +25,7 @@ vi.mock('./uv-paths', () => ({
   resolveUv: async () => uvState.resolveUv,
   coworkServerBinCandidates: () => ['/fake/bin/cowork-server'],
 }));
-// credential-provisioning pulls in keychain-service, which imports the
-// native `keytar` module at load time (see token-refresh.test.ts) — not
-// needed here, since these tests cover server-start orchestration, not
-// credential provisioning (that's credential-provisioning.test.ts).
+// Mock credential provisioning to avoid importing native keytar; that layer has separate tests.
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
@@ -107,11 +96,8 @@ beforeEach(() => {
   uvState.resolveUv = '/usr/bin/uv';
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
-  // process.kill is the real global — killTree calls it directly, so without
-  // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
-  // group happens to own the fake child's pid on the machine running the
-  // tests. Reporting success (rather than throwing) also keeps the code on the
-  // group-kill path instead of falling through to child.kill().
+  // Stub global process.kill so fake pids cannot signal real process groups.
+  // Return success to exercise the group-kill path rather than child.kill fallback.
   signals = [];
   vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: string) => {
     signals.push([pid, String(signal)]);
@@ -180,9 +166,8 @@ afterEach(() => {
 
 describe('startServer failure diagnostics', () => {
   it('reports a spawn error instead of a health timeout, and keeps it in the log tail', async () => {
-    // Regression: the spawn had no 'error' listener, so an AV-blocked or
-    // missing executable was reported as "no /health within 15000ms" with an
-    // empty log — the user was told to wait for something that never ran.
+    // Spawn errors must identify executables that never ran instead of reporting a later health
+    // timeout.
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => child.emit('error', new Error('spawn EPERM')), 0);
@@ -199,17 +184,12 @@ describe('startServer failure diagnostics', () => {
   });
 
   it('survives an EPERM on the log file instead of crashing the main process', async () => {
-    // Regression (ENG-1187): createWriteStream reports an open failure via an
-    // async 'error' event, not a throw — so the try/catch around it never saw
-    // it. With no 'error' listener Node re-raised it as an uncaught exception,
-    // which Electron turned into a fatal "A JavaScript error occurred in the
-    // main process" dialog that blocked startup on Windows. Disk logging is
-    // best-effort: the open failure must be swallowed and the app must start.
+    // createWriteStream reports open failures through an error event, beyond the surrounding
+    // try/catch. Logging is best effort; the event must not crash startup.
     vi.mocked(fs.createWriteStream).mockImplementation((() => {
       const s = makeLogStream();
-      // Fire the failure the moment the caller has had a chance to listen —
-      // if nothing listened this emit would throw synchronously and fail the
-      // test, which is exactly the crash this guards against.
+      // Emit after listener registration; an unhandled error event throws and exposes the startup
+      // crash.
       setTimeout(() => s.emit('error', new Error('EPERM: operation not permitted, open')), 0);
       return s as never;
     }) as never);
@@ -304,9 +284,8 @@ describe('startServer failure diagnostics', () => {
   });
 
   it('tracks a handed-off backend and replaces it if it later disappears', async () => {
-    // On Windows the thing we spawn can hand off to a python child and exit.
-    // Health is the authority: the server is up, so this is a start, not a
-    // death — and it has to keep reading as running afterwards.
+    // A Windows launcher can exit after handing off to Python; a healthy server must still count as
+    // running.
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => {
@@ -323,9 +302,8 @@ describe('startServer failure diagnostics', () => {
     expect(isServerRunning()).toBe(true);
     expect(getServerDiagnostics().lastError).toBeNull();
 
-    // The handed-off python has no ChildProcess handle. Once its health
-    // endpoint disappears, a later ensure must spawn a replacement instead of
-    // trusting the stale `serverStarted` flag forever.
+    // The handed-off Python process has no ChildProcess handle; missing health must allow ensure to
+    // replace it despite serverStarted.
     healthOwner = null;
     const replacement = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
@@ -411,11 +389,7 @@ describe('startServer failure diagnostics', () => {
   });
 
   it('checkpoints coding tasks on an adopted sidecar before reaping it by port', async () => {
-    // Adoption leaves no ChildProcess handle, and that branch of stopServer
-    // used to go straight to the port kill — the one stop path with no
-    // checkpoint, on exactly the sidecar most likely to hold live tasks.
-    // The owner token is minted at random on first use, so learn it from the
-    // env a real spawn is handed and answer /health with it from then on.
+    // Adopted sidecars lack a ChildProcess handle but still need a checkpoint before stopping.
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
@@ -430,7 +404,7 @@ describe('startServer failure diagnostics', () => {
 
     healthOwner = env.COWORK_SERVER_OWNER ?? null;
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
-    expect(cp.spawn).toHaveBeenCalledTimes(1); // adopted, not respawned
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
     await stopServer();
 
     const checkpoint = vi.mocked(fetch);
@@ -456,16 +430,13 @@ describe('startServer failure diagnostics', () => {
     const diag = getServerDiagnostics();
     expect(diag.lastErrorKind).toBe('timeout');
     expect(diag.lastError).toContain('still starting');
-    // A live child gets reaped by process GROUP, not by pid: the packaged
-    // binary can have a python of its own, and killing only the leader is
-    // what left an orphan holding the port.
+    // Kill the process group, including Python children, so no orphan retains the server port.
     expect(signals).toContainEqual([-4242, 'SIGTERM']);
   });
 
   it('does not spend the reap timeout on an exit event that can never arrive', async () => {
-    // A spawn that never happened emits 'error' and nothing else — Node does
-    // not emit 'exit' for a process that never existed. Waiting on one cost
-    // this path 2s, on the one failure whose point is that it reports at once.
+    // A failed spawn emits error without exit; do not wait for an exit event from a nonexistent
+    // process.
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => child.emit('error', new Error('spawn ENOENT')), 0);
@@ -476,7 +447,7 @@ describe('startServer failure diagnostics', () => {
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
 
     expect(Date.now() - startedAt).toBeLessThan(1_500);
-    expect(signals).toEqual([]); // nothing to reap
+    expect(signals).toEqual([]);
   });
 });
 
@@ -503,23 +474,10 @@ describe('Windows reap', () => {
     expect(child.killed).toBe(false); // the tree kill replaces it, not supplements it
   });
 
-  // Matching the literal "LISTENING" made the reap a silent no-op outside
-  // English installs.
-  //
-  // These cases are not an attempt to enumerate the locales Windows ships —
-  // that list is unknowable from here and would rot. The parser never reads the
-  // state column at all; it anchors on four things no locale translates: the
-  // literal TCP protocol name, the local address ending in our port, the
-  // all-zero foreign address, and the PID being the LAST column. So the only
-  // things that can break it are the two axes below, and a new language is
-  // covered the moment its state word matches one of these shapes:
-  //
-  //   - token count, because it shifts every column after it (this is what
-  //     defeated a fixed `cols[4]` read even after the word stopped mattering)
-  //   - script, because the row still has to survive splitting and comparison
-  //
-  // Real strings are used where known; the three-token row is synthetic, since
-  // the point is that an unknown-length state cannot break the parse.
+  // Ignore localized netstat state text. Match TCP, local port, all-zero foreign address and the
+  // final PID column.
+  // Vary both state-token count and script; the synthetic three-token state guards unknown locales
+  // without enumerating languages.
   const STATE_WORDS = [
     { shape: 'one ASCII word', state: 'LISTENING' },
     { shape: 'one accented word', state: 'ABHÖREN' },
@@ -567,9 +525,8 @@ describe('Windows reap', () => {
 });
 
 describe('dev-mode uv resolution', () => {
-  // The dev branch (`uv run cowork-server` from the sibling source tree) must
-  // resolve uv the same way the installer does — a developer whose uv came
-  // from winget/scoop/pip is on PATH only, outside every probed dir.
+  // Dev startup must use the installer's uv resolution, including PATH-only winget/scoop/pip
+  // installations.
   afterEach(() => {
     (app as { isPackaged: boolean }).isPackaged = true;
     delete process.env.COWORK_SERVER_DIR;
@@ -655,16 +612,12 @@ describe('resolveServerPort', () => {
 });
 
 describe('post-start credential hook', () => {
-  // The sidecar holds the MindsHub credential in memory, so every start comes
-  // up holding nothing. Before this hook existed only the app-launch path
-  // re-pushed, which is how a signed-in user landed on the "Connect a provider
-  // to start chatting" card after onboarding restarted the sidecar, after the
-  // sidebar's stop/start, and after every over-the-air sidecar update.
+  // Every sidecar start loses its in-memory credential and must repush it, including stop/start and
+  // updates.
   afterEach(async () => {
     setServerStartedHook(null);
-    // Unconditional, not a trailing call in each test: the module keeps
-    // `serverStarted` across tests, so one failed assertion would leave the
-    // next test's start short-circuiting on an already-running server.
+    // Always stop during cleanup: leaked module-level serverStarted would short-circuit the next
+    // case after an assertion failure.
     if (isServerRunning()) await stopServer();
   });
 
@@ -695,16 +648,11 @@ describe('post-start credential hook', () => {
   });
 
   it('awaits the hook, so a caller reading /health sees a configured install', async () => {
-    /* A caller that reads config_ready as soon as `startServer` resolves sees a
-     * push still in flight as unconfigured, which is the bug from the caller's
-     * side.
-     *
-     * The gate is what pins it. Asserting a flag the hook sets would pass
-     * against a fire-and-forget call too, because the hook body runs to its
-     * first await either way — so that version of this test would go green on
-     * the refactor that reintroduces the bug. Entering the hook proves the
-     * start itself is done, which leaves the gate as the only thing holding
-     * `startServer` open. */
+    /*
+     * Hold the hook behind a gate and assert startServer is still pending.
+     * A flag set before the hook's first await would also pass if startup stopped awaiting the
+     * credential push.
+     */
     let entered = false;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
