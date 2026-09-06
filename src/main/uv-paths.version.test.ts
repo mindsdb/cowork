@@ -4,9 +4,7 @@ import * as cp from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 
-// Split from uv-paths.test.ts: these tests need fs/child_process fully mocked
-// (findUv probes disk, the version probe execs uv), while that file's
-// writeUvOverrides tests exercise the real fs.
+// Mock probes/processes here; uv-paths.test.ts retains real filesystem tests for override files.
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('./cowork-home', () => ({
@@ -22,10 +20,7 @@ afterEach(() => {
 
 type ExecCb = (err: Error | null, stdout: string, stderr: string) => void;
 
-// findOnPath's POSIX branch shells out to `sh -c 'command -v "$1"' -- <cmd>`
-// rather than a separate `which` binary (not guaranteed present on a minimal
-// Debian install — see uv-paths.ts). Matches that call shape on POSIX, and
-// the unchanged `where <cmd>` shape on win32.
+// Match POSIX command-v and Windows where invocation shapes in the probe mock.
 function isPathLookup(cmd: string, args: string[], target: string): boolean {
   if (process.platform === 'win32') return cmd === 'where' && args[0] === target;
   return cmd === '/bin/sh' && args[args.length - 1] === target;
@@ -48,9 +43,8 @@ describe('getInstalledVersion — uv discovery', () => {
   });
 
   it('falls back to the PATH-resolved uv when no probed location has the binary', async () => {
-    // uv installed via winget/scoop/pip lives outside every probed dir but is
-    // still on PATH — the version probe must not report "no version" for it,
-    // and must run the SAME binary resolveUv reports, not a bare `uv`.
+    // PATH-only installs must report the version of the exact resolved uv binary, not a bare-name
+    // substitute.
     vi.mocked(fs.existsSync).mockReturnValue(false); // findUv() → null
     vi.mocked(cp.execFile).mockImplementation(((
       cmd: string, args: string[], _opts: unknown, cb: ExecCb,
