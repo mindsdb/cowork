@@ -3,10 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 import MobileShell from './MobileShell';
 
-// The mobile chrome has no room for the desktop floating-toggle-row
-// (bottom-right, over the FAB) — the theme toggle moves into the top bar,
-// opposite the hamburger, and the coding-mode toggle is dropped entirely
-// rather than given a second spot.
+// Mobile moves theme control into the top bar and omits the desktop coding-mode toggle.
 
 const baseProps = {
   route: 'home',

@@ -1,18 +1,10 @@
-// "Coming soon to Cloud" modal — shown when a feature isn't available in the
-// hosted/web build yet (e.g. Channels, Connect Apps and Data) and points the
-// user at the desktop app. A thin wrapper over the shared <Modal> primitive.
-//
-// Usage: lift the feature name to the parent as state (null = closed) and pass
-// it in as `feature`; the modal derives its open state from it and interpolates
-// the name into the body copy.
+// feature: null closes the modal; otherwise its value names the unavailable hosted feature.
 
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button } from './ui';
 import { host } from '../../platform/host';
 
-// Marketing download page. `os=auto` lets that page detect the visitor's OS
-// server-side and serve the right installer; `from` tags the referral source
-// for attribution.
+// os=auto selects the installer; from attributes the referral.
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
 export default function ComingSoonModal({ feature, onClose }) {

@@ -1,6 +1,4 @@
-// The card replaces a machine prompt in the transcript, so what it must NOT do
-// matters as much as what it shows: no identifiers, and no claim about an
-// outcome it could not confirm.
+// Hide machine identifiers and avoid claiming a repair outcome until server status confirms it.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';

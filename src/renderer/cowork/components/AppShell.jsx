@@ -3,17 +3,8 @@ import Ico from './Icons';
 import { Tooltip } from './ui';
 import { host } from '../../platform/host';
 
-// The desktop/tablet shell chrome, extracted from App.jsx: the floating
-// "reopen sidebar" hamburger and the <main> content column (which owns the
-// --titlebar-safe-top inset and opts out of the window drag region). Below
-// the phone breakpoint it wraps the same content in MobileShell instead.
-//
-// The sidebar element and the route→view switch stay in App because they
-// close over app state: App renders <Sidebar/> as a sibling before this,
-// passes the route views as children, and hands the mobile drawer's
-// handlers in as mobileShellProps. On desktop this returns a fragment so
-// the hamburger and <main> land as direct children of App's flex frame,
-// beside the sidebar.
+// App owns the sidebar and route state. Desktop returns a fragment so main and the sidebar
+// remain siblings in the flex frame; mobile wraps the same children in MobileShell.
 export default function AppShell({
   isMobile,
   mainBg,
@@ -28,13 +19,10 @@ export default function AppShell({
       flex: 1, minWidth: 0, minHeight: 0,
       display: 'flex', flexDirection: 'column',
       background: mainBg,
-      // Top inset any view header reads (via var(--titlebar-safe-top)) to
-      // clear the traffic lights + floating hamburger when the sidebar isn't
-      // docked over that corner. 0 when it is.
+      // Reserve header space for traffic lights and the hamburger when the sidebar does not cover
+      // that corner.
       '--titlebar-safe-top': `${titlebarSafeTop}px`,
-      // Opt the content column out of the window drag region so clicks reach
-      // outside-click handlers — Electron swallows events over drag regions
-      // (desktop only; the web build has no drag regions).
+      // Exclude content from Electron’s drag region so outside-click handlers receive mouse events.
       WebkitAppRegion: 'no-drag',
     }}>
       {children}
@@ -47,9 +35,6 @@ export default function AppShell({
 
   return (
     <>
-      {/* Floating hamburger — reopens a collapsed desktop sidebar (Cowork
-          task or any Code surface). Absolute over the window frame; DOM
-          order doesn't matter since it's positioned. */}
       <Tooltip content="Open sidebar">
         <button
           onClick={onOpenSidebar}
