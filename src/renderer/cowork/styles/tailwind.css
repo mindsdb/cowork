@@ -1,18 +1,10 @@
-/* Tailwind utilities entry point. Despite the import position in
-   main.tsx, this lands AFTER globals.css/styles.css in the emitted
-   bundle (their imports execute first via the App subtree), so
-   utilities win equal-specificity ties against legacy classes. Legacy
-   selectors with higher specificity (e.g. `.menu .menu-item`) still
-   outrank single-class utilities — use `!` utilities or inline styles
-   where a migrated component must beat one (ENG-1017 playbook). */
+/* Utilities follow legacy CSS in the emitted bundle despite import order.
+Higher-specificity legacy selectors still require ! utilities or inline overrides. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Buttons have a user-agent default font-family (-webkit-control on
-   macOS / Helvetica on others) that does NOT inherit from the body.
-   Force inheritance globally so every <button> shows in Inter
-   without each component having to add `font: inherit` itself. */
+/* Native buttons do not inherit body fonts; force inheritance globally. */
 button {
   font-family: inherit;
   font-size: inherit;

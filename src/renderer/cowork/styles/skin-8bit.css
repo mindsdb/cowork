@@ -1,53 +1,30 @@
-/* ─── 8-Bit skin ──────────────────────────────────────────────────────────
-   A second styling axis, orthogonal to light/dark:
-
-     body[data-skin="8bit"]                      → retro flourishes + fonts
-     body[data-skin="8bit"][data-theme="dark"]   → CRT arcade palette
-     body[data-skin="8bit"][data-theme="light"]  → Game Boy paper palette
-
-   The whole app is token-driven (globals.css defines --bg/--surface/--ink/
-   --accent/… and every legacy alias derives from them via var()), so
-   re-declaring the core tokens here re-skins every view without touching
-   component code. The arcade onboarding screens (pages/arcade) carry their
-   own fixed palette and are unaffected.
-
-   Loaded after globals.css; the [data-skin][data-theme] selectors also
-   out-specify the single-attribute theme blocks. */
+/* Skin and light/dark are separate axes. Override shared tokens after globals.css; arcade onboarding owns its palette. */
 
 /* ── Shared 8-bit rules (both color schemes) ──────────────────────────── */
 
 body[data-skin="8bit"] {
-  /* One font, three jobs — the mono IS the aesthetic. */
   --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   --font-body:    var(--font-sans);
   --font-display: var(--font-sans);
 
-  /* Square the corners. Radii tokens drive most surfaces; inline
-     one-off radii (pills, avatars) intentionally keep their shape. */
+  /* Use radius tokens; one-off pill/avatar radii retain their shape. */
   --r-sm: 0px;
   --r:    2px;
   --r-lg: 4px;
   --r-xl: 6px;
 }
 
-/* The window-level bg is hardcoded blue by .gf-theme-dark (styles.css);
-   override it so the 8-bit skin uses its own neutral dark-grey --bg. */
+/* Override .gf-theme-dark's fixed window background with this skin's bg token. */
 body[data-skin="8bit"].gf-theme-light { background: var(--bg); }
 
-/* 8-bit DARK background = the sign-in screen's arcade backdrop (.arc-root):
-   the deep arcade base + a soft top glow, applied app-wide via the body so
-   every transparent surface above it — main app AND welcome/loading — shares
-   the identical color and CRT effect (the scanline + vignette is in ::after). */
+/* Share the arcade backdrop across transparent app and loading surfaces. */
 body[data-skin="8bit"].gf-theme-dark {
   background-color: #0a0a13;
   background-image: radial-gradient(120% 90% at 50% 10%, rgba(61, 79, 134, 0.10), transparent 60%);
 }
-/* Drop the animated gravity-field dots — the arcade backdrop replaces them. */
 body[data-skin="8bit"][data-theme="dark"] .gravity-field { display: none; }
 
-/* Faint cyan halo at the top of the sidebar — part of the arcade look.
-   Self-contained: the default dark skin no longer draws a halo, so this
-   rule carries its own pseudo-element structure. */
+/* The default skin has no halo pseudo-element; supply its structure here. */
 body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
   content: '';
   position: absolute;
@@ -57,18 +34,14 @@ body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
   z-index: 0;
 }
 
-/* CRT scanlines over everything. Static (no flicker — this is a work
-   tool), pointer-transparent, and suppressed while an arcade onboarding
-   screen is mounted (those draw their own scanlines via .arc-root). The
-   welcome/loading screen is excluded from that suppression so it carries
-   the same dot-grid + scanline backdrop as the main app. */
+/* Keep scanlines static and pointer-transparent. Suppress them on arcade screens that already draw their own,
+but retain them on welcome/loading. */
 body[data-skin="8bit"]:not(:has(.arc-root:not(.welcome-loading)))::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 100000;
   pointer-events: none;
-  /* Matches .arc-root::after — the sign-in screen's scanlines + vignette. */
   background:
     repeating-linear-gradient(
       to bottom,
@@ -90,8 +63,6 @@ body[data-skin="8bit"][data-theme="light"]:not(:has(.arc-root:not(.welcome-loadi
   );
 }
 
-/* Custom skin's optional scanlines — same overlay, toggled by the
-   "design your own" recipe (lib/customTheme.ts adds this class). */
 body.custom-scanlines:not(:has(.arc-root))::after {
   content: '';
   position: fixed;
@@ -112,16 +83,12 @@ body[data-skin="8bit"] ::selection {
   color: var(--bg);
 }
 
-/* Retro dashed keyboard-focus ring — but only on controls that don't
-   already own a focus treatment. Text-entry fields (the composer
-   textarea, inputs, selects, contenteditable) keep their existing
-   focus border, so we don't double up with a clashing dashed box. */
+/* Do not add a dashed focus ring to text-entry controls that already own one. */
 body[data-skin="8bit"] :focus-visible:not(input):not(textarea):not(select):not([contenteditable]):not([contenteditable] *) {
   outline: 2px dashed var(--accent);
   outline-offset: 2px;
 }
 
-/* Chunky square scrollbars. */
 body[data-skin="8bit"] ::-webkit-scrollbar { width: 10px; height: 10px; }
 body[data-skin="8bit"] ::-webkit-scrollbar-track { background: transparent; }
 body[data-skin="8bit"] ::-webkit-scrollbar-thumb {
@@ -131,7 +98,6 @@ body[data-skin="8bit"] ::-webkit-scrollbar-thumb {
 }
 body[data-skin="8bit"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 
-/* The floating corner toggles square off with the rest of the skin. */
 body[data-skin="8bit"] .arcade-theme-toggle { border-radius: var(--r); }
 
 /* ── 8-Bit DARK — CRT arcade (matches pages/arcade/arcade.css) ────────── */
@@ -162,15 +128,13 @@ body[data-skin="8bit"][data-theme="dark"] {
   --success:      #4ade80;
   --success-glow: rgba(74, 222, 128, 0.55);
 
-  /* Arcade cartridge family. */
-  --tint-1:       #3dd6f5;  /* cyan */
-  --tint-2:       #4ade80;  /* anton green */
-  --tint-3:       #fbbf24;  /* hermes gold */
-  --tint-4:       #f87168;  /* openclaw red */
-  --tint-5:       #a78bfa;  /* mystery purple */
-  --tint-6:       #f472b6;  /* pink */
+  --tint-1:       #3dd6f5;
+  --tint-2:       #4ade80;
+  --tint-3:       #fbbf24;
+  --tint-4:       #f87168;
+  --tint-5:       #a78bfa;
+  --tint-6:       #f472b6;
 
-  /* Hard offset shadows — pixels don't blur. */
   --sh-1:         0 2px 0 rgba(0, 0, 0, 0.45);
   --sh-2:         0 3px 0 rgba(0, 0, 0, 0.50);
   --sh-3:         0 4px 0 rgba(0, 0, 0, 0.55), 0 14px 28px rgba(0, 0, 0, 0.35);
@@ -205,22 +169,19 @@ body[data-skin="8bit"][data-theme="light"] {
   --success:      #2e7d4f;
   --success-glow: rgba(46, 125, 79, 0.40);
 
-  /* Muted retro-print tints. */
-  --tint-1:       #2e7d4f;  /* GB green */
-  --tint-2:       #8a6d1f;  /* olive gold */
-  --tint-3:       #a8362c;  /* brick */
-  --tint-4:       #4b5e9e;  /* indigo */
-  --tint-5:       #7a4f8a;  /* plum */
-  --tint-6:       #205c39;  /* deep green */
+  --tint-1:       #2e7d4f;
+  --tint-2:       #8a6d1f;
+  --tint-3:       #a8362c;
+  --tint-4:       #4b5e9e;
+  --tint-5:       #7a4f8a;
+  --tint-6:       #205c39;
 
   --sh-1:         0 2px 0 rgba(35, 43, 30, 0.16);
   --sh-2:         0 3px 0 rgba(35, 43, 30, 0.18);
   --sh-3:         0 4px 0 rgba(35, 43, 30, 0.20), 0 14px 28px rgba(35, 43, 30, 0.12);
   --ring:         0 0 0 3px rgba(46, 125, 79, 0.30);
 
-  /* Light-only neutrals defined on :root (--stone-*) feed list-row and
-     icon-button hovers; remap them onto the paper surfaces the same way
-     the dark theme block does, so hovers don't flash grey-white. */
+  /* Remap legacy stone hover tokens to this palette so rows do not flash default light neutrals. */
   --stone-50:  var(--surface);
   --stone-100: var(--surface-2);
   --stone-150: color-mix(in srgb, var(--surface-2) 55%, var(--surface-3) 45%);
@@ -229,6 +190,5 @@ body[data-skin="8bit"][data-theme="light"] {
   --stone-400: var(--ink-4);
   --primary-50: var(--accent-bg);
 
-  /* Glassy sidebar surface follows the paper tone instead of white. */
   --surface-glass: rgba(244, 245, 232, 0.96);
 }

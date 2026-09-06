@@ -1,17 +1,5 @@
-/* Antontron's legacy CSS variables. They used to hold hardcoded dark-mode
-   colours; now they alias the theme tokens defined in cowork/globals.css
-   so the remaining shell chrome follows light/dark with no per-component
-   edits.
-
-   --border maps to --border-strong because legacy code uses --border as
-   the visible button/input outline (not the hairline divider sense the
-   new system uses --border-subtle for).
-
-   Most of this file was retired in ENG-1020 — the onboarding, setup,
-   settings-panel, projects-list, and confirm-modal surfaces it used to
-   style were rebuilt elsewhere (arcade pages, cowork views) and their
-   rules had no remaining consumers. Run
-   `node scripts/css-usage-census.mjs` before deleting anything more. */
+/* Legacy variables alias cowork theme tokens. --border uses border-strong for visible control outlines.
+Run scripts/css-usage-census.mjs before removing legacy selectors. */
 :root {
   --border:        var(--border-strong);
   --text-primary:  var(--text-default);
@@ -36,30 +24,15 @@ html, body, #root {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
-/* Body / root typography comes from cowork/globals.css (Inter). A legacy
-   rule here used SF Mono on #root, which overrode globals (styles.css loads
-   after globals) and made surfaces that inherit — e.g. HomeView dropdowns —
-   render in monospace while ChatView forced FONT_BODY on its subtree. */
+/* Typography inherits from cowork/globals.css. */
 
-/* The body background is now controlled by .gf-theme-dark / .gf-theme-light
-   from the gravity-field kit. Don't set it on html/body or it will mask
-   the animated canvas behind. The React root sits above the canvas. */
+/* Keep html/body backgrounds clear so the gravity-field canvas remains visible under the themed body. */
 
-/* Override the kit's near-black dark default with a deep navy that
-   matches antontron's previous dark palette. Light theme keeps the
-   kit's near-white. */
 body.gf-theme-dark  { background: #0a1426; }
 
-/* Dim the gravity-field canvas overall — the kit's base alpha values
-   are tuned for full visibility, but we want a more whisper-quiet
-   feel where the dots, arrows, and center-of-mass glow all sit
-   firmly in the background. 0.45 ≈ "barely there, present on focus." */
 .gravity-field { opacity: 0.45; }
 
-/* User-opt-out for the animated dot/arrow background. Toggled by
-   Settings → Personalization → Dot grid (`settings.showDots`).
-   App.jsx pauses the draw loop as well as hiding the canvas, avoiding
-   requestAnimationFrame work while the effect is disabled. */
+/* Settings hides the canvas and App also pauses its draw loop. */
 body.gf-dots-off .gravity-field { display: none; }
 
 #root {
@@ -67,7 +40,6 @@ body.gf-dots-off .gravity-field { display: none; }
   z-index: 1;
 }
 
-/* Global scrollbar styling to avoid native white bars on macOS/Electron */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -96,7 +68,6 @@ body.gf-dots-off .gravity-field { display: none; }
   background-clip: content-box;
 }
 
-/* Draggable title bar area for macOS */
 .titlebar-drag {
   -webkit-app-region: drag;
   height: 38px;
@@ -107,8 +78,7 @@ body.gf-dots-off .gravity-field { display: none; }
   z-index: 1000;
 }
 
-/* Spinner — `spin` keyframes come from cowork/globals.css (identical
-   definition previously duplicated here). */
+/* Reuse spin keyframes from cowork/globals.css. */
 .spinner {
   width: 16px;
   height: 16px;
@@ -118,10 +88,6 @@ body.gf-dots-off .gravity-field { display: none; }
   animation: spin 0.8s linear infinite;
 }
 
-/* Buttons — the token-driven `.btn` system lives in
-   cowork/styles/globals.css and is shared everywhere; the legacy
-   hex-based button styles that used to live here were removed so the
-   brandbook look applies uniformly. */
 
 /* ─── Status Dot ─── */
 .status-dot {
