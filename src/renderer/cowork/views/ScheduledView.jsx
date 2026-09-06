@@ -1,16 +1,3 @@
-// `<ScheduledView>` — list of scheduled tasks with grid/list view
-// toggle + create modal + per-card hover actions.
-//
-// Click on a card → host opens the schedule detail page (set via
-// onOpenSchedule prop, wired in App.jsx to setRoute('schedule-detail')).
-//
-// Create + edit happen in <ScheduleTaskModal>. Per-task actions (Edit,
-// Pause/Resume, Delete) live in an overflow menu on each card/row; Delete
-// opens a <ConfirmModal> here rather than deleting from inside the edit form.
-//
-// Run-now happens inline (no modal) — optimistic UI at the host via the
-// existing onRunNow handler.
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
@@ -84,10 +71,7 @@ export default function ScheduledView({
   // when the user comes back to this surface tomorrow.
   useEffect(() => { saveViewMode(viewMode); }, [viewMode]);
 
-  // Total runs that slipped while the app was closed, summed across
-  // all schedules. Surfaced as a small subtitle next to the total
-  // count — informational only, no action required (the runner just
-  // catches up to the next scheduled occurrence).
+  // Missed runs are informational; the runner advances to the next scheduled occurrence.
   const totalMissed = useMemo(
     () => scheduled.reduce((n, item) => n + (Number(item.missedRuns) || 0), 0),
     [scheduled]
@@ -296,28 +280,9 @@ export default function ScheduledView({
 }
 
 
-// ── List view ──
-//
-// Slick table that mirrors the rhythm used by Live Artifacts and
-// Projects: monospaced uppercase header, tight bordered rows, hover
-// reveals row-level actions in the right meta slot. Columns:
-//   • status dot
-//   • Title (with prompt subtitle)
-//   • Cadence
-//   • Project (clickable when resolved)
-//   • Next run
-//   • Last run
-//   • action menu (hover-revealed)
 
-// 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
-// 110px last · fixed-width actions slot.
-//
-// The action column needs a *fixed* width because each row is its
-// own CSS-grid, not a child of one shared grid — `auto` would size
-// the header's empty slot to 0 while the rows' slot would size to
-// the inline action buttons (~190px), throwing the columns off by
-// the difference. Width is chosen to fit Run + Pause/Resume + Edit
-// without wrapping.
+// Use a fixed action-column width: separate header/row grids would size auto differently and
+// misalign columns.
 const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px';
 
 function ListHeaderRow() {

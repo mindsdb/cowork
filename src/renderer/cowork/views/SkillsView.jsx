@@ -19,13 +19,8 @@ import {
   sharedResourceAttribution,
 } from '../lib/sharedResourceAccess';
 
-// Sentinel for the "All projects" scope choice in the Scope <Select>. It must
-// be a non-empty string: Base UI's <Select.Value> treats an empty-string value
-// as "nothing selected" and shows the placeholder, so an option with value ''
-// would render as the "Select…" placeholder on the closed control even though
-// its item still carries a checkmark (ENG-1246). This value never reaches
-// storage — `submit` maps it back to an empty `projects` array, and it can't
-// collide with a real project name.
+// Use a nonempty All projects sentinel because Base UI renders an empty value as a placeholder.
+// Map it to an empty projects array on submit; never persist the sentinel.
 const ALL_PROJECTS = '__all_projects__';
 
 function EmptyState({ children }) {
@@ -382,12 +377,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     if (fresh) setSelected((current) => (current === fresh ? current : fresh));
   }, [skills]);
 
-  /* The open skill always mirrors the shared catalogue. Mutation endpoints
-     serialize a skill separately from the list, and a response that omits
-     `capabilities` reads as a denial on hosted Cowork, so adopting one would
-     lock the creator out of the skill they just saved. The effect above
-     re-points `selected` at the reloaded entry; a save response only names
-     the skill for the toast. */
+  /*
+   * Keep the selected skill from the reloaded catalog. Save responses may omit capabilities and
+   * would incorrectly deny hosted access.
+   */
   const onSkillSaved = (saved) => {
     showToast(`Saved ${saved?.label}.`, 'success');
   };
@@ -467,10 +460,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                         : current
                     ));
                     try {
-                      /* The reload inside the save re-points the open skill
-                         through the effect above; adopting the response here
-                         would trade the catalogue entry for a serializer that
-                         need not carry capabilities. */
+                      /*
+                       * Let catalog reload update selection; mutation responses may omit
+                       * capabilities.
+                       */
                       await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
                     } catch (err) {
                       setSelected((current) => (

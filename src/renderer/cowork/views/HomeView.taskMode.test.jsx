@@ -1,7 +1,5 @@
-// Task-mode wiring in HomeView (ENG-1594): pill selection swaps the surface
-// (placeholder, chip, samples), sending routes through composeModeMessage
-// (instruction APPENDED so titles/search stay on the user's words), the mode
-// clears only on a successful send, and sample picks flow through onPrefill.
+// Append mode instructions so user text remains the title; clear on successful send, while samples
+// only prefill.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -66,7 +64,6 @@ describe('HomeView task modes (ENG-1594)', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Remove Slides mode' })).not.toBeInTheDocument();
     });
-    // Default view restored: pill row is back.
     expect(screen.getByRole('button', { name: 'Create slides' })).toBeInTheDocument();
   });
 
@@ -78,7 +75,6 @@ describe('HomeView task modes (ENG-1594)', () => {
     await user.type(screen.getByPlaceholderText(slides.placeholder), 'Make a deck');
     await user.keyboard('{Enter}');
     await waitFor(() => expect(onSend).toHaveBeenCalled());
-    // The rejected send must not clear the selection.
     expect(screen.getByRole('button', { name: 'Remove Slides mode' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(slides.placeholder)).toBeInTheDocument();
   });
@@ -105,11 +101,7 @@ describe('HomeView task modes (ENG-1594)', () => {
   });
 });
 
-// ─── Hidden in Coding Mode ─────────────────────────────────────────
-//
-// The slides/website/app-style prompt scaffolding these pills offer
-// doesn't apply to a Claude Code task, so the whole surface (pills,
-// samples, any mode already selected) is hidden while Coding Mode is on.
+// Coding mode hides the whole task-mode control.
 
 describe('HomeView task modes — hidden in Coding Mode', () => {
   it('does not render the pill row when Coding Mode is enabled', () => {

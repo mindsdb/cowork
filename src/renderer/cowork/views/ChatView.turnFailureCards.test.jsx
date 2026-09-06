@@ -1,7 +1,4 @@
-// ENG-1282: every turn-failure code the server can emit renders as a failure —
-// a card with a next step where one exists, never a bubble that reads like a
-// finished answer. The sweep at the bottom pins the renderer to the server's
-// code vocabulary so a new code can't silently fall through again.
+// Every server failure code must produce visible failure copy and its appropriate action.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -77,9 +74,7 @@ describe('model_not_found failure card', () => {
     expect(screen.queryByText(/""/)).not.toBeInTheDocument();
   });
 
-  // The renderer updates OTA and can lead a pinned server, so the PRE-rename
-  // code must keep its card — otherwise those users fall through to the
-  // buttonless danger alert that ENG-1282 exists to remove.
+  // Retain the legacy code for server/OTA version skew.
   it('still renders the card for the pre-rename unknown_model code', async () => {
     const user = userEvent.setup();
     const onOpenSettings = vi.fn();
@@ -93,9 +88,7 @@ describe('model_not_found failure card', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('agent');
   });
 
-  // handleSendInTask's `modelOverride` is ignored by the in-process harness
-  // (stream_response takes no `model`), so the button would rerun the turn on
-  // the same dead id while the composer chip claimed the switch happened.
+  // The in-process harness ignores modelOverride; it cannot support a real model switch.
   it('offers no Switch to MindsHub Air button, which could not take effect', () => {
     render(
       <ChatView
@@ -154,18 +147,13 @@ describe('rate_limited failure card (ENG-1537)', () => {
   it('never offers a top-up — this is a velocity limit, not out of credits', () => {
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY))} />);
     expect(screen.getByText('Too many requests too quickly')).toBeInTheDocument();
-    // THE defect: this used to render the out-of-credits card with a
-    // "Top up balance" button, sending the user to buy something that cannot
-    // lift a per-minute ceiling.
+    // Rate limiting must not prompt a credit top-up.
     expect(screen.queryByRole('button', { name: /top up/i })).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
 
   it('gates Retry while the server-supplied wait is still running', () => {
-    // Anchored on the server's ABSOLUTE instant. The previous version of this
-    // test hand-injected `createdAt`, a field no error row in this app carries
-    // — so it was green on dead code, and the ticket's "its Retry is
-    // time-gated" was unmet on every real path (ENG-1537 review).
+    // Use the server's absolute retry instant; error rows may lack createdAt.
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
       retryAt: new Date(Date.now() + 30_000).toISOString(),
     }))} />);
@@ -181,10 +169,8 @@ describe('rate_limited failure card (ENG-1537)', () => {
   });
 
   it('gates identically outside UTC', () => {
-    // The trap that made the naive fix wrong: the suite pins TZ=UTC, so a
-    // local-time parse looks correct here and gates for ~7h in
-    // America/Los_Angeles. An offset-bearing instant is timezone-proof, and
-    // this asserts it rather than trusting it.
+    // Explicit Z and +00:00 offsets must resolve to the same retry instant; offset-less local
+    // parsing can shift retry windows outside UTC.
     const inThirty = new Date(Date.now() + 30_000);
     for (const iso of [inThirty.toISOString(), inThirty.toISOString().replace('Z', '+00:00')]) {
       const { unmount } = render(
@@ -196,14 +182,7 @@ describe('rate_limited failure card (ENG-1537)', () => {
   });
 
   it('refuses an offset-less anchor instead of parsing it as local time', () => {
-    // The regression guard the TZ=UTC pin would otherwise hide. Someone
-    // reintroducing `created_at + retryAfter` as the anchor would go green in
-    // CI and gate for ~7h for every user west of UTC. Requiring an offset makes
-    // that failure mode "no gate" — visible, and assertable in any zone.
-    // RELATIVE, not a literal date. A hardcoded future date stops testing
-    // anything once it passes: from 2026-12-02 the value is in the past, so the
-    // clamp path returns null and the test goes green with the offset check
-    // deleted — silently ceasing to guard the regression it exists for.
+    // Require an offset and a relative future fixture; fixed dates eventually expire.
     const naive = new Date(Date.now() + 30_000).toISOString().replace('Z', '');
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
       retryAt: naive,   // exactly the shape created_at has
@@ -212,9 +191,7 @@ describe('rate_limited failure card (ENG-1537)', () => {
   });
 
   it('never gates Retry for longer than the clamp', () => {
-    // anton cards immediately above its 60s cap rather than sleeping, so a
-    // large hint reaches the client as a real value. Ungated, retryAfter=30000
-    // disabled the button for 8.3 hours — indistinguishable from a broken card.
+    // Cap excessive retry hints so the button cannot stay disabled for hours.
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
       retryAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
     }))} />);
@@ -332,9 +309,7 @@ describe('worker_unresponsive failure card', () => {
   });
 
   it('blames the infrastructure, not the request', () => {
-    // The whole reason this code exists: during the 2026-08-31 outage every
-    // turn read as an agent failure, so users retried their WORDING instead of
-    // retrying the request. The copy has to point away from their input.
+    // Infrastructure incidents must not blame the user's prompt.
     render(
       <ChatView task={taskWith(failedTurn('worker_unresponsive', 'nothing ran'))} />,
     );
@@ -381,10 +356,7 @@ describe('anton_error / unmapped failure fallback', () => {
   });
 
   it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {
-    // The case that matters most: the user refreshes, THEN goes to copy the
-    // id for support. Spans the real hydrate function, not a hand-built
-    // message shape, so a drift between what conversationHistory.js extracts
-    // and what ChatView reads would be caught here.
+    // Hydrate the real row before copying its support ID.
     const messages = hydrateMessagesFromServerEvents([
       {
         role: 'assistant', content: '', events: [{
@@ -399,12 +371,7 @@ describe('anton_error / unmapped failure fallback', () => {
   });
 });
 
-// ── The D2 enforcement half (ENG-1282 step 3) ──────────────────────────────
-// cowork-server's `cowork/handlers/turn_errors.py` owns the wire vocabulary of
-// turn-failure codes; its `tests/test_turn_errors.py` pins the same list below.
-// Adding a code there fails that test until this list — and a matching
-// `m.code === '<code>'` branch in ChatView.jsx — exist here. Update both
-// repos together.
+// Keep this vocabulary aligned with cowork-server handlers/turn_errors.py and its tests.
 const WIRE_CODES = [
   'token_limit',
   'policy_unavailable',

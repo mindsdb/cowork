@@ -1,13 +1,3 @@
-// `<ScheduleDetailView>` — drilldown for a single scheduled task.
-//
-// Header: breadcrumb "Scheduled tasks › {title}".
-// Hero card: status, prompt preview, run-now button, enable toggle,
-//            next-run + last-run summary lines.
-// Health: 30-run sparkline showing success/error rate, plus headline
-//         metrics (total runs, success rate, avg duration).
-// Runs list: each past run with timestamp, duration, status badge,
-//            click-through to the conversation that ran.
-
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
@@ -50,10 +40,6 @@ function runColor(run) {
 }
 
 
-// ── enable toggle ──
-//
-// Slim, accessible — clicks fire a debounced server call. Disabled
-// while busy. Visual reads as on/off no-matter-the-light.
 
 function EnableToggle({ enabled, onChange, busy }) {
   return (
@@ -76,12 +62,8 @@ function EnableToggle({ enabled, onChange, busy }) {
 }
 
 
-// ── health chart (sparkline) ──
-//
-// 30 most-recent runs, oldest left → newest right. Each run is a
-// vertical bar; height encodes duration on a log-ish scale (so a 5s
-// success and a 5min success are both visible), color encodes status.
-// Zero-effort SVG; no charting library needed for this scale.
+// Show recent runs oldest to newest, with logarithmic duration scaling so short and long runs
+// remain visible.
 
 function HealthSparkline({ runs }) {
   // Slice + reverse so the chart reads left-to-right by time.
@@ -395,10 +377,7 @@ export default function ScheduleDetailView({
         busyLabel="Deleting…"
         onConfirm={() => withBusy(async () => {
           await onDelete?.(task.id);
-          // Close on success rather than relying on the host to unmount this
-          // view via navigation (onDelete → setRoute); if a future onDelete
-          // resolves without navigating away, the modal still dismisses and
-          // can't linger over an already-deleted task.
+          // Close after successful deletion even if the parent does not navigate away.
           setConfirmDeleteOpen(false);
         })}
         onClose={() => { if (!busy) setConfirmDeleteOpen(false); }}

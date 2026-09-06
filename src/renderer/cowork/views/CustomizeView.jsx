@@ -1,12 +1,3 @@
-// Connect Apps and Data — the page that lists everything the user has
-// hooked Anton up with. Mirrors the Projects page layout (header +
-// filter row + grid of cards + empty state). The "+ Connect" CTA
-// routes to the existing connect-data workflow at route='connect'.
-//
-// Replaces the previous directory-of-planned-connectors page; only
-// real, configured connections show up here. Empty state nudges the
-// user to wire something up.
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import Ico from '../components/Icons';
@@ -55,12 +46,6 @@ function ConnectionsCounts({ search, total, filtered }) {
 
 // ─── Connection card ─────────────────────────────────────────────────────
 
-// Trailing dashed card that lives at the end of the connections
-// grid, mirroring the "+ New project" tile in ProjectsView. Click
-// dispatches to the parent's handleConnectNew (same path the page
-// header's "+ Connect" button takes — opens the connector picker).
-// Only rendered when there's at least one existing connection — the
-// EmptyState already covers the zero-connection case.
 function NewConnectionCard({ onClick }) {
   return (
     <button
@@ -194,14 +179,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerState, setPickerState] = useState({ status: 'idle' });
-  // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
-  // a pick attempt's own continuation can tell whether it's still the
-  // active one — a single shared boolean "was cancel ever clicked" flag
-  // let a fast cancel-then-repick have the FIRST attempt's stale resolution
-  // clobber the second attempt's live state, since resetting the flag for
-  // the new attempt made the old attempt's cancelled-check pass too. Must
-  // be declared before the `if (!connection) return null;` below — every
-  // render must call the same hooks (Rules of Hooks).
+  // Advance on cancel and every new pick so an old continuation cannot overwrite a newer attempt.
+  // Declare this hook before conditional returns.
   const pickerAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -253,10 +232,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       setPickerState({ status: 'error', reason: 'No account email on file for this connection — try reconnecting.' });
       return;
     }
-    // Claim this attempt's own id — a stale attempt's continuation (below)
-    // checks this against the CURRENT ref value, not a shared "was cancel
-    // ever clicked" boolean, so a fast cancel-then-repick can't have the
-    // first attempt's late resolution clobber the second attempt's state.
+    // Capture this attempt’s generation; a shared cancelled flag would be reset by a later pick.
     const attemptId = ++pickerAttemptRef.current;
     setPickerState({ status: 'waiting' });
     try {
@@ -536,12 +512,7 @@ export default function CustomizeView({
   }, [initialConnectors]);
 
   const handleConnectNew = () => {
-    // App.jsx's onConnectNew (handleStartConnectChat) opens the connector
-    // picker; picking one there opens a chat task with a synthesized
-    // greeting, and Anton drives the rest via request_credentials.
-    // Required in practice now — there's no in-page fallback left, so a
-    // caller that omits it gets a loud console error instead of a CTA
-    // that silently does nothing.
+    // onConnectNew is required because this page has no fallback connection flow.
     if (!onConnectNew) {
       // eslint-disable-next-line no-console
       console.error('[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
@@ -553,13 +524,8 @@ export default function CustomizeView({
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Auto-open the connect flow when the user lands here without any
-  // connectors set up yet. Prevents the empty-state click ceremony
-  // (page → "+ Connect" button → modal) for first-time users — the
-  // modal appears immediately. Guarded by a ref so it fires once per
-  // mount, and delayed slightly so a still-in-flight `fetchDatasources`
-  // can populate `initialConnectors` first (avoids briefly opening the
-  // modal for users who actually have connectors).
+  // Auto-open once for an empty connection list, delaying briefly so an in-flight initial fetch can
+  // populate it.
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current) return;
@@ -685,10 +651,6 @@ export default function CustomizeView({
               onModify={setSelectedConn}
             />
           ))}
-          {/* Trailing dashed "New connection" card — appears only
-              when there's at least one existing connection (the
-              EmptyState handles the zero-connection case with its
-              own larger CTA). Mirrors the Projects pattern. */}
           <NewConnectionCard onClick={handleConnectNew} />
         </div>
       )}

@@ -1,9 +1,4 @@
-// ENG-1705 — the card must never render a bare em-dash as its title.
-//
-// This is deliberately a VIEW test, not another unit test of
-// connectionIdentity(). The helper's own suite passes even when the card is
-// wired back to `connection.user_label || '—'`, so the helper alone does not
-// prove the user-visible bug is fixed. This file covers the wiring.
+// Exercise view wiring as well as identity helpers.
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
@@ -44,9 +39,7 @@ import CustomizeView from './CustomizeView';
 describe('CustomizeView connection cards — ENG-1705 wiring', () => {
   it('renders no em-dash title for any connection', () => {
     const { container } = render(<CustomizeView connectors={CONNECTIONS} />);
-    // The regression rendered one '—' per unlabelled card. Scoped to the
-    // rendered container so unrelated chrome elsewhere in the document can
-    // never fail this spuriously.
+    // Scope the em-dash assertion to this container.
     expect(within(container).queryAllByText('—')).toHaveLength(0);
   });
 

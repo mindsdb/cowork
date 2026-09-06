@@ -1,13 +1,3 @@
-// Projects page — D1 "Quiet" direction.
-//
-// Header (title + subtitle + accent "+ New project") • Filter row
-// (search ⌘K + sort + count + grid/list toggle) • Grid OR list. Each
-// card surfaces a single activity line, mono timestamp w/ active dot,
-// and a demoted stats row (tasks · mem · sched · art) with zero values
-// dimmed. Pin + ⋯ menu reveal on hover.
-//
-// Design source: docs/design-handoff/Anton Projects (D1).
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches } from '../lib/projectLabel';
 import Ico from '../components/Icons';
@@ -42,13 +32,8 @@ import {
   isReservedProjectName,
 } from '../lib/sharedResourceAccess';
 
-// ─── Pin persistence (localStorage) ──────────────────────────────────────
-//
-// The server doesn't track project pin state today, so we keep it client-
-// side. Format: a JSON array of project names. Reserved/missing keys are
-// ignored gracefully. Any caller that mutates the list re-emits a
-// 'storage' event-equivalent via a custom event so the components can
-// react without coupling to the storage primitive directly.
+// Project pins are local JSON arrays of names; emit a custom change event so same-window consumers
+// refresh.
 const PIN_KEY = 'anton:pinned-projects';
 const PIN_EVENT = 'anton:pinned-projects:change';
 
@@ -118,11 +103,10 @@ function isActive(project, tasks) {
   return ts > 0 && Date.now() - ts < HOUR;
 }
 
-/* Equality probe for the server-owned fields the detail refresh tracks. Both are
-   small plain payloads, so a serialized compare is enough to tell "the server
-   said the same thing again" from "hand the detail subtree a new object".
-   `?? null` folds a missing field and an explicit null into one value so an
-   omitted block reads the same either way. */
+/*
+ * Treat missing and null server fields alike; unchanged payloads should not replace the detail
+ * object.
+ */
 function sameServerField(a, b) {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
@@ -244,11 +228,7 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
 
 // ─── Trailing "+ New project" card ───────────────────────────────────────
 
-// "+ New project" tile — clicking flips the card into an inline edit
-// mode with a focused input. Enter creates, Escape (or empty + blur)
-// cancels back to the dashed prompt. Same pattern as the rename
-// affordance on the regular cards. Replaces the previous
-// `window.prompt` flow which Electron renderers can silently disable.
+// Use inline creation because Electron can disable window.prompt.
 function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   const [hover, setHover] = useState(false);
   // Parent-driven editing state so the page header / empty-state CTA
@@ -349,15 +329,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
 
 // ─── List view ───────────────────────────────────────────────────────────
 
-// Adds an "Active" column between Tasks and Memories — the count of
-// currently-streaming tasks in this project. Client-side derivable
-// from `tasks` (status === 'active'), so no new server endpoint
-// needed; the data is already on the client.
-//
-// Name leads with the most fr-share so long names don't ellipsize at
-// the typical sidebar width — the prior 1.6fr lost the name to the
-// "Last activity" cell. Updated column was dropped (the activity
-// summary already implies recency); the freed width goes to Name.
+// Give names enough width to avoid premature truncation beside activity metadata.
 const LIST_GRID_COLS = 'grid-cols-[3fr_1.2fr_64px_64px_64px_64px_64px_36px]';
 
 function ListHeader() {
@@ -424,10 +396,6 @@ function useRowStats(project) {
 
 function ListRow({
   project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen, isMenuOpen = false,
-  // Inline-edit plumbing — wired from the parent the same way the
-  // grid `ProjectCard` is, so the kebab → Rename action works in both
-  // views. Earlier the list row showed no input when editing, which
-  // forced users to flip to grid view to actually rename.
   editing = false,
   // The server is still working through this project's delete.
   deleting = false,
@@ -552,11 +520,10 @@ function ListRow({
 function SkeletonCard() {
   return (
     <div className="min-h-[120px] rounded-card py-[14px] px-4 border border-solid border-line bg-surface flex flex-col gap-[10px]">
-      {/* background stays inline: the `background` shorthand resets
-          background-image to `none`, which is what keeps .proj-shimmer's
-          gradient suppressed today (cascade-forced by legacy class
-          proj-shimmer) — a bg-* utility only sets background-color and
-          would newly reveal the shimmer animation. */}
+      {/*
+ * Keep the background shorthand inline: unlike a color utility, it resets the legacy shimmer
+ * background-image.
+ */}
       <div style={{ background: 'var(--surface-2)' }} className="h-3.5 w-3/5 rounded proj-shimmer" />
       <div className="flex-1 flex flex-col gap-1.5">
         <div style={{ background: 'var(--surface-2)' }} className="h-[11px] w-[90%] rounded proj-shimmer" />
@@ -567,13 +534,6 @@ function SkeletonCard() {
   );
 }
 
-// ─── Project detail (per-project workspace) ──────────────────────────────
-//
-// Same shape as ChatView. Header crumb is `Projects › [name]`; left
-// column is composer-on-top + per-project task list; right rail is
-// Working folder + Context + Scheduled. Restored after a brief detour
-// where I'd accidentally folded this into the home route — the user
-// wants the in-page detail view to stay.
 
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
@@ -592,11 +552,7 @@ function ProjectDetail({
   disabledConnections = [],
   onUpdateConnectorMute,
   onNavigateToConnectors,
-  // Header kebab + inline rename — lets users rename / reveal / delete
-  // the active project without bouncing back to the grid. Pin is
-  // intentionally absent: the only pin store today is localStorage on
-  // the grid cards, and exposing the toggle here would imply the
-  // detail view participates in that state.
+  // Keep pinning on grid cards; the detail header does not subscribe to their local pin state.
   editing = false,
   // The server is still working through this project's delete.
   deleting = false,
@@ -674,10 +630,10 @@ function ProjectDetail({
           </Tooltip>
         )}
 
-        {/* Header — Projects › [project] crumb. Top padding honours the
-            shell's --titlebar-safe-top so the crumb drops below the traffic
-            lights when the sidebar isn't docked (0 → normal 14px), staying
-            left-aligned with the detail below. */}
+        {/*
+ * Honor the shell titlebar inset to clear traffic lights while keeping the detail header aligned
+ * with its body.
+ */}
         <div className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-[14px] pr-7 pl-7 border-b border-t-0 border-x-0 border-solid border-line bg-transparent shrink-0 min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
@@ -919,20 +875,14 @@ export default function ProjectsView({
   const [editingProjectName, setEditingProjectName] = useState(null);
   const searchRef = useRef(null);
 
-  // Detail-mode state — when a project is "open" the page swaps from
-  // the grid/list to the per-project workspace. Seeded from the
-  // app-level selectedProject so the chat-header crumb (which sets
-  // selectedProject + routes here) lands directly in detail.
+  // Seed detail from App selection so chat-header project links open it directly.
   const [detailProject, setDetailProject] = useState(selectedProject || null);
   useEffect(() => { setDetailProject(selectedProject || null); }, [selectedProject]);
-  /* A refetch can carry changed role capabilities or newer attribution while the
-     detail page stays mounted, so those two server-owned fields are the only
-     ones copied across. Name and path stay local: a list response that started
-     before a rename lands after it, and spreading it would flip the breadcrumb
-     back to the old name. Capabilities are assigned rather than merged so a
-     response that omits them drops the previous decision instead of holding an
-     allow open. An unchanged pair returns the same object so the composer,
-     context box, and task list do not re-render on every poll. */
+  /*
+   * Refresh capabilities/attribution only; stale list names/paths must not undo a local rename.
+   * Replace capabilities rather than merge so omitted grants revoke access, and retain object
+   * identity when unchanged.
+   */
   useEffect(() => {
     setDetailProject((current) => {
       if (!current) return current;
@@ -959,19 +909,13 @@ export default function ProjectsView({
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Create flow — the "+ New project" button (header, empty-state,
-  // trailing dashed card) opens the NewProjectModal. The modal owns
-  // the full create + anton.md + file-upload pipeline; this view
-  // only needs to know "did a project get created?" to refetch.
+  // NewProjectModal owns creation, instructions, and uploads; refetch after it completes.
   const [creating, setCreating] = useState(false);
   const handleNewProject = () => {
     setCreating(true);
   };
 
-  // External open trigger — fired by the mobile FAB menu's "New
-  // project" option. The modal lives inside ProjectsView, so the FAB
-  // navigates to this route and dispatches the event once we're
-  // mounted (App.jsx handles the timing).
+  // The mobile FAB dispatches after mounting this route because its creation modal lives here.
   useEffect(() => {
     const onOpen = () => setCreating(true);
     window.addEventListener('anton:open-new-project', onOpen);
@@ -1024,10 +968,8 @@ export default function ProjectsView({
       const result = await renameProject(sourceProject, next);
       const finalName = result?.name || next;
       const finalPath = result?.path || sourceProject.path;
-      // If we're sitting in detail mode for the renamed project, swap
-      // the local detailProject so the breadcrumb shows the new name
-      // immediately — App.jsx's selectedProject won't update until the
-      // user re-enters the project from the grid.
+      // Update local detail immediately after rename; App selection may not refresh until the
+      // project is reopened.
       setDetailProject((current) => {
         if (!current) return current;
         const isRenamedProject = sourceProject.id && current.id
@@ -1139,13 +1081,6 @@ export default function ProjectsView({
         title="Projects"
         subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}
         actions={<NewProjectButton onClick={handleNewProject} />}
-        // Bake the breathing room into the header itself rather than a
-        // sibling spacer. The previous 18px spacer div collapsed in
-        // some grid-view layouts (the flex column let it disappear
-        // under certain content heights), which made the gap between
-        // subtitle and the search bar look smaller in grid than in
-        // list. Embedding it as `marginBottom` on the subtitle makes
-        // the spacing immune to whatever the body below decides to do.
       />
 
       <FilterRow
@@ -1204,10 +1139,6 @@ export default function ProjectsView({
               alwaysShowActions={isMobile}
             />
           ))}
-          {/* Trailing dashed "+ New project" card — clicking just
-              opens the modal (no inline-edit mode any more). The
-              modal handles name + instructions + file uploads in a
-              single confirmable surface. */}
           <button
             type="button"
             onClick={handleNewProject}
@@ -1256,18 +1187,12 @@ export default function ProjectsView({
         onDelete={(proj) => onDeleteProject?.(proj)}
       />
 
-      {/* "Start a new project" modal — replaces the inline-edit
-          dashed card pattern. Owns name + instructions + file
-          uploads, then notifies the parent so the projects list
-          refetches and the new project appears in the grid. */}
       <NewProjectModal
         open={creating}
         onClose={() => setCreating(false)}
         onCreated={(result) => {
-          // Reuse the existing parent callback so the App-level
-          // listener refetches projects and updates the active
-          // project pointer. `result.name` is the canonical
-          // sanitised name returned by the server.
+          // Use the server’s sanitized name and mark creation complete so App refreshes without
+          // another POST.
           onCreateProject?.({ name: result?.name, _alreadyCreated: true });
         }}
       />
