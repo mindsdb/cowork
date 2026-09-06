@@ -1,17 +1,8 @@
 import Ico from '../Icons';
 
-// Sample prompts for a selected task mode (ENG-1594). Two presentations,
-// mirroring Manus: 'cards' (a labelled grid — slides, visualization) and
-// 'rows' (a plain list). Picking a sample fills the composer with the
-// sample's FULL prompt (the visible label is just the list text) via
-// onPick; it never sends — the user edits first.
-//
-// Styling notes: Tailwind utilities (no globals.css entries). Hover rules
-// are gated behind (hover:hover) and (pointer:fine) via arbitrary variants;
-// the stagger delay rides a --stagger CSS var so motion-reduce can kill the
-// entrance animation from a class. Card/row class strings stay whole
-// literals in each ternary branch — Tailwind's scanner can't see through
-// interpolation.
+// onPick fills the composer with the full prompt without sending.
+// Keep Tailwind classes literal, gate hover to fine pointers, and use --stagger so reduced motion
+// can override it.
 export default function TaskModeSamples({ mode, onPick }) {
   const isCards = mode.samplesVariant === 'cards';
   return (
