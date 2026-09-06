@@ -893,9 +893,6 @@ export async function writeProjectFile(projectName, path, content) {
 }
 
 export async function uploadProjectFiles(projectName, files) {
-  // `files` is an iterable of File objects (drag&drop or input).
-  // Endpoint accepts a multipart payload with a repeated `files`
-  // field — same shape FastAPI's `list[UploadFile]` consumes.
   const form = new FormData();
   for (const f of files) form.append('files', f, f.name);
   const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
@@ -945,7 +942,6 @@ export async function setActiveProject(projectOrName) {
       body: JSON.stringify({ is_active: true }),
     });
   }
-  // Fallback: lookup by name
   const name = typeof projectOrName === 'string' ? projectOrName : projectOrName?.name;
   const projects = await fetchProjects();
   const match = projects.find((p) => p.name === name);
@@ -956,22 +952,11 @@ export async function setActiveProject(projectOrName) {
   });
 }
 
-// ─── Artifacts ────────────────────────────────────────────────────────────────
-// Returns the full system-wide artifact list. Heavy enough that
-// callers need to be careful not to fan out: ProjectsView's row
-// stats hook calls this from each visible project row, and prior to
-// the `dedupe` wrapper that meant N copies of the same request on
-// every list render. With coalescing, one network request fans out
-// to all subscribers and the cache entry releases on settle.
+// Coalesce concurrent artifact reads; project-row callers can otherwise repeat the system-wide
+// request.
 export async function fetchArtifacts({ projectId, projectPath } = {}) {
-  // Either parameter scopes the response to one project's `<base>/artifacts/`
-  // tree, so the server skips reading every other project's metadata.json. Omit
-  // both for the system-wide list the global Live Artifacts page wants.
-  //
-  // `projectId` is the org-mode addressing: the server resolves the project
-  // through a scoped DB read, so no filesystem path crosses the wire (and a path
-  // would carry no tenant for it to check). `projectPath` stays for desktop, where
-  // the client legitimately knows it; org deployments reject it outright.
+  // Scope with projectId in org mode or projectPath on desktop; omit both for the global list.
+  // Org deployments reject filesystem paths because they carry no tenant identity.
   let suffix = '';
   if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
   else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
@@ -986,13 +971,9 @@ export async function fetchArtifacts({ projectId, projectPath } = {}) {
   });
 }
 
-// Same URL shapes as `fetchArtifacts` above, but THROWS instead of returning [].
-//
-// The liveness store (lib/artifactsStore.js) has to tell "loaded, and the list
-// is empty" from "the request failed". Its sibling cannot: it swallows every
-// error into `[]`, and an empty list read as authoritative would mark every
-// artifact card in the conversation as deleted. Deliberately not routed through
-// `dedupe` either — the store coalesces its own loads and needs the rejection.
+// Propagate failures so the liveness store cannot mistake an outage for every artifact being
+// deleted.
+// The store coalesces its own loads.
 export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
   let suffix = '';
   if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
@@ -1005,17 +986,11 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
-// Fresh published/modified/access status for one artifact — the cheap read
-// the preview viewer polls on window focus to light up "Update" when the
-// artifact changes underneath an open preview. Best-effort: returns null on
-// any failure (e.g. an older server without the endpoint) so callers degrade
-// to the prior reopen-to-refresh behaviour rather than throwing.
+// Poll current publish/access status without reopening the viewer. Return null on failure,
+// including older servers without this route.
 export async function fetchArtifactStatus(path) {
   if (!path) return null;
-  // Desktop-only route (require_local_tenancy): an org deployment answers 403 by
-  // design, and usePublish asks on every viewer open and every window focus. The
-  // null is the same answer the catch below already promises callers, so no
-  // caller has to learn about tenancy.
+  // This route is desktop-only; org deployments reject it with 403.
   if (getOrgMode()) return null;
   try {
     return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
@@ -1024,13 +999,9 @@ export async function fetchArtifactStatus(path) {
   }
 }
 
-// Mount an artifact for iframe preview. Two response shapes:
-//   - kind="static" (HTML artifacts): server returns `relUrl` under
-//     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
-//   - kind="proxy"  (backend+frontend artifacts): server returns the
-//     artifact dir; the renderer then asks the Electron main process to
-//     point the local preview proxy at that dir and gets back the URL.
-// `kind` is the discriminator; legacy callers can keep using `url`.
+// Static previews return an iframe URL; proxy previews return a directory for the local preview
+// proxy.
+// Use kind as the discriminator; url remains for legacy callers.
 export async function mountArtifactPreview(path) {
   const data = await req('/artifacts/preview-mount', {
     method: 'POST',
@@ -1058,10 +1029,8 @@ export async function mountArtifactPreview(path) {
     // Origin-relative serve URL for callers that open the artifact in a
     // new tab (web "open" action).
     serveUrl: data?.serveUrl ? `${ROOT_BASE}${data.serveUrl}` : '',
-    // Server-side sidecar lookup of the artifact's published URL (if
-    // any). Forwarded so the viewer shows the "Published" pill even
-    // when opened from a chat bubble — those carry no publishedUrl on
-    // the artifact object since they're built from streamed payloads.
+    // Include the published URL on preview responses so chat cards lacking it still show
+    // publication status.
     publishedUrl: data?.publishedUrl || '',
     // Backend launch status for proxy previews. When false, launchError
     // carries the reason — the viewer surfaces it instead of an empty iframe.
@@ -1080,25 +1049,16 @@ export async function exportArtifact(path, format) {
   return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
 }
 
-// Absolute "private" URL for an artifact's primary file: the
-// origin-relative `/v1/artifacts/serve/...` endpoint made absolute
-// against the current API origin. In the web build this is the
-// canonical address of the artifact — the file lives on the server,
-// not the user's machine — and in production it sits behind the auth
-// proxy, hence "private" (as opposed to the public `publishedUrl`).
-// Returns '' when the artifact has no serveable primary file yet.
+// Return the primary file’s absolute serve URL, protected by the auth proxy in production.
+// Return an empty string when no primary file is available.
 export function artifactServeUrl(artifact) {
   const rel = artifact?.serveUrl || '';
   if (!rel) return '';
   return rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`;
 }
 
-// Open an artifact's primary file the right way for the current host.
-// Only the desktop app pointed at the local loopback server can hand an
-// OS path to the shell; in the browser (or a desktop app pointed at a
-// remote server) the file isn't on this machine, so we open its HTTP
-// serve URL instead — falling back to the published URL when the
-// artifact has no serveUrl yet.
+// Only local Electron can open an OS path; remote and web hosts use the serve URL, then the
+// published URL.
 export async function openArtifactFile(artifact) {
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
   if (!canOpenLocalFile) {
@@ -1115,10 +1075,7 @@ export async function revealArtifact(path) {
   return req('/artifacts/reveal', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
-// ─── Settings ─────────────────────────────────────────────────────────────────
-// Key maps, row transforms, provider backfill, and write-diffing live in
-// settingsTransform.js (pure functions, no network calls).  The API calls
-// here are thin wrappers that fetch/push and delegate the translation.
+// settingsTransform.js owns pure settings translation; these wrappers perform transport.
 
 // Snapshot of the last-fetched settings — used by diffSettingsForWrite to
 // skip no-op writes and by the masked-sentinel ("***") skip logic.
@@ -1128,40 +1085,26 @@ let _lastFetchedSettings = {};
 // updateSettings can't race on _lastFetchedSettings.
 let _settingsLock = Promise.resolve();
 
-/* Live per-provider model picker options + effort capability. The server
-   overlays minds-cloud with MindsHub's `/v1/models` (live ids and, per model,
-   the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
-   static effort catalog for direct providers. Returns null on any failure so the
-   caller keeps the static lists baked into transformSettingsRows. */
+/*
+ * Live model IDs and effort capabilities come from MindsHub for minds-cloud and a static catalog
+ * for direct providers.
+ * Return null on failure so callers retain their fallback lists.
+ */
 export async function fetchRecommendedModels({ refresh = false } = {}) {
   try {
-    // `refresh` bypasses the server's fetch_minds_models cache (up to a
-    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
-    // isn't masked by the cached `enabled` map. A cached *failure* is still
-    // honored server-side, so this can't cost every open an HTTP timeout while
-    // MindsHub is down.
+    // Refresh bypasses successful model-cache entries so wallet top-ups appear immediately.
+    // Cached failures remain honored to avoid repeated timeouts while MindsHub is down.
     const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
     if (data && typeof data === 'object') return data;
   } catch { /* fall back to static lists */ }
   return null;
 }
 
-// ── MindsHub workspaces ──────────────────────────────────────────────
-//
-// A MindsHub Workspace is an org-internal container that owns hub resources
-// (API keys, artifacts, model entitlements) and lives in the auth service. It is
-// unrelated to the working folder this app calls a workspace.
-//
-// The sidecar makes the call to auth, not us: auth's ingress allows the console
-// origins and no Cowork host, and a per-PR Cowork host cannot be added to a
-// static allow-list. So these two go to our own server and it forwards.
-//
-// The credential travels in its own header because it cannot travel in
-// Authorization. In Electron the main process overwrites that header on every
-// loopback request with the sidecar's own token, so the Keycloak JWT can never
-// arrive under that name; `authFetch` does not even attach it there. The server
-// reads `X-MindsHub-Authorization` first and falls back to Authorization, which
-// is what the web shell uses.
+// MindsHub workspaces own hub resources and entitlements; they are separate from local working
+// folders.
+// Proxy through the sidecar because auth ingress does not allow Cowork origins. Use a separate
+// credential
+// header because Electron overwrites Authorization with its loopback token.
 
 const HUB_CREDENTIAL_HEADER = 'X-MindsHub-Authorization';
 
@@ -1171,16 +1114,9 @@ async function hubHeaders() {
 }
 
 /**
- * The workspace selector's whole state: whether the surface is on, whether the
- * hub could be reached, the rows, and which one is active.
- *
- * Answers the disabled shape for the two DEFINITE answers, and throws for
- * everything else. A 404 is definite: this sidecar has no such route, so it
- * never will and there is nothing to retry. A body that is not an object is the
- * same. A 5xx, a dropped connection, or a sidecar that has not finished
- * starting are all transient, and collapsing those into the disabled shape too
- * is how one blip at launch hid the control for the rest of the session. The
- * caller decides how many times to ask again.
+ * Return disabled only for a missing route (404) or non-object response.
+ * Propagate transient failures so the caller can retry instead of permanently hiding the workspace
+ * selector.
  */
 export async function fetchHubWorkspaces() {
   try {
@@ -1193,12 +1129,8 @@ export async function fetchHubWorkspaces() {
 }
 
 /**
- * Switch the active workspace. Rejects on failure so the caller owns the
- * message; the server refuses a workspace the caller holds no grant on (403),
- * refuses an archived one with its own status so the UI can say retrying will
- * not help (409), and refuses rather than guessing when it cannot reach the hub
- * (503). `err.status` carries the code, which is what lets the caller tell the
- * three apart.
+ * Reject with err.status: 403 means no grant, 409 an archived workspace, and 503 an unreachable
+ * hub.
  */
 export async function setActiveHubWorkspace(workspaceId) {
   return req('/hub/workspaces/active', {
@@ -1219,21 +1151,14 @@ export async function fetchSettings() {
         result.configError = v.configError;
         result.providerLabel = v.provider;
       } catch { /* leave defaults */ }
-      /* Overlay the live model list + effort capability. modelEfforts is the
-         single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. modelEnabled marks the models MindsHub's
-         wallet can't currently pay for so the picker greys them with an "add
-         credits" prompt (absent id ⇒ available), and modelLabels carries the
-         policy's display name per id (absent ⇒ id-derived at the render site).
-         mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
-         we-have rule; SettingsView's on-open refresh goes through the same
-         function. */
+      /*
+       * Overlay live model IDs, effort support, availability, and labels. mergeRecommendedModels
+       * preserves prior data on empty responses.
+       */
       const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
       if (merged) Object.assign(result, merged);
       _lastFetchedSettings = result;
-      // Refresh the first-paint seed so the next cold start renders the server's
-      // values immediately instead of a hard-coded default that could drift
-      // (ENG-1125). Cache-of-the-truth only — never written from anywhere else.
+      // Cache only fetched server settings so the next boot uses their resolved defaults.
       cacheSettings(result);
       return result;
     } catch {
@@ -1244,20 +1169,13 @@ export async function fetchSettings() {
   return op;
 }
 
-/* A MindsHub key the user typed is diverted out of the settings write and
- * handed to the main process, which stores it in the OS keychain and pushes it
- * to the sidecar at runtime. Two copies have to be stopped, not one: the
- * `minds_api_key` row, and the raw value the Settings form also puts inside the
- * `providers_json` card (SettingsView's updateProviderField writes both from one
- * keystroke). `providers_json` is a plain column nothing encrypts, so leaving
- * that half behind would defeat the whole change.
- *
- * `***` is the value already used for a stored-but-unreadable key, so the card
- * round-trips exactly as it does when the server masks it on read.
- *
- * Web keeps writing the key as a setting: there is no main process to route it
- * to, and the runtime hand-over is a desktop mechanism. `supported: false` is
- * how host.mindshubSetUserKey says so. */
+/*
+ * On desktop, store the MindsHub key through main and remove both plaintext copies: minds_api_key
+ * and
+ * providers_json (an unencrypted column). Mask the latter with the existing *** sentinel for round
+ * trips.
+ * If main reports unsupported, web keeps the settings write.
+ */
 async function divertMindsKey(writes) {
   if (!('minds_api_key' in writes)) return writes;
   const key = writes.minds_api_key;
@@ -1289,23 +1207,12 @@ export async function updateSettings(patch) {
     const keys = Object.keys(writes);
     let updated = keys;
 
-    // A `null` in the patch is a tombstone: clear the stored row entirely so
-    // the server's own resolution (enabled-aware defaults) governs the key
-    // again — deliberately NOT a `''` write, which creates a permanent empty
-    // row the raw readers and apply_model_defaults mishandle (ENG-1632).
-    // Tombstones run BEFORE the bulk PUT: the PUT is what repoints providers,
-    // and a repointed provider with the old provider's model row left behind
-    // misroutes every turn — with no retry path, because the next save's
-    // repoint guard sees a matching provider and never re-attempts the
-    // DELETE. Deleting first leaves only consistent, retryable states: a
-    // failed DELETE aborts the save before anything is repointed, and a
-    // failed PUT after the DELETEs leaves the untouched provider on its own
-    // server-side default. Only 404 (no row to clear — the fetched value was
-    // the server's resolved default) and 400 (a pre-ENG-660 server that
-    // doesn't know the key) are skipped; anything else surfaces like the
-    // PUT's own failures. The `k in _lastFetchedSettings` gate skips servers
-    // that never served the key at all (mirrors the BUDGET_FIELDS
-    // absent-key rule).
+    // null deletes the stored row so server defaults apply; an empty string would persist an
+    // overriding row.
+    // Delete before PUT repoints providers: a failed delete then aborts safely, and a failed PUT
+    // leaves the old
+    // provider using its defaults. Ignore only 404 (absent row) and 400 (older server); skip keys
+    // never fetched.
     const tombstones = Object.keys(patch).filter(
       (k) => patch[k] === null && CLIENT_TO_SERVER[k] && k in _lastFetchedSettings,
     );
@@ -1321,9 +1228,7 @@ export async function updateSettings(patch) {
     }
 
     if (keys.length > 0) {
-      // One transactional bulk write: the server applies every key or none, so
-      // a partial failure can't leave settings half-saved the way the former
-      // per-key PUT loop could (ENG-1126).
+      // Write transactionally so failure cannot leave partially saved settings.
       try {
         const res = await req('/settings/', { method: 'PUT', body: JSON.stringify({ values: writes }) });
         if (Array.isArray(res?.updated)) updated = res.updated;
@@ -1366,12 +1271,7 @@ export async function testProviders(providers) {
 }
 
 export async function revealSettingKey(name) {
-  // `/settings/reveal-key` returns UNMASKED provider secrets and is
-  // loopback-only server-side (`require_local`); on hosted the browser
-  // reaches the server from the docker bridge rather than 127.0.0.1, so the
-  // fetch would 403 (ENG-932). Short-circuited here — not just at the
-  // ApiKeyInput call site — so a future caller can't reintroduce the doomed
-  // request.
+  // Secret reveal is loopback-only; hosted requests would always receive 403.
   if (host.isWeb) return '';
   try {
     const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
@@ -1387,9 +1287,7 @@ export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memor
 export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
   const projectId = await resolveProjectId(projectRef, fetchProjects);
   const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
-  // Coalesced per project. ContextCard, ProjectCard, and the list
-  // view's row-stats hook can all ask for the same project's memory
-  // listing at the same moment; this collapses the duplicates.
+  // Coalesce concurrent memory reads for the same project.
   return dedupe(`memory${suffix}`, async () => {
     const [items, projects] = await Promise.all([
       req(`/memory/${suffix}`),
@@ -1444,12 +1342,8 @@ export async function fetchDatasources() {
   return { connections: Array.isArray(data) ? data : [] };
 }
 
-// DEPRECATED: Legacy manual-form save — the real save flow now goes through
-// streamDataVaultSubmission → POST /connectors/submissions. The old
-// POST /datasources and POST /datasources/validate endpoints no longer
-// exist on the server. These stubs exist only because UtilitiesView's
-// retired ConnectView still imports them; they are unreachable in the
-// current routing. Remove when ConnectView is fully deleted.
+// Deprecated: retired ConnectView still imports these stubs. Remove with that view; saves now use
+// streamDataVaultSubmission.
 export async function saveDatasource(_payload) {
   console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { ok: true };
@@ -1464,62 +1358,33 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
-// Untags one file from `project` in a connection's persisted
-// `_picked_files` grant — the "un-pick" counterpart to the PATCH the
-// Google Picker flow calls. Used by the Project files rail to remove a
-// Drive reference row; only removes it from THIS project's rail — if
-// the file is tagged to other projects too, it stays visible there.
+// Remove this project’s picked-file grant; grants for other projects remain.
 export async function deletePickedFile(engine, name, fileId, project) {
   const qs = new URLSearchParams({ project });
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
 }
 
-// Modify-flow read: returns the saved connection as
-//   {
-//     engine, name, createdAt, updatedAt,
-//     secureKeys: string[],                  // names of secret fields
-//     fields: { ... },                       // non-secret values verbatim,
-//                                            // secret slots replaced with
-//                                            // ANTON_VAULT_KEEP sentinel
-//   }
-// The renderer pre-fills the form with `fields`. On submit, any
-// field still carrying the sentinel resolves server-side against
-// the prior record (the modify merge — see anton-core's
-// `resolve_modify_merge`). Empty string means "explicitly clear".
+// Returns { engine, name, createdAt, updatedAt, secureKeys, fields }. fields contains non-secrets
+// and
+// ANTON_VAULT_KEEP for secrets; the server preserves those sentinels on save. Empty strings
+// explicitly clear values.
 export async function fetchSavedConnection(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
 }
 
-// Sentinel string used in the modify-flow round-trip. Mirrors the
-// constant in `anton.core.datasources.data_vault.ANTON_VAULT_KEEP` —
-// they MUST stay in sync. The form panel uses this to detect "user
-// hasn't touched this secret field" on submit; any field whose
-// value is still this exact string is sent back as-is and resolved
-// server-side against the prior record.
+// Keep in sync with anton.core.datasources.data_vault.ANTON_VAULT_KEEP; unchanged secret fields
+// round-trip this value.
 export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 
-// Sentinel used specifically by the Connections detail/edit round-trip —
-// mirrors `cowork.services.connectors.identity.VAULT_KEEP_SENTINEL` on the
-// server. NOT the same value as ANTON_VAULT_KEEP above (that one is anton's
-// own data-vault sentinel for a different subsystem) — despite the similar
-// name, the two are deliberately distinct and must not be conflated.
+// Keep in sync with cowork.services.connectors.identity.VAULT_KEEP_SENTINEL.
+// Connections editing uses this distinct sentinel, not the data-vault value above.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
-// ─── Connector registry ─────────────────────────────────────────────
-//
-// Predefined JSON specs in server/connectors/. Three calls:
-//   list()         → lightweight summaries for the picker UI
-//   get(id)        → the full spec (literal-retrieval, no LLM)
-//   match(query)   → ranked candidates for natural-language input
-//
-// The match endpoint runs a no-LLM cascade (exact id/alias →
-// token-overlap) so most calls finish without a model round-trip.
+// Connector registry: list returns summaries, get retrieves a spec, and match ranks by exact
+// ID/alias then token overlap without an LLM.
 
-// `includeUnavailable` only changes the org-mode (cloud) response: the server
-// then also returns connectors the hosted build can't run, each flagged
-// `cloud_available: false`, so the picker can list them as desktop-only.
-// Against a server without that param the flag is simply absent and every
-// connector reads as available — the old behaviour.
+// In org mode, includeUnavailable includes desktop-only connectors with cloud_available: false.
+// Older servers omit the flag, which callers treat as available.
 export async function fetchConnectors({ includeUnavailable = false } = {}) {
   try {
     const path = includeUnavailable
@@ -1543,10 +1408,8 @@ export async function matchConnector(query, maxCandidates = 3) {
   });
 }
 
-// Save a connector connection through the JSON-declared field
-// schema (bypasses Anton-core's built-in registry — needed for
-// OAuth + service-account flows where the legacy email/password
-// engine would reject the credential shape).
+// Use connector-declared schemas; the legacy registry rejects OAuth/service-account credential
+// shapes.
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
   return req('/connectors/connections/save', { method: 'POST', body });
@@ -1560,16 +1423,8 @@ export async function validateAndSaveConnector(connectorId, payload) {
   return req('/connectors/connections/validate-and-save', { method: 'POST', body });
 }
 
-// ─── Web (redirect-based) connector OAuth ──────────────────────────────────
-// The desktop app authenticates connectors through an Electron loopback
-// PKCE flow (host.oauthConnect). The web SPA can't open a loopback server,
-// so it drives the server-side redirect flow instead:
-//   1. startConnectorOAuth → server mints PKCE + state, returns authUrl.
-//   2. open authUrl (new tab); the user consents; the provider redirects
-//      to the server callback, which exchanges the code + saves the vault
-//      record itself.
-//   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
-// The SPA never handles the code or tokens directly.
+// Web connector OAuth starts server-side PKCE, opens authUrl, then polls for success/error.
+// The server exchanges the code and saves credentials; the SPA never handles OAuth codes or tokens.
 
 export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
   return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
@@ -1603,20 +1458,9 @@ export async function discoverPostHogProjects({ personalApiKey, host, customHost
   });
 }
 
-// Submit a data-vault form and stream the cowork agent's response.
-//
-// Replaces the prior fire-and-forget POST. The agent endpoint:
-//   1. stages the values into the vault keyed by submission_id
-//   2. validates / probes the connection server-side
-//   3. emits a Response-API-compatible SSE stream with text deltas,
-//      a `data-vault-form-patch` block, and `response.completed` with
-//      a status field
-//
-// We pipe those events through the same callbacks the chat stream
-// uses, so the consumer (App.jsx) can treat the result as a fresh
-// assistant turn — no separate render path needed.
-//
-// Field VALUES never round-trip through the response.
+// Stage and validate vault values server-side, then stream text, data-vault-form-patch, and
+// completion status
+// through the chat callbacks. Field values must never appear in the response.
 export function streamDataVaultSubmission({
   formId, conversationId, formSpec, values, skipped, name, method,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
@@ -1706,12 +1550,8 @@ export function streamDataVaultSubmission({
   return ctrl;
 }
 
-// Backwards-compatible non-streaming wrapper — kept so callers that
-// just need to stage values without streaming back can still do so.
-// (Currently unused by the form panel; might disappear in a cleanup.)
+// Compatibility wrapper for callers that do not consume the submission stream.
 export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec, name, method }) {
-  // Fire the streaming endpoint but only consume the JSON body of
-  // the response — useful for tests/probes that don't want SSE.
   const res = await authFetch(`${BASE}/connectors/submissions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1726,7 +1566,6 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
     }),
   });
   if (!res.ok) throw await responseError(res, `Form submit failed (${res.status})`);
-  // Consume the stream and return a summary.
   const text = await res.text();
   return { status: 'streamed', body: text };
 }
@@ -1764,12 +1603,8 @@ export async function activateArtifactVersion(path, md5) {
   return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
-// The path to send to publish/unpublish for an artifact. Prefer the
-// artifact *folder* so folder-based artifacts publish as a unit — the
-// server resolves the primary file for static artifacts and treats
-// fullstack apps as a directory. Legacy loose-HTML and chat-bubble
-// artifacts carry no `folder`, so fall back to the primary file path
-// (the server then climbs to the artifact root itself).
+// Prefer the artifact folder so publication includes the whole artifact; legacy loose files fall
+// back to their primary path.
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
@@ -1779,10 +1614,8 @@ export async function fetchBrowseStatus() {
   return req('/browse/status');
 }
 
-// ─── Channels ───────────────────────────────────────────────────────────────
-// Wraps /api/v1/channels/* on cowork-server. Plugins advertise a credential
-// schema + capability flags so the UI knows which fields/buttons to render;
-// secrets are masked on read (is_set / value:null) and only sent on write.
+// Channel plugins advertise credential schemas and capabilities. Reads mask secrets as
+// is_set/value:null; writes carry replacements.
 
 export async function fetchChannelPlugins() {
   try {
@@ -1927,34 +1760,30 @@ export async function fetchAttachments(projectName, sessionId, { ids } = {}) {
 }
 
 export async function deleteAttachment(id, { projectName, sessionId } = {}) {
-  // Prefer the path-scoped route — the legacy `DELETE /attachments/{id}`
-  // looked up a JSON state file the upload code never populates and
-  // always 404'd. When the caller passes project + session, hit the
-  // new endpoint that walks the on-disk directory directly.
+  // Use the scoped path when available; the legacy ID-only route consults state that uploads do not
+  // populate.
   if (projectName && sessionId && id) {
     const enc = encodeURIComponent;
     return req(`/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(id)}`, { method: 'DELETE' });
   }
-  // Back-compat — kept so any older call site that hasn't migrated
-  // still hits the original route (and gets the same 404 it always
-  // did, surfacing the problem rather than failing silently).
+  // Retain the ID-only route for legacy callers without project/session coordinates.
   return req(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-/** Absolute URL to the attachment's underlying file, served inline so
- * the browser's default handler (image / pdf / text preview) takes
- * over when the row is clicked. Works in both Electron and the web
- * SPA — `host.openExternal(url)` does the right thing for each. */
+/**
+ * Absolute inline-file URL for browser image/PDF/text preview, usable through host.openExternal in
+ * either shell.
+ */
 export function attachmentRawUrl(projectName, sessionId, attachmentId) {
   if (!projectName || !sessionId || !attachmentId) return null;
   const enc = encodeURIComponent;
   return `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(attachmentId)}/raw`;
 }
 
-/** Promote a task upload to a project-level file. Returns
- * `{ ok, project_path, absolute_path }` on success. The client must
- * refresh BOTH the task uploads list and the project files list — the
- * file moves out of one and into the other on disk. */
+/**
+ * Returns { ok, project_path, absolute_path }. Refresh both task uploads and project files:
+ * promotion moves the file between them.
+ */
 export async function moveAttachmentToProject(projectName, sessionId, attachmentId) {
   if (!projectName || !sessionId || !attachmentId) {
     throw new Error('projectName, sessionId, and attachmentId are required.');
@@ -1988,10 +1817,6 @@ export async function unpinTask(id) {
   return req(`/pins/${encodeURIComponent(id)}?item_type=conversation`, { method: 'DELETE' });
 }
 
-// Rename + delete + move are powered by the conversation patch/delete
-// endpoints. The server's PATCH supports both `title` and `project`
-// in one call; we expose them as separate helpers for clearer call
-// sites.
 export async function renameConversation(id, title) {
   return req(`/conversations/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -2007,11 +1832,8 @@ export async function patchConversation(id, body) {
   });
 }
 
-// Delete one user→answer cycle (the question + the assistant
-// response, including any internal tool_use/tool_result blocks
-// anton generated during the turn). `turnIndex` is the 0-based
-// displayable bubble index — same value used to look up events
-// in the per-turn sidecar.
+// Delete a user/assistant cycle including internal tool blocks. turnIndex is the zero-based
+// displayable bubble index used by the event sidecar.
 export async function deleteConversationTurn(id, turnIndex) {
   const res = await authFetch(
     BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
@@ -2030,10 +1852,7 @@ export async function deleteConversationTurn(id, turnIndex) {
 }
 
 export async function deleteConversation(id) {
-  // Idempotent — if the server says "not found", treat that as
-  // success. The conversation may have been removed by a previous
-  // attempt or a concurrent client; either way the desired end state
-  // ("gone from server") is achieved.
+  // Treat 404 as success: retries and concurrent clients may already have deleted the conversation.
   const res = await authFetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -2055,10 +1874,8 @@ export async function moveConversation(id, projectName) {
   });
 }
 
-// Move a task to another project and (when moveObjects) relocate the
-// artifacts the task created + re-tag its files. Backed by
-// POST /conversations/{id}/move. The destination project must exist —
-// the caller creates a new one first, then moves to it.
+// The destination project must already exist. moveObjects also relocates task artifacts and retags
+// files.
 export async function moveTaskToProject(id, projectName, moveObjects = true) {
   return req(`/conversations/${encodeURIComponent(id)}/move`, {
     method: 'POST',
@@ -2224,9 +2041,8 @@ export const MOCK_DATA = {
   },
 };
 
-// ── Artifact comments (Plan 5) ────────────────────────────────────────────
-// Renderer holds no token; cowork-server attaches the user's MindsHub creds and
-// proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
+// Scope artifact comments by {userDir}/{reportId}. The server supplies MindsHub credentials; the
+// renderer holds no comment token.
 
 function _commentsBase(userDir, reportId) {
   return `/artifact-comments/${encodeURIComponent(userDir)}/${encodeURIComponent(reportId)}`;
@@ -2293,10 +2109,9 @@ export function deleteCommentReply(userDir, reportId, threadId, replyId) {
   );
 }
 
-// Open the SSE stream via fetch + iterateSSE (NOT EventSource — the renderer
-// can't set headers and we route through cowork-server). Returns an
-// AbortController; callers call .abort() on unmount. onExpired fires on a
-// terminal 401/403 so the UI can stop instead of reconnecting forever.
+// Use fetch because EventSource cannot set the required headers. Abort on unmount; onExpired
+// handles
+// terminal 401/403 responses so callers stop reconnecting.
 export function openCommentsStream(userDir, reportId, since, { onEvent, onError, onExpired } = {}) {
   const ctrl = new AbortController();
   (async () => {
