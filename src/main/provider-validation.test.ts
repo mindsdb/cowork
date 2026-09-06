@@ -10,11 +10,8 @@ import {
 } from './provider-validation';
 
 /*
- * These assert what goes on the wire, which is the whole defect: MindsHub bills
- * per model, so probing a model the wallet has to pay for is denied for an
- * account with no balance, and the denial is indistinguishable from a bad key.
- * A packaged desktop build runs THIS copy of the validators, not the sidecar's,
- * so without these the desktop half of the fix was covered by nothing.
+ * Verify desktop wire requests use an affordable probe; paid-model denial on an empty wallet must
+ * not look like an invalid key.
  */
 function recorder(status = 200, body = '{}') {
   const calls: Array<{ url: string; payload: any }> = [];

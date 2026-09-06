@@ -1,23 +1,6 @@
-// PKCE OAuth helper for desktop OAuth 2.0 flows. Spawns a one-off
-// loopback HTTP server on 127.0.0.1, opens the user's default
-// browser to the provider's consent screen, waits for the redirect,
-// and exchanges the authorization code for tokens.
-//
-// Supports two patterns:
-//
-//   A. "Sign in with X" — Anton's hosted desktop OAuth client.
-//      Caller passes `clientId`, no `clientSecret`. PKCE handles the
-//      authentication. Used when the connector JSON ships its own
-//      `oauth.client_id`.
-//
-//   B. BYOK — user provides their own `client_id` + `client_secret`
-//      (e.g. from Google Cloud Console). Same flow plus the secret
-//      goes in the token-exchange POST body. Used when the JSON
-//      doesn't ship a hosted client_id; the renderer collects the
-//      values from the form and forwards them here.
-//
-// All shipped errors are user-friendly strings — the renderer paints
-// them straight into the form's error banner.
+// Desktop PKCE OAuth uses a temporary loopback server and the OS browser.
+// Hosted clients omit clientSecret; BYOK clients include it in token exchange.
+// Errors are displayed directly in the renderer’s form banner.
 
 import * as http from 'http';
 import * as net from 'net';
@@ -38,29 +21,16 @@ export interface OAuthConnectOpts {
   scopes: string[];
   /** Client authentication style at the token endpoint. */
   tokenAuthStyle?: 'body' | 'basic';
-  /**
-   * Extra params merged into the auth URL. Provider-specific —
-   * e.g. Google needs `access_type=offline` + `prompt=consent` to
-   * always return a refresh_token.
-   */
+  /** Provider-specific authorization params, e.g. offline access and consent for refresh tokens. */
   extraAuthParams?: Record<string, string>;
   /**
-   * Fixed loopback port to bind the redirect URI to — required for
-   * providers (Linear, confirmed 2026-07-16) that reject any
-   * redirect_uri not pre-registered exactly, including port. Google
-   * accepts any 127.0.0.1 port, so this is omitted for it. Sourced
-   * from the connector spec's oauth.redirect_port.
+   * Fixed port for providers requiring an exact registered redirect URI; omit when dynamic ports
+   * are accepted.
    */
   redirectPort?: number;
   /** Loopback hostname to advertise in the provider redirect URI. */
   redirectHost?: '127.0.0.1' | 'localhost' | '::1';
-  /**
-   * How long the loopback server waits for the browser callback before
-   * giving up. Defaults to CALLBACK_TIMEOUT_MS (3 min) — enough to type
-   * credentials. Flows that legitimately pause mid-browser (ENG-917:
-   * Keycloak parks sign-up on VERIFY_EMAIL until the user clicks the
-   * emailed link, sometimes minutes later) pass a longer window.
-   */
+  /** Override the callback deadline for flows that pause for email verification. */
   callbackTimeoutMs?: number;
 }
 
@@ -74,24 +44,14 @@ export interface OAuthConnectResult {
   token_type?: string;
 }
 
-// Long enough to type credentials (or sign up), short enough that a
-// lost callback — e.g. the user authorized a STALE tab from an earlier
-// app launch, whose loopback port is dead — surfaces as an actionable
-// error instead of an endless spinner.
+// Bound abandoned browser callbacks while allowing time to sign in.
 const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 
-// Hard deadline for the code→token exchange. Node's fetch has none by
-// default, so a black-holed connection would hang forever — the browser
-// already shows "You're authorized!" by then, and the app would just
-// never sign in with zero feedback (ENG-761).
+// Bound code exchange independently; a successful browser callback does not guarantee the token
+// request returns.
 const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
 
-// Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
-// the loopback server down without waiting for the timeout.
-// The desktop SSO flow uses this so the renderer's "Cancel login"
-// button can abort an OAuth that's stalled (closed browser, blocked
-// popup, user changed their mind) instead of leaving a phantom
-// listener bound to a random loopback port for 5 minutes.
+// Keep the active listener cancellable without waiting for the callback timeout.
 let _activeAttempt: { cancel: () => void } | null = null;
 
 export function cancelCurrentOAuth(): void {
@@ -105,10 +65,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
   }
 
-  // Only one attempt at a time. A dangling previous attempt (double-
-  // click, retry after a hung exchange) would otherwise keep its own
-  // loopback server alive — two live callback ports and whichever tab
-  // the user completes decides which promise wins (ENG-761).
+  // Cancel prior attempts so only one callback listener can complete sign-in.
   cancelCurrentOAuth();
 
   let server: http.Server | null = null;
@@ -127,15 +84,12 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // both finding a port can each miss the other and create live attempts.
   _activeAttempt = attempt;
 
-  // PKCE: random verifier (43-128 chars), SHA-256 challenge. The
-  // verifier is held in this process and only sent during the token
-  // exchange; the challenge is what travels through the browser.
+  // Keep the PKCE verifier in this process until token exchange; send only the challenge through
+  // the browser.
   const verifier = base64UrlEncode(crypto.randomBytes(32));
   const challenge = base64UrlEncode(
     crypto.createHash('sha256').update(verifier).digest()
   );
-  // Random state to bind the redirect to this attempt and reject
-  // any callback that doesn't echo it back.
   const state = base64UrlEncode(crypto.randomBytes(16));
 
   let port: number;
@@ -156,7 +110,6 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   const redirectHost = opts.redirectHost || '127.0.0.1';
   const redirectUri = `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
 
-  // Build the authorize URL.
   const authParams = new URLSearchParams({
     response_type: 'code',
     client_id: opts.clientId,
@@ -169,29 +122,11 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   });
   const authUrl = `${opts.authUrl}?${authParams.toString()}`;
 
-  // Wait for the redirect — server stays up until either the
-  // callback fires, the safety timeout elapses, or the renderer
-  // cancels the flow (via cancelCurrentOAuth()).
   const { server: loopbackServer, resultPromise: codePromise } = startLoopbackServer<string>(port, (resolve, reject) => {
     rejectCode = reject;
     return http.createServer((req, res) => {
-      // Force the connection closed after this one response. For a
-      // fixed-port provider (redirectPort set, e.g. Supabase) the *same*
-      // port gets reused across repeated connects of the same connector —
-      // and browsers pool/reuse HTTP/1.1 keep-alive connections per
-      // host:port. Without this, a browser could still be holding a
-      // keep-alive connection open from a PRIOR attempt's success page
-      // (this server calls `server.close()` on completion, but that only
-      // stops accepting *new* connections — it deliberately leaves already
-      // -open ones alive). A later attempt's real redirect could then land
-      // on that stale connection's original handler, which is still
-      // checking against the PRIOR attempt's `state` — producing an
-      // inexplicable state mismatch on an otherwise completely correct
-      // callback (confirmed live: the "received state" matched the new
-      // attempt's own authorize request exactly, but was checked against
-      // the previous attempt's `state`). `Connection: close` plus
-      // destroying the socket after responding guarantees every attempt's
-      // callback is only ever answered by that attempt's own server.
+      // Close the response connection so fixed-port retries cannot reuse a previous attempt’s
+      // handler and state.
       res.setHeader('Connection', 'close');
       res.on('finish', () => { try { req.socket.destroy(); } catch {} });
       try {
@@ -213,13 +148,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         const code = url.searchParams.get('code');
         const returnedState = url.searchParams.get('state');
         if (!code || !secureEqual(returnedState, state)) {
-          // Don't reject (and tear the server down) on a callback hit that
-          // doesn't carry our exact code+state — a stray hit (a link
-          // preview/prefetch, or anything else that manages to reach this
-          // port) would otherwise abort a legitimate, still-in-flight
-          // authorization moments before its real callback arrives. Respond
-          // blandly and keep listening; only an explicit provider `error`
-          // above, or the overall CALLBACK_TIMEOUT_MS, ends the attempt.
+          // Ignore stray or mismatched callbacks without ending the legitimate authorization
+          // attempt.
           res.statusCode = 400;
           res.setHeader('Content-Type', 'text/html');
           res.end(callbackPage('Waiting for authorization…', 'This tab is not the active sign-in — you can close it.'));
@@ -246,11 +176,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     );
   });
 
-  // Promise.race only subscribes AFTER the openExternal await below. A
-  // cancel (double-click, logout, second flow) landing in that gap would
-  // reject codePromise with no listener — an unhandledRejection, which
-  // crashes the main process into Electron's error dialog. Mark both
-  // promises as observed now; the race still receives the rejection.
+  // Observe rejections before openExternal: cancellation can arrive before Promise.race subscribes.
   codePromise.catch(() => {});
   timeoutPromise.catch(() => {});
 
@@ -272,7 +198,6 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     setTimeout(() => closeServer(server), 300);
   }
 
-  // Exchange the code for tokens.
   const tokenBody = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -291,15 +216,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
 
   try {
-    // electron.net.fetch, not the global Node fetch: this request needs to
-    // succeed everywhere the browser we just redirected from does. Node's
-    // fetch (undici) has its own TLS stack and ignores OS proxy config, so on
-    // a corporate Windows machine with TLS-inspecting AV or a proxy-only
-    // egress it can fail here even though the browser leg above just
-    // succeeded against the same host — surfacing as an opaque "fetch
-    // failed" with no way in. net.fetch runs on Chromium's network stack
-    // (same as shell.openExternal's browser), inheriting the OS proxy
-    // config and certificate trust store.
+    // Use Chromium networking for OS proxy and certificate settings; Node fetch can fail where
+    // browser sign-in succeeds.
     const res = await electronNet.fetch(opts.tokenUrl, {
       method: 'POST',
       headers: tokenHeaders,
@@ -339,14 +257,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
 }
 
-// Shared loopback-server scaffolding — binds an http.Server around a
-// caller-supplied request handler and wires its resolve/reject into a
-// promise. Used by both oauthConnect (above) and drive-picker-service.ts's
-// openDrivePickerFlow, which otherwise hand-roll the identical
-// server/promise wiring. Each caller keeps its OWN `_activeAttempt`
-// singleton and cancel semantics — independent flows (an OAuth connect and
-// a Drive picker session) can legitimately run concurrently, so that part
-// isn't shared.
+// Shared server/promise wiring for OAuth and Picker. Keep their active-attempt state separate
+// so these independent flows can run concurrently.
 export function startLoopbackServer<T>(
   port: number,
   buildServer: (resolve: (value: T) => void, reject: (err: Error) => void) => http.Server,
@@ -360,8 +272,6 @@ export function startLoopbackServer<T>(
   return { server, resultPromise };
 }
 
-// Races `promise` against a timeout that rejects with `message` — the
-// shared "safety timeout" shape both loopback flows use.
 export function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   const timeoutPromise = new Promise<T>((_, reject) => {
     setTimeout(() => reject(new Error(message)), ms);
@@ -382,12 +292,8 @@ export function findFreePort(): Promise<number> {
   });
 }
 
-// Binds a specific port rather than letting the OS pick one — for
-// providers that require an exact, pre-registered redirect_uri (see
-// OAuthConnectOpts.redirectPort). Rejects if the port's already taken;
-// callers surface that as an actionable "close whatever's using it" error
-// rather than silently falling back to a random port, which would just
-// reproduce the same redirect_uri mismatch against the provider.
+// Reject an occupied fixed port; choosing another would violate the provider’s registered redirect
+// URI.
 function bindFixedPort(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -402,19 +308,8 @@ function bindFixedPort(port: number): Promise<number> {
 export function closeServer(server: http.Server | null) {
   if (!server) return;
   try { server.close(); } catch {}
-  // `.close()` alone only stops NEW connections — it leaves existing ones
-  // (including ones that never sent a request at all, e.g. a browser's
-  // speculative/idle keep-alive socket to this origin) tracked and alive
-  // until they end on their own. For a fixed-port provider (redirectPort
-  // set, e.g. Supabase) the same port is reused across repeated connects of
-  // the same connector — a later attempt's real callback could land on such
-  // a leftover idle connection and be answered by THIS (superseded)
-  // server's original handler/state instead of the new attempt's. Per-
-  // response `Connection: close` handles connections that complete a
-  // request, but an idle one that never sent a request wouldn't trigger
-  // that path at all — `closeAllConnections()` (Node 18.2+) force-ends
-  // every socket this server is tracking, active or idle, so nothing from
-  // a superseded attempt can ever answer a later one's callback.
+  // close() leaves existing sockets alive. Destroy them so fixed-port retries cannot reach an old
+  // attempt’s handler.
   try { server.closeAllConnections(); } catch {}
 }
 
@@ -426,11 +321,7 @@ export function base64UrlEncode(buf: Buffer): string {
     .replace(/\//g, '_');
 }
 
-// Constant-time comparison for the PKCE state param, so response timing
-// can't leak how much of it an attacker has guessed correctly. The length
-// check is unavoidable (timingSafeEqual throws on mismatched lengths) and
-// isn't itself sensitive — state is a fixed-length random value, so a
-// length mismatch alone gives an attacker nothing to narrow down.
+// Compare state in constant time; check lengths first because timingSafeEqual throws on a mismatch.
 function secureEqual(a: string | null, b: string): boolean {
   if (a === null) return false;
   const bufA = Buffer.from(a);
@@ -444,8 +335,6 @@ async function safeReadText(res: Response): Promise<string> {
 }
 
 function callbackPage(title: string, body: string): string {
-  // Minimal styled HTML returned to the browser tab — same theme
-  // as Anton's onboarding so it doesn't feel like a default 404.
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>

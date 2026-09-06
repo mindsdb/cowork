@@ -1,15 +1,9 @@
 import { readEnvFile } from './cowork-home';
 
-// Server bearer token (COWORK_AUTH_TOKEN) for the loopback API when the server
-// runs with COWORK_REQUIRE_AUTH=true. Read once and cached for the server's
-// lifetime; resetServerAuthTokenCache() clears it so a token a freshly-restarted
-// server generated is picked up. `undefined` = not yet read, `null` = no token
-// (auth disabled).
-//
-// Renderer requests get this injected at the network layer by the webRequest
-// hook in index.ts's createWindow(). Main-process fetches (OAuth connect/
-// revoke/refresh, orphan-loop resume) never pass through that hook, so they
-// must call authHeader() themselves.
+// Cache the loopback bearer token for one server lifetime; reset after restart.
+// undefined means unread, null means auth disabled.
+// Renderer requests receive headers centrally; main-process fetches must call authHeader
+// themselves.
 let cachedAuthToken: string | null | undefined;
 
 export function getServerAuthToken(): string | null {

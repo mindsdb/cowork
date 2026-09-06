@@ -14,12 +14,8 @@ import {
 } from './sign-out-restart';
 
 /*
- * Sign-out used to await the sidecar restart, so the AUTH_LOGOUT
- * reply could not arrive for as long as a restart takes (up to the 180s start
- * cap, or longer behind the lifecycle queue) and the confirm dialog sat locked
- * on "Signing out…" the whole time. These tests are what that ordering never
- * had: the handler had no coverage at all while it lived in index.ts, which
- * imports Electron and cannot load under vitest.
+ * Logout must reply without waiting for sidecar restart, which can consume the full start cap or
+ * queue behind maintenance.
  */
 
 function deferred<T>() {
@@ -59,11 +55,6 @@ afterEach(async () => {
 });
 
 describe('performSignOutCleanup', () => {
-  /*
-   * The regression test for the trap. Before this change the restart was two
-   * awaits inside this sequence, so this promise could not resolve until the
-   * sidecar was back up.
-   */
   it('does not wait on the sidecar restart', async () => {
     const restartStarted = vi.fn();
     const deps = makeDeps({ startSidecarFlush: restartStarted });
@@ -75,19 +66,16 @@ describe('performSignOutCleanup', () => {
   });
 
   /*
-   * The same claim against the real restart module rather than a stub, wired
-   * the way index.ts wires it. `startServer` never resolves here, standing in
-   * for a start that runs to its 180 second cap: the sequence still replies
-   * and still reloads, which is exactly what it could not do before.
+   * Use the real restart module with a never-resolving start to prove logout still replies and
+   * reloads.
    */
   it('replies and reloads while a sidecar start that never finishes is still running', async () => {
     const start = deferred<void>();
     const startServer = vi.fn(() => start.promise);
     const deps = makeDeps({
       /*
-       * Hands back the pending flush rather than discarding it, so an `await`
-       * reintroduced on this call would hang the sequence and fail this test.
-       * That await is the defect.
+       * Return the pending flush so accidentally awaiting it would hang the sequence and fail this
+       * test.
        */
       startSidecarFlush: () => startSignOutSidecarFlush({
         isServerRunning: () => true,
@@ -125,9 +113,8 @@ describe('performSignOutCleanup', () => {
   });
 
   /*
-   * Boot routing falls back to the .env when it cannot reach the sidecar, so a
-   * reload that overtook the scrub could read a leftover key and route a
-   * signed-out user back into the app.
+   * Scrub .env before reload; boot's offline fallback could otherwise route a signed-out user using
+   * leftover keys.
    */
   it('scrubs the .env and clears provider state before the reload', async () => {
     const order: string[] = [];
@@ -167,11 +154,7 @@ describe('performSignOutCleanup', () => {
     revoke.resolve();
   });
 
-  /*
-   * keychain-fallback's write is unguarded, so on a machine with no OS secure
-   * store this throws. An unguarded throw here would skip the token clear, the
-   * DB clear, the .env scrub and the reload, which is the original wedge.
-   */
+  /* A fallback-keychain write failure must not skip token/DB clearing, env scrubbing or reload. */
   it('finishes the sequence when clearing the OS credential throws', async () => {
     const deps = makeDeps({
       forgetMindsCredential: vi.fn(async () => { throw new Error('no secure store'); }),
@@ -208,9 +191,8 @@ describe('performSignOutCleanup', () => {
   });
 
   /*
-   * The DB clear is raced against a 5s timeout, so a wedged sidecar rejects
-   * here. It must not stop the rest: the tokens are already gone and the .env
-   * scrub and the reload still have to happen.
+   * After DB-clear timeout, credentials are already cleared locally; env scrubbing and reload must
+   * continue.
    */
   it('presses on when the sidecar never answers the DB clear', async () => {
     const deps = makeDeps({
@@ -232,12 +214,7 @@ describe('performSignOutCleanup', () => {
   });
 });
 
-/*
- * The latch exists because the reply now runs ahead of the restart. The
- * reloaded page can reach a sidecar that has not gone down yet and hear
- * config_ready: true from it, which would route the person who just signed out
- * back into the app.
- */
+/* Hold routing after logout reply: a sidecar not yet restarted can still report config_ready=true. */
 describe('sign-out routing latch', () => {
   beforeEach(() => {
     endSignOutRouting();
