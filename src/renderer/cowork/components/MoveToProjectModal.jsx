@@ -1,8 +1,5 @@
-// Move a task to another project. Search the existing projects or type a
-// new name to create one, and choose whether to bring the task's artifacts
-// and files along ("move everything", default on). The actual move +
-// (optional) object relocation happens server-side; the parent's onConfirm
-// creates the project if it's new, then calls the move endpoint.
+// onConfirm creates a new project if needed, then requests the server-side move and optional file
+// relocation.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
@@ -16,14 +13,12 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
 
-  // Reset each time the modal opens for a (possibly different) task.
   useEffect(() => {
     if (open) {
       setQuery('');
       setSelected(null);
       setMoveEverything(true);
       setBusy(false);
-      // focus the search after the modal paints
       const t = setTimeout(() => inputRef.current?.focus(), 30);
       return () => clearTimeout(t);
     }
@@ -39,8 +34,6 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
     return others.filter((p) => projectMatches(p, lc));
   }, [projects, currentName, q]);
 
-  // A typed name that matches no existing project (and isn't the current
-  // one) becomes a "create new project" option.
   const exactMatch = projects.some((p) => projectNamed(p, q));
   const canCreateNew = q.length > 0 && !exactMatch && q !== currentName;
 

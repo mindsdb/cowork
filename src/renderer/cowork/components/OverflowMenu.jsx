@@ -25,19 +25,13 @@ export function OverflowMenu({
     <button
       type="button"
       aria-label={label}
-      // Kept as native `title` (not ui/Tooltip, ENG-1152): this button is
-      // also the Menu's trigger, so wrapping it in a Tooltip would nest two
-      // Base UI triggers competing for the same ref/handlers. Deferred until
-      // the trigger forwards a ref cleanly.
+      // Keep native title until the trigger forwards its ref: wrapping it in Tooltip creates
+      // competing Base UI triggers. ENG-1152.
       title={title}
       disabled={disabled}
       className={clsx(
-        // No `justify-*` in the base so callers can right/left-align the
-        // icon via `triggerClassName` (Tailwind can't resolve a base
-        // `justify-center` vs a passed `justify-end` — both land in the
-        // class list). The single icon child stays centered by default
-        // because the trigger box is icon-sized unless a caller stretches
-        // it (e.g. ContextCard's `absolute inset-0 justify-end`).
+        // Leave justify-* to callers so stretched triggers can align their icon without conflicting
+        // Tailwind classes.
         'inline-flex items-center rounded border-0 bg-transparent p-0',
         'text-ink-4 hover:text-ink focus-visible:text-ink',
         'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50',

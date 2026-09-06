@@ -1,14 +1,5 @@
-// Display modal — pick light/dark theme + style (Normal / 8-Bit). Opened
-// from the bottom-right corner button. Theme/style changes apply live (the
-// parent's setTheme/setSkin persist + repaint via App.jsx effects), so
-// there's no Apply/Cancel — close when you like the look.
-//
-// Coding mode has its own bare toggle next to this modal's corner button
-// (App.jsx) — not offered here, so there's one control for it, not two.
-//
-// "Custom" lives in Settings → Appearance (it needs the token recipe editor),
-// so it's intentionally not offered here — this is the quick theme + 8-bit
-// switch.
+// Theme/style changes persist immediately through the parent. Custom token editing lives in
+// Settings.
 
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { SKINS } from '../../lib/skins';
