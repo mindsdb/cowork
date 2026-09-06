@@ -1,11 +1,5 @@
-// Which rows of a conversation actually render (ENG-1304, PR #580 review).
-//
-// A turn that failed before producing output hydrates as an assistant
-// message with no content and no steps, immediately followed by its error
-// (or provider_required) row. ChatView skips that empty bubble — and the
-// orphan check must agree, because the skipped bubble used to be the only
-// row carrying the turn's delete affordance. One predicate, two callers,
-// so the two rules can't drift apart.
+// Share this predicate between bubble rendering and orphan detection so an invisible failed turn
+// retains a delete affordance.
 
 export function isSkippedFailedAssistant(messages, atIdx) {
   const a = messages[atIdx];

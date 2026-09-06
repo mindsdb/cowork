@@ -37,9 +37,8 @@ describe('skillsStore catalogue provenance', () => {
   });
 
   it('re-fetches for a new subscriber after a failed load', async () => {
-    // A failed first load leaves an unverified empty list behind. Nothing
-    // re-fetches on its own, so without this every card would keep treating a
-    // shared skill as absent (and creatable) for the rest of the session.
+    // Retry a failed initial catalog load so unverified absence cannot leave shared skills falsely
+    // creatable for the session.
     const shared = { label: 'shared-skill', capabilities: { canEdit: false } };
     api.fetchSkills
       .mockRejectedValueOnce(new Error('network unavailable'))
