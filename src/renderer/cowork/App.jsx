@@ -792,13 +792,8 @@ function AppCore() {
     (ids || []).forEach((tid) => { if (tid) delete liveStepsRef.current[tid]; });
   }, []);
 
-  // Same, plus every alias of the conversation. Stop only knows the adopted
-  // id, but a stream that started on a `tmp-…` id wrote its steps under BOTH
-  // keys, and the pre-adoption one is unreachable by name once the task has
-  // been renamed — it would leak in the map forever. The aliases hold the
-  // identical steps array (the only writer is updateLiveStepsAndDrainQueue,
-  // which assigns the same reference to every id), so value identity is
-  // exactly the alias set.
+  // Temporary and canonical IDs share the same steps array. Remove all entries with that identity
+  // so Stop, which knows only the adopted ID, also releases the temporary alias.
   const releaseLiveStepsWithAliases = useCallback((taskId) => {
     if (!taskId) return;
     const dying = liveStepsRef.current[taskId];
@@ -809,13 +804,8 @@ function AppCore() {
     });
   }, []);
 
-  // Retires ONE question from the mirror (see retireQuestionFromSteps for why
-  // granularity matters), leaving anything else the conversation is blocked on
-  // intact.
-  //
-  // Aliases share one array reference (see releaseLiveStepsWithAliases), so the
-  // replacement is written under every key holding it — otherwise the aliases
-  // diverge and the pre-adoption id keeps serving the retired question.
+  // Retire one question across every alias sharing its steps array, preserving other pending
+  // questions.
   const retireLiveQuestion = useCallback((conversationId, questionId) => {
     if (!conversationId) return;
     const steps = liveStepsRef.current[conversationId];
@@ -837,14 +827,9 @@ function AppCore() {
       cidToCancel = streamingTask?.id ?? null;
     }
 
-    // Ask the server to cancel *before* any local teardown. On `error` the
-    // request never landed, so the cancel flag was not written and the remote
-    // turn may still be running (and spending tokens). Bail out with the
-    // in-flight state — Stop control, heartbeat, live stream — fully intact so
-    // the toast's "try again" is actually actionable; tearing down first would
-    // strip the very UI the user needs to retry. This ordering is the whole
-    // point of ENG-1919. The `silent` idle-timeout caller still fires the
-    // cancel but tears down regardless of the result and never toasts.
+    // Cancel server-side before local teardown. On failure, retain Stop and stream state so the
+    // user can retry.
+    // Silent idle-timeout cleanup still tears down regardless of cancellation outcome.
     if (cidToCancel) {
       const cancelResult = await cancelResponse(cidToCancel);
       if (!silent && cancelResult?.status === 'error') {
@@ -884,20 +869,15 @@ function AppCore() {
 
     if (cidToCancel) {
       markInFlightDone(cidToCancel);
-      // Stop kills the run, and with it any question that run was waiting
-      // on. Without this the composer stays hijacked: the next send would be
-      // routed into submitAnswer, 404 on the dead run, and the user's text
-      // would be discarded.
+      // Release the stopped turn’s question so the next send is not redirected to a dead run.
       releaseLiveStepsWithAliases(cidToCancel);
       setMessageQueue((prev) => {
         const next = { ...prev };
         delete next[cidToCancel];
         return next;
       });
-      // Prune the ref in lockstep: the sibling drain below reads
-      // messageQueueRef synchronously and the state→ref effect hasn't run yet,
-      // so without this it would still see (and could re-pick) the cancelled
-      // task's own queue.
+      // Prune the ref synchronously before draining siblings; the state-to-ref effect has not run
+      // yet.
       const prunedQueue = { ...messageQueueRef.current };
       delete prunedQueue[cidToCancel];
       messageQueueRef.current = prunedQueue;
@@ -906,13 +886,9 @@ function AppCore() {
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
 
-    // Stop frees the shared stream slot with no onDone/onError behind it — the
-    // generation bump above silences the aborted run's cancelled callback — so
-    // a message queued against a *different* task would strand forever at
-    // "N queued · waiting for Anton" with no future turn to release it. Sweep
-    // the siblings now (the cancelled task's own queue was just deleted). Via
-    // the ref because a memoized handleStopStream would close over a stale
-    // drain (same reason reconnect uses it).
+    // Stop suppresses terminal callbacks, so explicitly drain sibling queues after releasing the
+    // shared slot.
+    // Read through the ref to use the current drain.
     drainNextQueuedMessageRef.current?.();
 
     if (silent || !cidToCancel) return;
@@ -956,23 +932,13 @@ function AppCore() {
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
-    // A stream that merely dropped mid-answer can still have finished on the
-    // server — the reload then carries no error message. Gating on the same
-    // check the UI uses means a turn the user actually saw succeed doesn't
-    // also count as a failure. Unlike fireFirstResponse (once per user), this
-    // fires on every failed turn — the failure rate had no measurement at
-    // all before this.
+    // Reload may show a successful server turn after transport failure; count failures using the
+    // visible result.
     const hasError = loaded
       ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
       : true;
-    // `some()` over the whole history is right for the UI status below, but
-    // it's a permanent yes once any earlier turn in the conversation has
-    // ever failed — worthless as a failure-tracking gate, since it also
-    // counts turns that actually recovered. A server-declared
-    // response.failed (api.js's onError passes the raw SSE message through,
-    // so `type` survives) is authoritative on its own. Only the client-side
-    // transport codes (stream_error, reconnect_error, stalled) need the
-    // reload heuristic, and only against the *last* turn.
+    // A response.failed event is authoritative. For transport failures, inspect only the last turn;
+    // older failures in the history must not make a recovered turn count as failed.
     const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
     const lastTurnFailed = loaded
       ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
@@ -1002,11 +968,8 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
-            // ENG-1537 review: this local trailer is reached when
-            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
-            // MORE likely precisely when the gateway is rate-limiting. Without
-            // these the rate-limit card loses its gate and the allowance card
-            // always reads "resets on next month".
+            // Preserve retry/reset metadata when reload fails so the fallback cards retain their
+            // deadlines.
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
@@ -1023,15 +986,8 @@ function AppCore() {
     }
   }, [markInFlightDone, releaseLiveSteps]);
 
-  // Per-task streaming state is derived inside ChatView (it has the
-  // task object via props). Don't compute it here — `activeTaskId` is
-  // declared further down and reading it before initialization throws
-  // a TDZ ReferenceError at first render.
-  // Composer model options for the active (planning) provider. Sourced from
-  // the backend-overlaid recommendedModels map (single source of truth in
-  // cowork-server) — names come from MindsHub's own label for the model where
-  // it publishes one, else derived from the id, never hardcoded. Empty until
-  // settings load; the composer then shows just the configured model.
+  // Build composer options from server recommendations and labels; before settings load, show only
+  // the configured model.
   const mindsModels = useMemo(() => (
     recommendedModelOptions(settings.recommendedModels, 'minds-cloud', settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }))
@@ -1042,20 +998,9 @@ function AppCore() {
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label }));
   }, [mindsModels, settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
-  // Picker metadata for the composer's model menu, passed as one bag so the
-  // components in between don't grow a prop each. The composer groups rather than
-  // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
+  // Refresh availability when the menu opens so external wallet top-ups unlock models without
+  // restart.
+  // Failed or empty refreshes retain the current map; absent model IDs count as available.
   const refreshModelAvailability = useCallback(async () => {
     const data = await fetchRecommendedModels({ refresh: true });
     // keepOrder: the menu is already open on the list we hold when this lands.
@@ -1071,10 +1016,8 @@ function AppCore() {
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
     modelEfforts: settings.modelEfforts,
-    // Account-wide harness toggle (web-only Settings → Agent Harness) —
-    // EffortSelect needs this outside coding mode, where Composer's own
-    // harness state is hardcoded 'anton' and can't say whether Hermes is
-    // actually configured account-wide.
+    // EffortSelect needs the account harness outside coding mode; Composer’s local harness does not
+    // reflect it.
     harness: settings.harness,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
@@ -1146,12 +1089,8 @@ function AppCore() {
     return () => window.removeEventListener('keydown', onKey);
   }, [sidebarCollapsibleRoutes]);
 
-  // After a *mouse* click on a button, drop its keyboard focus so a later
-  // stray Space/Enter doesn't re-trigger that button (e.g. clicking
-  // "Projects" in the sidebar shouldn't leave Space wired to it).
-  // Pure keyboard navigation (Tab → Enter/Space) is untouched because we
-  // only run on mouse events; :focus-visible still draws the ring for
-  // genuine keyboard focus.
+  // Blur mouse-clicked buttons so later Space/Enter cannot retrigger them; keyboard navigation
+  // keeps focus.
   useEffect(() => {
     const onMouseUp = (e) => {
       const btn = e.target instanceof Element
@@ -1175,10 +1114,7 @@ function AppCore() {
     applyNavTitleColor(settings.navTitleColor);
   }, [settings.navTitleColor]);
 
-  // Mirror the Dot grid setting to a body class so the gravity-field
-  // canvas can be hidden via CSS. `display: none` also lets the
-  // canvas's requestAnimationFrame loop idle when the user has
-  // turned the pattern off — no draw cost while invisible.
+  // The body class hides the dot canvas and lets its animation loop idle while the pattern is off.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const visible = settings.showDots !== false;
@@ -1186,10 +1122,8 @@ function AppCore() {
     window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
-  // Cowork and Code are peer workspaces, not routes within one another.
-  // Keeping this separate from the Cowork route means each surface remains
-  // mounted while the other is visible: drafts, scroll position, selected
-  // tasks, and live streams survive an instant workspace switch.
+  // Keep Cowork and Code mounted across workspace switches to preserve drafts, scroll, selections,
+  // and streams.
   const [workspaceMode, setWorkspaceMode] = useState(() => (
     codeFixtureActive
       ? 'code'
@@ -1278,10 +1212,9 @@ function AppCore() {
     window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
   }, [effectiveWorkspaceMode, route]);
-  // Cowork preserves Main's focused task-only collapse behavior. Code's
-  // project, connector, skill, new-task, and task surfaces all share one
-  // stable desktop navigation pane, so collapse is available throughout the
-  // workspace. Narrow/tablet layouts continue to use the overlay drawer.
+  // Code shares a collapsible navigation pane across its surfaces; Cowork collapses only on focused
+  // task routes.
+  // Narrow layouts use the overlay drawer.
   const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
   const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
   const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
@@ -1298,11 +1231,8 @@ function AppCore() {
   // (selectedProject is resolved from its id by the project route, so null here.)
   const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
-  // The project-detail id currently being resolved from the fetched list, or
-  // null once settled. Distinct from `selectedProject` (which the whole app
-  // reads and the URL bridge mirrors): while this differs from the selection we
-  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
-  // refresh on a detail URL shows the loading grid, not a flash of the list.
+  // While resolving a detail URL, show the loading grid instead of the previous project. Seed this
+  // on refresh too.
   const [projectDetailPending, setProjectDetailPending] = useState(
     initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
   );
@@ -1311,21 +1241,12 @@ function AppCore() {
   // (Back to the grid / Home / any route). See makeProjectDetailToken.
   const projectDetailTokenRef = useRef(null);
   if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
-  // Defaults to "Model Router" — defer to whatever this account's Settings
-  // has configured — until a composer picks a concrete model for a task.
-  // Never re-synced from settings after that: its whole point is that it
-  // always tracks Settings live, server-side, without the renderer needing
-  // to know the current planning/coding/router model.
+  // The router sentinel follows server-side account settings until the user picks a concrete model;
+  // do not resync that pick.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
-  // Reasoning-effort pick for the home/new-task composer (ENG-1940) —
-  // sibling state to selectedModel. '' means "no explicit pick, use the
-  // model's (or account's) default effort" — never re-synced from
-  // settings, same rationale as selectedModel just above.
+  // Empty effort defers to the model/account default. Do not resync explicit picks from settings.
   const [selectedEffort, setSelectedEffort] = useState('');
-  // Local cowork-server lifecycle — online/busy state, start & stop, and the
-  // first-paint seed-and-poll — lives in useServerControl. It re-fetches
-  // through refreshDataRef after a manual start (refreshData writes
-  // serverOnline via setServerOnline, so it's wired in by ref just below).
+  // Use a ref for manual-start refresh because refreshData also writes serverOnline.
   const refreshDataRef = useRef(null);
   const {
     serverOnline, setServerOnline,
@@ -1334,19 +1255,12 @@ function AppCore() {
     handleServerStart, handleServerStop,
   } = useServerControl({ refreshDataRef });
 
-  // `config_ready` deliberately omitted from the initial state — the
-  // boot-time settings redirect at line ~798 keys off `=== false` so
-  // that "not yet fetched" (undefined) and "server confirmed
-  // unconfigured" (false) are distinguishable. Seeding it as `false`
-  // here causes a spurious redirect to Settings on first paint when
-  // serverOnline starts true (the web shell), before fetchHealth has
-  // even returned.
+  // Leave config_ready undefined until fetched. false means confirmed unconfigured and would
+  // redirect web boot to Settings prematurely.
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
 
-  // Desktop "app installed" — fire once per install, after the backend is up
-  // (health 'ok'). Captured under the anonymous device id if the user hasn't
-  // signed in yet, and merged into the account on first login (ENG-537).
-  // trackAppInstalled self-guards with a localStorage marker, so re-running is safe.
+  // Track installation once desktop health is ready; analytics deduplicates per install and merges
+  // the anonymous ID on login.
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
@@ -1401,35 +1315,23 @@ function AppCore() {
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
       return { ...t, messages: msgs };
     }));
-    // Claimed synchronously, not on resolve: refreshData re-enters on the
-    // serverOnline false->true flip that its own fetchHealth above causes, and
-    // /health beats a 200-conversation list every time — so latching in the
-    // .then() below left the second entry still unwarmed and fired the fan-out
-    // twice, the exact 100 requests this gate exists to prevent.
+    // Claim synchronously: fetchHealth can flip serverOnline and reenter refreshData before the
+    // session list resolves.
     const warming = !warmedRef.current;
     if (warming) warmedRef.current = true;
     fetchSessions(warming ? { onItems: warmTranscript } : {}).then((data) => {
-      // Released again whenever nothing was actually warmed: fetchSessions
-      // returns before firing a single /items both on an empty account and on
-      // a failed list. Holding the claim through a failure would mean the
-      // Retry that fixes it never warms anything for the rest of the session.
+      // Release when no transcripts were warmed so an empty/failed list does not prevent a later
+      // retry.
       if (warming && !(Array.isArray(data) && data.length > 0)) warmedRef.current = false;
       if (!Array.isArray(data)) {
-        // A failed list request must not read as "no tasks". Keyed on having rows
-        // on screen, not on having succeeded once: an empty
-        // account's first fetch succeeds with [] -> 'ready', and every later
-        // failure would then be swallowed, leaving "No tasks yet" and no Retry
-        // while the server is unreachable — the exact confusion this PR fixes.
+        // Keep existing rows on failure, but expose Retry when none are visible, including for
+        // previously empty accounts.
         setTasksStatus(tasksRef.current.length > 0 ? 'ready' : 'failed');
         return;
       }
       setTasksStatus('ready');
-      // One-time freshness decision for the onboarding checklist, taken on the
-      // session's first successful fetch: an account that already has tasks is
-      // not a first run, and would otherwise sit on a permanent, undismissable
-      // 0/4 card. Hence the ref guard — refreshData re-fires on the
-      // serverOnline flip, Retry, SSO, manual start and run-schedule-now.
-      // No timer drives it; the only setInterval here is refreshInFlightSet.
+      // Decide onboarding freshness once after a successful list: existing accounts must not retain
+      // an untouched checklist.
       if (!onboardingFreshnessResolvedRef.current) {
         onboardingFreshnessResolvedRef.current = true;
         if (data.length > 0) dismissIfUntouched();
@@ -1439,10 +1341,8 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => {
       if (!Array.isArray(data)) return;
-      // One-time arm/disarm decision for the first-artifact tip, taken on
-      // the session's first successful fetch: empty list = fresh account
-      // (watch for the first artifact); anything else = existing account
-      // (flag it dismissed so no later session shows the tip either).
+      // Decide freshness once: arm for an empty account, permanently dismiss for an account with
+      // artifacts.
       if (artifactTipArmedRef.current === null) {
         if (data.length === 0 && !isArtifactTipDismissed()) {
           artifactTipArmedRef.current = true;
@@ -1474,12 +1374,8 @@ function AppCore() {
   // hook's serverOnline, so the hook can't take it as a direct argument.
   useEffect(() => { refreshDataRef.current = refreshData; }, [refreshData]);
 
-  // Allow descendants (e.g. ProjectsView's rename / create flow) to
-  // ask for a fresh projects list without prop-drilling a refetch
-  // handler. Also refetch sessions: a rename rewrites every
-  // conversation's _meta.json with the new project name, so the
-  // in-memory task list (which carries projectName per task) needs
-  // to re-read or else it keeps pointing at the old project.
+  // Project renames also rewrite conversation project names, so refresh sessions alongside the
+  // project list.
   useEffect(() => {
     const handler = () => {
       fetchProjects().then((data) => {
@@ -1510,11 +1406,8 @@ function AppCore() {
     };
   }, [route]);
 
-  // Whenever serverOnline flips from false → true (boot finishing,
-  // user manually starting, etc.), re-fetch everything. Without this,
-  // the initial refreshData() on a slow-cold-boot returns empties and
-  // the UI is stuck showing "configure anton" until the user cycles
-  // the toggle by hand.
+  // Refresh when the server comes online so an empty cold-boot response cannot leave stale
+  // configuration UI.
   const wasOnlineRef = useRef(false);
   useEffect(() => {
     if (serverOnline && !wasOnlineRef.current) {
@@ -1608,11 +1501,8 @@ function AppCore() {
   // it has one, else whatever the home composer currently shows.
   const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
-  // "Switch to MindsHub Air" escape hatch on the model-denial card
-  // (ENG-1304): offered only while Air itself is payable — the free monthly
-  // grant covers Air, so it's the one model an empty wallet can usually
-  // still run. `modelEnabled` is the same availability map the Settings
-  // picker tags rows with (absent id ⇒ available).
+  // Offer Air recovery only while it is in the catalog and payable; absent availability entries
+  // count as available.
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
@@ -1644,17 +1534,8 @@ function AppCore() {
     );
   }, [route, currentTask?.id]);
 
-  // Phase 2 reconnect — when the user opens a conversation whose
-  // turn is still running server-side (closed-tab-and-came-back, or
-  // opened from another window), re-attach to the producer's buffer
-  // and resume the live stream. Idempotent + cheap on the no-op
-  // path: a single GET /responses/in-flight probe, then nothing if
-  // there's no live producer.
-  //
-  // Mirrors handleSendInTask's stream handlers verbatim — duplication
-  // tolerated to keep this surgery contained. (A shared
-  // buildStreamHandlers() refactor is a fine follow-up once both
-  // paths have stabilised.)
+  // Probe and reattach when reopening a conversation with a server-side producer; no producer means
+  // no SSE request.
   const reconnectInFlight = useCallback(async (taskId) => {
     if (!taskId) return false;
     // Already tailing locally — second-mount of the same task should
@@ -1697,10 +1578,7 @@ function AppCore() {
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = tailInFlight(taskId, {
-      fromSeq: 0, // Replay from the start — the reducer is idempotent
-                  // over text deltas, and from_seq=0 keeps the rebuild
-                  // simple. A per-task last-seen-seq optimisation is
-                  // possible later if we see network overhead.
+      fromSeq: 0, // Replay from sequence zero to rebuild the turn through the reducer.
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
@@ -1752,18 +1630,13 @@ function AppCore() {
           openStreamedForm(taskId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-        // A reconnect tail also holds the shared stream slot, so a message
-        // queued against any task while it ran must be drained here too —
-        // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
-        // Via the ref because this closure is mount-frozen (see its decl).
+        // Reconnect holds the shared stream slot too; drain waiting tasks through the current ref
+        // when it finishes.
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
-        // Order matters twice over. The generation guard comes first: a
-        // superseded stream's late abort must not clear liveStepsRef for a
-        // NEWER run on the same conversation. The release then comes before
-        // the `cancelled` bail-out, because an aborted run's question is dead
-        // too and leaving it behind would hijack the composer.
+        // Reject stale generations before clearing questions from a newer run. Release before the
+        // cancelled return too.
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
@@ -1777,10 +1650,8 @@ function AppCore() {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
-  // Navigation intent only: flipping route + activeTaskId drives the URL to
-  // `/c/:id`, whose loader + openConversation() (below) do the hydration and
-  // stream reattach — so sidebar click / deep link / refresh / Back all run one
-  // path.
+  // Update navigation only; the route loader and openConversation handle hydration/reconnection for
+  // clicks and deep links alike.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
@@ -1792,23 +1663,15 @@ function AppCore() {
     setRoute('task');
   };
 
-  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
-  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
-  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
-  // failure).
+  // Loader results are { task }, { optimistic: true } for local new-chat messages, or {
+  // unavailable: true } for transient failures.
   const openConversation = useCallback((id, loaded) => {
     setActiveTaskId(id);
     setRoute('task');
-    // Composer is cleared by selectTask (sync), not here — see there. On a
-    // loader failure flag it for a retry; any resolvable result clears a stale
-    // error. The render only shows it when the conversation is absent locally,
-    // so a sidebar click during a blip keeps rendering.
+    // Keep locally available conversations visible during loader failures; clear composer text only
+    // in synchronous selectTask.
     if (loaded?.unavailable) setConversationError(id);
     else setConversationError((cur) => (cur === id ? null : cur));
-    // Phase 2 reconnect — fire-and-forget. If a turn is still running
-    // server-side for this conversation (closed-tab-came-back, or opened
-    // from another tab/device), this re-attaches the live SSE stream and
-    // replays from seq 0. Cheap no-op when the producer isn't running.
     reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
     if (!loaded || loaded.optimistic || loaded.unavailable || !loaded.task) return;
     const fresh = loaded.task;
@@ -1821,10 +1684,8 @@ function AppCore() {
     // continuation prompt — the reconnect above attaches to the live tail.
     const isServerInFlight = inFlightSetRef.current.has(id);
 
-    // Record the visit for recents ordering (never auto-pin), then refresh
-    // pins + the capped recents list. Runs before the empty-transcript return
-    // below so every successful open updates recency — matching the prior
-    // selectTask path, which recorded a visit regardless of message count.
+    // Record recency before the empty-transcript return so every successful open counts, without
+    // auto-pinning.
     recordTaskVisit(fresh, false).then(() => {
       fetchPins().then((data) => setPins(data.pins || []));
       fetchSessions().then((data) => {
@@ -1840,10 +1701,8 @@ function AppCore() {
       return;
     }
 
-    // Two layers of restoration, in order of trust: the server sidecar
-    // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
-    // legacy localStorage sidecar. Merge into recents, inserting the
-    // conversation if it wasn't in the capped fetch.
+    // Prefer server event replay over the legacy local sidecar; insert conversations omitted from
+    // capped recents.
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
     const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
@@ -1872,25 +1731,11 @@ function AppCore() {
     setRoute('home');
   };
 
-  // "+ Connect" entry — surfaces the ConnectorPicker modal. The user
-  // browses or searches the predefined registry; on pick, we kick
-  // off a new task whose first user message names the chosen
-  // connector ("Connect Gmail"), which the existing agent / form
-  // pipeline already knows how to route. Wiring the picker straight
-  // to a renderer-side DataVaultForm (no chat round-trip) is the
-  // next step — for this round we keep the agent path so we can
-  // validate the picker UX without rewriting the form flow.
   const handleStartConnectChat = () => {
     setConnectorPickerOpen(true);
   };
-  // Modify-existing-connection flow: same chat-task + form shape as
-  // handleConnectorPicked, but skips the picker (engine is known)
-  // and pre-fills every field the renderer is allowed to see —
-  // non-secrets verbatim from the vault, secrets as the
-  // `ANTON_VAULT_KEEP` sentinel. Saving via the existing submission
-  // path runs the server-side merge: any field still carrying the
-  // sentinel resolves to its prior on-disk value, so the user only
-  // re-types what they actually want to change.
+  // Prefill saved fields, using ANTON_VAULT_KEEP for secrets. Unchanged sentinels preserve stored
+  // values on submit.
   const handleModifyConnection = async (connection) => {
     if (!connection?.engine) return;
     // Connector spec + saved record fetched in parallel — both feed
