@@ -2,16 +2,8 @@ import { useState, useCallback } from 'react';
 import { fetchDatasources, fetchSavedConnection, deletePickedFile } from '../api';
 import { host } from '../../platform/host';
 
-// All Google Drive picker/connect orchestration used by the composer's "+"
-// menu and the Project files (Context card) "+" menu. Owns the two modal
-// prompts (account choice, connect confirmation) as state; the caller
-// renders the actual modals and wires them to the resolver functions
-// returned below.
-//
-// `selectedProject`/`currentTask` are read-only context this hook needs to
-// pick a sensible project to tag files with and to return the user to their
-// task after an inline connect; `setComposerAttachments`/`setActiveTaskId`/
-// `setRoute` are the app-level state setters those flows drive.
+// Shared Drive picker/connect flow for composer and project files.
+// The caller renders account/connect prompts and resolves them through the returned handlers.
 export function useGoogleDrivePicker({
   selectedProject,
   currentTask,
@@ -30,12 +22,7 @@ export function useGoogleDrivePicker({
   // renders.
   const [driveConnectPrompt, setDriveConnectPrompt] = useState(null);
 
-  // Used to decide whether a "+" menu should route through the "connect"
-  // flow or straight to the (possibly account-picking) action. Returns the
-  // matched connections (not just a boolean) so the "already connected"
-  // branch can pass them straight through to resolveGoogleDriveConnection
-  // below instead of it doing a second, redundant fetchDatasources() round
-  // trip right after this one.
+  // Return the matched connections so downstream selection can reuse this fetch.
   const fetchGoogleDriveConnections = useCallback(async () => {
     try {
       const { connections } = await fetchDatasources();
@@ -45,24 +32,13 @@ export function useGoogleDrivePicker({
     }
   }, []);
 
-  // Prompts the user to pick which Google Drive account to use when more
-  // than one is connected. Resolves to the chosen connection, or null if
-  // they dismiss the modal — resolveGoogleDriveConnection below returns
-  // null in that case, same as a genuine race where the connection
-  // disappeared mid-flow, and callers already handle that.
+  // Resolve the chosen connection, or null when the account prompt is dismissed.
   const chooseGoogleDriveConnection = useCallback((connections) => (
     new Promise((resolve) => setDriveAccountChoice({ connections, resolve }))
   ), []);
 
-  // Resolves the google_drive connection every Drive helper below targets.
-  // `preFetched`, when passed (by the "already connected" branch in the
-  // handlers below, which just called fetchGoogleDriveConnections() for its
-  // own check), is reused instead of fetching again — otherwise fetches
-  // fresh via fetchDatasources() rather than trusting the (possibly stale)
-  // `connectors` state, since a stale/defunct connection name would
-  // silently persist grants/reads against the wrong record. If more than
-  // one google_drive connection exists (e.g. two Google accounts), prompts
-  // the user to choose.
+  // Reuse preFetched connections or read fresh; stale connector state can address the wrong grants.
+  // Prompt when multiple Google accounts are connected.
   const resolveGoogleDriveConnection = useCallback(async (preFetched) => {
     try {
       const matches = preFetched || (await fetchGoogleDriveConnections());
@@ -75,31 +51,12 @@ export function useGoogleDrivePicker({
     }
   }, [chooseGoogleDriveConnection, fetchGoogleDriveConnections]);
 
-  // Opens the Google Picker for an already-connected google_drive
-  // connection and adds the chosen files as reference-only chips to
-  // whichever composer is currently visible (composerAttachments is shared
-  // across Home/Task/Projects — see resolveComposerAttachmentsForSend).
-  //
-  // Shared by both entry points below (composer chips + project files):
-  // resolves the google_drive connection's account email and opens the
-  // native Picker. Neither caller downloads/persists anything here.
-  // `projectName`, when passed, tags any newly-picked files as belonging to
-  // that project (see picked-files.ts / merge_picked_files) — omit it for
-  // flows with no project context (there are none among the callers below,
-  // but connection-details' own "Pick files" button calls
-  // host.pickDriveFiles directly and correctly omits it).
-  // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
-  // own fetchDatasources() call — see fetchGoogleDriveConnections above.
-  // No window/popup bookkeeping on web any more: the Picker renders as an
-  // in-page overlay (see host.pickDriveFiles), so there is no click-activation
-  // deadline to beat and nothing to clean up on an early return here.
+  // Open the connected account's native Picker; optional projectName tags the granted references.
+  // The host persists grants; files remain in Drive. Reuse preFetchedConnections to avoid another
+  // lookup.
   const openGoogleDrivePicker = useCallback(async (projectName, preFetchedConnections) => {
     const conn = await resolveGoogleDriveConnection(preFetchedConnections);
-    // Callers only reach here once fetchGoogleDriveConnections() has
-    // already confirmed a connection exists, so a null result here means
-    // the user dismissed the account-choice modal — not a real failure.
-    // `cancelled` lets handleAddGoogleDriveFiles/ProjectFiles treat this as
-    // a silent no-op instead of surfacing an error.
+    // Treat a dismissed account prompt as cancellation so callers do not show an error.
     if (!conn) return { ok: false, cancelled: true };
     let accountEmail = '';
     try {
@@ -113,11 +70,8 @@ export function useGoogleDrivePicker({
     }
     const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail, undefined, projectName);
     if (!result?.ok) return { ok: false, reason: result?.reason || 'Google Drive picker failed.' };
-    // `files` is the connection's full accumulated grant (every file ever
-    // picked, for callers like Project files that want to show the whole
-    // list); `newFiles` is only what the user selected just now — use that
-    // one for anything scoped to "this" action (e.g. attaching to the
-    // current message), not the merged history.
+    // files is the accumulated grant; newFiles contains only this pick and must be used for
+    // current-message attachments.
     return { ok: true, files: result.files || [], newFiles: result.newFiles || [] };
   }, [resolveGoogleDriveConnection]);
 
@@ -143,29 +97,18 @@ export function useGoogleDrivePicker({
     return { ok: true, files };
   }, [openGoogleDrivePicker, setComposerAttachments]);
 
-  // Project files entry point: no download, no export — the picked file
-  // stays in Drive. `openGoogleDrivePicker` already persists the grant
-  // server-side (savePickedFiles, inside host.pickDriveFiles's IPC
-  // handler), so there's nothing else to do here; the file just becomes
-  // visible as a reference row (see ContextCard). `projectName` is required
-  // here — this is what scopes the file to the project it was actually
-  // added from.
+  // The host already saved the grant; projectName scopes the reference without downloading a
+  // project file.
   const addGoogleDriveFileReferences = useCallback(async (projectName, preFetchedConnections) => {
     const picked = await openGoogleDrivePicker(projectName, preFetchedConnections);
     if (!picked.ok) return picked;
     return { ok: true, files: picked.files };
   }, [openGoogleDrivePicker]);
 
-  // Lets ContextCard show the *current* picked-files list on mount/refresh,
-  // not just right after a fresh pick — scoped to just the files tagged
-  // with this project (see merge_picked_files). Files picked from
-  // connection-details (no project tag) never show here, by design. This is
-  // a passive/background read (fires on mount, not a user click), so it
-  // deliberately does NOT use the prompting resolveGoogleDriveConnection —
-  // it merges every connected account's tagged files instead of
-  // interrupting the user with a modal just for opening a task. Each
-  // returned file carries `_connectionName` so removeGoogleDriveFileReference
-  // knows which connection to delete from.
+  // Background reads merge all accounts' project-tagged references without prompting for account
+  // choice.
+  // Stamp _connectionName so each row can remove its own grant; untagged connection-detail picks
+  // stay excluded.
   const fetchGoogleDriveReferenceFiles = useCallback(async (projectName) => {
     try {
       const { connections } = await fetchDatasources();
@@ -189,14 +132,8 @@ export function useGoogleDrivePicker({
     }
   }, []);
 
-  // "Delete" for a Drive reference row — same user-facing action as
-  // deleteProjectFile for a real project file, just against the
-  // connection's _picked_files grant instead of the project folder.
-  // `connectionName` comes from the row's `_connectionName` (stamped by
-  // fetchGoogleDriveReferenceFiles above) — no account-choice prompt needed
-  // here since the row already identifies its own connection. Only untags
-  // `projectName` from the file (server-side) — a file also tagged to
-  // another project stays visible there; see deletePickedFile/remove_picked_file.
+  // Remove only this project's tag from the identified connection grant; other projects retain
+  // their references.
   const removeGoogleDriveFileReference = useCallback(async (fileId, connectionName, projectName) => {
     if (!connectionName) return { ok: false, reason: 'Google Drive is not connected.' };
     try {
@@ -207,14 +144,8 @@ export function useGoogleDrivePicker({
     }
   }, []);
 
-  // Shared by both "+" menu entry points below: not connected yet →
-  // confirm the user actually wants to leave the app for Google's connect
-  // flow (it opens the OS browser, not an in-app screen), fire the OAuth
-  // connect directly (no connector-setup task/form — see ENG-Drive-picker
-  // streamline), then run `onConnected` once it succeeds so the user doesn't
-  // have to click "Add files" a second time. `host.oauthConnect` already
-  // resolves on every failure mode (bad config, callback timeout, token
-  // exchange failure/timeout) — no outer timeout needed here.
+  // Confirm before opening Google OAuth in the OS browser, then continue the pending pick.
+  // host.oauthConnect bounds and reports failures, so no outer timeout is needed.
   const connectGoogleDriveThenRun = useCallback(async (onConnected) => {
     const confirmed = await new Promise((resolve) => setDriveConnectPrompt({ resolve }));
     if (!confirmed) return;
@@ -225,12 +156,8 @@ export function useGoogleDrivePicker({
     await onConnected();
   }, []);
 
-  // Composer "+" menu entry point. `projectName` comes from the Composer's
-  // own `project` prop (Home/Task/Projects all pass one) — tags the picked
-  // file(s) so they also show under that project's Project files, matching
-  // the composer/project-files parity the user expects. Falls back to
-  // `selectedProject`/'general' the same way handleSendFromHome does, since
-  // Home's `project` can be null before the user has explicitly picked one.
+  // Tag composer picks with its project so they also appear in Project files.
+  // Use the same selectedProject/general fallback as handleSendFromHome.
   const handleAddGoogleDriveFiles = useCallback(async (projectName) => {
     const effectiveProjectName = projectName || selectedProject?.name || 'general';
     const matches = await fetchGoogleDriveConnections();

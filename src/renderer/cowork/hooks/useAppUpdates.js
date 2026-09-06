@@ -1,19 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { host } from '../../platform/host';
 
-// The app's self-update lifecycle, across the two independently-versioned
-// pieces the renderer surfaces:
-//   - OTA UI bundle (`updateStatus` + `handleApplyUpdate`)
-//   - the desktop shell binary — both the download-only notice
-//     (`shellUpdate` / `handleDownloadShellUpdate` / `dismissShellUpdate`)
-//     and the electron-updater auto-update (`shellAutoUpdate` /
-//     `handleShellAutoUpdateAction`)
-// plus the main-process subscriptions that feed all three. No-ops cleanly in
-// web, where `host` returns stubbed getters and noop unsubscribers.
-//
-// The server-online/health/`refreshData` cluster stays in App.jsx:
-// `refreshData` is the app-wide data loader (it writes tasks, projects,
-// artifacts, settings, …), so that half is not a self-contained move.
+// Manage independently versioned UI-bundle and desktop-shell updates; web host subscriptions are
+// no-ops.
+// Server health and app-wide data refresh remain in App.jsx.
 export function useAppUpdates() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
@@ -78,11 +68,8 @@ export function useAppUpdates() {
     }
   }, [updateApplying, updateStatus]);
 
-  // Settings can pass a URL; a bare click falls back to the cached notice, and
-  // failing that to the human download page. Note: bare downloads.mindshub.ai
-  // now 302s to the marketing homepage — the real per-OS installer page lives
-  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
-  // last fallback is the only link that cohort ever gets.
+  // Old shells supply no downloadUrl; use the installer page, since bare downloads.mindshub.ai
+  // redirects to marketing.
   const handleDownloadShellUpdate = useCallback((url) => {
     const explicit = typeof url === 'string' && url ? url : null;
     host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');

@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useGoogleDrivePicker } from './useGoogleDrivePicker';
 
-// Regression coverage for the "streamline Add files from Google Drive"
-// fix: connecting when not-yet-connected must fire host.oauthConnect
-// directly (no connector-setup task/form), and a failed/cancelled connect
-// must actually surface an error instead of silently hanging.
+// Connect directly through OAuth before picking files; failed/cancelled flows must settle visibly
+// without creating a setup task.
 
 const apiMock = vi.hoisted(() => ({
   fetchDatasources: vi.fn(),
@@ -54,7 +52,6 @@ describe('useGoogleDrivePicker — connect flow (not yet connected)', () => {
     act(() => {
       addPromise = result.current.handleAddGoogleDriveFiles('general');
     });
-    // Wait for the confirm-connect prompt to be set, then confirm it.
     await vi.waitUntil(() => result.current.driveConnectPrompt !== null);
     act(() => { result.current.confirmDriveConnect(); });
     await addPromise;

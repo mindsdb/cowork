@@ -1,19 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
-// Regression: on web, host.logout() (keycloak.logout) navigates to the
-// end-session endpoint via window.location.replace(). If the hook ALSO calls
-// window.location.reload() on success, the reload runs first and cancels that
-// redirect — the SSO cookie survives, login-required silently re-auths, and
-// sign-out has no visible effect. Web success must reload on neither path; only
-// a REJECTION reloads immediately (the platform threw before its own
-// navigation).
-//
-// Electron regression (stuck "Signing out…"): on Electron the ONLY thing that
-// clears the modal is main's single deferred webContents.reload(). If that one
-// reload is dropped (intermittently on Windows) the renderer hangs on
-// "Signing out…" forever even though the account is already signed out. The
-// hook now arms a delayed self-heal reload on Electron success.
+// On web, a renderer reload cancels Keycloak's logout redirect and leaves SSO active; reload
+// immediately only after rejection.
+// On Electron, a delayed watchdog recovers main's missing reload after successful sign-out.
 
 const hostMock = vi.hoisted(() => ({
   host: { isWeb: true, isElectron: false, logout: vi.fn(async () => {}) },
@@ -107,16 +97,12 @@ describe('useLogout — electron', () => {
 });
 
 /*
- * The lock on the confirm dialog used to last exactly as long as
- * `host.logout()`, and nothing ever cleared it: `setLoggingOut` was called in
- * one place, with `true`. When the reply took minutes (main awaited a sidecar
- * restart capped at 180s) the dialog was the app's only exit and Escape,
- * Cancel and the backdrop were all disabled.
+ * Bound dismissal lock independently of the logout reply so a slow operation cannot trap the user
+ * in the dialog.
  */
 describe('useLogout — the confirm lock', () => {
-  // The sign-out state is a module store shared by both entry points, so a
-  // test that leaves an invoke pending would hold the single-flight guard for
-  // the next one. `pending()` hands back the resolver and afterEach settles it.
+  // Settle every pending logout during cleanup; the module-shared single-flight guard otherwise
+  // leaks into the next case.
   let settlePending;
 
   const pending = () => {
@@ -178,10 +164,8 @@ describe('useLogout — the confirm lock', () => {
   });
 
   /*
-   * A reply at the sidecar start cap, the case the ticket's step 8 forces by
-   * hand. The lock still releases on time, and the navigation contract is
-   * unchanged: no reload of our own, one watchdog reload if main's never
-   * arrives, one identity rotation.
+   * Hold the platform reply through the sidecar start cap while verifying bounded dismissal and the
+   * existing navigation/identity contract.
    */
   it('still releases the lock when the reply arrives at the 180 second cap', async () => {
     pending();
@@ -205,11 +189,7 @@ describe('useLogout — the confirm lock', () => {
     expect(LOGOUT_BUSY_LOCK_MS).toBeLessThan(10_000);
   });
 
-  /*
-   * Two components mount this hook (the settings Account section and the
-   * sidebar user menu). Now that the dialog can be dismissed mid-flight, the
-   * other entry point is reachable while a sign-out is still running.
-   */
+  /* Mount both entry points to prove a dismissed pending logout cannot be started again elsewhere. */
   it('runs one sign-out even when both entry points ask', async () => {
     pending();
     const account = renderHook(() => useLogout());
