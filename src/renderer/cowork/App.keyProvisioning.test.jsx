@@ -1,14 +1,6 @@
-// ENG-1533: the `unhandled` outcome of key_provisioning_refused — the SSO
-// sign-in path, where a 402 from finalize leaves the user signed in with no
-// working key, no BYOK route and no message. Nothing acts on that result by
-// design (key provisioning is not a sign-in gate), so the only thing standing
-// between the read and silence is this test: without it the
-// `?.upgradeRequired` read can be deleted and the suite stays green, which is
-// exactly what review pointed out.
-//
-// Mounting pattern copied from App.askUser.send.test.jsx — the one other file
-// that renders the whole App — because `handleSsoSignIn` is an inner closure,
-// not an exported helper.
+// SSO key-provisioning refusal does not block sign-in; preserve the unhandled analytics outcome
+// when no working key is provisioned.
+// Mount App because the sign-in handler is an inner closure.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,9 +31,8 @@ vi.mock('./api', async (importOriginal) => ({
   updateSettings: vi.fn(async () => ({})),
 }));
 
-// Spread the real host and override only what this path needs. `isElectron`
-// must be true — every SSO affordance is gated on it — but the real host
-// methods stay web-safe under happy-dom, so nothing reaches for a bridge.
+// Spread the real host with isElectron:true for SSO UI; absent happy-dom bridge keeps unoverridden
+// methods web-safe.
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -120,14 +111,8 @@ describe('key_provisioning_refused on the SSO sign-in path', () => {
 
   it('records nothing when finalize fails for a reason other than a refusal', async () => {
     const user = userEvent.setup();
-    // A non-402 failure is not a refusal. Counting it would put ordinary
-    // failures into a metric meant to size a paywall cohort.
-    //
-    // Resolved rather than rejected on purpose: a rejection throws at the
-    // `await`, so control jumps to the catch and the `?.upgradeRequired` read
-    // never executes — the assertion would then pass with that read deleted,
-    // which is the thing it exists to protect. A resolved non-refusal shape
-    // runs the guard and takes the false branch.
+    // Resolve a non-refusal rather than reject: rejection would bypass the upgradeRequired guard
+    // and fail to test its false branch.
     spies.mindshubFinalize.mockResolvedValue({ ok: false, reason: 'no session' });
 
     await signIn(user);

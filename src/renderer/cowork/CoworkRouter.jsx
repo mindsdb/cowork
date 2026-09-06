@@ -1,15 +1,5 @@
-// ENG-1233 — react-router for the cowork app.
-//
-// Dual shell: Electron desktop (no address bar) uses createMemoryRouter, the
-// web SPA uses createBrowserRouter — the idiomatic replacement for the old
-// `host.isWeb` URL gating.
-//
-// v1 (URL state): Home, Conversation (`/c/:id`, with a loader), and the two
-// detail views (`/projects/:id`, `/scheduled/:id`) are path-based routes; every
-// other view maps its `route` string to `/<route>`. Detail routes resolve their
-// entity client-side from the fetched list (no per-route loader — that's v2).
-// Route elements only mirror the URL ↔ AppCore state via the bridge in
-// CoworkLayout, so AppCore stays intact until the v2 decomposition.
+// Electron uses memory routing; web uses browser history. Route elements bridge URLs and AppCore
+// state; project/schedule details resolve from the fetched lists.
 import { createContext, useContext, useEffect, useRef } from 'react';
 import {
   createBrowserRouter,
@@ -27,12 +17,8 @@ import { host } from '../platform/host';
 import { fetchSessionResult } from './api';
 import { EmptyState, Button, Spinner } from './components/ui';
 
-// Ids that aren't yet loadable via the API (a new-chat send + the canonical id
-// the server later mints). The loader renders these from local state instead of
-// fetching (which would 404 and bounce home). Marked on adopt, cleared on turn
-// completion so a later revisit hydrates fresh. Module-level so the loader
-// (outside the tree) can read it; it also empties on a full reload, when a
-// `/c/:id` refresh SHOULD hit the server.
+// Skip API loads for conversations still being persisted. Clear optimistic IDs on turn completion;
+// a full reload must hydrate from the server.
 const optimisticIds = new Set();
 
 export function markOptimisticConversation(id) {
@@ -47,8 +33,7 @@ export function isOptimisticConversation(id) {
   return typeof id === 'string' && (id.startsWith('tmp-') || optimisticIds.has(id));
 }
 
-// Non-migrated route keys (mirror AppCore's `route` strings). `schedule-detail`
-// is absent by design — it maps to the nested `/scheduled/:id` URL.
+// AppCore route keys; schedule-detail maps to /scheduled/:id separately.
 const VIEW_ROUTES = [
   'projects',
   'scheduled',
@@ -61,16 +46,11 @@ const VIEW_ROUTES = [
   'publish',
 ];
 
-// User-facing URL slugs that differ from the internal `route` key. The
-// "Connect Apps and Data" view keeps the legacy `customize` route key (so
-// AppCore's state, the `navigate('customize')` call sites, and the
-// `.customize-*` CSS stay untouched), but its web URL reads `/connect` to
-// match the sidebar label. Keyed by route → slug; inverted below for parsing.
+// Keep the legacy customize state key while exposing /connect in browser URLs.
 const ROUTE_SLUGS = { customize: 'connect' };
 const SLUG_ROUTES = Object.fromEntries(Object.entries(ROUTE_SLUGS).map(([r, s]) => [s, r]));
 
-// Context — AppCore hands the shell + nav state + URL→state handlers down to
-// the route elements.
+// Share AppCore shell, navigation state and URL-to-state handlers.
 const CoworkContext = createContext(null);
 
 export function CoworkProvider({ value, children }) {
@@ -83,15 +63,12 @@ export function useCowork() {
   return ctx;
 }
 
-// AppCore state → URL path. Detail views carry their entity id; `projectId` /
-// `scheduleId` are the current selection (falsy = list/grid form).
+// Map AppCore state to a URL; missing detail IDs select the list view.
 export function pathForRoute(route, activeTaskId, projectId, scheduleId) {
   if (route === 'task') {
     if (!activeTaskId) return '/';
-    // Keep a client-only `tmp-` id out of the URL: pushing `/c/tmp-*` leaves a
-    // dead entry Back returns to, and a refresh can't resolve it (never sent to
-    // the server). `null` = leave the URL alone; the canonical id drives the
-    // single push, so a new chat is one Back press from Home.
+    // Keep temporary IDs out of history: refresh cannot load them. Return null until the canonical
+    // ID supplies one navigable entry.
     if (String(activeTaskId).startsWith('tmp-')) return null;
     return `/c/${activeTaskId}`;
   }
@@ -112,9 +89,8 @@ function safeDecodeSegment(seg) {
   }
 }
 
-// URL → initial AppCore nav state, so a web deep-link / refresh paints the right
-// view instead of flashing Home. `selectedProjectId` is seeded but not held as
-// state — the project route resolves it to the object from the fetched list.
+// Seed navigation from deep links to avoid flashing Home. Detail routes resolve seeded IDs against
+// fetched lists.
 export function initialNavState() {
   const HOME = { route: 'home', activeTaskId: null, selectedProjectId: null, selectedScheduleId: null };
   if (!host.isWeb || typeof window === 'undefined') return HOME;
@@ -140,22 +116,15 @@ export function initialNavState() {
   }
   const key = path.replace(/^\/+/, '');
   if (SLUG_ROUTES[key]) return { ...HOME, route: SLUG_ROUTES[key] };
-  // A route with a slug alias is reachable ONLY by its slug (the router
-  // registers the slug path, not the raw key), so `!ROUTE_SLUGS[key]` keeps the
-  // parser in step with the route table — e.g. `/customize` fails safe to Home,
-  // matching the router's `*`-redirect, rather than resolving a URL that no
-  // longer exists.
+  // Aliased routes exist only at their slug; accepting /customize here would disagree with the
+  // router's fallback.
   if (VIEW_ROUTES.includes(key) && !ROUTE_SLUGS[key]) return { ...HOME, route: key };
   return HOME;
 }
 
-// ---------------------------------------------------------------------------
 // Route elements
-// ---------------------------------------------------------------------------
 
-// Renders AppCore's shell (which embeds the <Outlet/> + the route-keyed view
-// switch) and hosts the state→URL bridge. The first run is skipped so a
-// deep-link / refresh (URL→state, via the child effects) wins on mount.
+// Skip the first state-to-URL sync so child effects can honor an initial deep link.
 function CoworkLayout() {
   const { shell, route, activeTaskId, selectedProjectId, selectedScheduleId } = useCowork();
   const navigate = useNavigate();
@@ -201,8 +170,7 @@ function ConversationRoute() {
   return null;
 }
 
-// Non-migrated views: sync AppCore's `route` state to the URL so the switch
-// renders. v2 promotes these to real loader-backed routes.
+// Mirror the route name into AppCore for views without loaders.
 function ViewRoute({ name }) {
   const { enterRoute } = useCowork();
   useEffect(() => {
@@ -212,10 +180,8 @@ function ViewRoute({ name }) {
   return null;
 }
 
-// `/projects/:projectId` — resolves the project object from the id client-side
-// (from the fetched list; no single-project endpoint in v1). enterProjectDetail
-// resolves to `false` when the id isn't in the list; replace the dead detail
-// URL with the grid (replace, not push, so Back skips the missing entry).
+// Resolve the project from the fetched list. Replace missing-detail URLs with the grid so Back
+// skips the dead entry.
 function ProjectDetailRoute() {
   const { projectId } = useParams();
   const { enterProjectDetail } = useCowork();
@@ -245,9 +211,8 @@ function ScheduleDetailRoute() {
   return null;
 }
 
-// Shown (via the view switch) when the `/c/:id` loader hit an operational
-// failure. Unlike a 404 (redirect Home), the URL is kept and retry re-runs the
-// loader via the revalidator.
+// Operational failures keep the conversation URL for retry; only a missing conversation redirects
+// Home.
 export function ConversationUnavailable() {
   const revalidator = useRevalidator();
   const retrying = revalidator.state !== 'idle';
@@ -264,9 +229,7 @@ export function ConversationUnavailable() {
   );
 }
 
-// Shown while a requested conversation id hasn't resolved into local state yet
-// (deep link / scheduled-run open). Avoids briefly rendering an unrelated recent
-// conversation, which the old `tasks[0]` fallback did.
+// Wait for the requested conversation instead of briefly rendering an unrelated recent one.
 export function ConversationLoading() {
   return (
     <div className="flex-1 min-h-0 grid place-items-center text-ink-3" data-testid="conversation-loading">
@@ -282,12 +245,9 @@ async function conversationLoader({ params }) {
   // Not-yet-persisted conversation (mid-send): render from local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
   const result = await fetchSessionResult(id);
-  // 404 → `redirect('/')`, NOT `replace('/')`. In RR7's data router a loader
-  // redirect fires while still committed to the origin — the `/c/:id` entry
-  // never commits — so this pushes `[origin, /]`: Back returns to the origin and
-  // the dead URL is unreachable (verified in CoworkRouter.behavior.test). A
-  // `replace` here would instead replace the *origin* (→ `[/]`) and lose it; on
-  // a cold deep-link RR already forces the initial redirect to replace.
+  // RR7 loader redirects preserve the origin in Back history; replacing would discard it because
+  // the missing conversation never committed. Initial deep-link redirects already replace
+  // (CoworkRouter.behavior.test).
   if (result.status === 'not_found') return redirect('/');
   if (result.status === 'unavailable') return { unavailable: true, id };
   return { task: result.task, id };
