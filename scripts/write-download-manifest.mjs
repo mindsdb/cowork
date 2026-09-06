@@ -1,17 +1,8 @@
 #!/usr/bin/env node
 
 /*
- * Writes the public download manifest that browser clients read to find the
- * current installer: which build is live, the immutable URL that serves it,
- * and the sha256 to check the finished file against.
- *
- * One per platform per channel — latest.json for prod, staging.json for the
- * stable ring — published AFTER the installer object, so it can never name
- * bytes that are not already in the bucket.
- *
- * Placement comes from the key and content comes from the artifact, and the
- * two are cross-checked. A size, a hash and a version passed in alongside the
- * file can disagree with it; ones read out of it cannot.
+ * Publish the per-platform/channel manifest only after uploading its installer.
+ * Derive size/hash/version from the artifact and cross-check the destination key.
  */
 
 import { createHash } from 'node:crypto';
@@ -23,13 +14,8 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const ALIAS_NAMES = ['latest', 'staging'];
 
 /*
- * Released builds are `mindshub-cowork-<version>.<ext>`; stable-ring builds
- * carry the channel and the commit in the same position. Preview builds are
- * per-pull-request and get no manifest, so nothing should ever advertise one.
- *
- * A deb also carries its arch (Debian names packages `pkg_version_arch.deb`),
- * which is file naming rather than version: it is matched and discarded, so
- * the two arches of one release advertise the same version.
+ * Exclude preview/alias filenames. Strip Debian architecture suffixes so architectures share a
+ * release version.
  */
 const CHANNEL_FILE_NAMES = {
   prod: /^mindshub-cowork-((?!.*-(?:preview|stable)-).+?)(?:-(?:amd64|arm64))?\.(?:pkg|exe|deb)$/,
@@ -37,13 +23,8 @@ const CHANNEL_FILE_NAMES = {
 };
 
 /**
- * Pull the version out of an installer's file name, for the channel that is
- * being published.
- *
- * The channel is checked rather than assumed. Publishing a stable build as the
- * version the download page advertises would point every new user at a
- * snapshot, and publishing an alias name would advertise a version literally
- * called "latest".
+ * Validate filename channel so a staging snapshot or latest alias cannot become the advertised
+ * release version.
  */
 export function installerVersionFromFileName(fileName, channel) {
   const pattern = CHANNEL_FILE_NAMES[channel];
@@ -62,7 +43,6 @@ export function installerVersionFromFileName(fileName, channel) {
   return version;
 }
 
-/** Build the manifest body. Pure: every field is an argument. */
 export function downloadManifest({ key, fileName, channel, cdnBase, sizeBytes, sha256, publishedAt }) {
   const keyed = KEY_PATTERN.exec(key);
   if (!keyed) {

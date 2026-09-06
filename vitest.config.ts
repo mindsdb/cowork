@@ -1,14 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Two projects: main (node env) and renderer (happy-dom).
-// setupFiles must be listed per project — root-level ones don't reach projects.
+// setupFiles must be set per project; root settings do not reach them.
 export default defineConfig({
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },
-    // Floors are measured values — raise them as coverage grows, never lower.
-    // `include` = whole src tree, so new untested modules count against them.
+    // Raise coverage floors as coverage grows; include the whole src tree so new untested modules
+    // count.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],
@@ -19,58 +18,37 @@ export default defineConfig({
         branches: 1.5,
         lines: 1.7,
         'src/main/update-logic.ts': { statements: 100, branches: 100 },
-        // The validators a packaged build runs. They were inline in the IPC
-        // handler and covered by nothing; pinned here so the tests that made
-        // them assertable cannot quietly go away again.
+        // Pin coverage for packaged-build validators.
         'src/main/provider-validation.ts': { statements: 86, branches: 80 },
         'src/main/minds-urls.ts': { statements: 96, branches: 89 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
-        // The sign-out sequence and the sidecar restart it no longer waits for.
-        // Pinned for the same reason as the entries above: the ordering has no
-        // visible failure mode. A reply that starts waiting on the restart
-        // again looks exactly like a slow machine, which is how it shipped and
-        // trapped a tester on "Signing out…" for minutes; and a flush that
-        // silently stops running leaves a signed-out install with the previous
-        // user's provider objects still in memory.
+        // Pin sign-out ordering: do not await restart, and always flush the previous user's
+        // provider state.
         'src/main/sign-out.ts': { statements: 97, branches: 100 },
         'src/main/sign-out-restart.ts': { statements: 100, branches: 87 },
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
-        // The liveness decision and its store. Pinned for the same reason as the
-        // entries above: these exist because a stale artifact card shipped, and
-        // the value is entirely in the branch table that proves each fail-open
-        // guard still fires.
+        // Pin artifact liveness fail-open branches.
         'src/renderer/cowork/lib/artifactLiveness.js': { statements: 97, branches: 91 },
         'src/renderer/cowork/lib/artifactsStore.js': { statements: 85, branches: 74 },
-        // The MindsHub credential hand-over. Nothing about it is visible at
-        // runtime — a push that silently stops happening looks exactly like a
-        // signed-out app — so the branch table is the only thing that proves
-        // the sidecar-down, refusal and network-failure paths still return
-        // false instead of throwing, and that sign-out clears both stores.
+        // Pin credential hand-over failures and clearing both stores on sign-out.
         'src/main/minds-credential.ts': { statements: 100, branches: 100 },
-        // The workspace selector's two pure modules. Both are entirely
-        // fail-closed logic: the hook decides whether a surface appears at all
-        // and drops a read that resolved for the previous account, and the tile
-        // decides a colour that must not move when a workspace is renamed.
-        // Neither has a visible failure mode, so the branch table is the only
-        // thing that proves the guards still fire.
+        // Pin stale-account/reachability guards and rename-stable tile colors.
         'src/renderer/cowork/hooks/useHubWorkspaces.js': { statements: 100, branches: 100 },
         'src/renderer/cowork/lib/letterTile.js': { statements: 100, branches: 100 },
         'src/renderer/cowork/components/WorkspaceSelector.jsx': { statements: 100, branches: 90 },
-        // Which organization an API key is minted in. Same reasoning one level
-        // up: a key in the wrong organization looks exactly like a key in the
-        // right one until the bill arrives somewhere nobody expected.
+        // Pin organization selection so credentials cannot use the wrong payer.
         'src/shared/minds-orgs.ts': { statements: 100, branches: 100 },
         'src/renderer/cowork/hooks/useMindsOrgs.js': { statements: 100, branches: 100 },
       },
     },
     projects: [
       {
-        extends: true, // inherit root plugins (react) + settings
+        extends: true,
         test: {
           name: 'main',
           environment: 'node',
@@ -79,7 +57,7 @@ export default defineConfig({
         },
       },
       {
-        extends: true, // inline projects do NOT inherit root plugins by default
+        extends: true, // Inline projects do not inherit root plugins by default.
         test: {
           name: 'renderer',
           environment: 'happy-dom',
