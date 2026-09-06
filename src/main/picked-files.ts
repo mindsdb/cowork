@@ -1,9 +1,4 @@
-// Persists which Drive files the user granted access to via the Google
-// Picker (drive.file scope only covers files the app created itself, so
-// this is the durable record of what else the user has explicitly
-// picked). Stored server-side as a vault field on the connection, which
-// also means it flows into the agent's DS_<ENGINE>_<NAME>__PICKED_FILES
-// env var for free via the existing inject_env plumbing.
+// Persist Picker-granted files in the connection vault; inject_env also exposes them to the agent.
 
 import { getServerPort } from './server-process';
 import { authHeader } from './server-auth';
@@ -17,10 +12,7 @@ export interface PickedFile {
   // Required by Drive API alongside `id` for many files not owned by the
   // connecting account (link-shared docs especially) — see checkFileAccess.
   resourceKey?: string | null;
-  // Project(s) this file was explicitly added to (composer or a
-  // project's Project files rail) — empty when only ever picked from
-  // connection-details, which has no project context. Drives per-
-  // project scoping of the Project files display.
+  // Project memberships scope the files rail; connection-details picks have no project context.
   projects?: string[];
 }
 
@@ -34,10 +26,7 @@ async function checkFileAccess(accessToken: string, fileId: string, resourceKey?
   try {
     const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
     if (resourceKey) headers['X-Goog-Drive-Resource-Keys'] = `${fileId}/${resourceKey}`;
-    // supportsAllDrives=true is required for files.get() to see files that
-    // live in a Shared Drive at all — without it Drive API returns a plain
-    // 404 notFound, indistinguishable from a real missing-grant failure,
-    // regardless of the caller's actual permissions.
+    // Shared Drive files require supportsAllDrives=true or files.get can return a misleading 404.
     const res = await fetch(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id&supportsAllDrives=true`,
       { headers },
@@ -51,20 +40,11 @@ async function checkFileAccess(accessToken: string, fileId: string, resourceKey?
   }
 }
 
-// Google's per-file grant from a Picker selection isn't necessarily
-// visible to files.get() the instant the PICKED callback fires — an
-// immediate check can 404 (`notFound`) purely from replication lag, not
-// because the grant actually failed. Retry with backoff before treating
-// a failure as final.
+// Picker grants can lag the PICKED callback; retry read checks before treating a 404 as final.
 const VERIFY_RETRY_DELAYS_MS = [800, 1600, 3200];
 
-// The Picker's PICKED callback firing doesn't always mean Google actually
-// completed the per-file grant — we've seen files come back from a picker
-// session that still 403 with `appNotAuthorizedToFile` when the agent
-// later tries to read them. Confirm each newly picked file is actually
-// readable with the token we just minted before persisting it as picked,
-// so a broken grant surfaces immediately (with a clear reason) instead of
-// silently sitting in the list until someone asks Anton to use it.
+// Confirm readability before persisting picks; the PICKED callback alone does not prove a grant
+// succeeded.
 export async function verifyPickedFiles(
   accessToken: string,
   files: PickedFile[],
@@ -80,10 +60,7 @@ export async function verifyPickedFiles(
     }
     if (result.ok) verified.push(file);
     else {
-      // Surface whether Picker actually gave us a resourceKey for this
-      // file — distinguishes "we have one and Google still rejects it"
-      // (a deeper permission/trust issue) from "Picker never returned one"
-      // (nothing for us to send in the first place).
+      // Distinguish a missing Picker resourceKey from a rejected request that already supplied one.
       const rk = file.resourceKey ? 'has resourceKey' : 'no resourceKey';
       failed.push({ id: file.id, name: file.name, reason: `${result.reason}, ${rk}` });
     }
@@ -112,12 +89,8 @@ export type SavePickedFilesResult =
   | { ok: true; files: PickedFile[] }
   | { ok: false; reason: string };
 
-// Merges newly picked files into the connection's persisted list and
-// returns the authoritative merged list from the server. Callers must
-// treat `ok: false` as "nothing was actually persisted" — the caller
-// (IPC handler) must not report success to the renderer when this fails,
-// since the UI would otherwise show the files as granted even though the
-// server never recorded them.
+// Return the server’s merged list. Callers must treat ok:false as not persisted, never as a
+// successful grant.
 export async function savePickedFiles(engine: string, name: string, newFiles: PickedFile[]): Promise<SavePickedFilesResult> {
   try {
     const res = await fetch(
