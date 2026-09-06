@@ -209,10 +209,8 @@ describe('useArtifactWorkspace collaboration transport', () => {
     await waitFor(() => expect(result.current.status).toBe('ready'));
   });
 
-  // Provisioning mints an auth rule, so the server refuses it to anyone but the
-  // owner. The client therefore has to learn its role from the read-only entry
-  // BEFORE asking — a reviewer who provisions gets 403, which used to land as an
-  // error banner with comments switched off.
+  // Read viewer role before owner-only provisioning; a reviewer 403 must not disable otherwise
+  // readable comments.
   it('lets a reviewer in without asking to provision draft review', async () => {
     platform.isWeb = true;
     api.loadArtifactReview.mockResolvedValue({
@@ -557,10 +555,8 @@ describe('useArtifactWorkspace agent repair auto-open', () => {
   });
 
   it('does not call a repair superseded just because our copy of head is behind', async () => {
-    // The agent's revision can be NEWER than the head this client last loaded.
-    // Inferring from a local comparison read that as "the artifact moved past
-    // your suggestion" and told the owner their edit came first, when the
-    // suggestion was in fact current and needed no confirm to reject.
+    // An agent revision can be newer than the locally loaded head; local ordering must not falsely
+    // label it superseded.
     api.loadArtifactSource.mockResolvedValue({
       ...source,
       revision: { id: 'rev-8' },

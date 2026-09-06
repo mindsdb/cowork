@@ -1,15 +1,7 @@
-// Sharing on Cloud (ENG-2316).
-//
-// Same state machine as desktop, different transport: an org deployment has no
-// path the client can name, and `/publish` is local-only server-side. So the
-// hook addresses the artifact by identity and re-publishes through the
-// owner-gated workspace route instead.
-//
-// The reads matter as much as the writes. An artifact CARD withholds
-// `accessEmails`/`accessPassword` in org mode — one artifacts root is shared by
-// the whole organization, so a card cannot tell owner from co-member — which
-// means the owner-only access route is the only way the real recipient list
-// reaches this client.
+// Org sharing uses artifact identity and owner-gated workspace routes instead of local
+// paths/publish.
+// Read access details from the owner-only endpoint because shared artifact cards withhold
+// recipients/passwords.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
@@ -83,9 +75,8 @@ describe('usePublish on Cloud', () => {
   });
 
   it('shares publicly through the same route', async () => {
-    // The server is authoritative for the resulting mode — it degrades an empty
-    // restricted/password selection back to public — so the response, not the
-    // request, is what the hook settles on.
+    // Settle on the server's returned mode; empty restricted/password requests can normalize to
+    // public.
     wsMock.setArtifactAccess.mockResolvedValue({
       url: 'https://share/abc', accessMode: 'public',
     });

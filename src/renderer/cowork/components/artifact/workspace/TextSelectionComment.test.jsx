@@ -1,8 +1,5 @@
-// The composer disables itself while a submit is in flight, so every exit from
-// that submit has to re-enable it. `onCreate` answering false is the ordinary
-// failure (the comments hook shows the reason in the panel); a throw is not
-// supposed to happen, and precisely because of that it must not be the one path
-// that locks the user out of their own draft.
+// Both false returns and thrown submit failures must re-enable the composer without losing its
+// draft.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -26,7 +23,6 @@ describe('TextSelectionComment', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Comment/ })).toBeEnabled());
     expect(onCreate).toHaveBeenCalledTimes(1);
-    // Still open, still holding the text: a retry is one more click.
     expect(onCancel).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox', { name: 'Comment on selected text' })).toHaveValue('tighten this');
   });
