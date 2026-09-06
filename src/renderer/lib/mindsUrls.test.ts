@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-// mindsUrls.ts resolves import.meta.env into module-level constants at IMPORT
-// time, so each test stubs env, resetModules(), then dynamically imports a
-// fresh copy.
+// Environment-derived URLs are captured at import; stub env and reset modules before each fresh
+// import.
 async function importUrls() {
   vi.resetModules();
   return await import('./mindsUrls');
@@ -17,10 +16,8 @@ afterEach(() => {
   setUrl('http://localhost:3000/');
 });
 describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
-  // Regression: the packaged desktop app loads the renderer over file://, so a
-  // protocol-based "isWeb" fallback misfired and pointed the sign-up link at
-  // auth.dev.mindshub.ai even though the API host resolved to prod. Auth must
-  // always track the *resolved* API base.
+  // Auth must follow the resolved API base, including packaged file:// renderers whose protocol
+  // does not identify the environment.
   it('defaults to prod auth host when no env is set (built prod renderer, DEV=false)', async () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
@@ -84,12 +81,8 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
     const { MINDS_API_BASE, MINDS_KEYCLOAK_URL, MINDS_CONSOLE_URL } = await importUrls();
     expect(MINDS_API_BASE).toBe('https://api-pr123.dev.mindshub.ai');
     expect(MINDS_KEYCLOAK_URL).toBe('https://auth-pr123.dev.mindshub.ai/auth');
-    // CORRECTED: this asserted `console-pr123.dev.mindshub.ai`, which is a host
-    // that does not resolve. A per-PR env serves the console with no service
-    // prefix. Measured against a live env on 2026-08-27:
-    // `console-pr-cowork-744.dev.mindshub.ai` answers 404 and
-    // `pr-cowork-744.dev.mindshub.ai` answers 200. The old expectation encoded
-    // the bug, so every console deep link 404d in a PR env.
+    // Per-PR console hosts omit the service prefix; console-pr-* names do not resolve to the
+    // environment's console.
     expect(MINDS_CONSOLE_URL).toBe('https://pr123.dev.mindshub.ai');
   });
 
@@ -134,11 +127,8 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
 });
 
 describe('console host derivation (the one role that differs by host shape)', () => {
-  // Regression: every console deep link 404d in a PR environment. A per-PR env
-  // serves the console with no service prefix, so swapping `api-` for
-  // `console-` produced a host that does not resolve. Measured against
-  // pr-cowork-744: `console-pr-cowork-744.dev.mindshub.ai` answered 404,
-  // `pr-cowork-744.dev.mindshub.ai` answered 200.
+  // Per-PR console links must omit the service prefix; replacing api- with console- points at the
+  // wrong host.
   it('drops the service prefix entirely on a PR host', async () => {
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api-pr-cowork-744.dev.mindshub.ai');
     const { MINDS_CONSOLE_URL, MINDS_WORKSPACES_URL } = await importUrls();

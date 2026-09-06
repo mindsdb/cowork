@@ -21,9 +21,7 @@ import {
 } from '../cowork/lib/organizationRequestBoundary';
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 
-// Single source of truth for the Keycloak host lives in mindsUrls.ts so the
-// login flow and the sign-up link (MINDS_REGISTER_URL) always agree on the
-// environment (prod / staging / dev).
+// Share the resolved auth host with sign-up links in mindsUrls.ts.
 const keycloakUrl = MINDS_KEYCLOAK_URL;
 
 // Base URL without query params for Keycloak redirect (Keycloak validates strictly)
@@ -31,10 +29,7 @@ const redirectUri = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.host}${window.location.pathname}`
   : undefined;
 
-// Web uses the `public-client` (browser redirect + web origins), same as the
-// MindsHub console. `anton-desktop` is the loopback-only PKCE client for the
-// native desktop app (redirectUris http://127.0.0.1:*) and can't serve a
-// browser origin, so it must not be used here.
+// Web requires public-client origins; anton-desktop only permits native loopback PKCE callbacks.
 const keycloak = new Keycloak({
   url: keycloakUrl,
   realm: 'mindsdb',
@@ -50,10 +45,8 @@ export { keycloak };
 
 export const getAccessToken = async (): Promise<string | null> => {
   /**
-   * Once a switch request starts, the server-side session may name the new
-   * tenant before this document can confirm and reload. Refuse every ordinary
-   * API token request so the old UI cannot start work in that indeterminate
-   * window. A definite refusal releases the guard below.
+   * Fence ordinary API token reads during tenant transitions: the server may switch organizations
+   * before this document reloads.
    */
   assertOrganizationTransitionClear();
   if (!keycloak.authenticated) return null;
@@ -62,18 +55,15 @@ export const getAccessToken = async (): Promise<string | null> => {
     await keycloak.updateToken(30);
   } catch {
     /**
-     * A refresh failure may still leave the existing token usable, but only if
-     * no other tab began changing the shared Keycloak tenant while we waited.
+     * A failed refresh may leave a usable token, unless another tab changed tenant while it was
+     * pending.
      */
     assertOrganizationTransitionClear();
     const token = keycloak.token ?? null;
     if (token) expectedOrganizationHeaders(token);
     return token;
   }
-  /**
-   * A refresh that began under the old UI can finish after another tab commits
-   * a switch and hand back a new-organization token. Fence that exact race.
-   */
+  /** Fence again after refresh: another tab may have switched tenant while this request was pending. */
   assertOrganizationTransitionClear();
   const token = keycloak.token ?? null;
   if (token) expectedOrganizationHeaders(token);
@@ -148,8 +138,8 @@ async function fetchOrganizationJson(
     return { response, payload };
   } finally {
     /**
-     * This timer stays armed through body consumption. Aborting the controller
-     * cancels a response that sent headers but never finishes its JSON body.
+     * Keep the deadline armed through body consumption so headers followed by a stalled body cannot
+     * hang the request.
      */
     globalThis.clearTimeout(timeout);
   }
@@ -245,8 +235,8 @@ function normalizeOrganizations(payload: unknown, subject: string): MindsOrg[] |
     const suppliedDisplayName =
       nonEmptyString(source.displayName) ?? nonEmptyString(source.display_name);
     /**
-     * Fail readable when an older or partial membership shape omits the label.
-     * Never expose the personal_<subject> implementation name in the menu.
+     * Use a readable fallback for partial membership records; never expose personal_<subject> in
+     * the menu.
      */
     const displayName = suppliedDisplayName
       ?? (rawName === personalOrgName(subject)
@@ -272,10 +262,8 @@ export async function listWebOrganizations(): Promise<WebOrganizationListResult>
     return { ok: false, reason: 'Could not read the signed-in account.' };
   }
   /**
-   * The account model that mounts this hook already came from a refreshed
-   * token. Avoid initiating a second, uncancellable keycloak-js refresh just
-   * to populate an optional menu group; an expired bearer fails closed and the
-   * bounded retry can ask again after another app request refreshes it.
+   * Reuse the account's refreshed token rather than starting an uncancellable refresh for this
+   * optional menu. An expired bearer fails closed until a later retry.
    */
   const token = keycloak.token ?? null;
   if (!token) {
@@ -322,8 +310,8 @@ export async function switchWebOrganization(
     token = await withinOrganizationDeadline(getAccessToken());
   } catch {
     /**
-     * keycloak-js cannot abort its refresh fetch. Reload so a timed-out
-     * preflight cannot leave every later token request queued behind it.
+     * keycloak-js cannot abort refresh. Reload after a timeout so later token requests cannot stay
+     * queued behind it.
      */
     prepareForOrganizationReload({ clearTenantState: false });
     return {
@@ -450,10 +438,8 @@ export function __resetOrganizationTransitionForTests(): void {
   resetOrganizationRequestBoundaryForTests();
 }
 
-// Ends the browser session. keycloak.logout() clears the in-memory token and
-// redirects to Keycloak's end-session endpoint; on return, onLoad:'login-required'
-// (web-main.tsx) forces a fresh login. Guarded on `authenticated` so it's a safe
-// no-op on legacy tenant hosts that render without the Keycloak wrapper.
+// End the browser session and return through login-required. Legacy tenant hosts without Keycloak
+// authentication remain a no-op.
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
   await keycloak.logout({ redirectUri });

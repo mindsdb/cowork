@@ -1,11 +1,5 @@
-// "Design your own" theme — the `custom` entry in the SKINS registry.
-//
-// A custom theme is a small recipe (accent, optional background, corner
-// radius, font, scanlines) from which the full token set is derived and
-// applied as inline custom properties on <body>. Inline properties win
-// over every stylesheet block, so the recipe composes with — and
-// overrides — whichever light/dark theme is active. Leaving `bg` unset
-// keeps the active light/dark surfaces and only re-tints the accent.
+// Derive body-level theme tokens from a custom recipe. Inline properties override stylesheet
+// themes; an unset bgLight/bgDark keeps that theme's surfaces.
 
 export interface CustomTheme {
   /** Accent / brand color (hex). */
@@ -100,16 +94,13 @@ const MANAGED_PROPS = [
 const MONO_STACK = "'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace";
 
 /**
- * Apply (or with null, clear) a custom theme as inline body properties.
- * Safe to call repeatedly; always clears before applying. `theme` picks
- * which of bgLight/bgDark is in effect — defaults to 'dark'.
+ * Apply or clear inline theme properties. Clear prior overrides first; theme selects the light/dark
+ * background.
  */
 export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' = 'dark'): void {
   const body = document.body;
   for (const p of MANAGED_PROPS) body.style.removeProperty(p);
-  // Not a custom property (kept out of MANAGED_PROPS, which is documented as
-  // the --custom-property list) — cleared explicitly so removing/clearing
-  // the theme hands the window background back to .gf-theme-light/dark.
+  // Release the explicit window background as well as custom properties when clearing the theme.
   body.style.removeProperty('background');
   body.classList.remove('custom-scanlines', 'custom-bg-active');
   if (!t) return;
@@ -127,14 +118,9 @@ export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' 
   const bgHex = theme === 'light' ? t.bgLight : t.bgDark;
   const bg = bgHex ? hexToRgb(bgHex) : null;
   if (bg) {
-    // A flat custom color reads as a mistake next to any decorative
-    // glow/gradient designed for the stock theme's palette — see
-    // .custom-bg-active in globals.css, which flattens the sidebar's
-    // accent-glow wordmark shadow (and any skin halo) while this is set.
+    // Suppress stock-theme glows that clash with a custom background.
     body.classList.add('custom-bg-active');
-    // Derive the neutral ramp from the chosen background: surfaces step
-    // toward the opposite pole of the bg's luminance; ink flips to
-    // whichever pole keeps text readable.
+    // Derive surfaces and ink toward the opposite luminance pole.
     const dark = luminance(bg) < 0.5;
     const pole = dark ? WHITE : BLACK;
     const inkPole = dark ? WHITE : BLACK;
@@ -150,13 +136,8 @@ export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' 
     body.style.setProperty('--ink-3', rgbToHex(mix(inkPole, bg, 0.45)));
     body.style.setProperty('--ink-4', rgbToHex(mix(inkPole, bg, 0.60)));
     body.style.setProperty('--ink-5', rgbToHex(mix(inkPole, bg, 0.75)));
-    // The window-level background (outside the sidebar) is otherwise
-    // hardcoded per stock theme by .gf-theme-light/.gf-theme-dark
-    // (styles.css) — those class rules never look at --bg at all. Setting
-    // `background` here directly as an inline style beats them on
-    // specificity, so a custom background actually reaches beyond the
-    // sidebar. A bit darker than the picked color gives the sidebar some
-    // depth against it rather than reading as one flat slab.
+    // Stock window backgrounds ignore --bg; override background inline so the custom color extends
+    // beyond the sidebar.
     body.style.setProperty('background', rgbToHex(mix(bg, BLACK, 0.10)));
   }
 

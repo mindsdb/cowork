@@ -7,21 +7,14 @@ describe('isLegacyTenantHost', () => {
     expect(isLegacyTenantHost('cw-e075837b.staging.mindshub.ai')).toBe(true);
   });
 
-  // The shape production actually serves. Hosted instances are provisioned by
-  // mindshub_services onto the `4nton.ai` zone (host_prefix `cw-`), NOT onto
-  // `*.mindshub.ai` — so a predicate narrowed to the mindshub.ai suffix would
-  // pass every other test here and still leave prod dead-ended on Keycloak's
-  // "Invalid parameter: redirect_uri". Observed live 2026-08-10 (ENG-1281).
+  // Production hosted instances use cw-*.4nton.ai; a mindshub.ai-only predicate would miss them.
   it('is true for a legacy cw-<id> host on the 4nton.ai zone (prod)', () => {
     expect(isLegacyTenantHost('cw-9a9e789c.4nton.ai')).toBe(true);
   });
 
-  // Documents the zone-agnostic reach of the predicate rather than endorsing it:
-  // `*.mindshub.ai` has NO Cloudflare Worker route (only `*.4nton.ai`,
-  // `*.staging.mindshub.ai`, `*.dev.mindshub.ai` do), so this host would take
-  // the bypass with no gate behind it. Unreachable today — the apex returns
-  // ingress `default backend - 404` — and it fails closed if it ever resolves.
-  // See the NOTE in legacyHost.ts for why this is not narrowed here.
+  // Document the zone-agnostic predicate: this suffix has no Worker route and is not an endorsed
+  // deployment target.
+  // See legacyHost.ts for why the predicate is not narrowed.
   it('is true for cw-<id>.mindshub.ai — zone-agnostic, and NOT Worker-gated', () => {
     expect(isLegacyTenantHost('cw-e075837b.mindshub.ai')).toBe(true);
   });
