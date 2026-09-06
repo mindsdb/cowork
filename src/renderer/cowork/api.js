@@ -1,8 +1,5 @@
-// API client — talks to the FastAPI backend at /v1/*.
-// The origin comes from the host abstraction: packaged Electron addresses
-// the loopback server on the per-OS-user port main resolved (ENG-439); Vite
-// dev / web are same-origin (proxied), so getApiOrigin() returns the page
-// origin. Routing through host keeps the port in one place.
+// Resolve the API origin through host: Electron uses its assigned loopback port; web and dev use
+// the page origin.
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
@@ -30,17 +27,9 @@ const API_ORIGIN = host.getApiOrigin();
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
-// Thin wrapper around fetch() for server calls.
-//
-// Web: attach the Keycloak access token as `Authorization: Bearer` so the
-// ingress auth subrequest (auth-service /v1/authenticate) can validate the
-// caller, mirroring the MindsHub console (mindshub_frontend). host.getAccessToken
-// refreshes the token as needed.
-//
-// Electron: the main process injects the loopback server's bearer token (when
-// COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
-// (src/main/index.ts). That token never reaches the renderer and is NOT the
-// Keycloak token, so nothing is attached here.
+// Web sends the refreshed Keycloak token in Authorization. Electron injects its separate loopback
+// token
+// from the main process; that token never reaches the renderer.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
     const token = await host.getAccessToken();
@@ -98,33 +87,14 @@ async function rootReq(path, options = {}) {
   return res.json();
 }
 
-// In-flight single-flight cache. When several call sites ask for
-// the same endpoint at the same time (e.g. WorkingFolderLive and
-// ContextCard both mounting at once and both calling
-// `listProjectFiles(name)`, or the projects list view fanning N
-// rows that all want `fetchArtifacts`), we collapse the duplicates
-// into one network request and share its promise.
-//
-// Behaviour:
-//   - First caller for a given key starts the request.
-//   - Concurrent callers receive the SAME promise.
-//   - A force-fresh caller replaces that generation; later callers join it.
-//   - Once the promise settles (resolve or reject) the entry is
-//     deleted so the next call will re-fetch — i.e. NO long-lived
-//     cache, just request coalescing within the same tick / async
-//     window. Streaming polls keep working.
-//
-// The keys are constructed by callers; convention is the URL path
-// plus any query params, so different projects never collide.
+// Share concurrent requests by key; callers must include all path/query parameters.
+// Entries expire on settlement. forceFresh replaces the pending request for subsequent callers.
 const _inflight = new Map();
 function dedupe(key, factory, { forceFresh = false } = {}) {
   const existing = _inflight.get(key);
   if (existing && !forceFresh) return existing.promise;
 
-  // Store a generation alongside the promise. A post-mutation read replaces
-  // the current generation, so later callers join the newer request even if
-  // the pre-mutation request is still pending. The identity check in finally
-  // prevents that older promise from deleting its replacement when it settles.
+  // An older request must not delete the replacement started by a post-mutation read.
   const generation = Symbol(key);
   const promise = Promise.resolve()
     .then(factory)
@@ -148,21 +118,12 @@ async function responseError(res, fallback) {
   return new Error(detail || fallback);
 }
 
-// ─── Health ──────────────────────────────────────────────────────────────────
-// Hands anton's install id to analytics on the way through (ENG-1689). Done
-// here rather than at the call sites because there are five of them and a sixth
-// added later would silently stop reporting the join key; this is the one funnel
-// every health read passes through. Same shape as the `cacheSettings` call
-// below — a lib-level setter written from the transport layer.
-// `setAntonInstallId` self-gates to desktop.
+// Capture the install ID here so every health caller supplies the analytics join key.
+// setAntonInstallId gates to desktop.
 export async function fetchHealth() {
   try {
     const health = await rootReq('/api/v1/health');
-    // Isolated: analytics must never decide whether the server looks healthy.
-    // This sits inside fetchHealth's try, so an exception here would fall to the
-    // catch below and report `status: 'offline'` — making an analytics failure
-    // indistinguishable from a down server, on the call that gates boot. Same
-    // rule anton applies to its own reporting ("must never affect the turn").
+    // Analytics failures must not make this boot-readiness check report the server offline.
     try {
       setAntonInstallId(health?.aid);
     } catch {
@@ -170,18 +131,13 @@ export async function fetchHealth() {
     }
     return health;
   } catch {
-    // Deliberately NOT cleared on an outage. Unlike a version, this id is a
-    // stable machine fingerprint — it cannot go stale, and dropping it during a
-    // health blip would strand events that could have carried the join key.
+    // Keep the stable install ID through outages so health blips do not remove the analytics join
+    // key.
     return { status: 'offline', anton_available: false };
   }
 }
 
-// ─── Conversations (Tasks) ──────────────────────────────────────────────────
-// Cowork's "task" object is the merge of an Anton conversation (id, title,
-// preview, project_path, messages) with cowork-side UI state (pinned,
-// attachments). The shape returned here mirrors what App.jsx already
-// expects so callers don't need to change.
+// Tasks combine Anton conversation metadata with Cowork UI state, including pins and attachments.
 
 function _failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
@@ -190,25 +146,17 @@ function _failedEventMeta(events) {
   return {
     code: ev.code || null,
     message: ev.error || ev.message || '',
-    // Carry the card context so a RELOADED failure renders the same affordance
-    // as the live one. Without these, reconnectable is undefined on reload and
-    // the provider_overloaded / provider_auth cards mis-nudge a managed user
-    // toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
-    // App.jsx's failedEventMeta (the two hydrate paths must agree on this).
+    // Keep failure-card context consistent with App.jsx failedEventMeta so reload offers the same
+    // recovery action.
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
     // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
+    // Keep the grant-reset ISO string intact for formatting in the viewer’s timezone.
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
-    // Absolute instant to gate Retry against. The message's own created_at
-    // is NOT a substitute: the server serialises it offset-less, so JS reads
-    // it as local time — the gate would last hours west of UTC and no-op east
-    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    // Use retry_at: message created_at lacks a timezone and would shift the retry deadline in
+    // non-UTC locales.
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
     // The remote turn's own correlation id (cowork-server) — the one thing a
     // generic anton_error bubble can still offer for a support lookup.
@@ -216,11 +164,8 @@ function _failedEventMeta(events) {
   };
 }
 
-// Replay the server-persisted SSE event log through the live stream
-// reducer to reconstruct `steps` + `startedAt` for each assistant
-// turn. The server saves raw events in a sidecar file and returns
-// them inline on `/conversations/{id}/items`; doing the replay
-// here keeps reducer logic single-source (lib/responseStreamAdapter).
+// Replay persisted SSE events through the live reducer so reload restores the same steps and
+// startedAt.
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
   const out = [];
@@ -245,10 +190,8 @@ function _hydrateAssistantEvents(messages) {
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
-      // Same mapping as App.jsx's live-stream path (lib/antonErrors): a
-      // config/auth failure renders the connect-a-provider card. Before
-      // ENG-1304 only the live path mapped it, so reopening a conversation
-      // downgraded the card to a raw error string.
+      // Match the live-stream mapping in App.jsx so reopened config/auth failures retain the
+      // provider card.
       if (isAntonConfigError(failed?.message, { code: failed?.code })) {
         out.push({ role: 'provider_required' });
       } else {
@@ -271,17 +214,8 @@ function _hydrateAssistantEvents(messages) {
 }
 
 function _conversationToTask(conv, messages = []) {
-  // Server stores conversations under <project>/.anton/episodes/ and
-  // returns the project NAME on each conversation meta. We carry both:
-  //   projectName — the canonical id from the server
-  //   projectPath — resolved later from the projects list (App.jsx)
-  //
-  // Each assistant message may carry an `events` array — the SSE log
-  // captured server-side for that turn. Replaying it through the live
-  // reducer gives us back `steps` + `startedAt` byte-for-byte. We do
-  // the replay at the api boundary so the rest of the app sees a
-  // consistent message shape regardless of whether the data came from
-  // a fresh stream or a server reload.
+  // projectName is the server identity; App.jsx resolves projectPath from the projects list.
+  // Hydrate persisted events here so reload and live streams expose the same message shape.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
@@ -303,11 +237,7 @@ function _conversationToTask(conv, messages = []) {
     attachments: [],
     disabledConnections,
     pinned: false,
-    // Carry the schedule linkage through so the renderer can group
-    // multiple runs of the same schedule into a single "view all"
-    // row instead of showing each execution as its own task. Set on
-    // conversations created by `_run_schedule`; null for chat-
-    // initiated conversations.
+    // Group scheduled executions by schedule; chat-created conversations have no schedule linkage.
     scheduledId: conv.scheduled_id || conv.scheduledId || null,
     updatedAt: conv.updated_at || conv.updatedAt || null,
     createdAt: conv.created_at || conv.createdAt || null,
@@ -318,11 +248,8 @@ function _conversationToTask(conv, messages = []) {
  * empty account from a broken fetch can (ENG-2246) — `fetchConversationList`
  * below keeps the swallowing contract its other caller relies on. */
 async function requestConversationList() {
-  // Critical: pass `project=all` so we list conversations across
-  // every project, not just the active one. Without this, a task
-  // created in project A vanishes from `tasks` the moment we
-  // refresh while the user is "in" project B (because the server
-  // defaults to the active project's episodes/ dir).
+  // The server otherwise defaults to the active project, hiding tasks from other projects on
+  // refresh.
   const list = await req('/conversations/?project=all&limit=200');
   return Array.isArray(list?.conversations) ? list.conversations : [];
 }
@@ -345,26 +272,12 @@ export async function createConversation({ project, projectId, topic, harness, m
   });
 }
 
-/** How many recent conversations get their transcript warmed in the
- * background. Unchanged from the original eager fan-out — see ENG-2246's
- * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
-/** Resolves as soon as the conversation LIST lands — one request. Everything
- * the sidebar renders comes from that response (`_conversationToTask` reads
- * `messages` for nothing but `messages`), so waiting on the per-conversation
- * transcripts only delayed first paint (ENG-2246).
- *
- * The transcript warm-up still runs, at the same depth, but off the critical
- * path: it is deliberately NOT awaited, and reports each bundle through
- * `onItems` so the caller can merge it in as it arrives.
- *
- * Returns `Task[]` on success and `{ error: true, status }` on a failed list
- * request. Seven of the eight call sites guard with `Array.isArray`, so the
- * failure is inert for them and actionable for the one that cares; the eighth
- * (`App.jsx` delete-rollback) checks the shape explicitly for the same reason.
- * Any new caller must do one or the other — a bare truthiness check would
- * treat the error object as a task list. */
+/**
+ * Resolve after the list arrives; optionally warm transcripts in the background through onItems.
+ * Returns Task[] or { error: true, status }; callers must check the shape, not truthiness.
+ */
 export async function fetchSessions({ onItems } = {}) {
   let conversations;
   try {
@@ -374,32 +287,18 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
-  //
-  // Only warmed when a caller is actually listening. Seven of the eight
-  // `fetchSessions` call sites want the list and nothing else (every task
-  // open is one of them); warming for those fetched 50 transcripts and threw
-  // every one away, which is 50 wasted requests on the app's most common
-  // interaction.
+  // Warm only when onItems can consume the transcripts. Individual failures must not block the
+  // list.
   if (onItems) {
     for (const c of conversations.slice(0, EAGER)) {
       req(`/conversations/${encodeURIComponent(c.id)}/items`)
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
+        // Hydration restores steps, startedAt, and synthetic failure cards; raw messages omit them.
         .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
         .catch(() => {});
     }
   }
 
-  // Guarded: the outer try/catch that used to wrap this whole function is gone,
-  // and _conversationToTask dereferences conv.title / conv.disabled_connections.
-  // One malformed row would reject a promise whose caller has no .catch, leaving
-  // tasksStatus stuck on 'loading' — skeleton rows forever, no retry reachable.
+  // Skip malformed rows so a bad conversation cannot leave callers stuck loading.
   return conversations
     .filter((c) => c && typeof c === 'object')
     .map((c) => {
@@ -465,11 +364,8 @@ export async function fetchSessionResult(id) {
 }
 
 /**
- * Pre-allocates the id for a conversation that doesn't exist yet, so
- * attachments can be uploaded against it before the first stream. The
- * server adopts a client-supplied UUID as the conversation's real id
- * (ENG-264) — the old timestamp format here predated the DB-backed
- * server and made it create a different id, stranding the uploads.
+ * Allocate a UUID the server can adopt so attachments uploaded before the first turn stay on the
+ * conversation.
  */
 export function allocateConversationId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -488,10 +384,8 @@ export function allocateConversationId() {
   return `${Date.now().toString(36)}-${(typeof performance !== 'undefined' ? Math.floor(performance.now() * 1e6) : 0).toString(36)}`;
 }
 
-// Streams a /v1/responses request. Maps OpenAI-style typed events to the
-// callback shape the rest of the app already speaks. `conversationId` is
-// optional — omit it to start a new conversation; the caller learns the
-// new id via the first onChunk/onProgress/onDone callback's second arg.
+// Omit conversationId to start a conversation. The first onChunk/onProgress/onDone callback returns
+// its ID as the second argument.
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
@@ -501,22 +395,13 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          // MODEL_ROUTER_ID never leaves the renderer — it's how the
-          // composer represents "let this account's Settings decide"
-          // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that.
+          // MODEL_ROUTER_ID is renderer-only; null lets the server resolve the account’s configured
+          // model.
           model: (model && model !== MODEL_ROUTER_ID) ? model : null,
-          // The composer's per-task harness pick (ENG-1656 follow-up) —
-          // overrides the account-wide harness setting for this
-          // conversation only. Omitted (server keeps the account default)
-          // when the caller doesn't pass one, e.g. an in-task reply, where
-          // the harness pill never shows.
+          // Omit an unset per-task harness so the server retains the account default.
           ...(harness ? { harness } : {}),
-          // Per-task reasoning-effort override (ENG-1940) — takes precedence
-          // over the account-wide per-role effort setting for this turn only.
-          // Same conditional-key pattern as `harness` just above: omitted
-          // entirely when the caller doesn't pass one, so older servers and
-          // effort-less models never see the field.
+          // Per-turn effort overrides the account setting. Omit it when unset for older servers and
+          // models without effort support.
           ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
@@ -614,13 +499,8 @@ export function streamNewSession(text, opts = {}) {
   return _streamResponse(text, opts);
 }
 
-// Phase 2 — reconnect helpers. Built so a tab that mounted on an
-// already-streaming conversation can re-attach without restarting
-// the turn. The cheap probe (`fetchInFlightStatus`) decides whether
-// it's worth opening an SSE; `tailInFlight` reuses the same callback
-// signature as `_streamResponse` so the caller's adapter logic
-// (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
-// is identical between fresh-turn and reconnect paths.
+// Probe before opening a tail on an existing turn. tailInFlight uses the same callbacks as
+// _streamResponse.
 export async function fetchInFlightStatus(conversationId) {
   if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
   try {
@@ -630,16 +510,8 @@ export async function fetchInFlightStatus(conversationId) {
   }
 }
 
-// Cross-client sync feed (Option B). Returns every conversation_id
-// whose producer task is currently running. The renderer mirrors this
-// into a local Set so reconcileTaskMessages can synchronously decide
-// "is this conversation alive on the server right now?" without a
-// per-task probe.
-//
-// Returns `null` when the poll itself FAILS (network blip, non-200), as distinct
-// from `[]` (server answered: nothing running). The stranded-slot self-heal
-// counts a missing conversation as evidence its turn ended, so a failed poll must
-// not read as "nothing running" — two blips would abort a healthy streaming turn.
+// Return running conversation IDs for cross-client reconciliation.
+// A failed poll returns null, not []; treating failure as an empty list could abort healthy turns.
 export async function fetchInFlightList() {
   try {
     const res = await req('/responses/in-flight-list');
@@ -649,15 +521,8 @@ export async function fetchInFlightList() {
   }
 }
 
-// A live tail whose producer emits no real frame for this long is treated as
-// dead — the producer is wedged or the sidecar stopped answering, no terminal is
-// coming — so we abort and release the shared stream slot rather than hold it
-// forever. Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s).
-//
-// Timed against producer frames, NOT raw bytes: the server emits a `: keepalive`
-// comment every 20s while a producer is silent, so a byte-level timer would
-// never fire for the hung-producer case this exists to catch. Keepalive blocks
-// carry no `data:` line, so they never parse to an event and never bump the timer.
+// Match the server’s 300s producer-idle timeout. Count event frames, not bytes: keepalive comments
+// continue during a stalled turn and must not prevent the shared stream slot from being released.
 const TAIL_IDLE_TIMEOUT_MS = 300_000;
 
 export function tailInFlight(conversationId, {
@@ -758,11 +623,8 @@ export function tailInFlight(conversationId, {
       // caller-initiated abort (a new send or navigation) it must release the
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
-        // Tell the server to actually drop the wedged turn. Aborting the tail
-        // only tears down our consumer; the producer keeps running and the next
-        // in-flight poll would re-select it and reopen a fresh tail, looping this
-        // message. cancelResponse is idempotent and swallows errors, so
-        // fire-and-forget is safe.
+        // Aborting the consumer leaves the producer running; cancel it too so polling cannot
+        // repeatedly reopen the stalled turn.
         cancelResponse(conversationId);
         onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
@@ -776,12 +638,8 @@ export function tailInFlight(conversationId, {
 }
 
 export function streamMessage(sessionId, text, opts = {}) {
-  // Strip renderer-side temp ids (`tmp-connect-…` from the connector
-  // picker) before they hit the wire — the server has a defensive
-  // guard, but skipping the value here means the server doesn't even
-  // have to consider it, and the `response.created` event carries
-  // the canonical id straight back. The caller's stream consumer
-  // (App.jsx adoptServerId) rewrites the local task in place.
+  // Strip temporary renderer IDs; response.created supplies the canonical ID that App.jsx adopts in
+  // place.
   const conversationId = sessionId && !String(sessionId).startsWith('tmp-')
     ? sessionId
     : null;
@@ -805,10 +663,8 @@ export async function createProject(name) {
   return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
-// Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
-// project directory and updates internal references; the response is
-// the renamed Project record. Accepts either a project object (with id)
-// or a plain name string for backwards compat.
+// Accept a project object or legacy name string. The server renames its directory/references and
+// returns the updated record.
 export async function renameProject(projectOrName, newName) {
   const id = projectOrName?.id;
   if (id) {
@@ -817,7 +673,6 @@ export async function renameProject(projectOrName, newName) {
       body: JSON.stringify({ name: newName }),
     });
   }
-  // Fallback: lookup by name from the projects list
   const projects = await fetchProjects();
   const match = projects.find((p) => p.name === projectOrName);
   if (!match?.id) throw new Error(`Project "${projectOrName}" not found`);
@@ -827,9 +682,6 @@ export async function renameProject(projectOrName, newName) {
   });
 }
 
-// Reveal a project's working folder in Finder. Same backend as
-// `revealArtifact` — the endpoint takes any path and dispatches it to
-// the OS's native "show in folder" handler.
 export async function revealProjectInFinder(projectPath) {
   if (!projectPath) return null;
   try {
@@ -842,8 +694,6 @@ export async function revealProjectInFinder(projectPath) {
   }
 }
 
-// publishArtifact + previewArtifact live further down in this file.
-// We only add the new unpublish endpoint here.
 export async function cancelScratchpad(name) {
   if (!name) return null;
   try {
@@ -857,23 +707,9 @@ export async function cancelScratchpad(name) {
   }
 }
 
-// Phase 3 — explicit cancel of an in-flight LLM turn.
-//
-// Under the new producer/consumer split (Phase 1), aborting the SSE
-// fetch only tears down the consumer; the server-side producer keeps
-// running. The Stop button needs this dedicated signal to actually
-// halt the work.
-//
-// Never throws (a fire-and-forget caller relies on that), but it no longer
-// hides failures behind a fake success. It returns a discriminated status so
-// the Stop handler can tell three cases apart:
-//   'ok'    — 2xx: the server wrote the cancel flag; `cancelled` says whether a
-//             live run was found. The stop request definitely reached the server.
-//   'gone'  — 404: no run the caller may touch (already finished, or another
-//             org's id). Nothing is running, which is the desired end state.
-//   'error' — network error / 5xx: the request never reached the server, so the
-//             cancel flag was NOT written and the turn may still be running (and
-//             still spending tokens). Callers must NOT report this as success.
+// Aborting SSE stops only the consumer; use this to stop the producer. Never throws.
+// Returns ok when acknowledged, gone on 404, or error when cancellation is unconfirmed; callers
+// must not report error as success.
 export async function cancelResponse(conversationId) {
   if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
@@ -883,22 +719,15 @@ export async function cancelResponse(conversationId) {
     });
     return { status: 'ok', ...res };
   } catch (err) {
-    // A 404 is the one failure that genuinely means "nothing to stop"; every
-    // other failure means the cancel did not land. Conflating them (the old
-    // behavior) is what let Stop silently report success while the remote turn
-    // kept running.
+    // Only 404 confirms there is nothing to stop; other failures leave cancellation unconfirmed.
     if (err?.status === 404) return { status: 'gone', conversation_id: conversationId };
     return { status: 'error', conversation_id: conversationId };
   }
 }
 
 /**
- * Deliver the user's answer to a question a turn is blocked on.
- *
- * Callers must distinguish outcomes, so unlike cancelResponse this does not
- * swallow failures: 404 means the question is gone (the card should become
- * inert and the composer should stop redirecting), 409 means somebody else
- * already answered.
+ * Deliver an answer to a blocked turn. Callers must distinguish not_found, already_answered,
+ * rejected, and error outcomes.
  */
 export async function submitAnswer(conversationId, questionId, answer) {
   if (!conversationId || !questionId) return { status: 'not_found' };
@@ -936,14 +765,10 @@ export async function unpublishArtifact(path) {
   return res.json();
 }
 
-// Accepts the artifact card, not a path: org mode addresses artifacts by slug
-// within a project, desktop still by path. Keeping the choice here means call sites
-// don't each have to branch on the mode. A bare string is still accepted so any
-// stray caller keeps working on desktop.
+// Org deletion uses the artifact identity/slug within its project; desktop uses a path and accepts
+// legacy path strings.
 export async function deleteArtifact(artifact) {
-  // A full identity only: a card replayed from a pre-widening conversation
-  // carries the short id, which the endpoint cannot resolve — it has to fall
-  // through to the slug the way it did before ids were widened.
+  // Older replayed cards have short IDs the endpoint cannot resolve; fall back to their slug.
   const artifactRef = artifactIdentity(artifact) || artifact?.slug;
   const url = artifact?.projectId && artifactRef
     ? `/artifacts/${encodeURIComponent(artifactRef)}`
@@ -985,18 +810,14 @@ export async function deleteProject(projectOrName) {
   return res.json();
 }
 
-// ── Project files ────────────────────────────────────────────────
-//
-// Most paths are relative to the project root. Project instructions
-// live at ANTON_PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
-// These helpers wrap routes/projects.py.
+// Project file paths are relative to the project root; instructions live at
+// ANTON_PROJECT_INSTRUCTIONS_PATH.
 
 const enc = encodeURIComponent;
 
 /** Relative path from project root for project instructions (projects file API). */
 export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
 
-/** True if `relPath` is the canonical instructions file (`.anton/anton.md`). */
 export function isProjectInstructionsPath(relPath) {
   const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
   return r === ANTON_PROJECT_INSTRUCTIONS_PATH;
@@ -1008,19 +829,15 @@ export function isUnderContextDir(relPath) {
   return r === '.context' || r.startsWith('.context/');
 }
 
-/** True if `relPath` is under the project `.anton/` tree (runtime state, outputs, etc.). */
 export function isUnderAntonDir(relPath) {
   const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
   return r === '.anton' || r.startsWith('.anton/');
 }
 
 /**
- * Stat just `.anton/anton.md` for the project — far cheaper than
- * `listProjectFiles` when the only thing the caller needs is the
- * canonical instructions row. Returns `{ file: { path, name, size,
- * modified, is_dir, synthetic? } }`. `synthetic: true` means the
- * file doesn't exist on disk yet (renderer should show the "empty,
- * click to author" affordance). Coalesced like `listProjectFiles`.
+ * Stat the instructions file without listing the project. Returns { file: { path, name, size,
+ * modified, is_dir, synthetic? } }.
+ * synthetic means the file does not exist yet and can be authored. Concurrent reads are coalesced.
  */
 export async function fetchProjectInstructions(projectName) {
   if (!projectName) return { file: null };
@@ -1031,16 +848,10 @@ export async function fetchProjectInstructions(projectName) {
 
 export async function listProjectFiles(projectName, { forceFresh = false } = {}) {
   if (!projectName) return { files: [] };
-  // Coalesced — see `dedupe` notes above. WorkingFolderLive +
-  // ContextCard mount in the same rail and both call this on open,
-  // so without coalescing every project switch fires two identical
-  // requests. The cache entry releases on settle, so subsequent
-  // streaming polls hit the network normally.
+  // Coalesce concurrent readers, but expire on settlement so later polls fetch fresh data.
   const request = () => req(`/projects/${enc(projectName)}/files`);
-  // A mutation acknowledgement establishes a happens-before boundary that an
-  // older coalesced GET cannot satisfy. Callers refreshing after a successful
-  // write/delete bypass the single-flight request so the response necessarily
-  // comes from a GET started after that mutation completed.
+  // After a successful mutation, forceFresh must start a new GET rather than join a pre-mutation
+  // read.
   return dedupe(`projects/${projectName}/files`, request, { forceFresh });
 }
 
@@ -1052,9 +863,7 @@ export async function readProjectFile(projectName, path) {
   return req(`/projects/${enc(projectName)}/files/${safe}`);
 }
 
-// HTML preview-mount for a project file — server registers the
-// parent dir under a token and returns a relative URL the iframe
-// should load with `src=`. Mirrors the artifact preview flow.
+// Mount the file’s parent directory and return the iframe URL, matching artifact previews.
 export async function mountProjectFilePreview(projectName, path) {
   return req(`/projects/preview-mount-file`, {
     method: 'POST',
@@ -1062,9 +871,7 @@ export async function mountProjectFilePreview(projectName, path) {
   });
 }
 
-// Absolute URL for downloading a project file's raw bytes. Server
-// sets `Content-Disposition: attachment` so browsers trigger a save
-// dialog rather than rendering inline.
+// The raw-file response uses Content-Disposition: attachment to download instead of render inline.
 export function projectFileDownloadUrl(projectName, path) {
   const safe = path.split('/').map(enc).join('/');
   return `${BASE}/projects/${enc(projectName)}/files-raw/${safe}`;
