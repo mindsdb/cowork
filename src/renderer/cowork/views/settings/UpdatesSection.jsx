@@ -22,12 +22,6 @@ const BUILD_KIND_LABELS = {
   prod: 'prod',
 };
 
-// The Updates settings section: current-version readout plus the on-demand
-// update check/apply flow. Self-contained — it owns every piece of state its
-// UI needs (versions, the check result, in-flight/applied flags), so nothing
-// here leaks into the rest of SettingsView. The Save `footer` is rendered by
-// the parent and passed through, and the shell (installer) update hand-off
-// comes in via `shellUpdate` / `onDownloadShellUpdate`.
 export default function UpdatesSection({
   footer,
   serverOnline = false,
@@ -56,18 +50,14 @@ export default function UpdatesSection({
   // (failed download, compatibility rejection, update disappeared between
   // check and apply), distinct from the thrown-exception case below.
   const [applyError, setApplyError] = useState(false);
-  // The shell (installer) download is a hand-off to the browser — we can't
-  // detect when it finishes, so once the user triggers it for a given version
-  // we flip the card to the quit-and-open guidance. Keyed by version so a newer
-  // shell notice later in the session starts fresh instead of showing stale
-  // "downloading…" copy for a version that was never fetched.
+  // Browser installer downloads have no completion signal. Track the requested version so newer
+  // notices do
+  // not inherit download guidance for an earlier version.
   const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
-  // Backend (server + agent) versions come from /health, which is only
-  // reachable when the backend is up. Re-read whenever the section mounts and
-  // the backend is online, so versions populate after a cold open or a
-  // start/restart from the Backend section instead of staying blank.
+  // Reload health versions when the backend comes online so a cold-open Updates section does not
+  // stay blank.
   useEffect(() => {
     if (!serverOnline) return undefined;
     let cancelled = false;
@@ -114,11 +104,8 @@ export default function UpdatesSection({
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
             // App shell = installed Electron shell (changes only on reinstall).
             const shellVer = versionInfo.app || baked;
-            // The running renderer's own baked version is authoritative for the
-            // UI version — it's compiled into whichever bundle actually loaded
-            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
-            // can lag the loaded renderer (OTA off, missing cache, post-
-            // rollback), so it only informs the source label, never the version.
+            // Prefer the running renderer’s baked version; main-process cache metadata can lag OTA,
+            // rollback, or bundled execution.
             const uiVer = baked || versionInfo.ui || '';
             const uiSource = versionInfo.source === 'ota' ? 'OTA'
               : versionInfo.source === 'web' ? 'web' : 'bundled';
@@ -179,11 +166,10 @@ export default function UpdatesSection({
                         <span className="text-ink-3 mr-1.5 inline-block min-w-[64px]">{k}</span>{v}
                       </span>
                     ))}
-                    {/* role="status"/aria-live wraps the button itself (unlike
-                        ApiKeyInput's separate pill) because the failure text
-                        here IS the button's label — without a live region a
-                        screen reader has no guarantee it announces a focused
-                        button's label changing out from under it. */}
+                    {/*
+ * Announce copy-result label changes through a live region; focus alone does not guarantee
+ * screen-reader announcement.
+ */}
                     <span role="status" aria-live="polite" className="self-start">
                       <Button
                         onClick={async () => {
@@ -192,10 +178,8 @@ export default function UpdatesSection({
                             setVersionCopyState('copied');
                             setTimeout(() => setVersionCopyState('idle'), 1500);
                           } else {
-                            // No auto-clear timer here — same reasoning as the
-                            // API-key copy above: an error needs longer than
-                            // 1.5s to read. Cleared by the next attempt, blur,
-                            // or hiding the panel (onClick above).
+                            // Keep errors until retry, blur, or panel dismissal so users have time
+                            // to read them.
                             setVersionCopyState('failed');
                           }
                         }}
@@ -240,24 +224,17 @@ export default function UpdatesSection({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              // Shell-first suppression of the redundant OTA "Restart now" card,
-              // decided by the SAME rule the sidebar banner uses — reuse
-              // shellAutoOwnsBanner so "which shell-auto phase is a pending update
-              // (and `failed` only with a real target)" lives in one place and the
-              // two surfaces can't drift. A targetless / check-only failure doesn't
-              // own the slot, so it never hides a valid UI/server Restart. The
-              // manual-notice side stays local because here it's derived from the
-              // live check result (shellPending), not the dismissal-filtered prop.
+              // Share the banner’s shell-update ownership rule. Only a real shell target suppresses
+              // OTA Restart;
+              // check-only failures must leave valid UI/server updates visible.
               const shellSurface = (shellAutoUpdate ? shellAutoOwnsBanner(shellAutoUpdate) : false) || manualFallback;
               const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
               if (applyAvailable) {
                 if (r.serverUpdateAvailable) {
-                  // An anton-only server update (ENG-1094) carries the agent's
-                  // version in serverVersion — label it "Agent" so the card
-                  // doesn't call an agent bump a "Server" update. Absent
-                  // component ⇒ cowork-server, the historical default.
+                  // Label anton-only updates Agent; absent component means the historical
+                  // cowork-server default.
                   const serverLabel = r.serverComponent === 'anton-agent' ? 'Agent' : 'Server';
                   parts.push(`${serverLabel} → ${r.serverVersion || 'new version'}`);
                 }

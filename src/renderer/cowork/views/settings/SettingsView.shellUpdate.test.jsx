@@ -1,11 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// The desktop Settings "Software updates" section is Electron-only and surfaces
-// the shell (installer) reinstall notice + Download control (ENG-849). Stub the
-// API/host/analytics/Channels deps SettingsView reaches for on mount so this
-// stays focused on the shell-download path (regression: PR #453 review — the
-// desktop SettingsView instance wasn't wired with the shell props).
+// Mount desktop Settings with its shell-update props, stubbing unrelated dependencies.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -60,9 +56,8 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
     // The handler must be defined (the desktop instance was previously unwired)
     // and receive the resolved installer URL.
     expect(onDownloadShellUpdate).toHaveBeenCalledWith('https://x/y.pkg');
-    // After the hand-off to the browser download, the card guides the user
-    // through the manual steps that download can't — quit + open the installer
-    // — and the CTA de-emphasizes to a "Download again" retry.
+    // Browser download handoff must leave manual installation instructions and a Download again
+    // action.
     expect(screen.getByText(/Installer downloading/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Download again/ })).toBeInTheDocument();
   });
@@ -114,9 +109,7 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
   });
 
   it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
-    // A failure with no targetVersion (rejected check / failed retry check) still
-    // shows its own Retry card, but must NOT suppress a valid OTA update — a shell
-    // feed outage would otherwise hide the UI/server Restart. Both cards coexist.
+    // A targetless shell-check failure must offer Retry without hiding a valid OTA restart.
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,
       uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
@@ -132,9 +125,7 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
-    // OTA card not hidden…
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    // …and the shell failure's Retry affordance is preserved.
     expect(screen.getByText(/App update failed/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
   });
@@ -156,9 +147,7 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
   });
 
   it('suppresses the UI/server "Restart now" card while a shell update is pending (shell-first, no stacked cards)', async () => {
-    // A shell relaunch also applies the UI/server OTA at boot, so the separate
-    // OTA card would be redundant. Only the shell surface shows — mirroring the
-    // sidebar's single shell-first banner.
+    // Shell relaunch also applies OTA at boot, so hide the redundant OTA card.
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,
       uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
@@ -178,10 +167,7 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
   });
 
   it('an in-progress shell check does not hide a ready UI/server Restart card (checking is not pending)', async () => {
-    // `checking` renders its own "Checking for an app update…" card but is not a
-    // pending shell update, so — like the sidebar banner (shellAutoOwnsBanner
-    // excludes `checking`) — it must not suppress a valid OTA Restart. Both the
-    // transient check card and the OTA Restart card coexist.
+    // Checking is not a pending shell update and must not hide a valid OTA restart.
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,
       uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
