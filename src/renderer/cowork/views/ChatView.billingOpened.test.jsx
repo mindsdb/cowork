@@ -1,7 +1,4 @@
-// ENG-1533: every route from the desktop to the console billing page emits
-// billing_opened carrying the condition that sent the user there. The trigger is
-// the measurement — the causes have different fixes and probably different
-// conversion rates — so each one is pinned to the card that actually renders it.
+// Check the billing trigger emitted by each route.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -49,9 +46,7 @@ beforeEach(() => {
   analyticsMock.trackKeyProvisioningRefused.mockClear();
   hostMock.host.openExternal.mockClear();
   hostMock.host.mindshubFinalize.mockReset().mockResolvedValue({ ok: true });
-  // Reset rather than clear: one test below overrides the resolved value, and
-  // without this both that value and the call count leak into every test after
-  // it, in file order.
+  // Reset the mock implementation as well as calls to remove the previous resolved value.
   hostMock.host.mindshubLogin.mockReset().mockResolvedValue({ ok: true });
 });
 
@@ -68,10 +63,7 @@ describe('billing_opened trigger per call site', () => {
 
   it('included_allowance_exhausted: the free-allowance card records its own trigger (ENG-1537)', async () => {
     const user = userEvent.setup();
-    // A spent monthly grant is a different cohort from a drained wallet — the
-    // org has never paid — so its "Add credits" click cannot be filed under
-    // token_limit. Without this the card was the one route to billing that
-    // opened the page and counted nothing.
+    // Spent allowance is distinct from the wallet token limit.
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }))} />);
 
     await user.click(screen.getByRole('button', { name: 'Add credits' }));
