@@ -1,10 +1,7 @@
 import type { ModelPickerMeta } from '../lib/modelPickerOptions';
 
-// Reasoning effort levels are the model gateway's, not ours. MindsHub's model
-// catalog advertises them per model (`modelEfforts`, the same map the Cowork
-// composer reads): GPT 5.6 Sol offers none…max, Claude models low…max, Gemini
-// low…high, and some models offer none. Every picker in Code Mode shows exactly
-// that list for the model in hand, named the way the gateway names it.
+// Read effort names and availability from the model gateway catalog, matching the Cowork composer.
+// Do not hardcode a shared list across models.
 
 /** Per-model effort levels as the catalog advertises them: id → { efforts, default }. */
 export type ModelEffortCatalog = NonNullable<ModelPickerMeta['modelEfforts']>;

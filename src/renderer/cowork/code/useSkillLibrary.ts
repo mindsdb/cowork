@@ -56,10 +56,8 @@ function loadSkillLibrary(
     if (!force) return pending;
     const queued = forcedInFlight.get(key);
     if (queued) return queued;
-    // A user-requested refresh is stronger than the background request it
-    // overlaps. Wait for that request to settle, then fetch again; returning
-    // the existing promise would incorrectly report that stale response as a
-    // completed forced reload and leave sibling projections fresh in cache.
+    // A forced refresh must fetch after any pending background request; reusing that response would
+    // falsely report a completed reload.
     const refresh = pending
       .then(() => undefined, () => undefined)
       .then(() => (
@@ -74,16 +72,10 @@ function loadSkillLibrary(
     return refresh;
   }
   const request = codingApi.skillLibrary(projectId).then((page) => {
-    // Cache resets are lifecycle boundaries. A request or queued forced
-    // refresh from the previous generation may still settle afterwards, but
-    // must not repopulate the cache or invalidate projections in the next
-    // account/session.
+    // Ignore responses from a previous cache generation so they cannot repopulate the next session.
     if (generation !== cacheGeneration) return page;
-    // Keep catalogues from other identities keyed but intact. Purging them
-    // here lets an older request that resolves late delete the catalogue a
-    // newly signed-in account has already loaded. The scope key is the
-    // isolation boundary; retaining an unreachable entry cannot render it for
-    // another account, and avoids that response-order race entirely.
+    // Keep other identities' keyed entries intact: a late old-account response must not purge a
+    // newly loaded catalogue. Scope keys prevent cross-account reads.
     entries.set(key, { page, loadedAt: Date.now() });
     notify(key);
     if (force) {

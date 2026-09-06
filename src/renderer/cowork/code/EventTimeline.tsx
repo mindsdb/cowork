@@ -405,10 +405,8 @@ export const EventTimeline = memo(function EventTimeline({
   const stickToBottom = useRef(true);
   useEffect(() => {
     const element = scrollRef.current;
-    // Live deltas can arrive many times a second. Starting a new smooth-scroll
-    // animation for each one keeps layout and the GPU busy long after the text
-    // has rendered, and can make typing visibly lag. Batched updates should
-    // snap a pinned transcript to its new bottom immediately.
+    // Snap batched live deltas to the pinned bottom; restarting smooth-scroll on every delta keeps
+    // layout/GPU busy and delays typing.
     if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
   }, [latestEventSeq, session.status]);
   return (

@@ -416,8 +416,7 @@ describe('ProjectSettingsModal', () => {
     expect(screen.queryByText('Update available')).toBeNull();
   });
 
-  // The section opens from its heading here and from an Edit button once the
-  // project-defaults section lands (#817); accept either so the two merge cleanly.
+  // Accept either control that opens the project-defaults section.
   async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
     const edit = screen.queryByRole('button', { name: 'Edit' });
     await user.click(edit ?? screen.getByText('Task defaults and environment'));

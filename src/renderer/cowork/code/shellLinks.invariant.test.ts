@@ -3,10 +3,8 @@ import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Grep-style guard, like scripts/check-cowork-purity.mjs: every OS-shell call
-// under code/ goes through shellLinks.ts, where the URL and path rules live.
-// A direct `host.openExternal(serverSuppliedUrl)` is how an unvalidated
-// `javascript:`/`file:` link once reached the shell from TaskBar.
+// Require OS-shell calls under code/ to use shellLinks.ts so server-supplied URLs cannot bypass
+// protocol validation.
 
 const CODE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const HELPER = 'shellLinks.ts';
