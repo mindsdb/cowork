@@ -22,6 +22,7 @@ import { useNewTaskDraft } from './useNewTaskDraft';
 import type { CodingCatalog } from './useCodingCatalog';
 
 export function NewTaskPanel({
+  suspended = false,
   busy,
   error,
   defaultEngineId,
@@ -39,6 +40,7 @@ export function NewTaskPanel({
   onCreate,
   catalog,
 }: {
+  suspended?: boolean;
   busy: boolean;
   error: string;
   defaultEngineId: string;
@@ -93,7 +95,9 @@ export function NewTaskPanel({
   };
 
   return (
-    <main className="code-new-task">
+    // Keep the in-memory draft intact during its Connectors detour, without
+    // leaving its controls visible or keyboard-accessible behind that view.
+    <main className="code-new-task" style={suspended ? { display: 'none' } : undefined}>
       <div className="code-new-task__content">
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">
