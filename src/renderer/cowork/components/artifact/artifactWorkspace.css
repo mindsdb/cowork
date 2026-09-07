@@ -106,6 +106,8 @@
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .artifact-comment-agent-action:hover { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); }
+.artifact-comment-agent-action:disabled { opacity: .6; cursor: default; }
+.artifact-comment-agent-action:disabled:hover { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .artifact-comment-secondary-action { padding: 0 8px; border: 0; color: var(--ink-3); background: transparent; }
 .artifact-comment-secondary-action:hover { color: var(--ink); background: var(--surface-2); }
 .artifact-comment-agent-action:focus-visible,
@@ -196,6 +198,10 @@
 .artifact-feedback-badge { position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--surface); border-radius: 999px; color: white; background: var(--danger); font: 700 8px/1 var(--font-body); pointer-events: none; }
 .artifact-feedback-notice { align-self: flex-end; z-index: 4; display: inline-flex; align-items: center; gap: 7px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 8px; color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); font: 500 12px/1.35 var(--font-body); cursor: pointer; }
 .artifact-feedback-notice:hover { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); }
+.artifact-repair-notice { align-self: flex-end; z-index: 4; display: inline-flex; align-items: center; gap: 10px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 8px; color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); font: 500 12px/1.35 var(--font-body); }
+.artifact-repair-notice button { color: var(--accent); font: inherit; text-decoration: underline; }
+.artifact-repair-notice button:disabled { opacity: .55; text-decoration: none; cursor: default; }
+.artifact-repair-notice .artifact-repair-notice-dismiss { color: var(--muted); text-decoration: none; display: inline-flex; }
 
 .artifact-selection-comment { position: absolute; left: 18px; bottom: 76px; z-index: 42; width: min(330px, calc(100% - 36px)); padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, .16), 0 0 0 .5px rgba(0, 0, 0, .08); }
 .artifact-selection-quote { margin-bottom: 8px; padding-left: 8px; border-left: 2px solid var(--accent); overflow: hidden; color: var(--ink-3); white-space: nowrap; text-overflow: ellipsis; font: 12px/1.4 var(--font-body); }

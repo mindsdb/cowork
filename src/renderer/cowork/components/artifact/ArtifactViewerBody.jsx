@@ -3,6 +3,7 @@ import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
 import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
@@ -97,6 +98,11 @@ export function ArtifactViewerBody({
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
   const showEditor = workspace.mode === 'edit' && !!workspace.source;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
+  // Rejecting restores the pre-agent content over head. Once the artifact has
+  // moved on, that also discards the work written since, so the server refuses
+  // until the user has been told exactly that and said yes.
+  const [confirmRejectHead, setConfirmRejectHead] = useState(null);
+  const [confirmRejectError, setConfirmRejectError] = useState('');
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -260,7 +266,11 @@ export function ArtifactViewerBody({
             expired={comments.expired}
             viewer={comments.viewer}
             capabilities={comments.capabilities}
-            onStatus={comments.setStatus}
+            onStatus={review.onStatus || comments.setStatus}
+            agentBusy={repairBusy}
+            agentWorkingThreadId={workspace.repair?.status === 'queued'
+              ? workspace.repair.commentThreadId
+              : null}
             onAddressWithAgent={workspace.capabilities?.canAddressWithAgent !== false
               ? addressCommentWithAgent
               : undefined}
@@ -282,9 +292,15 @@ export function ArtifactViewerBody({
           onReject={async () => {
             setRepairBusy(true);
             try {
+              // No confirmed head on the first attempt: a superseded repair is
+              // refused here rather than quietly reverting the later work.
               await workspace.decideRepair('rejected');
             } catch (decisionError) {
-              setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+              if (decisionError?.status === 409) {
+                setConfirmRejectHead(workspace.currentRevision?.id || null);
+              } else {
+                setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+              }
             } finally {
               setRepairBusy(false);
             }
@@ -293,7 +309,12 @@ export function ArtifactViewerBody({
             const threadId = workspace.repair?.commentThreadId;
             setRepairBusy(true);
             try {
-              await workspace.decideRepair('accepted');
+              // Only resolve the comment once the decision actually landed;
+              // an ignored call used to look identical to a successful one.
+              const outcome = await workspace.decideRepair('accepted');
+              // The hook owns the message for this case; repeating it here put
+              // the same sentence in two banners at once.
+              if (!outcome?.decided) return;
               const resolved = threadId
                 ? await comments.setStatus(threadId, 'resolved')
                 : true;
@@ -304,6 +325,36 @@ export function ArtifactViewerBody({
               onReload();
             } catch (decisionError) {
               setErr(decisionError?.message || 'Could not accept the agent change. Try again.');
+            } finally {
+              setRepairBusy(false);
+            }
+          }}
+        />
+        <ConfirmModal
+          open={confirmRejectHead !== null}
+          title="Restore the earlier version?"
+          message={"This artifact changed after the agent's edit. Restoring the version "
+            + 'from before it will also discard everything written since.'}
+          confirmLabel="Restore anyway"
+          busyLabel="Restoring…"
+          destructive
+          busy={repairBusy}
+          error={confirmRejectError}
+          onClose={() => { setConfirmRejectHead(null); setConfirmRejectError(''); }}
+          onConfirm={async () => {
+            // Held open until the restore lands: it rewrites the artifact, so
+            // closing first left a beat where nothing said the click had taken.
+            // A failure stays in the dialog, where the decision was made.
+            setConfirmRejectError('');
+            setRepairBusy(true);
+            try {
+              await workspace.decideRepair('rejected', {
+                confirmedHeadRevisionId: confirmRejectHead,
+              });
+              setConfirmRejectHead(null);
+            } catch (decisionError) {
+              setConfirmRejectError(decisionError?.message
+                || 'Could not restore the earlier version. Try again.');
             } finally {
               setRepairBusy(false);
             }

@@ -1,12 +1,5 @@
 import { PERSONAL_ORG_LABEL, personalOrgName } from '../../../shared/minds-orgs';
-
-function decodeJwtPayload(token) {
-  try {
-    let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    return JSON.parse(atob(payload));
-  } catch { return null; }
-}
+import { decodeJwtPayload } from './jwtClaims';
 
 // Pure mapping from an access token to the account card's user object; null
 // means "show the sign-in card" — both for a missing token and for one that
@@ -45,12 +38,17 @@ export function accountUserFromToken(token) {
 // worse than the generic label below, and rebuilding auth's string here would
 // put a third copy of a rule that already lives in auth and in Keycloak.
 //
-// So a personal organization gets a readable placeholder rather than nothing.
-// The listing is an async, failable source, and it is the only thing that can
-// produce auth's real label. The menu still has to name the organization on
-// first paint and when that read never lands. `useMindsOrgs` upgrades this
-// to the Keycloak-held name as soon as it arrives, because `UserMenu` prefers
-// the listing's `displayName` over this value.
+// So a personal organization reads `PERSONAL_ORG_LABEL` here, and the
+// `isPersonal` check short-circuits ahead of the claim's own display name --
+// the realm may carry auth's generated `<email>'s organization` in the claim
+// too, and that is the label we are replacing, wherever it arrives from.
+//
+// This used to say the listing upgraded the value once it arrived, because
+// every reader preferred the listing's `displayName`. It no longer does:
+// `organizationLabel` (shared/minds-orgs.ts) substitutes the same short label
+// on the listing side, so both readers now answer identically and there is
+// nothing left to upgrade. That disagreement was ENG-2109 -- the row painted
+// `Personal` and then swapped to the long name a beat later.
 function activeOrgFromPayload(payload) {
   let org = payload.activate_organization ?? payload.active_organization ?? payload.organization;
   if (typeof org === 'string') {
@@ -59,10 +57,25 @@ function activeOrgFromPayload(payload) {
   if (!org || typeof org !== 'object') return { org: null, orgId: null };
   const name = org.name || null;
   const isPersonal = Boolean(payload.sub) && name === personalOrgName(payload.sub);
+  // `isPersonal` short-circuits ahead of the claim's own display name, the same
+  // way `organizationLabel` does for the listing (ENG-2109). Auth generates
+  // `<email>'s organization` and the realm may put it in the claim as well as
+  // in the listing; wherever it arrives from, `PERSONAL_ORG_LABEL` is what the
+  // account row should read. Without this, the two readers could disagree again
+  // the moment the claim starts carrying that field.
   return {
-    org: org.displayName || (isPersonal ? PERSONAL_ORG_LABEL : name),
+    org: isPersonal ? PERSONAL_ORG_LABEL : (org.displayName || name),
     orgId: org.id || name || null,
   };
+}
+
+// Cache identity for the Code skills catalogue. Keyed by the organization's id,
+// never its label: labels collide (every personal organization prints as
+// PERSONAL_ORG_LABEL) and a collision would serve one organization's skills to
+// another. The label is only a fallback for a claim that carries no id.
+export function skillScopeKey(user) {
+  if (!user) return 'signed-out';
+  return [user.sub, user.email, user.orgId || user.org].filter(Boolean).join(':');
 }
 
 // Initials for the avatar placeholder when the account has no picture:
@@ -71,8 +84,14 @@ function activeOrgFromPayload(payload) {
 // user menu so the two placeholders can't drift apart.
 export function accountInitials(user) {
   if (user?.name) {
-    return user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    // `[...w][0]`, not `w[0]`: string indexing returns a UTF-16 code *unit*,
+    // so a name beginning with an astral character ('🛰 Byron') put a lone
+    // high surrogate in the avatar circle, which renders as tofu. Spreading
+    // iterates by code point. BMP accents were already fine — this is the
+    // same class as ENG-2138 one layer down, in string indexing rather than
+    // in the decode.
+    return user.name.split(' ').map((w) => [...w][0]).slice(0, 2).join('').toUpperCase();
   }
-  if (user?.email) return user.email[0].toUpperCase();
+  if (user?.email) return [...user.email][0].toUpperCase();
   return '?';
 }

@@ -16,9 +16,10 @@
 // **Nothing here survives the sidecar restarting**, which is the point and also
 // the trap. The sidecar restarts for an auto-update, a health failure, a crash
 // and every app launch, and a credential held only in its memory is gone each
-// time. Every one of those paths has to call `syncMindsCredential` again, so it
-// is not wired per path: `index.ts` registers it with `setServerStartedHook`,
-// and `startServer` runs it after every successful start. Sign-in and the
+// time. Every one of those paths has to hand the credential over again, so it
+// is not wired per path: `index.ts` registers
+// `handOffMindsCredentialToStartedSidecar` with `setServerStartedHook`, and
+// `startServer` runs it after every successful start. Sign-in and the
 // token-refresh tick push on top of that, because both produce a new credential
 // without restarting anything.
 //

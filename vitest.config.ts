@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
+    sequence: { setupFiles: 'list' },
     // Floors are measured values — raise them as coverage grows, never lower.
     // `include` = whole src tree, so new untested modules count against them.
     coverage: {
@@ -27,6 +28,16 @@ export default defineConfig({
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
+        // The sign-out sequence and the sidecar restart it no longer waits for.
+        // Pinned for the same reason as the entries above: the ordering has no
+        // visible failure mode. A reply that starts waiting on the restart
+        // again looks exactly like a slow machine, which is how it shipped and
+        // trapped a tester on "Signing out…" for minutes; and a flush that
+        // silently stops running leaves a signed-out install with the previous
+        // user's provider objects still in memory.
+        'src/main/sign-out.ts': { statements: 97, branches: 100 },
+        'src/main/sign-out-restart.ts': { statements: 100, branches: 87 },
+        'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
         // The liveness decision and its store. Pinned for the same reason as the

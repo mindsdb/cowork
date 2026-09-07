@@ -83,6 +83,71 @@ describe('loadArtifactDraftText', () => {
     await expect(loadArtifactDraftText('https://evil.example/report.md')).rejects.toThrow();
     expect(authFetch).not.toHaveBeenCalled();
   });
+
+  /*
+   * The status has to travel on the error, not only inside its message. The
+   * viewer maps 401 and 403 to their own copy and cannot read a number back
+   * out of a sentence, so a CSV used to show every failure as raw text while
+   * the HTML branch showed the mapped one.
+   */
+  it('carries the status on the error for a non-ok response', async () => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 403 });
+
+    await expect(loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/data.csv'))
+      .rejects.toMatchObject({ message: 'Could not load private draft (403)', status: 403 });
+  });
+
+  /*
+   * The text path's equivalent of the draft-HTML branch's plain `src=`
+   * navigation. An embedded or cross-origin draft is read without the bearer
+   * rather than refused, which is how the same URL already renders as HTML.
+   */
+  describe('without credentials', () => {
+    it('fetches bare, so an embedded draft renders instead of erroring', async () => {
+      authFetch.mockClear();
+      const bareFetch = vi.fn(async () => ({
+        ok: true,
+        text: async () => 'id,name\n1,Ada\n',
+        headers: { get: () => 'text/csv' },
+      }));
+      vi.stubGlobal('fetch', bareFetch);
+
+      const preview = await loadArtifactDraftText('data:text/csv,id%2Cname', { withCredentials: false });
+
+      expect(preview.content).toBe('id,name\n1,Ada\n');
+      expect(bareFetch).toHaveBeenCalledWith('data:text/csv,id%2Cname');
+      expect(authFetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it('still reports a non-ok response with its status', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+
+      await expect(loadArtifactDraftText('https://cdn.example/data.csv', { withCredentials: false }))
+        .rejects.toMatchObject({ status: 404 });
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  /*
+   * Embedded content is refused by name now, not by accident. It used to fail
+   * only because the URL was concatenated onto the origin and the result would
+   * not parse, so the reader was told the URL was invalid.
+   */
+  it('names an embedded draft URL as the reason it will not send credentials', async () => {
+    authFetch.mockClear();
+    await expect(loadArtifactDraftText('data:text/csv,id%2Cname'))
+      .rejects.toThrow('Refusing to send credentials to an embedded draft URL');
+    expect(authFetch).not.toHaveBeenCalled();
+  });
+
+  it('reads a protocol-relative draft URL as the other origin it is', async () => {
+    authFetch.mockClear();
+    await expect(loadArtifactDraftText('//evil.example/report.md'))
+      .rejects.toThrow('Refusing to send credentials to a cross-origin draft URL');
+    expect(authFetch).not.toHaveBeenCalled();
+  });
 });
 
 /*

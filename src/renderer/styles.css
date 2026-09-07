@@ -58,10 +58,8 @@ body.gf-theme-dark  { background: #0a1426; }
 
 /* User-opt-out for the animated dot/arrow background. Toggled by
    Settings → Personalization → Dot grid (`settings.showDots`).
-   We hide via `display: none` so the canvas stops painting AND the
-   gravity-field draw loop has nothing visible to update — no
-   ongoing requestAnimationFrame cost when the toggle is off.
-   Body class swap lives in App.jsx (`document.body.classList`). */
+   App.jsx pauses the draw loop as well as hiding the canvas, avoiding
+   requestAnimationFrame work while the effect is disabled. */
 body.gf-dots-off .gravity-field { display: none; }
 
 #root {

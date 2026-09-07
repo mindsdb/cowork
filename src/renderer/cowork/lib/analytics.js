@@ -18,6 +18,7 @@
 // Every product event this module emits is registered in EVENTS below.
 
 import { host } from '../../platform/host';
+import { decodeJwtPayload } from './jwtClaims';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -221,18 +222,6 @@ function getDeviceId() {
     identity.deviceId = mint();
   }
   return identity.deviceId;
-}
-
-// Decode the JWT payload without a library. Returns null on any error.
-function decodeJwtPayload(token) {
-  try {
-    let payload = token.split('.')[1];
-    payload = payload.replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    return JSON.parse(atob(payload));
-  } catch {
-    return null;
-  }
 }
 
 // Resolve the plan tier from Keycloak realm roles, mirroring the web console's

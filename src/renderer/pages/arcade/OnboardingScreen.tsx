@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
-import { type MindsOrg, needsOrgPick, rankMindsOrgs } from '../../../shared/minds-orgs';
+import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '../../../shared/minds-orgs';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
@@ -578,7 +578,12 @@ export default function OnboardingScreen({
   const completeMindsAuth = async () => {
     setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
     const { orgs } = await host.mindshubListOrgs();
-    if (needsOrgPick(orgs)) {
+    // `canPickOrganization` is a shell check, not a feature flag: an older main
+    // process drops the "a person chose this" flag and its entitlement fallback
+    // overrides the answer, so asking would promise something that cannot be
+    // kept. Those installs get the ranking, exactly as they did before the
+    // picker existed, until the next installer (ENG-2199).
+    if (needsOrgPick(orgs) && host.canPickOrganization()) {
       const ranked = rankMindsOrgs(orgs);
       setOrgChoices(ranked);
       // Ranked, so this is the first company organization — the answer the
@@ -590,11 +595,15 @@ export default function OnboardingScreen({
     await mintMindsKey();
   };
 
-  const mintMindsKey = async (organizationId?: string) => {
+  // `pick` is present only when a person answered the organization question on
+  // the picker below. Without it the organization is whatever the ranking or the
+  // stored preference resolves to, and main stays free to move the session to
+  // one that can pay; with it, their answer is final (ENG-2199).
+  const mintMindsKey = async (pick?: { organizationId: string; chosenByUser: boolean }) => {
     setPhase('validating');
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
     try {
-      finalizeResult = await host.mindshubFinalize(organizationId);
+      finalizeResult = await host.mindshubFinalize(pick?.organizationId, pick?.chosenByUser);
     } catch (e: any) {
       setPhase('error');
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
@@ -696,11 +705,12 @@ export default function OnboardingScreen({
   // effect handles consent + entry itself (loading above, then success below).
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title="Welcome" subtitle="you're all set">
+      <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
           <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
-            Your workspace is ready to go.
+            Your workspace is ready. Give the agent a task. It does the work and hands back
+            the results.
           </div>
           <button
             className="arc-btn"
@@ -746,8 +756,8 @@ export default function OnboardingScreen({
                   checked={pickedOrgId === org.id}
                   onChange={() => setPickedOrgId(org.id)}
                 />
-                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={org.displayName}>
-                  {org.displayName}
+                <span style={{ fontSize: 12.5, letterSpacing: '0.03em' }} title={organizationLabel(org) ?? undefined}>
+                  {organizationLabel(org)}
                 </span>
               </label>
             ))}
@@ -757,7 +767,7 @@ export default function OnboardingScreen({
             type="button"
             className="arc-btn"
             disabled={!pickedOrgId}
-            onClick={() => mintMindsKey(pickedOrgId)}
+            onClick={() => mintMindsKey({ organizationId: pickedOrgId, chosenByUser: true })}
           >
             Continue
           </button>
@@ -777,7 +787,7 @@ export default function OnboardingScreen({
           </div>
           {mintedOrg && (
             <div style={{ fontSize: 11.5, letterSpacing: '0.06em', color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 340 }}>
-              Working in <strong>{mintedOrg.displayName}</strong>
+              Working in <strong>{organizationLabel(mintedOrg)}</strong>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>

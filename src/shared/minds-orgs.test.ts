@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   type MindsOrg,
+  PERSONAL_ORG_LABEL,
   chooseMindsOrg,
   needsOrgPick,
+  organizationLabel,
   personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
@@ -111,20 +113,36 @@ describe('needsOrgPick', () => {
 
 describe('the stored pick', () => {
   it('round-trips through the state file shape', () => {
-    const state = writeOrgPreference(null, USER, 'org-acme');
-    expect(readOrgPreference(state, USER)).toBe('org-acme');
+    const state = writeOrgPreference(null, USER, 'org-acme', true);
+    expect(readOrgPreference(state, USER)).toEqual({ orgId: 'org-acme', chosenByUser: true });
+  });
+
+  it('remembers who decided, not just which organization', () => {
+    // The whole point of the flag: an organization something landed on may be
+    // revised automatically later, one a person named may not (ENG-2199).
+    const landed = writeOrgPreference(null, USER, 'org-acme', false);
+    expect(readOrgPreference(landed, USER)).toEqual({ orgId: 'org-acme', chosenByUser: false });
+  });
+
+  it('reads a pre-ENG-2199 entry as chosen, because that is what it was', () => {
+    // Before the flag existed this key was written on exactly two paths, the
+    // onboarding picker and the account-menu switch — both a person acting. A
+    // legacy entry defaulting to `false` would hand every existing install's
+    // deliberate choice back to the automatic selection on their next sign-in.
+    const legacy = { preferences: { mindsOrganization: { sub: USER, orgId: 'org-acme' } } };
+    expect(readOrgPreference(legacy, USER)).toEqual({ orgId: 'org-acme', chosenByUser: true });
   });
 
   it('belongs to one account, so the next person to sign in does not inherit it', () => {
     // One machine, two accounts: inheriting would move where the second
     // person's keys are minted with nothing on screen saying so.
-    const state = writeOrgPreference(null, USER, 'org-acme');
+    const state = writeOrgPreference(null, USER, 'org-acme', true);
     expect(readOrgPreference(state, 'someone-else')).toBeNull();
   });
 
   it('leaves every other preference alone', () => {
     const existing = { preferences: { providers: [{ type: 'minds-cloud' }] }, other: 1 };
-    const next = writeOrgPreference(existing, USER, 'org-acme') as any;
+    const next = writeOrgPreference(existing, USER, 'org-acme', true) as any;
     expect(next.preferences.providers).toEqual([{ type: 'minds-cloud' }]);
     expect(next.other).toBe(1);
   });
@@ -135,5 +153,79 @@ describe('the stored pick', () => {
     expect(readOrgPreference({ preferences: 'nope' }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: 'nope' } }, USER)).toBeNull();
     expect(readOrgPreference({ preferences: { mindsOrganization: { sub: USER } } }, USER)).toBeNull();
+  });
+});
+
+/*
+ * ENG-2109. Two readers name an organization: the token claim, which already
+ * substituted PERSONAL_ORG_LABEL, and the membership listing, whose
+ * `displayName` for a personal organization is auth's generated
+ * `<email>'s organization`. Every call site read `displayName` inline and the
+ * listing won, so the label changed under the user a beat after first paint.
+ * This function is what makes the two agree.
+ */
+describe('organizationLabel', () => {
+  it('calls a personal organization Personal, not auth\'s generated label', () => {
+    const generated: MindsOrg = {
+      ...PERSONAL,
+      displayName: "someone@example.com's organization",
+    };
+    expect(organizationLabel(generated)).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('agrees with the label the token claim already used, so nothing changes on resolve', () => {
+    // The claim path produces PERSONAL_ORG_LABEL for a personal organization
+    // (accountUser.js). Same value from the listing path means no flash.
+    expect(organizationLabel({ ...PERSONAL, displayName: "a@b.com's organization" }))
+      .toBe(PERSONAL_ORG_LABEL);
+  });
+
+  /*
+   * Renaming an organization is a shipped feature (auth's
+   * organization_admin.rename, no personal-org guard) and auth's own sync
+   * deliberately leaves a customized name alone. Substituting unconditionally
+   * would discard it at the last hop, which is the same class of bug as
+   * ENG-2109 with the sign flipped.
+   */
+  it("keeps a personal organization's name when the user renamed it", () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: 'Acme Consulting' }))
+      .toBe('Acme Consulting');
+  });
+
+  it.each([
+    ['the full-email rule (current)', "someone@example.com's organization"],
+    ['the local-part rule (legacy)', "someone's organization"],
+    ['the first-name rule (legacy)', "Alejandro's organization"],
+    ["auth's own fallback", 'Personal'],
+    ['a blank display name', ''],
+    ['the raw slug', personalOrgName(USER)],
+  ])('substitutes over %s', (_label, displayName) => {
+    expect(organizationLabel({ ...PERSONAL, displayName })).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('substitutes over a generated name with stray whitespace', () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: '   ' })).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('keeps a company organization on its Keycloak display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: 'Acme Corporation' }))
+      .toBe('Acme Corporation');
+  });
+
+  it('falls back to the raw name when a company organization has no display name', () => {
+    expect(organizationLabel({ ...ACME, displayName: '' })).toBe('acme.example');
+  });
+
+  it('is null for no organization, so a caller can chain its own fallback', () => {
+    expect(organizationLabel(null)).toBeNull();
+    expect(organizationLabel(undefined)).toBeNull();
+  });
+
+  it('is null rather than empty when an organization names itself nothing at all', () => {
+    // Defensive: `toMindsOrg` derives `name` from slug ?? name ?? id, so a
+    // nameless organization should not reach here. Null keeps the return type
+    // honest and lets every call site's `|| fallback` chain do its job, which
+    // an empty string would also do by accident but without saying so.
+    expect(organizationLabel({ ...ACME, displayName: '', name: '' })).toBeNull();
   });
 });

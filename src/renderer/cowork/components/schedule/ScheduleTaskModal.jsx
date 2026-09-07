@@ -6,6 +6,7 @@
 // the most important field, sits last so it gets the room it needs).
 
 import { useEffect, useState } from 'react';
+import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
@@ -230,7 +231,7 @@ export default function ScheduleTaskModal({
                 // it from the real projects (which map 1:1 to the projects page).
                 { value: NO_PROJECT, label: 'No project' },
                 { separator: true },
-                ...projects.map((p) => ({ value: p.path, label: p.name })),
+                ...projects.map((p) => ({ value: p.path, label: projectLabel(p) })),
               ]}
             />
           </Field>

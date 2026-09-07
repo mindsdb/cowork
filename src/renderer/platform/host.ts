@@ -33,13 +33,12 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
-// unset/anything else defaults false) while the feature is parked. A plain
-// module-level const, not a function — it's a static per-process value read
-// once from the environment, same as isElectron/isWeb above. Web has no
-// bridge at all, so it's always false there too.
-export const codingModeOptionsEnabled: boolean =
-  isElectron && bridge.codingModeOptionsEnabled === true;
+// Static deployment capability. The user's opt-in is intentionally owned by
+// the renderer and stored per device; this flag only answers whether this
+// shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
+// remains unavailable until a future cloud capability is deliberately added.
+export const codeModeAvailable: boolean =
+  isElectron && bridge.codeModeAvailable === true;
 
 // ---- Platform identity --------------------------------------------------
 
@@ -72,6 +71,36 @@ export function getApiOrigin(): string {
     return `http://127.0.0.1:${port}`;
   }
   return window.location.origin;
+}
+
+// Endpoint an outbound Code runtime connects to. In packaged Electron this
+// matches getApiOrigin(); in Vite development the renderer itself lives on
+// :5173, so use the actual sidecar port instead of handing a runtime the UI
+// dev-server address. Hosted Code uses the current HTTPS origin.
+export function getCodeControlPlaneOrigin(): string {
+  if (isElectron) {
+    if (typeof bridge.codeControlPlaneOrigin === 'string') {
+      try {
+        const configured = new URL(bridge.codeControlPlaneOrigin);
+        if (
+          (configured.protocol === 'http:' || configured.protocol === 'https:')
+          && !configured.username
+          && !configured.password
+          && (configured.pathname === '/' || configured.pathname === '')
+          && !configured.search
+          && !configured.hash
+        ) {
+          return configured.origin;
+        }
+      } catch {
+        // Fall through to the private local sidecar. The connection UI will
+        // explain that loopback cannot be reached by another computer.
+      }
+    }
+    const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return getApiOrigin();
 }
 
 // True when the FastAPI backend the SPA talks to lives on THIS machine
@@ -118,6 +147,12 @@ export interface ServerInfo {
   origin: string;
 }
 
+export interface ServerControlResult {
+  running: boolean;
+  port?: number | null;
+  error?: string;
+}
+
 export async function serverInfo(): Promise<ServerInfo> {
   if (isElectron && typeof bridge.serverInfo === 'function') {
     const info = await bridge.serverInfo();
@@ -136,18 +171,18 @@ export async function serverInfo(): Promise<ServerInfo> {
   };
 }
 
-export async function serverStart(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStart(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStart === 'function') {
     return bridge.serverStart();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
-export async function serverStop(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStop(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStop === 'function') {
     return bridge.serverStop();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
 export interface ServerDiagnostics {
@@ -206,6 +241,18 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
     return bridge.showItemInFolder(path);
   }
   return { ok: false, reason: 'unsupported' };
+}
+
+export async function pickCodeFolder(): Promise<{
+  ok: boolean;
+  path?: string;
+  cancelled?: boolean;
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.pickCodeFolder === 'function') {
+    return bridge.pickCodeFolder();
+  }
+  return { ok: false, reason: 'Folder selection is available in the desktop app.' };
 }
 
 // ---- Coding mode (MVP) ---------------------------------------------------
@@ -273,6 +320,15 @@ export function onCodingTerminalData(cb: (taskId: string, data: string) => void)
 export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
   if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
     return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
+}
+
+// Main-window hide/minimize (false) and show/restore/focus (true). The web
+// build has no window to hide, so it never fires and stays visible.
+export function onWindowVisibility(cb: (visible: boolean) => void): () => void {
+  if (isElectron && typeof bridge.onWindowVisibility === 'function') {
+    return bridge.onWindowVisibility(cb);
   }
   return () => {};
 }
@@ -770,7 +826,10 @@ export type OAuthConnectOpts =
 
 export interface OAuthConnectResult {
   ok: boolean;
+  code?: 'oauth_credentials_missing';
   reason?: string;
+  name?: string;
+  account_email?: string;
   refresh_token?: string;
   access_token?: string;
   expires_in?: number;
@@ -1175,13 +1234,42 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
+/**
+ * Commit MindsHub as the provider.
+ *
+ * `chosenByUser` says a person answered the organization question, as opposed
+ * to an id coming from anywhere else; main refuses to move the session off an
+ * organization carrying that flag. It is a second argument rather than an
+ * inference from `organizationId` on purpose — see selectEntitledOrg (ENG-2199).
+ */
 export async function mindshubFinalize(
   organizationId?: string,
+  chosenByUser?: boolean,
 ): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
+  // An explicit pick goes through the method whose presence proves the shell
+  // can carry it. Falling back to `mindshubFinalize(id, true)` would look like
+  // it worked and silently drop the flag on an older main process.
+  if (isElectron && organizationId && chosenByUser && canPickOrganization()) {
+    return bridge.mindshubFinalizeChosen!(organizationId);
+  }
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize(organizationId);
+    return bridge.mindshubFinalize(organizationId, chosenByUser);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+/**
+ * Whether this shell can be told that a person chose the organization.
+ *
+ * Renderer bundles update over the air while `src/main/**` only arrives in a
+ * new installer, so a newer renderer runs against an older main process as a
+ * matter of course. That shell drops the `chosenByUser` argument, and its
+ * entitlement fallback then overrides the pick — the exact defect ENG-2199
+ * fixes. Asking the question beats making a promise the shell cannot keep, so
+ * the onboarding picker is not offered when this is false.
+ */
+export function canPickOrganization(): boolean {
+  return isElectron && typeof bridge.mindshubFinalizeChosen === 'function';
 }
 
 /**
@@ -1388,7 +1476,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
-  codingModeOptionsEnabled,
+  codeModeAvailable,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1401,6 +1489,7 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  pickCodeFolder,
   detectClaudeCode,
   startCodingTerminal,
   sendCodingTerminalInput,
@@ -1410,6 +1499,7 @@ export const host = {
   removeCodingTask,
   onCodingTerminalData,
   onCodingTerminalExit,
+  onWindowVisibility,
   getPathForFile,
   getUIVersion,
   getVersionInfo,
@@ -1442,6 +1532,7 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  canPickOrganization,
   mindshubSetUserKey,
   mindshubListOrgs,
   mindshubSwitchOrg,

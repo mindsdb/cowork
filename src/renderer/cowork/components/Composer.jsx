@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
@@ -12,9 +13,9 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  isMovingAlias, isFrozenAlias, hasFrozenVersions, isModelLocked, orderByFamily,
   MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
+import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
@@ -425,44 +426,7 @@ export default function Composer({
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
-    const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
-    const list = models || [];
-    const ids = list.map((m) => m.id);
-    const byId = new Map(list.map((m) => [m.id, m]));
-    const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
-    // Only tag once something listed is NOT the latest; on an all-moving catalog the
-    // tag would sit on every row and distinguish nothing.
-    const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    const catalogOptions = ordered.map((m) => {
-      /*
-       * The wallet can't pay for this one, so it can't be picked here either,
-       * and `locked` is what puts the "Add credits" button on the row — this
-       * menu has no other route to billing, so without it the row names an
-       * action it does not offer.
-       *
-       * The availability map is re-read whenever this menu opens (App.jsx passes
-       * the refresh in), so a top-up made in the browser unlocks the row on the
-       * next open rather than on a restart. That refresh is what makes disabling
-       * safe: without it a user who topped up would find the row still greyed.
-       */
-      const locked = isModelLocked(modelEnabled, m.id);
-      const tag = [
-        tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
-        // A frozen version whose head is also listed. An orphan carries no
-        // tag: "older version" is a claim relative to a newer one, and with
-        // no head present there is nothing for the user to read it against.
-        (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
-        locked ? 'Needs credits' : '',
-      ].filter(Boolean).join(' · ');
-      return {
-        value: m.id,
-        label: m.name,
-        disabled: locked,
-        ...(locked ? { locked: true } : {}),
-        ...(tag ? { tag } : {}),
-        ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
-      };
-    });
+    const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
     // `maker: 'mindshub'` is the same escape hatch modelSection() gives an
@@ -817,14 +781,14 @@ export default function Composer({
   // menu render can call into them without prop-drilling.
   const _projectSearchTrimmed = projectSearch.trim();
   const _filteredProjects = _projectSearchTrimmed
-    ? projects.filter((p) => p.name.toLowerCase().includes(_projectSearchTrimmed.toLowerCase()))
+    ? projects.filter((p) => projectMatches(p, _projectSearchTrimmed))
     : projects;
   // Case-insensitive exact match short-circuits "create" so Enter on
   // a search term that already names a project selects it rather than
   // POSTing a duplicate (the server would reject anyway, but failing
   // fast on the client keeps the UX snappy).
   const _projectExactMatch = _projectSearchTrimmed
-    ? projects.find((p) => p.name.toLowerCase() === _projectSearchTrimmed.toLowerCase())
+    ? projects.find((p) => projectNamed(p, _projectSearchTrimmed))
     : null;
   const _canCreateFromSearch = !!onCreateProject && !!_projectSearchTrimmed && !_projectExactMatch;
 
@@ -1496,7 +1460,7 @@ export default function Composer({
             <>
               <span className="meta-pill" title="Project is fixed for this task">
                 {Ico.folder(14)}
-                <span>{project ? project.name : 'No project'}</span>
+                <span>{project ? projectLabel(project) : 'No project'}</span>
               </span>
             </>
           ) : (
@@ -1519,7 +1483,7 @@ export default function Composer({
                     onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
                   >
                     {Ico.folder(14)}
-                    <span>{project ? project.name : 'Work in a project'}</span>
+                    <span>{project ? projectLabel(project) : 'Work in a project'}</span>
                     <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
                   </button>
                 </Tooltip>
@@ -1595,7 +1559,7 @@ export default function Composer({
                           onClick={() => { onProjectChange(p); setOpenMenu(null); }}
                         >
                           <span className="inline-flex text-ink-2">{Ico.folder(14)}</span>
-                          <span className="flex-1 truncate">{p.name}</span>
+                          <span className="flex-1 truncate">{projectLabel(p)}</span>
                           {project?.name === p.name && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
                         </button>
                       ))}

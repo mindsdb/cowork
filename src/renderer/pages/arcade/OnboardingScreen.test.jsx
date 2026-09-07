@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PERSONAL_ORG_LABEL } from '../../../shared/minds-orgs';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // Mutable host mock — flip isWeb / checkConfigured per test. ENG-912: a
@@ -112,7 +113,10 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
 
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText(/Your workspace is ready to go/)).toBeInTheDocument());
+    // Assert the product name and the new body outright: a regex loose enough to
+    // also match the old copy would pass whether or not this screen names itself.
+    await waitFor(() => expect(screen.getByText('MindsHub Cowork')).toBeInTheDocument());
+    expect(screen.getByText(/Give the agent a task/)).toBeInTheDocument();
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
     // The org-classified write never happens — that 403 is what trapped members.
     expect(syncSettingsToDb).not.toHaveBeenCalled();
@@ -418,6 +422,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     hostMock.mindshubLogin = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: ACME }));
+    // The default is a shell that can carry the pick; the old-shell case has
+    // its own test below.
+    hostMock.canPickOrganization = vi.fn(() => true);
     keycloakMock.authenticated = false;
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
@@ -432,7 +439,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
-    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined);
+    // No organization and no claim that anybody chose one: main stays free to
+    // rank, and to move the session to one that can pay (ENG-2199).
+    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined, undefined);
     expect(screen.queryByText('Choose an organization')).toBeNull();
   });
 
@@ -455,7 +464,24 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     // ranking would have reached on its own.
     expect(screen.getByRole('radio', { name: /acme\.example/ })).toBeChecked();
     // The personal organization is offered too: someone may deliberately want it.
-    expect(screen.getByRole('radio', { name: /hazem@example\.com's organization/ })).toBeInTheDocument();
+    // Listed as `Personal`, not as auth's generated `<email>'s organization` —
+    // the picker names it the same way the account menu does (ENG-2109).
+    expect(screen.getByRole('radio', { name: new RegExp(PERSONAL_ORG_LABEL) })).toBeInTheDocument();
+  });
+
+  it('does not offer a pick a shell older than ENG-2199 cannot honour', async () => {
+    // Renderer bundles update over the air while `src/main/**` waits for an
+    // installer, so a new renderer against an old shell is routine. That shell
+    // drops `chosenByUser` and its entitlement fallback overrides the answer,
+    // so showing the picker would promise something it cannot keep. Those
+    // installs get the ranking, exactly as before the picker existed.
+    hostMock.canPickOrganization = vi.fn(() => false);
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Choose an organization')).toBeNull();
+    // And it does not quietly send a pick the shell would ignore.
+    expect(hostMock.mindshubFinalize.mock.calls[0][0]).toBeUndefined();
   });
 
   it('mints in the organization that was picked', async () => {
@@ -465,7 +491,20 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     await screen.findByText('Choose an organization');
     fireEvent.click(screen.getByRole('radio', { name: /Beta Labs/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id));
+    // The second argument is the whole point: it is what tells main a person
+    // answered, and main refuses to move the session off an organization
+    // carrying it. Sending the id alone is what shipped the bug (ENG-2199).
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id, true));
+  });
+
+  it('does not claim a person chose the organization when nobody was asked', async () => {
+    // A picker that never rendered cannot have been answered. Marking this call
+    // as chosen would pin every single-organization install to whatever the
+    // ranking happened to reach, and silence the fallback for all of them.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(hostMock.mindshubFinalize.mock.calls[0][1]).toBeFalsy();
   });
 
   it('names the organization the key actually landed in', async () => {
@@ -476,7 +515,10 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: PERSONAL }));
     await signIn();
     await waitFor(() => expect(screen.getByText(/Working in/)).toBeInTheDocument());
-    expect(screen.getByText("hazem@example.com's organization")).toBeInTheDocument();
+    // `Personal` rather than auth's generated label, same rule as everywhere
+    // else the product names an organization (ENG-2109). The assertion that
+    // matters is unchanged: it names the organization the key LANDED in.
+    expect(screen.getByText(PERSONAL_ORG_LABEL)).toBeInTheDocument();
   });
 
   it('says nothing about an organization when the mint did not report one', async () => {

@@ -483,6 +483,10 @@ export function MarkdownContent({
   variant = 'assistant',
   enableForms = true,
   enableCharts = true,
+  // High-frequency coding-agent streams already arrive in visible chunks.
+  // They can opt out of per-word DOM wrappers and animations so transcript
+  // rendering never competes with typing in the composer.
+  animateStreamingWords = true,
   // Gate the "consecutive inline-code lines → fenced block" rewrite to
   // assistant output only. Authored content (user turns, memory files,
   // artifact previews) defaults to off so author-intentional inline
@@ -586,7 +590,7 @@ export function MarkdownContent({
     return () => root.removeEventListener('click', onClick);
   }, []);
 
-  const streaming = !complete;
+  const streaming = !complete && animateStreamingWords;
 
   const components = useMemo(() => {
     // During streaming, wrap text children in individual <span> elements
@@ -596,7 +600,7 @@ export function MarkdownContent({
     // unmount/remount every element, re-triggering all animations.
     // React's reconciliation preserves existing spans (by index key) and
     // only creates new DOM nodes for newly appended words.
-    const _animate = !complete ? (children) => {
+    const _animate = animateStreamingWords && !complete ? (children) => {
       let wordKey = 0;
       return Children.map(children, (child) => {
         if (typeof child !== 'string') return child;
@@ -734,7 +738,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>

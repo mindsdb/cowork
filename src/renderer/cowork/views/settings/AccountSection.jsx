@@ -6,6 +6,7 @@ import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { useMindsOrgs } from '../../hooks/useMindsOrgs';
+import { organizationLabel } from '../../../../shared/minds-orgs';
 import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
@@ -23,7 +24,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // a personal organization, and this row has to follow a switch made in that
   // menu without waiting for the next sign-in.
   const { activeOrg } = useMindsOrgs(accountUser);
-  const { loggingOut, logout } = useLogout();
+  const { loggingOut, waitNote, logout } = useLogout();
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // Base card shell without colors — border-color/background differ per card
@@ -33,7 +34,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
     'border border-solid rounded-card backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden';
   const CARD = `${CARD_BASE} border-line bg-surface-glass`;
 
-  const orgName = activeOrg?.displayName || accountUser?.org || null;
+  // Through `organizationLabel` so this row and the account menu cannot
+  // disagree, and so a personal organization does not flash `Personal` and then
+  // swap to auth's long generated label once the listing lands (ENG-2109).
+  const orgName = organizationLabel(activeOrg) || accountUser?.org || null;
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
@@ -148,6 +152,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       cancelLabel="Cancel"
       destructive
       busy={loggingOut}
+      // Sign-out can outlast the person's patience, so the dialog hands the
+      // keyboard back rather than becoming the app's only exit.
+      dismissableWhileBusy
+      note={waitNote}
       busyLabel="Signing out…"
       onConfirm={logout}
       onClose={() => setLogoutConfirmOpen(false)}

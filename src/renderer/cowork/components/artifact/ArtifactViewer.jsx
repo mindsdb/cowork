@@ -45,6 +45,7 @@ import {
   countCsvRows,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
+  draftPreviewErrorMessage,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
@@ -124,6 +125,16 @@ export function ArtifactViewer({
   const [repairBusy, setRepairBusy] = useState(false);
   const [textSelection, setTextSelection] = useState(null);
   const [feedbackNotice, setFeedbackNotice] = useState('');
+  // Dismissed per repair, not per open: a suggestion the artifact has moved
+  // past is worth mentioning once, not on every visit to the artifact.
+  const [dismissedRepairId, setDismissedRepairId] = useState('');
+  // Rendered twice: inline in the repair notice, and as the discard dialog's
+  // error, so a failure is visible whether or not that dialog is open.
+  const [repairNoticeError, setRepairNoticeError] = useState('');
+  // The repair the create guard named, so the refusal can offer a way out
+  // instead of stating a fact the user cannot act on.
+  const [blockedBy, setBlockedBy] = useState(null);
+  const [pendingDiscard, setPendingDiscard] = useState(null);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -144,6 +155,12 @@ export function ArtifactViewer({
     // fresh repair conversation instead of reusing the previous artifact's.
     [artifact?.id, workspace.supported, conversationId, open],
   );
+  // Both are per repair, and this component outlives an artifact switch.
+  useEffect(() => {
+    setRepairNoticeError('');
+    setBlockedBy(null);
+  }, [workspace.repair?.id, artifact?.id]);
+
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
   }, []);
@@ -180,6 +197,29 @@ export function ArtifactViewer({
     enabled: open && commentsEnabled,
     onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
   });
+
+  // A short quote of the blocking thread, so the refusal names the comment the
+  // user has to deal with rather than the artifact as a whole.
+  const blockedComment = useMemo(() => {
+    if (!blockedBy?.commentThreadId) return '';
+    const thread = (comments.threads || [])
+      .find((item) => item.id === blockedBy.commentThreadId);
+    const text = (thread?.payload?.text || '').trim();
+    return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  }, [blockedBy?.commentThreadId, comments.threads]);
+
+  // Every resolve, from the inbox panel and from the on-artifact pin popover
+  // alike, releases whatever repair was waiting on that thread. Resolving is
+  // the decision the accept-or-reject rule was protecting, and a path that
+  // skips this is the wedge itself. Release after the resolve, never before:
+  // a released repair can no longer be decided.
+  const setCommentStatus = useCallback(async (threadId, nextStatus) => {
+    const ok = await comments.setStatus(threadId, nextStatus);
+    if (ok && nextStatus === 'resolved') {
+      await workspace.releaseRepairsForComment(threadId);
+    }
+    return ok;
+  }, [comments, workspace]);
   const createArtifactComment = useCallback((payload) => comments.create({
     ...payload,
     revisionId: workspace.currentRevision?.id || null,
@@ -199,7 +239,7 @@ export function ArtifactViewer({
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: comments.reply,
-    onStatus: comments.setStatus,
+    onStatus: setCommentStatus,
     onEditThread: comments.editThread,
     onDeleteThread: comments.deleteThread,
     onEditReply: comments.editReply,
@@ -291,7 +331,11 @@ export function ArtifactViewer({
         }
       }
     } catch (requestError) {
-      setErr(requestError?.message || 'Could not send this comment to the agent');
+      if (requestError?.status === 422 && requestError?.detail?.repairId) {
+        setBlockedBy(requestError.detail);
+      } else {
+        setErr(requestError?.message || 'Could not send this comment to the agent');
+      }
     } finally {
       setRepairBusy(false);
     }
@@ -369,7 +413,12 @@ export function ArtifactViewer({
     let cancelled = false;
     if (isText) {
       const previewRequest = draftPreviewUrl
-        ? loadArtifactDraftText(draftPreviewUrl)
+        ? loadArtifactDraftText(draftPreviewUrl, {
+            // The same split the draft-HTML branch makes below, so a
+            // data:/blob: or cross-origin draft renders here too instead of
+            // failing only for text.
+            withCredentials: canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()),
+          })
         : previewArtifact(actionPath);
       previewRequest
         .then((data) => {
@@ -383,7 +432,7 @@ export function ArtifactViewer({
             mime: data.mime || '',
           });
         })
-        .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load preview'); })
+        .catch((e) => { if (!cancelled) setErr(draftPreviewErrorMessage(e)); })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
     }
@@ -451,12 +500,7 @@ export function ArtifactViewer({
         })
         .catch((e) => {
           if (cancelled) return;
-          const status = e?.status;
-          setErr(status === 401
-            ? 'Your session expired — reload the page and try again.'
-            : status === 403
-              ? 'You do not have access to this draft.'
-              : (e?.message || 'Could not load this draft'));
+          setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
@@ -616,6 +660,25 @@ export function ArtifactViewer({
   // the local/served preview.
   const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
 
+  // "Open this artifact in a browser tab", for the control beside the mode
+  // tabs. Distinct from `onOpenInBrowser` above, which falls back to handing
+  // the path to the OS — that opens the file, not a browser, and on an org
+  // deployment there is no local file to hand over at all.
+  //
+  // Preference order: the published URL is what the artifact *is* and what a
+  // person would share; the served URL is desktop's local HTTP view; the
+  // authenticated draft URL is org mode's route to an artifact nobody has
+  // published yet.
+  const browserTabUrl = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // host.openExternal is already right on both deployments: Electron hands the
+  // URL to the OS (a real browser, outside the app), web opens a new tab.
+  const onOpenInBrowserTab = () => {
+    if (!browserTabUrl) return;
+    host.openExternal(browserTabUrl).catch(() => {
+      setErr('Could not open this artifact in a browser.');
+    });
+  };
+
   // Universal "save to disk" — type-agnostic stream with
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
@@ -675,6 +738,7 @@ export function ArtifactViewer({
   };
   const artifactActions = {
     canOpenInBrowser,
+    canOpenInBrowserTab: !!browserTabUrl,
     canOpenLocalFile,
     isBackendArtifact,
     backendPort,
@@ -682,6 +746,7 @@ export function ArtifactViewer({
     deleteBusy,
     onReload,
     onOpenInBrowser,
+    onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
     onDownload,
@@ -725,6 +790,7 @@ export function ArtifactViewer({
     userDir: commentUserDir,
     reportId: commentReportId,
     controller: comments,
+    onStatus: setCommentStatus,
     onAddressWithAgent: addressCommentWithAgent,
     onCreate: createArtifactComment,
     textSelection,
@@ -777,12 +843,112 @@ export function ArtifactViewer({
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
       )}
+      {/* A superseded suggestion is still decidable, so it is announced rather
+          than taking over the canvas the way a current one does. */}
+      {/* Any pending suggestion, not only a superseded one: the comparison
+          auto-opens at most once, so without this a decision closed without
+          being made would have no way back and would keep gating the file. */}
+      {workspace.repairPending
+        && !workspace.comparison
+        && workspace.repair.id !== dismissedRepairId && (
+        <div className="artifact-repair-notice" role="status">
+          <span>
+            {workspace.repairSuperseded
+              ? 'An agent suggestion from before your last edit is still open.'
+              : 'An agent suggestion is waiting on your decision.'}
+            {repairNoticeError ? ` ${repairNoticeError}` : ''}
+          </span>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={async () => {
+              setRepairNoticeError('');
+              setRepairBusy(true);
+              try {
+                await workspace.refreshRepair();
+              } catch (noticeError) {
+                setRepairNoticeError(noticeError?.message || 'Could not open that suggestion.');
+              } finally {
+                setRepairBusy(false);
+              }
+            }}
+          >
+            View change
+          </button>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={() => setPendingDiscard({ repairId: workspace.repair.id })}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="artifact-repair-notice-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setDismissedRepairId(workspace.repair.id)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
+      )}
+      {/* The create guard names its blocker, so the refusal carries the way
+          out rather than describing a state the user cannot change. */}
+      {blockedBy && (
+        <div className="artifact-repair-notice" role="status">
+          <span>
+            {blockedComment
+              ? `An agent suggestion for “${blockedComment}” is still waiting on a decision.`
+              : 'An agent suggestion on this file is still waiting on a decision.'}
+          </span>
+          <button
+            type="button"
+            disabled={repairBusy}
+            onClick={() => setPendingDiscard({ repairId: blockedBy.repairId, clearBlocker: true })}
+          >
+            Discard the pending suggestion
+          </button>
+          <button
+            type="button"
+            className="artifact-repair-notice-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setBlockedBy(null)}
+          >
+            {Ico.close(12)}
+          </button>
+        </div>
+      )}
 
       <ArtifactViewerBody
         workspace={{ ...workspace, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+      />
+
+      <ConfirmModal
+        open={!!pendingDiscard}
+        title="Discard this suggestion?"
+        message={'The agent\'s change stays in this artifact\'s history, but the '
+          + 'suggestion is closed and will not be applied.'}
+        confirmLabel="Discard"
+        destructive
+        busy={repairBusy}
+        error={repairNoticeError}
+        onClose={() => setPendingDiscard(null)}
+        onConfirm={async () => {
+          setRepairNoticeError('');
+          setRepairBusy(true);
+          try {
+            await workspace.cancelRepair(pendingDiscard.repairId, { discardReady: true });
+            if (pendingDiscard.clearBlocker) setBlockedBy(null);
+            setPendingDiscard(null);
+          } catch (discardError) {
+            setRepairNoticeError(discardError?.message || 'Could not discard that suggestion.');
+          } finally {
+            setRepairBusy(false);
+          }
+        }}
       />
 
       {/* Delete confirmation */}

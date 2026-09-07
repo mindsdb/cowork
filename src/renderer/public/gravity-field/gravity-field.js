@@ -62,12 +62,14 @@
     const ctx = canvas.getContext('2d');
     let palette = PALETTES[o.theme] || PALETTES.dark;
     let raf = 0;
+    let timer = 0;
+    let enabled = true;
     let running = true;
     const start = performance.now();
-    // Cap the draw rate
-    // visually but doubles as a steady GPU/CPU sink for an always-on tab.
-    const FRAME_INTERVAL = 1000 / 4;
-    let lastDraw = 0;
+    // The field moves slowly, so a small draw budget is enough. Schedule the
+    // next frame at that cadence instead of waking a requestAnimationFrame
+    // callback at the display refresh rate just to skip most of its work.
+    let frameInterval = 1000 / 4;
 
     // Smoothed center of mass + cursor.
     const com = { x: 0, y: 0, ready: false };
@@ -105,13 +107,15 @@
     ro.observe(canvas);
 
     // -------- Frame --------------------------------------------------------
+    function scheduleFrame(delay = frameInterval) {
+      if (!running) return;
+      timer = window.setTimeout(() => {
+        if (running) raf = requestAnimationFrame(frame);
+      }, Math.max(0, delay));
+    }
+
     function frame(now) {
       if (!running) return;
-      if (now - lastDraw < FRAME_INTERVAL) {
-        raf = requestAnimationFrame(frame);
-        return;
-      }
-      lastDraw = now;
       const t = (now - start) / 1000;
       const r = canvas.getBoundingClientRect();
       const w = r.width;
@@ -231,18 +235,19 @@
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      raf = requestAnimationFrame(frame);
+      scheduleFrame();
     }
-    raf = requestAnimationFrame(frame);
+    scheduleFrame(0);
 
     // -------- Pause when tab is hidden -------------------------------------
     function onVis() {
-      if (document.hidden) {
+      if (document.hidden || !enabled) {
         running = false;
+        clearTimeout(timer);
         cancelAnimationFrame(raf);
       } else if (!running) {
         running = true;
-        raf = requestAnimationFrame(frame);
+        scheduleFrame(0);
       }
     }
     document.addEventListener('visibilitychange', onVis);
@@ -253,8 +258,21 @@
         palette = PALETTES[name] || PALETTES.dark;
       },
       setSpacing(n) { o.spacing = Math.max(8, n | 0); },
+      setFrameRate(fps) {
+        frameInterval = 1000 / Math.max(0.25, Number(fps) || 1);
+        if (running) {
+          clearTimeout(timer);
+          cancelAnimationFrame(raf);
+          scheduleFrame(0);
+        }
+      },
+      setActive(active) {
+        enabled = Boolean(active);
+        onVis();
+      },
       destroy() {
         running = false;
+        clearTimeout(timer);
         cancelAnimationFrame(raf);
         ro.disconnect();
         document.removeEventListener('visibilitychange', onVis);

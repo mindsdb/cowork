@@ -19,7 +19,11 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;
-  if (Array.isArray(task.messages)) {
+  // Length-checked, not just shape-checked: since ENG-2246 a task can carry an
+  // empty `messages` before its transcript is warmed, and an existing
+  // conversation never really has zero user turns — so [] means "unknown", and
+  // the card should hide the count rather than assert "0 turns".
+  if (Array.isArray(task.messages) && task.messages.length > 0) {
     return task.messages.filter((m) => m.role === 'user').length;
   }
   return null;
