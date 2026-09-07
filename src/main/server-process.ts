@@ -699,6 +699,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // page. Pin the origin to the port we actually spawned on. Google does
       // not validate the port for loopback (127.0.0.1) redirect URIs.
       COWORK_SERVER_ORIGIN: getServerOrigin(),
+      // Lets anton's html artifact lint (ENG-1204 Fix 3) reuse the Chromium
+      // we already ship instead of needing its own browser install.
+      // `process.execPath` is the binary currently running us — correct in
+      // both dev (raw node_modules/electron) and packaged builds (the
+      // shipped product binary), with no app.isPackaged branching needed.
+      ANTON_HTML_LINT_BROWSER: process.execPath,
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another

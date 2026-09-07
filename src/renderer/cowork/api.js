@@ -39,7 +39,7 @@ const ROOT_BASE = `${API_ORIGIN}`;
 //
 // Electron: the main process injects the loopback server's bearer token (when
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
-// (src/main/index.ts). That token never reaches the renderer and is NOT the
+// (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
