@@ -504,10 +504,10 @@ export function getCodeFixtureApi() {
     applyPlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
     setPlaybookItems: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
     integrations: async () => ({ items: [] }),
-    readSourceContext: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
+    readSourceContext: async (_id: string | null, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
       ...body, title: 'Linked work', external_id: 'fixture-1', body: 'Fixture source context',
     }),
-    searchWorkItems: async (_id: string, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null }) => ({
+    searchWorkItems: async (_id: string | null, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null }) => ({
       incomplete: false,
       items: [{
         provider: body.provider,

@@ -327,7 +327,7 @@ export function useNewTaskDraft({
       ...(explicitEffort ? { reasoningEffort: explicitEffort } : {}),
       permissionMode,
       attachments,
-      sourceContexts: selectedProject ? sourceContexts : [],
+      sourceContexts,
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
     };

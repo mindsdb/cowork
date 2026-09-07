@@ -21,6 +21,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it.each([null, 'project/1'])('routes source discovery and reads for project %s', async (projectId) => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = { provider: 'linear' as const, kind: 'issue' as const, url: 'https://linear.app/mindsdb/issue/ENG-2382', connection_name: 'work' };
+    await codingApi.readSourceContext(projectId, body);
+    await codingApi.searchWorkItems(projectId, { provider: 'linear', query: '', connection_name: 'work' });
+    const prefix = `http://127.0.0.1:26866/api/v1/coding${projectId === null ? '' : '/projects/project%2F1'}`;
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${prefix}/source-context`, expect.objectContaining({ method: 'POST', body: JSON.stringify(body) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${prefix}/work-items/search`, expect.objectContaining({ method: 'POST' }));
+  });
+
   it('encodes Windows paths as query data rather than URL structure', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
       ok: true,
