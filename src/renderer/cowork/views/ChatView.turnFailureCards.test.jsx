@@ -110,16 +110,19 @@ describe('model_not_found failure card', () => {
 describe('included_allowance_exhausted card (ENG-1537)', () => {
   const BODY = "You've used this month's free tokens.";
 
-  it('describes the free grant, not a drained wallet', () => {
+  it('says the task stopped and names both resources, never a bare "out of tokens"', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
-    expect(screen.getByText("You've used this month's free tokens")).toBeInTheDocument();
-    // This user has never topped up — "out of credits" misdescribes it.
+    expect(screen.getByText('Task stopped')).toBeInTheDocument();
+    expect(screen.getByText(/free monthly tokens are used up and your balance is empty/)).toBeInTheDocument();
+    expect(screen.queryByText(/out of tokens/i)).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
 
   it('keeps an actionable path to continue (ENG-1169 holds across the split)', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
-    expect(screen.getByRole('button', { name: 'Add credits' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add funds' })).toBeEnabled();
+    // Nothing says auto top up is on, so offer it.
+    expect(screen.getByRole('button', { name: 'Set up auto top up' })).toBeEnabled();
   });
 
   it('names the reset date the gate supplied — the free way forward', () => {
@@ -127,13 +130,8 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
       resetAt: inMarch.toISOString(),
     }))} />);
-    const expected = inMarch.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
-    expect(screen.getByText(new RegExp(`resets on ${expected}`))).toBeInTheDocument();
-  });
-
-  it('says what credits unlock', () => {
-    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
-    expect(screen.getByText(/unlock Claude, GPT, Gemini, Kimi, DeepSeek and more/)).toBeInTheDocument();
+    const expected = inMarch.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    expect(screen.getByText(new RegExp(`wait until ${expected} when your free tokens reset`))).toBeInTheDocument();
   });
 
   it.each([
@@ -143,7 +141,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
   ])('falls back to "next month" when the date is %s', (_label, resetAt) => {
     // Never "Invalid Date", and never a stale month on a reloaded conversation.
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
-    expect(screen.getByText(/resets on next month/)).toBeInTheDocument();
+    expect(screen.getByText(/wait until next month when your free tokens reset/)).toBeInTheDocument();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
 });
