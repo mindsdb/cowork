@@ -270,15 +270,17 @@ export default function HomeView({
 
   // Sending the habit-tracker prompt completes onboarding step 1 no
   // matter which surface filled the composer (suggestion chip, sidebar
-  // checklist, or the user typing it by hand). A selected task mode
-  // appends its instruction line after the user text (titles and search
-  // derive from the message head) and clears itself after a successful
-  // send. `meta` (harness/model, ENG-1656) passes through untouched.
+  // checklist, or the user typing it by hand) — but only once the send
+  // has gone out: onSend answers false when the provider preflight fails
+  // (ENG-2307). A selected task mode appends its instruction line after
+  // the user text (titles and search derive from the message head) and
+  // clears itself after a successful send. `meta` (harness/model,
+  // ENG-1656) passes through untouched.
   const sendTracked = async (text, meta) => {
-    if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
+    const result = await onSend(composeModeMessage(taskMode, text), meta);
+    if (result && typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
-    const result = await onSend(composeModeMessage(taskMode, text), meta);
     setTaskMode(null);
     return result;
   };
