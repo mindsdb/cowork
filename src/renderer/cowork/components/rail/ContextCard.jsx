@@ -738,7 +738,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
               {uploadError}
             </p>
           )}
-          {!hasAnyProjectFiles && !filesTruncated && !uploadBusy && (
+          {!hasAnyProjectFiles && !uploadBusy && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -783,10 +783,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
               ))}
             </div>
           )}
-          {/* Outside the list on purpose. The cap is spent on entries the
-              hidden-tree filter then drops, so a folder led by .git or .venv
-              truncates with nothing left to show, and a notice nested in the
-              list would be the one thing the user never sees. */}
+          {/* Outside the list on purpose. Above ten rows the list becomes a
+              220px scroll box and a truncated listing carries up to 2000
+              rows, so nested here the sentence explaining the list was cut
+              sat a couple of thousand rows below the visible area. */}
           {filesTruncated && (
             <div
               style={{

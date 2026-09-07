@@ -633,20 +633,25 @@ describe('ContextCard — memory read ordering', () => {
   });
 });
 
-// Regression coverage: the listing cap is spent before the hidden-tree filter
-// runs, so a folder the user chose can truncate with nothing left to show.
-// The notice has to survive that, and must not outlive the listing it
-// described.
+// Regression coverage: a truncated listing is up to 2000 rows and the list
+// becomes a 220px scroll box above ten of them, so the notice has to sit
+// outside it to be read at all. It also must not outlive its listing.
 describe('ContextCard — truncated project file listings', () => {
   const TRUNCATION = /more files than the list can show/;
-  const EMPTY_STATE = 'Add files to give the agent context.';
+  // The endpoint always emits this row, real or synthetic, so every fixture
+  // here carries it: a listing without it is a response the server cannot
+  // send, and it is what keeps the files section rendered at all.
+  const INSTRUCTIONS = { path: '.anton/anton.md', name: 'anton.md' };
 
-  it('reports truncation when the hidden-tree filter leaves nothing visible', async () => {
+  it('keeps the truncation notice outside the scrolling list', async () => {
     apiMock.listProjectFiles.mockResolvedValue({
       truncated: true,
       files: [
-        { path: '.git/config', name: 'config' },
-        { path: '.venv/pyvenv.cfg', name: 'pyvenv.cfg' },
+        INSTRUCTIONS,
+        ...Array.from({ length: 12 }, (_, i) => ({
+          path: `file-${i}.md`,
+          name: `file-${i}.md`,
+        })),
       ],
     });
 
@@ -659,15 +664,20 @@ describe('ContextCard — truncated project file listings', () => {
       );
     });
 
-    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
-    // The folder is full of files, so offering the empty state would be a lie.
-    expect(screen.queryByText(EMPTY_STATE)).not.toBeInTheDocument();
+    const notice = screen.getByText(TRUNCATION);
+    // Thirteen rows, so the list is scrolling. Nested, the notice would be
+    // reachable only by scrolling past every row it is describing.
+    expect(document.querySelector('.overflow-y-auto')).not.toBeNull();
+    expect(notice.closest('.overflow-y-auto')).toBeNull();
   });
 
   it('drops the notice when a later listing fails', async () => {
     apiMock.uploadProjectFiles.mockResolvedValue({});
     apiMock.listProjectFiles
-      .mockResolvedValueOnce({ truncated: true, files: [{ path: 'notes.md', name: 'notes.md' }] })
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
       .mockRejectedValueOnce(new Error('offline'));
 
     await act(async () => {
