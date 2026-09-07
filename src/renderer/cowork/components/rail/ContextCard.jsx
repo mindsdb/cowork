@@ -489,7 +489,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           return fresh ? mergeFileResource(current, fresh) : current;
         });
       })
-      .catch(() => { if (filesTicket.isCurrent(ticket)) setProjectFiles([]); });
+      .catch(() => {
+        if (!filesTicket.isCurrent(ticket)) return;
+        setProjectFiles([]);
+        // Cleared with the list it described. A flag left set here
+        // outlives its listing and reports truncation for a load that
+        // never landed.
+        setFilesTruncated(false);
+      });
   }, [project?.name, filesTicket]);
 
   const refreshOpenFileResource = useCallback((resource) => {
@@ -731,7 +738,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
               {uploadError}
             </p>
           )}
-          {!hasAnyProjectFiles && !uploadBusy && (
+          {!hasAnyProjectFiles && !filesTruncated && !uploadBusy && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -767,18 +774,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   )}
                 />
               ))}
-              {filesTruncated && (
-                <div
-                  style={{
-                    padding: '6px 2px',
-                    fontSize: 11.5,
-                    color: 'var(--ink-4)',
-                  }}
-                >
-                  This folder holds more files than the list can show, so some
-                  are missing here.
-                </div>
-              )}
               {driveFiles.map((f) => (
                 <DriveReferenceRow
                   key={`gdrive-${f.id}`}
@@ -786,6 +781,22 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   onRequestDelete={(file) => setPendingDeleteDriveFile(file)}
                 />
               ))}
+            </div>
+          )}
+          {/* Outside the list on purpose. The cap is spent on entries the
+              hidden-tree filter then drops, so a folder led by .git or .venv
+              truncates with nothing left to show, and a notice nested in the
+              list would be the one thing the user never sees. */}
+          {filesTruncated && (
+            <div
+              style={{
+                padding: '6px 2px',
+                fontSize: 11.5,
+                color: 'var(--ink-4)',
+              }}
+            >
+              This folder holds more files than the list can show, so some
+              are missing here.
             </div>
           )}
         </div>
