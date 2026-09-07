@@ -811,10 +811,10 @@ const liveCodingApi = {
     method: 'POST', body: JSON.stringify({ enabled_paths: enabledPaths }),
   }),
   integrations: (id: string) => requestJson<{ items: IntegrationStatus[] }>(`/projects/${encodeURIComponent(id)}/integrations`),
-  readSourceContext: (id: string, body: Omit<SourceContext, 'title' | 'external_id' | 'body'>) => requestJson<SourceContext>(`/projects/${encodeURIComponent(id)}/source-context`, {
+  readSourceContext: (id: string | null, body: Omit<SourceContext, 'title' | 'external_id' | 'body'>) => requestJson<SourceContext>(`${id === null ? '' : `/projects/${encodeURIComponent(id)}`}/source-context`, {
     method: 'POST', body: JSON.stringify(body),
   }),
-  searchWorkItems: (id: string, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null; limit?: number }) => requestJson<WorkItemPage>(`/projects/${encodeURIComponent(id)}/work-items/search`, {
+  searchWorkItems: (id: string | null, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null; limit?: number }) => requestJson<WorkItemPage>(`${id === null ? '' : `/projects/${encodeURIComponent(id)}`}/work-items/search`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   sessions: (includeArchived = false) => requestJson<{ items: CodingSession[] }>(`/sessions?includeArchived=${includeArchived}`),
