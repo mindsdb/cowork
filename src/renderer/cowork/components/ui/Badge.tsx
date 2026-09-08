@@ -51,9 +51,9 @@ const badgeVariants = cva(
           'border-[rgba(255,255,255,0.2)] bg-[rgba(255,255,255,0.16)] text-[rgba(255,255,255,0.86)]',
       },
       size: {
-        xs: 'h-[18px] px-1.5 text-[10px]',
-        sm: 'h-5 px-1.5 text-[10px]',
-        md: 'h-[22px] px-2 text-[11px]',
+        xs: 'h-[18px] px-1.5 text-2xs',
+        sm: 'h-5 px-1.5 text-2xs',
+        md: 'h-[22px] px-2 text-xs',
         lg: 'h-6 px-2.5 text-xs',
       },
     },

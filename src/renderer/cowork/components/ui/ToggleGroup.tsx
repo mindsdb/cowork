@@ -69,13 +69,9 @@ export function ToggleGroup({
         const next = newValue.find((v) => v !== value);
         if (next) onValueChange(next);
       }}
-      className={cn('inline-flex items-center', className)}
-      style={{
-        padding: cs.padding,
-        borderRadius: cs.borderRadius,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-      }}
+      className={cn('inline-flex items-center bg-surface-2 border border-solid border-line', className)}
+      // padding + radius come from the size config, so they stay inline.
+      style={{ padding: cs.padding, borderRadius: cs.borderRadius }}
       aria-label={ariaLabel}
     >
       {options.map((opt, i) => {
@@ -92,17 +88,11 @@ export function ToggleGroup({
             {i > 0 && (
               <span
                 aria-hidden="true"
-                style={{
-                  width: 1,
-                  height: is.dividerHeight,
-                  alignSelf: 'center',
-                  // color-mix, not the bare token: a bit more subtle than a
-                  // full-strength line between such small, tightly-packed
-                  // items.
-                  background: 'color-mix(in srgb, var(--line) 55%, transparent)',
-                  opacity: dividerHidden ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
-                }}
+                // color-mix, not the bare token: a bit more subtle than a
+                // full-strength line between such small, tightly-packed items.
+                className="w-px self-center bg-[color-mix(in_srgb,var(--line)_55%,transparent)] [transition:opacity_0.15s_ease]"
+                // height (size config) + hidden state stay inline.
+                style={{ height: is.dividerHeight, opacity: dividerHidden ? 0 : 1 }}
               />
             )}
             <BaseToggle

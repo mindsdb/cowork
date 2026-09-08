@@ -11,7 +11,8 @@
 
 import { Card } from './Card.tsx';
 
-const FONT_BODY = 'var(--font-body)';
+// Shared centering layout for both the bordered (Card) and plain branches.
+const CENTERING_CLASS = 'flex flex-col items-center justify-center gap-[10px] text-center min-h-[360px]';
 
 export function EmptyState({
   icon,
@@ -25,25 +26,22 @@ export function EmptyState({
   const content = (
     <>
       {icon && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="inline-flex items-center justify-center">
           {icon}
         </span>
       )}
       {title && (
-        <div className="s-h3" style={{ color: 'var(--ink)' }}>
+        <div className="s-h3">
           {title}
         </div>
       )}
       {description && (
-        <div style={{
-          fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)',
-          maxWidth: '44ch', textAlign: 'center', lineHeight: 1.5,
-        }}>
+        <div className="font-[family-name:var(--font-body)] text-[13.5px] text-ink-3 max-w-[44ch] text-center leading-[1.5]">
           {description}
         </div>
       )}
       {action && (
-        <div style={{ marginTop: 6 }}>
+        <div className="mt-[6px]">
           {action}
         </div>
       )}
@@ -51,17 +49,15 @@ export function EmptyState({
     </>
   );
 
-  const centering = {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    gap: 10, textAlign: 'center', minHeight: 360,
-  };
-
   if (bordered) {
+    // `.card` sets padding:24px (unlayered → wins the tie), so padding stays
+    // inline; the centering layout it doesn't declare converts to className.
     return (
       <Card
         variant="dashed"
         flat
-        style={{ ...centering, padding: '48px 24px', ...style }}
+        className={CENTERING_CLASS}
+        style={{ padding: '48px 24px', ...style }}
       >
         {content}
       </Card>
@@ -69,7 +65,7 @@ export function EmptyState({
   }
 
   return (
-    <div style={{ ...centering, padding: '48px 24px', ...style }}>
+    <div className={`${CENTERING_CLASS} py-12 px-6`} style={style}>
       {content}
     </div>
   );

@@ -15,6 +15,7 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
+import { cn } from '../../lib/cn';
 
 export interface TooltipProps {
   content: ReactNode;
@@ -44,22 +45,13 @@ export function Tooltip({
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
           <BaseTooltip.Popup
-            className={className}
-            style={{
-              background: 'var(--ink)',
-              color: 'var(--surface)',
-              fontFamily: 'var(--font-body)',
-              fontSize: 11.5,
-              fontWeight: 500,
-              lineHeight: 1.3,
-              padding: '5px 9px',
-              borderRadius: 7,
-              // A small hint bubble carries less visual weight than a
-              // dropdown/modal (ENG-790) — sh-2, not sh-popup.
-              boxShadow: 'var(--sh-2)',
-              maxWidth: 240,
-              userSelect: 'none',
-            }}
+            // A small hint bubble carries less visual weight than a
+            // dropdown/modal (ENG-790) — sh-2, not sh-popup.
+            className={cn(
+              'bg-ink text-surface font-[family-name:var(--font-body)] text-[11.5px] font-medium leading-[1.3]',
+              'py-[5px] px-[9px] rounded-[7px] shadow-sh-2 max-w-[240px] select-none',
+              className,
+            )}
           >
             {content}
           </BaseTooltip.Popup>

@@ -58,14 +58,14 @@ import { cn } from '../../lib/cn';
 // treatment while replacing the runtime-injected CSS mechanism.
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
-  'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
+  'py-1 outline-none font-body [transform-origin:var(--transform-origin)]',
   'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
 );
 
 const itemVariants = cva(
   [
     'flex items-center gap-[10px]',
-    'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[8px] rounded-[5px]',
+    'w-[calc(100%-8px)] mx-1 px-[10px] py-2 rounded-[5px]',
     'text-[13px] cursor-pointer select-none outline-none box-border',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
   ],
@@ -101,13 +101,13 @@ function renderItems(items, z, onActivate) {
     const key = it.id || it.key || it.label || i;
 
     if (it.divider || it.separator) {
-      return <BaseMenu.Separator key={`sep-${key}-${i}`} className="h-px bg-line my-[4px]" />;
+      return <BaseMenu.Separator key={`sep-${key}-${i}`} className="h-px bg-line my-1" />;
     }
 
     if (it.heading) {
       return (
         <BaseMenu.Group key={`heading-${key}-${i}`}>
-          <BaseMenu.GroupLabel className="px-[14px] pt-[6px] pb-[4px] select-none cursor-default">
+          <BaseMenu.GroupLabel className="px-[14px] pt-[6px] pb-1 select-none cursor-default">
             {it.heading}
           </BaseMenu.GroupLabel>
         </BaseMenu.Group>
@@ -246,12 +246,8 @@ export function Menu({
       {anchoredMode && open && createPortal(
         <div
           onMouseDown={() => onClose?.()}
-          style={{
-            position: 'fixed', inset: 0,
-            zIndex: zIndex - 1,
-            background: 'transparent',
-            WebkitAppRegion: 'no-drag',
-          }}
+          className="fixed inset-0 bg-transparent [-webkit-app-region:no-drag]"
+          style={{ zIndex: zIndex - 1 }}
         />,
         document.body,
       )}

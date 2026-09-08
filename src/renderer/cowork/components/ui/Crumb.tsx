@@ -39,7 +39,7 @@ export function CrumbSep() {
   return (
     <span
       aria-hidden="true"
-      className="shrink-0 select-none px-0.5 font-display text-[14px] leading-none text-ink-4"
+      className="shrink-0 select-none px-0.5 font-display text-base leading-none text-ink-4"
     >
       ›
     </span>

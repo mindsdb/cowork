@@ -138,7 +138,7 @@ export function Combobox({
         style={{ width, minWidth, ...style }}
         {...rest}
       >
-        <span className="flex items-center gap-[8px] min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
           {renderValue ? renderValue(selected) : (
             <span className={cn('truncate', !selected && 'text-ink-4')}>
               {selected ? selected.label : placeholder}
@@ -146,7 +146,7 @@ export function Combobox({
           )}
         </span>
         <span className="inline-flex shrink-0 text-ink-3">
-          {loading ? <Spinner style={{ color: 'currentColor' }} /> : CARET_UP_DOWN}
+          {loading ? <Spinner className="text-current" /> : CARET_UP_DOWN}
         </span>
       </BaseCombobox.Trigger>
       <BaseCombobox.Portal>
@@ -177,7 +177,7 @@ export function Combobox({
                 `border-solid` alone would resurrect the UA's `medium`
                 width on the sides `border-b` doesn't touch, drawing a fat
                 box around the whole row. */}
-            <div className="flex items-center gap-[8px] px-[12px] py-[9px] border-solid border-line border-b border-t-0 border-x-0 text-ink-4">
+            <div className="flex items-center gap-2 px-3 py-[9px] border-solid border-line border-b border-t-0 border-x-0 text-ink-4">
               {SEARCH}
               <BaseCombobox.Input
                 placeholder={searchPlaceholder}
@@ -191,7 +191,7 @@ export function Combobox({
                 guard the padding alone renders as a blank strip above the
                 results. `:empty` only matches when there are truly no
                 child nodes, which is exactly the has-results case here. */}
-            <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-[12.5px] text-ink-4">
+            <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-sm text-ink-4">
               {emptyText}
             </BaseCombobox.Empty>
             <BaseCombobox.List
@@ -208,13 +208,13 @@ export function Combobox({
                 footer
                   ? 'max-h-[min(280px,calc(var(--available-height,320px)-84px))]'
                   : 'max-h-[min(320px,calc(var(--available-height,320px)-44px))]',
-                'overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0',
+                'overflow-y-auto overscroll-contain py-1 outline-none empty:p-0',
               )}
             >
               {(group) => (
                 <BaseCombobox.Group key={group.key} items={group.items} className={group.className}>
                   {group.name && (
-                    <BaseCombobox.GroupLabel className="pt-[8px] px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
+                    <BaseCombobox.GroupLabel className="pt-2 px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
                       {group.name}
                     </BaseCombobox.GroupLabel>
                   )}
@@ -228,7 +228,7 @@ export function Combobox({
                         className={cn(
                           'grid items-center gap-[6px]',
                           (item.icon || item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
-                          'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px]',
+                          'w-[calc(100%-8px)] mx-1 px-[10px] py-[7px] rounded-[5px]',
                           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
                           'data-[highlighted]:bg-surface-2',
                           'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',

@@ -78,7 +78,7 @@ export const triggerVariants = cva(
     variants: {
       variant: {
         field: 'w-full px-[10px] py-[7px] text-[13px]',
-        pill: 'rounded-[7px] px-[11px] py-[7px] bg-surface-2 text-ink-2 text-[12.5px]',
+        pill: 'rounded-[7px] px-[11px] py-[7px] bg-surface-2 text-ink-2 text-sm',
       },
       size: {
         md: '',
@@ -89,7 +89,7 @@ export const triggerVariants = cva(
       // Only the field variant has a distinct "sm" size — a pill's size
       // is fixed regardless of `size` (matches the original hand-rolled
       // SelectPill, which never took a size prop).
-      { variant: 'field', size: 'sm', class: 'px-[8px] py-[5px] text-[12px]' },
+      { variant: 'field', size: 'sm', class: 'px-2 py-[5px] text-[12px]' },
     ],
     defaultVariants: { variant: 'field', size: 'md' },
   },
@@ -129,13 +129,13 @@ function flattenForLabels(options) {
 function renderOptions(options) {
   return options.filter(Boolean).map((opt, i) => {
     if (opt.separator) {
-      return <BaseSelect.Separator key={`sep-${i}`} className="h-px bg-line my-[4px]" />;
+      return <BaseSelect.Separator key={`sep-${i}`} className="h-px bg-line my-1" />;
     }
 
     if (Array.isArray(opt.options)) {
       return (
         <BaseSelect.Group key={opt.group ?? i}>
-          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-[11px] font-semibold text-ink-4 uppercase tracking-[0.04em]">
+          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-xs font-semibold text-ink-4 uppercase tracking-[0.04em]">
             {opt.group}
           </BaseSelect.GroupLabel>
           {renderOptions(opt.options)}
@@ -150,8 +150,8 @@ function renderOptions(options) {
         disabled={opt.disabled}
         title={opt.title}
         className={cn(
-          'group flex items-center gap-[8px]',
-          'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[8px] rounded-[5px]',
+          'group flex items-center gap-2',
+          'w-[calc(100%-8px)] mx-1 px-[10px] py-2 rounded-[5px]',
           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
           'data-[highlighted]:bg-surface-2',
           'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
@@ -163,7 +163,7 @@ function renderOptions(options) {
         <BaseSelect.ItemText className="flex-1 min-w-0">
           <span className="block truncate">{opt.label}</span>
           {opt.description && (
-            <span className="block mt-[2px] truncate text-[11px] leading-[14px] font-normal text-ink-4">
+            <span className="block mt-[2px] truncate text-xs leading-[14px] font-normal text-ink-4">
               {opt.description}
             </span>
           )}
@@ -271,7 +271,7 @@ export function Select({
         <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
           {loading
-            ? <Spinner style={{ color: 'currentColor' }} />
+            ? <Spinner className="text-current" />
             : variant === 'unstyled' ? CARET_UP_DOWN : CHEVRON_DOWN}
         </BaseSelect.Icon>
       </BaseSelect.Trigger>
@@ -298,7 +298,7 @@ export function Select({
               // its top edge all but vanishes. (When ENG-790 lands it drops
               // borders from every popup — Menu and Select together — so
               // matching Menu today keeps the two in lockstep either way.)
-              'bg-surface border border-solid border-line rounded-[10px] shadow-sh-popup py-[4px] outline-none font-body',
+              'bg-surface border border-solid border-line rounded-[10px] shadow-sh-popup py-1 outline-none font-body',
               '[transform-origin:var(--transform-origin)]',
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}

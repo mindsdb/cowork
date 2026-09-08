@@ -42,8 +42,6 @@ import Ico from '../Icons';
 const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
-const FONT_BODY    = 'var(--font-body)';
-
 // Width × max-height. Heights are caps; modals shrink to content.
 // All three stay inside the viewport on the smallest target screen
 // (1024×640) — keeps testing the matrix tractable.
@@ -122,29 +120,22 @@ export function Modal({
     >
       <Dialog.Portal>
         <Dialog.Backdrop
-          className={FADE_BACKDROP}
-          style={{
-            position: 'fixed', inset: 0, zIndex: z,
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(2px)',
-            WebkitBackdropFilter: 'blur(2px)',
-            // Frameless Electron window: keep clicks off the OS drag region.
-            WebkitAppRegion: 'no-drag',
-          }}
+          // Frameless Electron window: keep clicks off the OS drag region.
+          className={`${FADE_BACKDROP} fixed inset-0 bg-[rgba(0,0,0,0.45)] [backdrop-filter:blur(2px)] [-webkit-backdrop-filter:blur(2px)] [-webkit-app-region:no-drag]`}
+          style={{ zIndex: z }}
         />
         <Dialog.Viewport
-          style={{
-            position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            WebkitAppRegion: 'no-drag',
-          }}
+          className="fixed inset-0 flex items-center justify-center [-webkit-app-region:no-drag]"
+          style={{ zIndex: z }}
         >
           <Dialog.Popup
-            className={FADE_POPUP}
+            // Backdrop is now a sibling, not an ancestor — carry the font here.
+            className={`${FADE_POPUP} flex flex-col overflow-hidden [outline:none] font-[family-name:var(--font-body)]`}
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
-            style={{
-              ...(fullBleed
+            style={
+              // Dimensions + card chrome are prop/fullBleed-driven, so they stay inline.
+              fullBleed
                 ? {
                     width: '100vw', height: '100dvh',
                     background: 'var(--bg)',
@@ -161,13 +152,8 @@ export function Modal({
                     border: '1px solid var(--line)',
                     borderRadius: 14,
                     boxShadow: 'var(--sh-modal)',
-                  }),
-              display: 'flex', flexDirection: 'column',
-              overflow: 'hidden',
-              outline: 'none',
-              // Backdrop is now a sibling, not an ancestor — carry the font here.
-              fontFamily: FONT_BODY,
-            }}
+                  }
+            }
           >
             {children}
           </Dialog.Popup>
@@ -187,29 +173,13 @@ export function Modal({
 
 export function ModalHeader({ id, title, subtitle, onClose, right }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 12,
-      padding: '14px 16px',
-      borderBottom: '1px solid var(--line)',
-      flexShrink: 0,
-    }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className="flex items-start gap-3 py-[14px] px-4 border-b border-t-0 border-x-0 border-solid border-line shrink-0">
+      <div className="flex-1 min-w-0">
         {title && (
-          <div
-            id={id}
-            className="s-h3"
-            style={{
-              color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}
-          >{title}</div>
+          <div id={id} className="s-h3 overflow-hidden text-ellipsis whitespace-nowrap">{title}</div>
         )}
         {subtitle && (
-          <div style={{
-            marginTop: 2,
-            fontFamily: FONT_BODY, fontSize: 13,
-            color: 'var(--ink-3)', lineHeight: 1.4,
-          }}>{subtitle}</div>
+          <div className="mt-[2px] font-[family-name:var(--font-body)] text-[13px] text-ink-3 leading-[1.4]">{subtitle}</div>
         )}
       </div>
       {right}
@@ -219,25 +189,9 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
           onClick={onClose}
           title="Close"
           aria-label="Close"
-          style={{
-            cursor: 'pointer',
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
-            width: 28, height: 28, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            flexShrink: 0,
-            transition: 'color 120ms ease, background 120ms ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.color = 'var(--ink)';
-            e.currentTarget.style.background = 'var(--surface-2)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.color = 'var(--ink-3)';
-            e.currentTarget.style.background = 'transparent';
-          }}
+          className="cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center shrink-0 [transition:color_120ms_ease,background_120ms_ease]"
         >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
+          {Ico.close ? Ico.close(13) : <span className="text-[18px] leading-none">×</span>}
         </button>
       )}
     </div>
@@ -252,12 +206,11 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 
 export function ModalBody({ children, padding = '16px 18px', background, style }) {
   return (
-    <div style={{
-      flex: 1, minHeight: 0, overflowY: 'auto',
-      padding,
-      background: background || 'var(--surface)',
-      ...style,
-    }}>
+    <div
+      className="flex-1 min-h-0 overflow-y-auto"
+      // padding / background / style are props, so they stay inline.
+      style={{ padding, background: background || 'var(--surface)', ...style }}
+    >
       {children}
     </div>
   );
@@ -272,16 +225,11 @@ export function ModalBody({ children, padding = '16px 18px', background, style }
 
 export function ModalFooter({ children, align = 'flex-end', style }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center',
-      justifyContent: align,
-      gap: 8,
-      padding: '12px 16px',
-      borderTop: '1px solid var(--line)',
-      background: 'var(--surface)',
-      flexShrink: 0,
-      ...style,
-    }}>
+    <div
+      className="flex items-center gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line bg-surface shrink-0"
+      // `align` (justify) + caller `style` overrides stay inline.
+      style={{ justifyContent: align, ...style }}
+    >
       {children}
     </div>
   );
