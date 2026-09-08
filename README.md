@@ -41,7 +41,7 @@ The *Environments* table above covers **how** you run the app. A build **channel
 
 **How the kind is decided** ([`resolveBuildKind`](src/main/cowork-home.ts)): a `COWORK_BUILD_KIND` env var wins if set; otherwise any **unpackaged** run is `dev`; otherwise the kind comes from the bundled `build-config.json`, and an absent config falls back to `prod`. So `dev` only exists when you run from source — it is never packaged into a distributed installer. CI stamps `build-config.json` with `preview`, `stable`, or `prod` when it packages those.
 
-> **`npm run pack` produces a prod build.** `pack` and `dist` bundle the checked-in `build-config.json`, which is `{"buildKind":"prod"}`. A local package is therefore a **prod-kind** build — it uses the `~/.cowork` home and the prod API, not a sandbox. To build a non-prod kind locally, set `COWORK_BUILD_KIND` (and a matching `VITE_MINDS_API_URL`, or the channel-consistency check fails the build).
+> **Ordinary local `pack` / `dist` produce a prod package.** `npm run pack` and `npm run dist` bundle the checked-in `build-config.json` (`{"buildKind":"prod"}`) as-is — nothing stamps it — so the launched app resolves the `prod` kind and uses the `~/.cowork` home and the prod API. Setting `COWORK_BUILD_KIND` for the pack does **not** make a non-prod package: the env var is never written into the bundle, and `pack`'s plain `electron-builder --dir` also skips the per-kind bundle identity applied by `scripts/run-electron-builder.mjs`. So `COWORK_BUILD_KIND=stable npm run pack` yields a prod-identity bundle that still resolves `prod` at launch, while a staging `VITE_MINDS_API_URL` bakes the staging host into the renderer — a prod-home app talking to staging. A real non-prod **package** is a CI-only path (CI writes `build-config.json` with the target kind and runs the identity-aware packaging scripts). To exercise a non-prod kind locally without packaging, run from source (`npm run dev` = the `dev` kind), or launch the packaged binary with `COWORK_BUILD_KIND` set in its environment — that runtime env var *does* win in `resolveBuildKind`, overriding the prod bundle onto the non-prod home and keychain (pair it with a matching baked `VITE_MINDS_API_URL` so the API host agrees).
 
 Things that trip people up:
 
@@ -58,7 +58,10 @@ A channel's state is not all under one folder. It spreads across several locatio
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
 | **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv) | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
-| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs), the encrypted MindsHub refresh token (`mindshub-refresh.bin`), the OTA UI cache (`ui-cache/`), shell auto-update bookkeeping | `app.setName` per kind |
+| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); on **Windows/Linux** the encrypted MindsHub refresh token (`mindshub-refresh.bin`, safe-storage) | `app.setName` per kind |
+| **MindsHub refresh token** — **macOS:** `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat`; **Windows/Linux:** userData `mindshub-refresh.bin` | The Keycloak refresh token | `COWORK_HOME` (macOS) / userData (Win/Linux) — see [`token-store.ts`](src/main/token-store.ts) |
+| **OTA UI cache** — non-prod: `~/.cowork-<kind>/ui-cache` / prod: userData `ui-cache/` | Hot-swapped renderer bundle | `COWORK_HOME` (non-prod) / userData (prod) — see [`ui-updater.ts`](src/main/ui-updater.ts) |
+| **Shell-update downloads** — `~/Library/Caches/anton-updater-{prod,stable}` | electron-updater's pending shell installer (**prod + stable only**; other kinds have no shell auto-update) | Per-channel cache dir name, in the OS cache root — not userData |
 | **OS keychain** — service `cowork-oauth-<kind>` / `cowork-oauth` | Connector OAuth refresh tokens | Per-kind service name |
 | **Legacy `~/.anton`** | Pre-channel global config (`.env`, `state.json`); still read as a fallback and migrated into the prod home once | prod only |
 
@@ -70,6 +73,7 @@ Everything under the `~/.cowork-<kind>` home — the data home, uv install, and 
 |----------|-------|---------|-------|
 | Electron userData | `~/Library/Application Support/<app name>` | `%APPDATA%\<app name>` | `~/.config/<app name>` |
 | prod server log (`getPath('logs')`) | `~/Library/Logs/anton` | `%APPDATA%\anton\logs` | `~/.config/anton/logs` |
+| Shell-update cache (`anton-updater-<channel>`) | `~/Library/Caches` | `%LOCALAPPDATA%` | `~/.cache` |
 | Keychain / secret store | Keychain | Credential Manager (DPAPI) | Secret Service (libsecret) |
 
 The [fresh-install reset function](#fresh-install-reset-macos) below wipes all of these locations; use it as a checklist of everywhere state hides.
@@ -144,7 +148,7 @@ To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line t
 
 ### Fresh-install reset (macOS)
 
-To test first-run onboarding you need a true fresh-install state. App state lives in six places: the cowork homes (`~/.cowork` plus per-build-kind variants), the legacy `~/.anton` home, the Electron userData dir, the log dir, the uv-managed tool installs, and the macOS Keychain (connector OAuth tokens). This zsh function wipes them all — drop it in `~/.zshrc`:
+To test first-run onboarding you need a true fresh-install state. App state hides in several places: the cowork homes (`~/.cowork` plus per-build-kind variants), the legacy `~/.anton` home, the Electron userData dirs (**one per build kind** — prod's `anton` plus the Dev/Preview/Staging apps), the prod log dir, the per-channel shell-update caches (`anton-updater-{prod,stable}`), the uv-managed tool installs, and the macOS Keychain (connector OAuth tokens, **one service per kind**: `cowork-oauth` plus `cowork-oauth-{dev,preview,stable}`). This zsh function wipes them all — drop it in `~/.zshrc`:
 
 ```zsh
 # Reset MindsHub Cowork to a fresh-install state: kills the app, wipes
@@ -166,16 +170,26 @@ anton-reset() {
   killall Anton 2>/dev/null
   sleep 1
 
-  # Per-user runtime state — all build kinds (prod uses ~/.cowork;
-  # dev/preview/stable use suffixed homes)
+  # Per-user runtime state — all build kinds (prod uses ~/.cowork and the
+  # 'anton' userData dir; dev/preview/stable use suffixed homes and their own
+  # userData dirs). The homes also hold the macOS refresh-token.dat and the
+  # non-prod ui-cache; the 'anton' userData dir holds prod's ui-cache.
   rm -rf "$HOME/Library/Application Support/anton" \
+         "$HOME/Library/Application Support/MindsHub Cowork (Dev)" \
+         "$HOME/Library/Application Support/MindsHub Cowork (Preview)" \
+         "$HOME/Library/Application Support/MindsHub Cowork (Staging)" \
          "$HOME/Library/Logs/anton" \
+         "$HOME/Library/Caches/anton-updater-prod" \
+         "$HOME/Library/Caches/anton-updater-stable" \
          "$HOME/.anton" \
          "$HOME/.cowork" "$HOME/.cowork-dev" "$HOME/.cowork-preview" "$HOME/.cowork-stable"
   rm -f  "$HOME/Library/Preferences/com.anton.app.plist"
 
-  # Connector OAuth tokens live in the macOS Keychain, not on disk
-  while security delete-generic-password -s cowork-oauth >/dev/null 2>&1; do :; done
+  # Connector OAuth tokens live in the macOS Keychain, not on disk — one
+  # service per build kind (prod keeps the historical unsuffixed name)
+  for svc in cowork-oauth cowork-oauth-dev cowork-oauth-preview cowork-oauth-stable; do
+    while security delete-generic-password -s "$svc" >/dev/null 2>&1; do :; done
+  done
 
   # uv-installed packages (the installer re-installs these on next run)
   uv tool uninstall anton anton-agent cowork-server 2>/dev/null
