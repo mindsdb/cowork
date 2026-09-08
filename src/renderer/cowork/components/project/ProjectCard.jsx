@@ -15,9 +15,6 @@ import { belongsToProject } from '../../lib/artifactProject';
 import SharedResourceAttribution from '../SharedResourceAttribution';
 import { isReservedProjectName } from '../../lib/sharedResourceAccess';
 
-const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
-
 function tasksFor(project, tasks) {
   return (tasks || []).filter((t) =>
     t.projectName === project?.name || t.projectPath === project?.path,
@@ -174,24 +171,19 @@ export function ProjectCard({
       onActivate={editing || deleting ? undefined : handleCardClick}
       aria-busy={deleting || undefined}
       {...hoverProps}
+      className="min-h-[120px] flex flex-col gap-[10px] relative"
       style={{
+        // Dynamic (app-state) + a transition that must stay inline: an inline
+        // style beats .card.interactive's unlayered `transition: var(--card-transition)`,
+        // so moving it to a utility would silently swap the transition.
         cursor: editing || deleting ? 'default' : undefined,
-        minHeight: 120,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        position: 'relative',
         opacity: deleting ? 0.6 : undefined,
         transition: 'opacity .12s ease',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        minWidth: 0,
-      }}>
-        <span style={{
-          display: 'inline-flex', flexShrink: 0,
-          color: 'var(--ink-3)',
-        }}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="inline-flex shrink-0 text-ink-3">
           {Ico.folder(14)}
         </span>
         {editing ? (
@@ -215,23 +207,10 @@ export function ProjectCard({
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-            style={{
-              flex: 1, minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '0', color: 'var(--ink)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--accent)',
-              borderRadius: 6,
-              padding: '2px 6px',
-              outline: 'none',
-            }}
+            className="flex-1 min-w-0 font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink bg-surface-2 border border-solid border-accent rounded-[6px] py-[2px] px-[6px] [outline:none]"
           />
         ) : (
-          <span className="s-h3" style={{
-            flex: 1, minWidth: 0,
-            color: 'var(--ink)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{projectLabel(project)}</span>
+          <span className="s-h3 flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel(project)}</span>
         )}
 
         {/* Pin button — visible on hover for unpinned, always for pinned */}
@@ -244,23 +223,15 @@ export function ProjectCard({
             onBlur={() => setActionsFocused(false)}
             aria-label={pinned ? 'Unpin project' : 'Pin project'}
             aria-pressed={pinned}
-            className="project-action-trigger"
+            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
             style={{
-              width: 26, height: 26, borderRadius: 6,
-              background: 'transparent', border: 0,
               color: pinned ? 'var(--accent)' : 'var(--ink-4)',
               opacity: pinned || showHoverActions ? 1 : 0,
               // Taken out of flow rather than faded while the delete is on the
               // wire: an opacity-0 control stays clickable, and the coarse-
               // pointer rule would paint it back in on touch.
               display: deleting ? 'none' : 'inline-grid',
-              placeItems: 'center',
-              cursor: 'pointer', flexShrink: 0,
-              transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-              font: 'inherit',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {Ico.pin(13)}
           </button>
@@ -280,20 +251,11 @@ export function ProjectCard({
             onFocus={() => setActionsFocused(true)}
             onBlur={() => setActionsFocused(false)}
             aria-label="Project menu"
-            className="project-action-trigger"
+            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
             style={{
-              width: 26, height: 26, borderRadius: 6,
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
               opacity: showHoverActions ? 1 : 0,
               display: isReserved || deleting ? 'none' : 'inline-grid',
-              placeItems: 'center',
-              cursor: 'pointer', flexShrink: 0,
-              transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-              font: 'inherit',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
           >
             {Ico.moreVert(15)}
           </button>
@@ -302,49 +264,24 @@ export function ProjectCard({
 
       {/* Activity block — clamp 2 lines. Falls back to a soft prompt
           when the project has nothing yet. */}
-      <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column', gap: 4,
-        minWidth: 0,
-      }}>
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
         {deleting ? (
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
-            color: 'var(--ink-3)',
-          }}>
+          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-3">
             Deleting…
           </span>
         ) : summary ? (
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
-            color: 'var(--ink-2)',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}>
+          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-2 line-clamp-2">
             {summary.text}
           </span>
         ) : (
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
-            color: 'var(--ink-4)', fontStyle: 'italic',
-          }}>
+          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-4 italic">
             No activity yet
           </span>
         )}
 
-        <span style={{
-          display: 'inline-flex', alignItems: 'baseline', gap: 6,
-          fontFamily: 'var(--font-sans)', fontSize: 11.5,
-          color: 'var(--ink-4)',
-        }}>
+        <span className="inline-flex items-baseline gap-[6px] font-[family-name:var(--font-sans)] text-[11.5px] text-ink-4">
           {active && (
-            <span aria-hidden style={{
-              width: 5, height: 5, borderRadius: 99,
-              background: 'var(--success)',
-              boxShadow: '0 0 6px var(--success-glow)',
-              alignSelf: 'center',
-            }} />
+            <span aria-hidden className="w-[5px] h-[5px] rounded-full bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)] self-center" />
           )}
           <span>{summary?.time || '—'}</span>
         </span>
@@ -357,17 +294,9 @@ export function ProjectCard({
           left to show, the row (and its divider) don't render at
           all rather than showing an empty strip. */}
       {cardStats.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 14,
-          alignItems: 'baseline',
-          borderTop: '1px solid var(--line)',
-          paddingTop: 10,
-        }}>
+        <div className="flex flex-wrap gap-[14px] items-baseline border-t border-x-0 border-b-0 border-solid border-line pt-[10px]">
           {cardStats.map(({ key, label }) => (
-            <span key={key} style={{
-              fontFamily: 'var(--font-sans)', fontSize: 12,
-              color: 'var(--ink-4)',
-            }}>{label}</span>
+            <span key={key} className="font-[family-name:var(--font-sans)] text-[12px] text-ink-4">{label}</span>
           ))}
         </div>
       )}

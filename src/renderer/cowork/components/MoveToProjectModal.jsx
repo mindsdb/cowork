@@ -47,6 +47,8 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
   const destName = selected || (canCreateNew ? q : null);
   const canConfirm = !!destName && !busy;
 
+  const ROW_CLASS = 'flex items-center gap-2 w-full text-left py-[9px] px-[11px] rounded-[9px] cursor-pointer text-[13px]';
+
   const submit = async () => {
     if (!canConfirm) return;
     setBusy(true);
@@ -57,10 +59,9 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
     }
   };
 
+  // The row's active state drives border/background/colour off a color-mix and
+  // `inherit`, so it stays inline; the static layout is a className constant.
   const rowStyle = (active) => ({
-    display: 'flex', alignItems: 'center', gap: 8,
-    width: '100%', textAlign: 'left',
-    padding: '9px 11px', borderRadius: 9, cursor: 'pointer', fontSize: 13,
     border: active ? '1px solid var(--accent)' : '1px solid transparent',
     background: active ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
     color: active ? 'var(--accent)' : 'inherit',
@@ -89,15 +90,16 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
           }}
         />
 
-        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div className="max-h-[220px] overflow-y-auto flex flex-col gap-[2px]">
           {candidates.map((p) => (
             <button
               key={p.name}
               type="button"
+              className={ROW_CLASS}
               style={rowStyle(selected === p.name)}
               onClick={() => { setSelected(p.name); }}
             >
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectLabel(p)}</span>
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel(p)}</span>
               {selected === p.name && <span aria-hidden>✓</span>}
             </button>
           ))}
@@ -105,24 +107,25 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
           {canCreateNew && (
             <button
               type="button"
+              className={ROW_CLASS}
               style={rowStyle(!selected)}
               onClick={() => setSelected(null)}
             >
-              <span aria-hidden style={{ opacity: 0.8 }}>＋</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span aria-hidden className="opacity-80">＋</span>
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                 Create “{q}”
               </span>
             </button>
           )}
 
           {!candidates.length && !canCreateNew && (
-            <div style={{ padding: '10px 4px', fontSize: 12.5, opacity: 0.6 }}>
+            <div className="py-[10px] px-1 text-sm opacity-60">
               {currentName ? `This task is already in “${currentName}”.` : 'No other projects yet — type a name to create one.'}
             </div>
           )}
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13, cursor: 'pointer' }}>
+        <label className="flex items-center gap-2 mt-[14px] text-[13px] cursor-pointer">
           <Checkbox
             checked={moveEverything}
             onCheckedChange={setMoveEverything}
