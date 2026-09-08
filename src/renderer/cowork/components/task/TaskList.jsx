@@ -4,9 +4,6 @@
 import { useMemo } from 'react';
 import { TaskCard } from './TaskCard';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-
 const _ts = (raw) => {
   if (!raw) return 0;
   if (typeof raw === 'number') return raw;
@@ -85,33 +82,21 @@ export function TaskList({
   return (
     <div>
       {title != null && (
-        <div style={{
-          display: 'flex', alignItems: 'baseline', gap: 8,
-          marginBottom: 12, paddingLeft: 4,
-        }}>
-          <span className="s-h3" style={{
-            color: 'var(--ink)',
-          }}>
+        <div className="flex items-baseline gap-2 mb-3 pl-1">
+          <span className="s-h3">
             {title}
           </span>
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-4)',
-          }}>
+          <span className="font-body text-[13px] text-ink-4">
             {rows.length}
           </span>
         </div>
       )}
       {rows.length === 0 ? (
-        <div style={{
-          padding: 28,
-          fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)',
-          background: 'var(--surface)', border: '1px solid var(--line)',
-          borderRadius: 12, textAlign: 'center', lineHeight: 1.55,
-        }}>
+        <div className="p-7 font-body text-[13px] text-ink-3 bg-surface border border-solid border-line rounded-card text-center leading-[1.55]">
           {emptyMessage}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {rows.map((t) => {
             const isGroup = !!t._scheduleGroup;
             return (
