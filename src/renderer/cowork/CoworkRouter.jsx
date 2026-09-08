@@ -270,7 +270,7 @@ export function ConversationUnavailable() {
 export function ConversationLoading() {
   return (
     <div className="flex-1 min-h-0 grid place-items-center text-ink-3" data-testid="conversation-loading">
-      <Spinner style={{ fontSize: 22 }} />
+      <Spinner className="text-xl" />
     </div>
   );
 }

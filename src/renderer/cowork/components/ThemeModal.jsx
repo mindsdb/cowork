@@ -21,14 +21,9 @@ function Choice({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_120ms,border-color_120ms,color_120ms]"
       style={{
-        flex: 1,
-        padding: '10px 12px',
-        borderRadius: 10,
-        cursor: 'pointer',
-        fontSize: 13,
-        fontWeight: 600,
-        letterSpacing: '0.02em',
+        // Active-state accent uses the 8-bit skin's --gf-* vars, so it stays inline.
         border: active
           ? '1px solid var(--gf-accent, #1F9CB0)'
           : '1px solid var(--gf-line, rgba(128,128,128,0.3))',
@@ -36,7 +31,6 @@ function Choice({ active, onClick, children }) {
           ? 'color-mix(in srgb, var(--gf-accent, #1F9CB0) 16%, transparent)'
           : 'transparent',
         color: active ? 'var(--gf-accent, #1F9CB0)' : 'inherit',
-        transition: 'background 120ms, border-color 120ms, color 120ms',
       }}
     >
       {children}
@@ -47,18 +41,10 @@ function Choice({ active, onClick, children }) {
 function Group({ label, children }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          opacity: 0.6,
-          marginBottom: 8,
-        }}
-      >
+      <div className="text-xs uppercase tracking-[0.08em] opacity-60 mb-2">
         {label}
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>{children}</div>
+      <div className="flex gap-2">{children}</div>
     </div>
   );
 }
@@ -70,7 +56,7 @@ export default function ThemeModal({
     <Modal open={open} onClose={onClose} size="sm" labelledBy="theme-modal-title">
       <ModalHeader id="theme-modal-title" title="Display Settings" subtitle="Theme and style — applied live" onClose={onClose} />
       <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="flex flex-col gap-[18px]">
           <Group label="Theme">
             <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>Light</Choice>
             <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>Dark</Choice>

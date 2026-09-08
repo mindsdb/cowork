@@ -147,15 +147,13 @@ export function OrbitProvider({
   const orbNode = state ? (
     <div
       aria-hidden="true"
+      className="absolute pointer-events-none z-[6] [transition:opacity_220ms_ease,transform_220ms_ease]"
       style={{
-        position: 'absolute',
+        // Dynamic: measured position + prop size, plus the visibility fade/scale.
         top: pos.top, left: pos.left,
         width: size, height: size,
-        pointerEvents: 'none',
         opacity: pos.visible ? 1 : 0,
         transform: pos.visible ? 'scale(1)' : 'scale(0.6)',
-        transition: 'opacity 220ms ease, transform 220ms ease',
-        zIndex: 6,
       }}
     >
       <OrbitMorph state={state} size={size} />
