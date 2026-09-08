@@ -207,6 +207,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   });
   options.adapter.onUpdateAvailable((targetVersion) => {
     const changed = dispatch({ type: 'UPDATE_FOUND', targetVersion });
+    if (changed) clearFailureLatch();
     if (changed && snapshot.phase === 'downloading') void download();
   });
   options.adapter.onUpdateNotAvailable(() => {

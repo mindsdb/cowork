@@ -330,6 +330,23 @@ describe('createShellAutoUpdater', () => {
     expect(failures).toHaveLength(2);
   });
 
+  it('reports a download failure after a recovered check finds an update', async () => {
+    const { adapter, failures, updater } = setup('auto');
+    adapter.checkForUpdates.mockRejectedValueOnce(new Error('feed unavailable'));
+    await updater.check('boot');
+    expect(failures).toHaveLength(1);
+
+    adapter.downloadUpdate.mockRejectedValueOnce(new Error('socket hang up'));
+    await updater.check('periodic');
+    adapter.emit('available', '2.1.0');
+    await vi.waitFor(() => expect(failures).toHaveLength(2));
+
+    expect(failures[1]).toMatchObject({
+      phase: 'downloading',
+      targetVersion: '2.1.0',
+    });
+  });
+
   it('reports a materially different failure code even within an open episode', async () => {
     const { adapter, failures, updater } = setup();
     await updater.check('boot');
