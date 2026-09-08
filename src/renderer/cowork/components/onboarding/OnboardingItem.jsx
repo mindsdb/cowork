@@ -6,13 +6,10 @@ function Checkbox({ done }) {
   return (
     <span
       aria-hidden
+      className="shrink-0 mt-[1px] w-4 h-4 rounded-[5px] grid place-items-center text-white border border-solid [transition:background_140ms_ease,border-color_140ms_ease]"
       style={{
-        flexShrink: 0, marginTop: 1,
-        width: 16, height: 16, borderRadius: 5,
-        display: 'grid', placeItems: 'center', color: '#fff',
-        border: `1px solid ${done ? 'var(--accent)' : 'var(--border-02, var(--line-2))'}`,
+        borderColor: done ? 'var(--accent)' : 'var(--border-02, var(--line-2))',
         background: done ? 'var(--accent)' : 'transparent',
-        transition: 'background 140ms ease, border-color 140ms ease',
       }}
     >
       {done && Ico.check(11)}
@@ -27,23 +24,18 @@ export default function OnboardingItem({ step, done, onStart }) {
   return (
     <button
       type="button"
-      className="onboarding-step-row"
+      className="onboarding-step-row flex gap-[10px] items-start w-full text-left font-[inherit] border-0 rounded-[var(--r-sm)] py-[7px] px-[6px]"
       data-done={done || undefined}
       onClick={() => onStart(step)}
-      style={{
-        display: 'flex', gap: 10, alignItems: 'flex-start',
-        width: '100%', textAlign: 'left', font: 'inherit',
-        border: 0, cursor: done ? 'default' : 'pointer', borderRadius: 'var(--r-sm)', padding: '7px 6px',
-      }}
+      style={{ cursor: done ? 'default' : 'pointer' }}
     >
       <Checkbox done={done} />
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span className="flex-1 min-w-0">
         <span
+          className="block text-[13px] font-[550] leading-[1.35] [text-decoration-color:var(--frost-500)]"
           style={{
-            display: 'block', fontSize: 13, fontWeight: 550, lineHeight: 1.35,
             color: done ? 'var(--frost-500)' : 'var(--text-strong)',
             textDecoration: done ? 'line-through' : 'none',
-            textDecorationColor: 'var(--frost-500)',
           }}
         >
           {step.title}
@@ -51,8 +43,8 @@ export default function OnboardingItem({ step, done, onStart }) {
         {/* Collapsible description: the 0fr→1fr grid row animates height
             open/closed without hard-coding a pixel value. */}
         <span className="onboarding-step-desc">
-          <span style={{ overflow: 'hidden', minHeight: 0 }}>
-            <span style={{ display: 'block', fontSize: 12, lineHeight: 1.4, color: 'var(--frost-600)', marginTop: 2 }}>
+          <span className="overflow-hidden min-h-0">
+            <span className="block text-[12px] leading-[1.4] text-[var(--frost-600)] mt-[2px]">
               {step.description}
             </span>
           </span>
