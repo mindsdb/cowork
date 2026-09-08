@@ -97,11 +97,10 @@ import {
   CoworkRouterProvider,
   ConversationUnavailable,
   ConversationLoading,
-  createCoworkRouter,
-  initialNavState,
   markOptimisticConversation,
   clearOptimisticConversation,
 } from './CoworkRouter';
+import { useNavigation } from './hooks/useNavigation';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -504,21 +503,6 @@ function nextPollDelay(schedules) {
   const earliest = Math.min(...dueTimes);
   const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
-}
-
-// Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
-// captures the token with begin() and applies its result only while isCurrent()
-// still holds. Both starting a newer detail (begin) AND leaving detail — to the
-// grid, Home, or any other route (leave) — advance the token, so a slow
-// `/projects/:A` response can neither overwrite a later `/projects/:B` nor
-// re-select A after the user has navigated away (e.g. Back to the grid).
-export function makeProjectDetailToken() {
-  let current = 0;
-  return {
-    begin: () => ++current,
-    leave: () => { current += 1; },
-    isCurrent: (captured) => captured === current,
-  };
 }
 
 export default function App() {
@@ -1310,13 +1294,10 @@ function AppCore() {
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
 
-  // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
-  // a ref so the keydown listener (mounted once) sees the live route
-  // without needing to rebind on every navigation.
-  const routeRef = useRef('home');
   // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar in a Cowork
   // task or anywhere in Code; Cmd/Ctrl+K opens search; Cmd/Ctrl+N starts a
-  // new task.
+  // new task. It reads the live route through `routeRef` (from useNavigation,
+  // below) inside the handler, so binding once on mount is safe.
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -1452,17 +1433,65 @@ function AppCore() {
     onSessionsChange: setCodingSessions,
     onStopIssue: reportCodeStopIssue,
   });
-  // Seed nav state from the address bar so a web deep-link / refresh paints the
-  // right view instead of flashing Home. Electron's memory router starts at `/`.
-  const initialNav = useRef(initialNavState()).current;
-  // The router is created once (memory router on Electron, browser router on
-  // web). It's stateless w.r.t. AppCore — nav state flows through context.
-  const routerRef = useRef(null);
-  if (!routerRef.current) routerRef.current = createCoworkRouter();
-  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
-  // Keep a ref of the live route so the keydown listener (bound
-  // once on mount) can read it without a re-bind on every nav.
-  routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
+  // Open the Settings surface. A named section drills straight to it (desktop
+  // and the mobile master-detail alike). A bare open leaves desktop on its
+  // last section (it has no list) but resets the mobile surface to its section
+  // list — hence the isMobile-gated null. Single home for this rule so the
+  // call sites don't each re-spell it. Defined here so useNavigation can call
+  // it for `settings` / `settings:section` keys.
+  const openSettings = (section = null) => {
+    if (section) setSettingsSection(section);
+    else if (isMobile) setSettingsSection(null);
+    setSettingsOpen(true);
+  };
+  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
+  // view offers a retry instead of losing the URL. Owned here (not in
+  // useNavigation) — it's the conversation-load state; nav only clears it.
+  const [conversationError, setConversationError] = useState(null);
+  // Routing/navigation state + transitions (route, activeTaskId, selected
+  // project/schedule, the project-detail resolution token, and the
+  // enter*/navigate/clearActive handlers) live in useNavigation. The app-owned
+  // setters/loaders they touch are injected; `effectiveWorkspaceMode` keeps
+  // `routeRef` code-scoped for Cmd+B, and `routeRef` / `route` / `activeTaskId`
+  // come back for the keydown listener above and their many consumers.
+  const {
+    routerRef,
+    routeRef,
+    route,
+    setRoute,
+    activeTaskId,
+    setActiveTaskId,
+    selectedProject,
+    setSelectedProject,
+    selectedScheduleId,
+    setSelectedScheduleId,
+    projectDetailPending,
+    setProjectDetailPending,
+    projectDetailTokenRef,
+    navigate,
+    clearActive,
+    enterHome,
+    enterRoute,
+    enterProjectDetail,
+    enterScheduleDetail,
+  } = useNavigation({
+    sidebarPopout,
+    setNavPopoutOpen,
+    openSettings,
+    openCode,
+    setWorkspaceMode,
+    effectiveWorkspaceMode,
+    setTasks,
+    setProjects,
+    setArtifacts,
+    refreshSchedules,
+    setConversationError,
+  });
+  // Long-running destructive requests must reconcile against wherever the
+  // user navigated while they were in flight, not the render that launched
+  // them. Keep the active task alongside routeRef for that success boundary.
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
@@ -1483,32 +1512,6 @@ function AppCore() {
   const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
   const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
   const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
-  // Long-running destructive requests must reconcile against wherever the
-  // user navigated while they were in flight, not the render that launched
-  // them. Keep the active task alongside routeRef for that success boundary.
-  const activeTaskIdRef = useRef(activeTaskId);
-  activeTaskIdRef.current = activeTaskId;
-  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
-  // view offers a retry instead of losing the URL.
-  const [conversationError, setConversationError] = useState(null);
-  // Seed from a `/scheduled/:id` deep-link so refresh restores the detail view.
-  // (selectedProject is resolved from its id by the project route, so null here.)
-  const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
-  const [selectedProject, setSelectedProject] = useState(null);
-  // The project-detail id currently being resolved from the fetched list, or
-  // null once settled. Distinct from `selectedProject` (which the whole app
-  // reads and the URL bridge mirrors): while this differs from the selection we
-  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
-  // refresh on a detail URL shows the loading grid, not a flash of the list.
-  const [projectDetailPending, setProjectDetailPending] = useState(
-    initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
-  );
-  // Monotonic request token so a slow `/projects/:A` response can't overwrite a
-  // later `/projects/:B` resolution, nor re-select A after the user leaves detail
-  // (Back to the grid / Home / any route). See makeProjectDetailToken.
-  const projectDetailTokenRef = useRef(null);
-  if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
@@ -2507,10 +2510,6 @@ function AppCore() {
     newTaskRef.current = effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask;
   }, [effectiveWorkspaceMode, newTask, openNewCodingTask]);
 
-  const clearActive = useCallback(() => {
-    setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
-  }, []);
-
   // MindsHub SSO — connected flag, sign-in error, and the login/provisioning
   // flow (incl. the main-process auth-changed subscription) live in useSso.
   const { ssoConnected, ssoError, handleSsoSignIn } = useSso({
@@ -2558,106 +2557,6 @@ function AppCore() {
       return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
     }));
   }, [hubUsage]);
-
-  // Open the Settings surface. A named section drills straight to it (desktop
-  // and the mobile master-detail alike). A bare open leaves desktop on its
-  // last section (it has no list) but resets the mobile surface to its section
-  // list — hence the isMobile-gated null. Single home for this rule so the
-  // call sites don't each re-spell it.
-  const openSettings = (section = null) => {
-    if (section) setSettingsSection(section);
-    else if (isMobile) setSettingsSection(null);
-    setSettingsOpen(true);
-  };
-
-  const navigate = (key) => {
-    if (sidebarPopout) setNavPopoutOpen(false);
-    // Compatibility for any stale internal entry point while the dedicated
-    // workspace switch replaces Code as an ordinary navigation row.
-    if (key === 'code') {
-      openCode();
-      return;
-    }
-    if (key === 'settings' || key.startsWith('settings:')) {
-      // Targeted (settings:backend) opens that section; a bare `settings`
-      // opens the mobile section list (null) / desktop's last section.
-      openSettings(key.includes(':') ? key.split(':')[1] : null);
-      return;
-    }
-    if (key === 'projects') {
-      // Clicking "Projects" in the sidebar should always land on the grid of
-      // all projects, not the previously-selected project's detail. Clearing
-      // here (not in enterRoute) keeps the chat-header crumb path — which
-      // routes through onOpenProject and sets selectedProject AFTER routing —
-      // unaffected.
-      setSelectedProject(null);
-    }
-    setWorkspaceMode('cowork');
-    // Flip route state; the URL bridge mirrors it and the route element's
-    // enterRoute() (re)fetches that view's data.
-    setRoute(key);
-  };
-
-
-  // URL → state sync for the route elements. enterRoute is the single place a
-  // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
-  // Back-Forward all run the same path.
-  const enterHome = useCallback(() => {
-    setRoute('home');
-    setConversationError(null);
-    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
-    setProjectDetailPending(null);
-  }, []);
-
-  const enterRoute = useCallback((key) => {
-    setRoute(key);
-    setConversationError(null);
-    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
-    setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    } else if (key === 'projects') {
-      // Bare `/projects` is the grid — clear the selection so a Back from
-      // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
-      setSelectedProject(null);
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    } else if (key === 'scheduled') {
-      refreshSchedules();
-    }
-  }, [refreshSchedules]);
-
-  // Detail routes → state (v1). No single-resource loader: resolve the entity
-  // client-side from the fetched list, so refresh / deep-link restore the
-  // selection with no server change.
-  // Returns a promise resolving to `false` when the id isn't in the list (the
-  // route element then replaces the dead URL with `/projects`), else truthy.
-  const enterProjectDetail = useCallback((projectId) => {
-    setRoute('projects');
-    setConversationError(null);
-    // Resolving this id: render the grid (not a stale project) until it settles.
-    setProjectDetailPending(projectId);
-    const reqId = projectDetailTokenRef.current.begin();
-    return fetchProjects().then((data) => {
-      if (!projectDetailTokenRef.current.isCurrent(reqId)) return true; // superseded — a newer id owns pending, or we left detail
-      if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
-      setProjects(data);
-      const found = data.find((p) => p.id === projectId || p.name === projectId);
-      if (found) { setProjectDetailPending(null); setSelectedProject(found); return true; }
-      // Confirmed missing: keep `pending` set (stays on the grid) — the route
-      // element replaces the URL with `/projects`, whose enterRoute clears it.
-      return false;
-    }).catch(() => {
-      if (projectDetailTokenRef.current.isCurrent(reqId)) setProjectDetailPending(null);
-      return true; // transient failure → keep the URL, don't bounce
-    });
-  }, []);
-
-  const enterScheduleDetail = useCallback((scheduleId) => {
-    setRoute('schedule-detail');
-    setSelectedScheduleId(scheduleId);
-    setConversationError(null);
-    refreshSchedules().catch(() => {});
-  }, [refreshSchedules]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;

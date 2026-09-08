@@ -4,7 +4,7 @@
 // raw useRef counter only half-covered (it superseded a newer detail id, but
 // not a Back to the grid).
 import { describe, it, expect } from 'vitest';
-import { makeProjectDetailToken } from './App';
+import { makeProjectDetailToken } from './projectDetailToken';
 
 // A resolution applies its result iff the token it captured at request time is
 // still current. This mirrors the isCurrent() guard in enterProjectDetail.
