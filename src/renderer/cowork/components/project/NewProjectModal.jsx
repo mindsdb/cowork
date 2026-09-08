@@ -24,32 +24,23 @@ import {
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 
-const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
-const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
+// Kept for the Input/Textarea `style` props below: those carry the
+// `.field-input` globals class (which itself declares padding/border/bg), so
+// the per-field overrides must stay inline to win the cascade tie.
+const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 
 function FileList({ files, onRemove }) {
   if (!files.length) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+    <div className="flex flex-col gap-1 mt-2">
       {files.map((f, i) => (
         <div
           key={`${f.name}-${i}`}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 10px',
-            borderRadius: 6,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--line)',
-            fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
-          }}
+          className="flex items-center gap-2 py-[6px] px-[10px] rounded-[6px] bg-surface-2 border border-solid border-line font-[family-name:var(--font-body)] text-sm text-ink-2"
         >
-          <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.doc(13)}</span>
-          <span style={{
-            flex: 1, minWidth: 0,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{f.name}</span>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
+          <span className="inline-flex text-ink-3">{Ico.doc(13)}</span>
+          <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
+          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
             {Math.ceil(f.size / 1024)} KB
           </span>
           <Tooltip content="Remove">
@@ -57,14 +48,7 @@ function FileList({ files, onRemove }) {
               type="button"
               onClick={() => onRemove(i)}
               aria-label="Remove"
-              style={{
-                background: 'transparent', border: 0, padding: 0,
-                color: 'var(--ink-4)', cursor: 'pointer',
-                display: 'inline-grid', placeItems: 'center',
-                width: 20, height: 20, borderRadius: 4,
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; }}
+              className="bg-transparent border-0 p-0 text-ink-4 hover:text-danger cursor-pointer inline-grid place-items-center w-[20px] h-[20px] rounded-[4px]"
             >×</button>
           </Tooltip>
         </div>
@@ -188,7 +172,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         onClose={busy ? undefined : onClose}
       />
       <ModalBody padding="16px 18px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="flex flex-col gap-[14px]">
           <Field label="Project name">
             <Input
               ref={nameRef}
@@ -218,11 +202,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
             optional
             help={
               <>
-                Saved as <code style={{
-                  fontFamily: FONT_MONO,
-                  background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3,
-                  color: 'var(--ink-3)',
-                }}>.anton/anton.md</code>
+                Saved as <code className="font-[family-name:var(--font-mono)] bg-surface-2 py-[1px] px-[5px] rounded-[3px] text-ink-3">.anton/anton.md</code>
               </>
             }
           >
@@ -246,37 +226,31 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
             />
           </Field>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
-              textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-            }}>Files <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
+          <div className="flex flex-col gap-[6px]">
+            <span className="font-[family-name:var(--font-mono)] text-xs tracking-[0.06em] uppercase text-ink-4 font-semibold">Files <span className="normal-case tracking-[0] text-ink-4 font-[family-name:var(--font-body)] font-normal">(optional)</span></span>
             <div
               onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
               onDragLeave={() => setDragActive(false)}
               onDrop={onDrop}
               onClick={() => !busy && fileInputRef.current?.click()}
+              className="py-[22px] px-4 rounded-[9px] text-ink-3 font-[family-name:var(--font-body)] text-[13px] text-center [transition:border-color_120ms_ease,background_120ms_ease,color_120ms_ease]"
               style={{
-                padding: '22px 16px',
-                borderRadius: 9,
+                // Dynamic (dragActive / busy) — the fill, dashed border colour,
+                // and cursor all depend on drag + busy state.
                 background: dragActive
                   ? 'color-mix(in srgb, var(--accent) 8%, var(--surface-2))'
                   : 'var(--surface-2)',
                 border: `1px dashed ${dragActive ? 'var(--accent)' : 'var(--line-2)'}`,
-                color: 'var(--ink-3)',
-                fontFamily: FONT_BODY, fontSize: 13,
-                textAlign: 'center',
                 cursor: busy ? 'not-allowed' : 'pointer',
-                transition: 'border-color 120ms ease, background 120ms ease, color 120ms ease',
               }}
             >
-              <div style={{ display: 'inline-flex', color: 'var(--ink-3)', marginBottom: 8 }}>
+              <div className="inline-flex text-ink-3 mb-2">
                 {Ico.upload?.(20) || Ico.plus(20)}
               </div>
-              <div style={{ fontWeight: 500, color: 'var(--ink-2)' }}>
-                Drop files here or <span style={{ color: 'var(--accent)' }}>click to browse</span>
+              <div className="font-medium text-ink-2">
+                Drop files here or <span className="text-accent">click to browse</span>
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4 }}>
+              <div className="text-[11.5px] text-ink-4 mt-1">
                 Reference docs, schemas, examples — anything the agent should know about.
               </div>
             </div>
@@ -284,7 +258,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               ref={fileInputRef}
               type="file"
               multiple
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={(e) => {
                 // Snapshot before clearing `value`: clearing empties the live
                 // FileList, and React runs the setState updater after this
