@@ -1716,10 +1716,11 @@ export default function ChatView({
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) for as long as there's real work
-  // going on — steps and thoughts keep streaming above the growing
-  // answer text throughout, so the orb stays put for the whole turn
+  // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
+  // the same header renders the pre-step placeholder and the
+  // active-with-steps state, on one `header:streaming` slot — for as long
+  // as there's real work going on. Steps and thoughts keep streaming above
+  // the growing answer text throughout, so the orb stays put for the whole turn
   // rather than handing off once body text starts. Shares
   // isThinkingActive with ThinkingBlock's own header so the two can't
   // drift out of sync again the way they did before (ENG-1107/1109):
@@ -2515,7 +2516,24 @@ export default function ChatView({
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" showActions={false}>
-                {(streamingMsg.steps?.length > 0 || streamingMsg.currentThought?.text) && (
+                {/* ONE in-flight header for the whole pre-answer phase.
+                    ThinkingBlock renders its active header even with zero
+                    steps, so it also serves as the pre-step "Thinking…"
+                    placeholder — the bridge state between the first stream
+                    event arriving (which strips the activity placeholder)
+                    and the first step, thought, or body chunk landing.
+                    Routing the placeholder through the SAME component keeps
+                    the header's box identical from placeholder → steps and
+                    keeps the element mounted across that transition, so the
+                    indicator no longer jumps ~8px when reasoning traces
+                    begin. Hidden once real body text streams with no steps,
+                    so a plain text answer isn't topped by a "Thinking…"
+                    header. `_placeholderLabel` is set by the pre-first-event
+                    stub in App.jsx `withThinkingPlaceholder` ("Creating
+                    task…" for new tasks, "Thinking…" for replies). */}
+                {(streamingMsg.steps?.length > 0
+                  || streamingMsg.currentThought?.text
+                  || (isThinkingActive(streamingMsg.streamStatus) && !streamingMsg.content)) && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
@@ -2524,13 +2542,13 @@ export default function ChatView({
                     currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
                       // The header stays the WORKING message (active step
-                      // label, else "Thinking…") — never the live thought
-                      // text. The thought has its own distinct line at the
-                      // bottom of the steps; letting it also drive the
-                      // header made the working message flicker/overwrite
-                      // as each reasoning delta streamed in.
+                      // label, else the placeholder label, else "Thinking…")
+                      // — never the live thought text. The thought has its
+                      // own distinct line at the bottom of the steps; letting
+                      // it also drive the header made the working message
+                      // flicker/overwrite as each reasoning delta streamed in.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      return active?.label || null;
+                      return active?.label || streamingMsg._placeholderLabel || null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
@@ -2544,23 +2562,6 @@ export default function ChatView({
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                 />
-                {/* Bridge state: between the first stream event arriving
-                    (which strips the activity placeholder) and the first
-                    step, thought, or body chunk landing, the AnswerTurn
-                    would otherwise render empty — the user sees the
-                    message "appear, vanish, then come back" once
-                    scratchpad output starts. Keep the working indicator
-                    visible whenever there's nothing else occupying the
-                    same slot yet. `_placeholderLabel` is set by the
-                    pre-first-event stub in App.jsx
-                    `withThinkingPlaceholder` ("Creating task…" for new
-                    tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
-                  <WorkingIndicator
-                    slotId="header:streaming"
-                    label={streamingMsg._placeholderLabel || 'Thinking…'}
-                  />
-                )}
                 {streamingMsg.content && (
                   <div className="relative">
                     <TextBlock text={streamingMsg.content} id="streaming" complete={false} conversationId={task.id} />
