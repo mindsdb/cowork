@@ -4,6 +4,7 @@ import {
   createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
   type ShellUpdaterAdapter,
+  type ShellUpdateFailureReport,
 } from './shell-auto-updater';
 
 // Mirror electron-updater's real module shape: a CommonJS module exposing
@@ -45,6 +46,7 @@ function deferred() {
 function setup(mode: 'auto' | 'manual' = 'auto') {
   const adapter = new FakeAdapter();
   const snapshots: string[] = [];
+  const failures: ShellUpdateFailureReport[] = [];
   const updater = createShellAutoUpdater({
     adapter,
     initialSnapshot: {
@@ -54,8 +56,9 @@ function setup(mode: 'auto' | 'manual' = 'auto') {
       currentVersion: '2.0.7',
     },
     onSnapshot: snapshot => snapshots.push(snapshot.phase),
+    onFailure: report => failures.push(report),
   });
-  return { adapter, snapshots, updater };
+  return { adapter, snapshots, failures, updater };
 }
 
 describe('createShellAutoUpdater', () => {
@@ -245,6 +248,64 @@ describe('createShellAutoUpdater', () => {
     const unsubscribe = updater.subscribe(listener);
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ phase: 'idle' }));
     unsubscribe();
+  });
+
+  it('reports a check failure with the raw error, phase, and trigger (no pending update)', async () => {
+    const { adapter, failures, updater } = setup();
+    const error = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' });
+    await updater.check('boot');
+    adapter.emit('updater-error', error);
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({
+      error,
+      code: 'update-request-failed',
+      recoverable: true,
+      phase: 'checking',
+      trigger: 'boot',
+      channel: 'prod',
+      currentVersion: '2.0.7',
+    });
+    // A check that never found an update carries no target version — this is how
+    // the caller tells a benign check failure from a real download/install one.
+    expect(failures[0].targetVersion).toBeUndefined();
+  });
+
+  it('reports a download failure as a real, pending-update failure', async () => {
+    const { adapter, failures, updater } = setup('auto');
+    // Arm the rejection before `available`, which auto-starts the download.
+    adapter.downloadUpdate.mockRejectedValueOnce(new Error('socket hang up'));
+    await updater.check('periodic');
+    adapter.emit('available', '2.1.0');
+
+    await vi.waitFor(() => expect(failures).toHaveLength(1));
+    expect(failures[0]).toMatchObject({ phase: 'downloading', targetVersion: '2.1.0' });
+  });
+
+  it('reports each failure once even when the promise rejects and error fires for one fault', async () => {
+    const { adapter, failures, updater } = setup();
+    const error = new Error('ECONNRESET');
+    adapter.checkForUpdates.mockRejectedValueOnce(error);
+
+    // electron-updater both rejects checkForUpdates AND emits 'error' for the
+    // same fault; only the transition into `failed` should report.
+    await updater.check('boot');
+    adapter.emit('updater-error', error);
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0].phase).toBe('checking');
+  });
+
+  it('does not re-report while already failed (a wedged feed retrying)', async () => {
+    const { adapter, failures, updater } = setup();
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('ETIMEDOUT'));
+    expect(failures).toHaveLength(1);
+
+    // A later error arriving while still in `failed` is the same wedged feed,
+    // not a new fault — it must not emit a second telemetry event.
+    adapter.emit('updater-error', new Error('ETIMEDOUT again'));
+    expect(failures).toHaveLength(1);
   });
 });
 

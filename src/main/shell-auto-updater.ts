@@ -6,7 +6,9 @@ import {
 } from 'electron-updater';
 import {
   transitionShellUpdate,
+  type ShellUpdateChannel,
   type ShellUpdateEvent,
+  type ShellUpdatePhase,
   type ShellUpdateSnapshot,
   type ShellUpdateTrigger,
 } from './shell-update-state';
@@ -23,11 +25,37 @@ export interface ShellUpdaterAdapter {
   quitAndInstall(): void;
 }
 
+/**
+ * Everything known about a single shell-update failure at the moment it happens.
+ * Carries the raw Error (stack intact) plus the phase it failed in, so a caller
+ * can log full detail and emit an ops-facing signal. This is the ONLY place the
+ * raw error surfaces — the UI sees just the classified code/message.
+ */
+export interface ShellUpdateFailureReport {
+  /** Raw error, stack preserved — for the app log only, never the UI. */
+  error: Error;
+  /** Classified, UI-facing code (mirrors snapshot.errorCode). */
+  code: string;
+  recoverable: boolean;
+  /** The phase the updater was IN when it failed — distinguishes a benign
+   *  `checking` failure (offline/CDN) from a real `downloading`/`installing` one. */
+  phase: ShellUpdatePhase;
+  trigger?: ShellUpdateTrigger;
+  channel: ShellUpdateChannel;
+  currentVersion: string;
+  /** Set only when an update was actually found — i.e. a download/install
+   *  failure, not a check failure. */
+  targetVersion?: string;
+}
+
 export interface ShellAutoUpdaterOptions {
   initialSnapshot: ShellUpdateSnapshot;
   adapter: ShellUpdaterAdapter;
   onSnapshot?: (snapshot: ShellUpdateSnapshot) => void;
   classifyError?: (error: Error) => { code: string; recoverable: boolean };
+  /** Fired once per failure, on the transition into `failed`. Side-effecting
+   *  (logging + telemetry) lives in the caller so this module stays pure. */
+  onFailure?: (report: ShellUpdateFailureReport) => void;
 }
 
 export interface ShellAutoUpdater {
@@ -120,12 +148,32 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   const fail = (error: unknown) => {
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
+    // Capture where we were BEFORE the transition — that's the phase that failed,
+    // and it tells a check failure from a download/install one. Only the FIRST
+    // error while not already `failed` escalates: electron-updater can both
+    // reject the check/download promise AND emit 'error' for one fault, and a
+    // wedged feed re-errors on every poll — reporting only the transition into
+    // `failed` keeps telemetry to one event per distinct failure.
+    const failedAt = snapshot;
+    const escalates = failedAt.phase !== 'failed';
     dispatch({
       type: 'FAILED',
       code: classified.code,
       recoverable: classified.recoverable,
       message: normalized.message,
     });
+    if (escalates) {
+      options.onFailure?.({
+        error: normalized,
+        code: classified.code,
+        recoverable: classified.recoverable,
+        phase: failedAt.phase,
+        trigger: failedAt.trigger,
+        channel: failedAt.channel,
+        currentVersion: failedAt.currentVersion,
+        targetVersion: failedAt.targetVersion,
+      });
+    }
   };
 
   const download = async () => {
