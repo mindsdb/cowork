@@ -126,6 +126,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   let snapshot = options.initialSnapshot;
   let checkFlight: Promise<void> | null = null;
   let downloadFlight: Promise<void> | null = null;
+  // The failure code currently being reported, or null when there is no open
+  // failure episode. Latches telemetry to one event per episode across retries —
+  // see fail() and clearFailureLatch().
+  let failureEpisode: string | null = null;
 
   const publish = () => {
     const immutable = Object.freeze({
@@ -149,20 +153,26 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
     // Capture where we were BEFORE the transition — that's the phase that failed,
-    // and it tells a check failure from a download/install one. Only the FIRST
-    // error while not already `failed` escalates: electron-updater can both
-    // reject the check/download promise AND emit 'error' for one fault, and a
-    // wedged feed re-errors on every poll — reporting only the transition into
-    // `failed` keeps telemetry to one event per distinct failure.
+    // and it tells a check failure from a download/install one.
     const failedAt = snapshot;
-    const escalates = failedAt.phase !== 'failed';
+    // Report one telemetry event per failure EPISODE, keyed on the classified
+    // code — NOT per fault and NOT per retry. Two things would otherwise double-
+    // count: electron-updater rejects the check/download promise AND emits
+    // 'error' for a single fault; and a persistent feed outage re-fails on every
+    // 4h poll, where check() first moves the recoverable `failed` snapshot back
+    // to `checking`, so a phase-based guard sees a fresh phase each poll and re-
+    // emits. The code latch survives both. It is cleared by a successful check
+    // or a completed download (clearFailureLatch), so a genuinely new outage or a
+    // materially different failure code still reports.
+    const isNewEpisode = classified.code !== failureEpisode;
     dispatch({
       type: 'FAILED',
       code: classified.code,
       recoverable: classified.recoverable,
       message: normalized.message,
     });
-    if (escalates) {
+    if (isNewEpisode) {
+      failureEpisode = classified.code;
       options.onFailure?.({
         error: normalized,
         code: classified.code,
@@ -175,6 +185,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       });
     }
   };
+
+  // A clean check or a completed download ends the current failure episode, so
+  // the next failure — even with the same code — reports as a new one.
+  const clearFailureLatch = () => { failureEpisode = null; };
 
   const download = async () => {
     if (downloadFlight) return downloadFlight;
@@ -195,7 +209,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     const changed = dispatch({ type: 'UPDATE_FOUND', targetVersion });
     if (changed && snapshot.phase === 'downloading') void download();
   });
-  options.adapter.onUpdateNotAvailable(() => dispatch({ type: 'NO_UPDATE' }));
+  options.adapter.onUpdateNotAvailable(() => {
+    clearFailureLatch();
+    dispatch({ type: 'NO_UPDATE' });
+  });
   options.adapter.onDownloadProgress(progress => dispatch({
     type: 'DOWNLOAD_PROGRESS',
     progress: {
@@ -205,10 +222,10 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
       bytesPerSecond: progress.bytesPerSecond,
     },
   }));
-  options.adapter.onUpdateDownloaded(targetVersion => dispatch({
-    type: 'DOWNLOAD_COMPLETE',
-    targetVersion,
-  }));
+  options.adapter.onUpdateDownloaded(targetVersion => {
+    clearFailureLatch();
+    dispatch({ type: 'DOWNLOAD_COMPLETE', targetVersion });
+  });
   options.adapter.onError(fail);
 
   return {

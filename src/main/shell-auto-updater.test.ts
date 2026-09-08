@@ -296,16 +296,51 @@ describe('createShellAutoUpdater', () => {
     expect(failures[0].phase).toBe('checking');
   });
 
-  it('does not re-report while already failed (a wedged feed retrying)', async () => {
+  it('reports a persistent outage once across scheduled boot/periodic retries', async () => {
+    // The retry is the real trip hazard: check('periodic') moves the recoverable
+    // `failed` snapshot back to `checking`, so a phase-based guard would see a
+    // fresh phase and re-emit on every 4h poll. The code latch holds across them.
     const { adapter, failures, updater } = setup();
+    adapter.checkForUpdates.mockRejectedValue(
+      Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }),
+    );
+
     await updater.check('boot');
-    adapter.emit('updater-error', new Error('ETIMEDOUT'));
+    await updater.check('periodic');
+    await updater.check('periodic');
+
+    expect(failures).toHaveLength(1);
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'failed', errorCode: 'update-request-failed' });
+  });
+
+  it('reports again once a successful check clears the failure episode', async () => {
+    const { adapter, failures, updater } = setup();
+    adapter.checkForUpdates.mockRejectedValueOnce(new Error('ENOTFOUND'));
+    await updater.check('boot');
     expect(failures).toHaveLength(1);
 
-    // A later error arriving while still in `failed` is the same wedged feed,
-    // not a new fault — it must not emit a second telemetry event.
-    adapter.emit('updater-error', new Error('ETIMEDOUT again'));
-    expect(failures).toHaveLength(1);
+    // Feed recovers: a clean check ends the episode...
+    await updater.check('periodic');
+    adapter.emit('none');
+    expect(updater.getSnapshot().phase).toBe('idle');
+
+    // ...so a later outage is a new episode and reports again.
+    adapter.checkForUpdates.mockRejectedValueOnce(new Error('ENOTFOUND'));
+    await updater.check('periodic');
+    expect(failures).toHaveLength(2);
+  });
+
+  it('reports a materially different failure code even within an open episode', async () => {
+    const { adapter, failures, updater } = setup();
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('ECONNRESET'));           // update-request-failed
+    adapter.emit('updater-error', new Error('sha512 checksum mismatch')); // artifact-verification-failed
+
+    expect(failures).toHaveLength(2);
+    expect(failures.map(f => f.code)).toEqual([
+      'update-request-failed',
+      'artifact-verification-failed',
+    ]);
   });
 });
 
