@@ -200,14 +200,16 @@ export function useNewTaskDraft({
   );
 
   useEffect(() => {
+    if (engineModelIds === null) return;
     const ids = enabledModelOptions.map((option) => option.value);
     const configuredProjectModel = selectedProject?.default_model;
     setModel((current) => (
-      configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
+      ids.includes(current) ? current
+        : configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
         ? configuredProjectModel
         : preferredCodingModel(current, ids, configuredProjectModel || defaultModel)
     ));
-  }, [defaultModel, enabledModelOptions, modelOptions, selectedProject?.default_model]);
+  }, [defaultModel, enabledModelOptions, engineModelIds, modelOptions, selectedProject?.default_model]);
 
   const refreshModels = useCallback((open: boolean) => {
     if (!open || !modelMeta.onRefresh) return;

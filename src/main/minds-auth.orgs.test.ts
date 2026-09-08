@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', getVersion: () => '0.0.0-test', isPackaged: false },
   shell: { openExternal: vi.fn() },
-  BrowserWindow: class {},
+  BrowserWindow: { getAllWindows: () => [] },
 }));
 
 vi.mock('./token-store', () => ({

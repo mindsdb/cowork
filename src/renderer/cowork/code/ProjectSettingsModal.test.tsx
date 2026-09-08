@@ -21,6 +21,7 @@ const { engines, models, pickCodeFolder, playbook, skillLibrary } = vi.hoisted((
 }));
 
 vi.mock('../../platform/host', () => ({
+  onMindsHubCredentialChanged: () => () => {},
   host: {
     openExternal: vi.fn(),
     openPath: vi.fn(),

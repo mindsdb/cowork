@@ -28,6 +28,8 @@
 // The current token is read straight from the store, which minds-auth has
 // already written by the time it calls.
 
+import { BrowserWindow } from 'electron';
+import { IPC } from '../shared/ipc-channels';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { authHeader } from './server-auth';
@@ -138,6 +140,16 @@ async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
         console.warn('[minds-credential] hand-over returned', res.status);
       }
       return false;
+    }
+    // Auth notifications happen before this PUT. Catalogue readers must wait
+    // until the server can actually use the new credential. Never send its value.
+    for (const window of BrowserWindow.getAllWindows()) {
+      try {
+        if (!window.isDestroyed()) window.webContents.send(IPC.MINDSHUB_CREDENTIAL_CHANGED);
+      } catch {
+        // A window closing during delivery must not turn a successful
+        // credential handover into an authentication failure.
+      }
     }
     return true;
   } catch (error) {

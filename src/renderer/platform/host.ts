@@ -1432,6 +1432,14 @@ export function onMindsHubAuthChanged(
   return () => {};
 }
 
+/** Inference credentials have reached the local server, not just the token store. */
+export function onMindsHubCredentialChanged(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onMindsHubCredentialChanged === 'function') {
+    return bridge.onMindsHubCredentialChanged(cb);
+  }
+  return () => {};
+}
+
 // Where the refresh token is stored: macOS keychain (true) or a plaintext
 // file under ~/.cowork (false). Electron-only — the web shell has no local
 // token store, so both wrappers no-op to a safe default.
