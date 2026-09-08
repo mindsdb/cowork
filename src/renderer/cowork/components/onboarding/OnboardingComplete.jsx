@@ -5,17 +5,11 @@ import { Button } from '../ui';
 // dismisses the checklist for good.
 export default function OnboardingComplete({ onDismiss }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, padding: '10px 4px 2px' }}>
-      <span
-        style={{
-          width: 56, height: 56, borderRadius: '50%',
-          display: 'grid', placeItems: 'center',
-          background: 'var(--accent-bg)', color: 'var(--accent)',
-        }}
-      >
+    <div className="flex flex-col items-center text-center gap-[14px] pt-[10px] px-1 pb-[2px]">
+      <span className="w-[56px] h-[56px] rounded-full grid place-items-center bg-accent-bg text-accent">
         {Ico.taskCheck(30)}
       </span>
-      <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-strong)' }}>
+      <div className="text-md font-[650] text-strong">
         You&rsquo;ve got the basics!
       </div>
       <Button block onClick={onDismiss}>Close</Button>
