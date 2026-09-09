@@ -5,6 +5,54 @@ export { TEXT_PREVIEW_EXTS };
 const EMBEDDED_URL_RE = /^(?:blob|data):/i;
 const ABSOLUTE_PREVIEW_URL_RE = /^(?:https?:|blob:|data:|\/\/)/i;
 
+/*
+ * `fetch` rejects with a browser-internal string when the request never
+ * reached a server: Chromium writes "Failed to fetch", Safari "Load failed",
+ * Firefox "NetworkError when attempting to fetch resource". None of them name
+ * a cause a reader can act on, and none of them are ours.
+ */
+const TRANSPORT_FAILURE_RE = /^(?:failed to fetch|load failed|networkerror)/i;
+const TRANSPORT_FAILURE_MESSAGE =
+  'Could not reach the server to load this preview. Check the connection, then reload.';
+
+/*
+ * One place decides what a failed preview fetch says to the reader, because
+ * the viewer loads a preview down three paths (inline text, draft document,
+ * local mount) and each used to phrase its own failures. The draft-HTML path
+ * mapped 401 and 403; the text path printed whatever it caught, which is how
+ * Chromium's "Failed to fetch" reached the modal on a CSV.
+ *
+ * Two rules: a status is always named, and a browser-internal string is never
+ * shown. Anything else is one of our own messages and passes through, since
+ * those already read as sentences ("Preview returned no content").
+ */
+export function draftPreviewErrorMessage(error, fallback = 'Could not load preview') {
+  const status = error?.status;
+  if (status === 401) return 'Your session expired — reload the page and try again.';
+  if (status === 403) return 'You do not have access to this draft.';
+  const message = String(error?.message || '');
+  if (typeof status === 'number') {
+    /*
+     * A detail the server sent is the most useful thing on screen, so it is
+     * kept and the status is added to it. The draft loaders already name the
+     * status in their own sentence, so they are left alone rather than made to
+     * say it twice.
+     */
+    if (message.includes(`(${status})`)) return message;
+    return message ? `${message} (HTTP ${status})` : `Could not load this preview (HTTP ${status}).`;
+  }
+  /*
+   * A transport failure arrives as a TypeError from `fetch` itself. The
+   * message test is the backstop: the guarantee this function owes its callers
+   * is that no browser-internal string reaches the modal, and that has to hold
+   * even if a future runtime rejects with something other than a TypeError.
+   */
+  if (error instanceof TypeError || TRANSPORT_FAILURE_RE.test(message)) {
+    return TRANSPORT_FAILURE_MESSAGE;
+  }
+  return message || fallback;
+}
+
 /** True when a preview URL already carries its own origin or payload. */
 export function isAbsoluteArtifactPreviewUrl(url) {
   return ABSOLUTE_PREVIEW_URL_RE.test(String(url || ''));
@@ -155,31 +203,45 @@ export const CSV_PREVIEW_ROW_LIMIT = 100;
 // CSVs without pulling in a parser dependency. Bails out as soon as
 // we have `limit` rows (counted *after* the header) so we never walk
 // a million-row file just to throw the tail away.
+//
+// Three rules below are shared with `countCsvRows` and have to stay in step,
+// or the "showing N of M" notice contradicts the table it sits above: the BOM
+// strip, the quote-opens-only-at-field-start rule, and treating a bare \r as
+// a row terminator. A test asserts the two functions agree.
 export function parseCsv(text, limit = Infinity) {
   const rows = [];
   let row = [];
   let field = '';
   let inQuotes = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text[i];
+  // A quote opens a quoted field only as the field's first character.
+  // Anywhere else it is literal content: one stray quote mid-value used to
+  // open a quoted field that never closed, swallowing the rest of the file
+  // into a single cell.
+  let atFieldStart = true;
+  const source = stripBom(text);
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i += 1; }
+        if (source[i + 1] === '"') { field += '"'; i += 1; }
         else inQuotes = false;
       } else field += c;
-    } else if (c === '"') {
+    } else if (c === '"' && atFieldStart) {
       inQuotes = true;
+      atFieldStart = false;
     } else if (c === ',') {
-      row.push(field); field = '';
-    } else if (c === '\n') {
-      row.push(field); field = '';
+      row.push(field); field = ''; atFieldStart = true;
+    } else if (c === '\n' || c === '\r') {
+      // \r\n, a bare \n, and a classic-Mac bare \r all end a row. Swallowing
+      // \r on its own collapsed a CR-only file into one row.
+      if (c === '\r' && source[i + 1] === '\n') i += 1;
+      row.push(field); field = ''; atFieldStart = true;
       rows.push(row); row = [];
       // header + `limit` data rows. Stop scanning early on large files.
       if (rows.length > limit) break;
-    } else if (c === '\r') {
-      // swallow — handled with the next \n
     } else {
       field += c;
+      atFieldStart = false;
     }
   }
   if ((field.length || row.length) && rows.length <= limit) {
@@ -189,6 +251,13 @@ export function parseCsv(text, limit = Infinity) {
   return rows;
 }
 
+// Excel and most spreadsheet exporters write a UTF-8 BOM. Left in place it
+// becomes part of the first header cell and renders as a stray glyph in the
+// table's first column heading.
+function stripBom(text) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 // Cheap full-file row count — we only need it to decide whether the
 // "showing N of M" notice should appear and what M is. Counting bytes
 // is fine since `previewArtifact` already capped the content at 200KB.
@@ -196,17 +265,32 @@ export function countCsvRows(text) {
   if (!text) return 0;
   let n = 0;
   let inQuotes = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text[i];
-    if (c === '"') {
-      if (inQuotes && text[i + 1] === '"') { i += 1; }
-      else inQuotes = !inQuotes;
-    } else if (!inQuotes && c === '\n') {
+  // Same field-start and line-ending rules as `parseCsv` above.
+  let atFieldStart = true;
+  const source = stripBom(text);
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (source[i + 1] === '"') i += 1;
+        else inQuotes = false;
+      }
+    } else if (c === '"' && atFieldStart) {
+      inQuotes = true;
+      atFieldStart = false;
+    } else if (c === ',') {
+      atFieldStart = true;
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && source[i + 1] === '\n') i += 1;
       n += 1;
+      atFieldStart = true;
+    } else {
+      atFieldStart = false;
     }
   }
   // Trailing line without a final newline still counts.
-  if (text.length && text[text.length - 1] !== '\n') n += 1;
+  const last = source[source.length - 1];
+  if (source.length && last !== '\n' && last !== '\r') n += 1;
   return n;
 }
 

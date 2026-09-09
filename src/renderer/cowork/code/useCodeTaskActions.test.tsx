@@ -60,6 +60,27 @@ describe('useCodeTaskActions', () => {
     });
   });
 
+  it('forwards a chosen reasoning effort and leaves it out when the task inherits', async () => {
+    createSession.mockClear();
+    const { result } = renderActions();
+
+    await act(async () => {
+      await result.current.create({
+        projectId: 'project-1', prompt: 'Think hard', engineId: 'codex', model: 'gpt',
+        reasoningEffort: 'xhigh', permissionMode: 'supervised', attachments: [], sourceContexts: [],
+      });
+    });
+    expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }));
+
+    await act(async () => {
+      await result.current.create({
+        projectId: 'project-1', prompt: 'Inherit', engineId: 'codex', model: 'gpt',
+        reasoningEffort: null, permissionMode: 'supervised', attachments: [], sourceContexts: [],
+      });
+    });
+    expect(createSession).toHaveBeenLastCalledWith(expect.not.objectContaining({ reasoning_effort: expect.anything() }));
+  });
+
   it('sends a folder path instead of a project for no-project tasks', async () => {
     createSession.mockClear();
     const { result } = renderActions();

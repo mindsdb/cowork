@@ -10,7 +10,7 @@ vi.mock('../../platform/host', () => ({
   serverStart: hostMock.serverStart,
 }));
 
-import { codingApi, isCodingEvent, isTerminalPage } from './api';
+import { codingApi, isCodingEvent, isTerminalPage, codingErrorCode } from './api';
 
 
 beforeEach(() => {
@@ -21,6 +21,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it.each([null, 'project/1'])('routes source discovery and reads for project %s', async (projectId) => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = { provider: 'linear' as const, kind: 'issue' as const, url: 'https://linear.app/mindsdb/issue/ENG-2382', connection_name: 'work' };
+    await codingApi.readSourceContext(projectId, body);
+    await codingApi.searchWorkItems(projectId, { provider: 'linear', query: '', connection_name: 'work' });
+    const prefix = `http://127.0.0.1:26866/api/v1/coding${projectId === null ? '' : '/projects/project%2F1'}`;
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${prefix}/source-context`, expect.objectContaining({ method: 'POST', body: JSON.stringify(body) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${prefix}/work-items/search`, expect.objectContaining({ method: 'POST' }));
+  });
+
   it('encodes Windows paths as query data rather than URL structure', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
       ok: true,
@@ -147,6 +158,21 @@ describe('coding API boundary', () => {
       message: 'Handoff stopped before changing the source',
       status: 409,
     });
+  });
+
+  it('carries the error code the server names in a header', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      headers: new Headers({ 'X-MindsHub-Error-Code': 'git_identity_missing' }),
+      json: async () => ({ detail: 'Git needs your name and email before it can commit on this computer.' }),
+    })));
+
+    const failure = await codingApi.commit('task-1', 'Prepare change').catch((reason: unknown) => reason);
+
+    expect(failure).toMatchObject({ status: 409, code: 'git_identity_missing' });
+    expect(codingErrorCode(failure)).toBe('git_identity_missing');
+    expect(codingErrorCode(new Error('plain'))).toBeUndefined();
   });
 
   it('explains the generic 404 produced by an incompatible backend', async () => {

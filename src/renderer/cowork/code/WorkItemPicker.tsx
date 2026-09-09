@@ -27,6 +27,7 @@ export function WorkItemPicker({
   onQueryChange,
   items,
   loading,
+  adding,
   error,
   link,
   onLinkChange,
@@ -46,6 +47,7 @@ export function WorkItemPicker({
   onQueryChange: (query: string) => void;
   items: WorkItemSummary[];
   loading: boolean;
+  adding: boolean;
   error: string;
   link: string;
   onLinkChange: (link: string) => void;
@@ -64,7 +66,7 @@ export function WorkItemPicker({
           <strong>Start from work</strong>
           <span>{query.trim() ? 'Search issues and pull requests' : 'Recently updated and assigned to you'}</span>
         </div>
-        <Button icon size="sm" variant="subtle" aria-label="Close work picker" onClick={onClose}>{Ico.close(13)}</Button>
+        <Button icon size="sm" variant="subtle" aria-label="Close work picker" onClick={onClose} disabled={busy}>{Ico.close(13)}</Button>
       </header>
 
       {hasConnections ? (
@@ -77,6 +79,7 @@ export function WorkItemPicker({
                   role="tab"
                   aria-selected={item === provider}
                   key={item}
+                  disabled={busy}
                   onClick={() => onProviderChange(item)}
                 >
                   {developerProviderLabel(item)}
@@ -91,6 +94,7 @@ export function WorkItemPicker({
                 variant="unstyled"
                 size="sm"
                 ariaLabel={`${developerProviderLabel(provider)} account`}
+                disabled={busy}
                 menuLabel="Account"
               />
             )}
@@ -140,7 +144,7 @@ export function WorkItemPicker({
               aria-label="Issue or pull-request link"
               disabled={busy}
             />
-            <Button size="sm" variant="subtle" onClick={onAddLink} disabled={busy || !link.trim()}>Add</Button>
+            <Button size="sm" variant="subtle" onClick={onAddLink} disabled={busy || !link.trim()}>{adding ? 'Adding…' : 'Add'}</Button>
           </div>
         </>
       ) : (

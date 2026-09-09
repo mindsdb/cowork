@@ -88,3 +88,67 @@ it('keeps a failed update actionable inside the modal', async () => {
   await user.click(screen.getByRole('button', { name: 'Apply' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Runtime is still active');
 });
+
+
+it('offers the effort levels of the model in hand and moves to the new default when the model lacks the current level', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'fable', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      models={[{ id: 'fable', name: 'Claude Fable 5' }, { id: 'gemini', name: 'Gemini 3.1 Pro' }]}
+      modelMeta={{
+        modelProviders: { fable: 'anthropic', gemini: 'google' },
+        modelEfforts: {
+          fable: { efforts: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
+          gemini: { efforts: ['low', 'medium', 'high'], default: 'high' },
+        },
+      }}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  const effort = screen.getByRole('combobox', { name: 'Reasoning effort' });
+  expect(effort).toHaveTextContent('Max');
+  await user.click(effort);
+  expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Low', 'Medium', 'HighModel default', 'Xhigh', 'Max']);
+  await user.keyboard('{Escape}');
+
+  await user.click(screen.getByRole('combobox', { name: 'Task model' }));
+  await user.click(screen.getByRole('option', { name: /Gemini/ }));
+  expect(effort).toHaveTextContent('High');
+
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini', reasoning_effort: 'high' })));
+});
+
+
+it('hides the effort field for a model that advertises no levels', () => {
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'haiku', permission_mode: 'supervised', reasoning_effort: null,
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      models={[{ id: 'haiku', name: 'Claude Haiku' }]}
+      modelMeta={{ modelProviders: { haiku: 'anthropic' }, modelEfforts: {} }}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole('combobox', { name: 'Task model' })).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+});

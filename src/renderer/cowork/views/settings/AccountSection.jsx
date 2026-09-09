@@ -24,7 +24,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // a personal organization, and this row has to follow a switch made in that
   // menu without waiting for the next sign-in.
   const { activeOrg } = useMindsOrgs(accountUser);
-  const { loggingOut, logout } = useLogout();
+  const { loggingOut, waitNote, logout } = useLogout();
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // Base card shell without colors — border-color/background differ per card
@@ -152,6 +152,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       cancelLabel="Cancel"
       destructive
       busy={loggingOut}
+      // Sign-out can outlast the person's patience, so the dialog hands the
+      // keyboard back rather than becoming the app's only exit.
+      dismissableWhileBusy
+      note={waitNote}
       busyLabel="Signing out…"
       onConfirm={logout}
       onClose={() => setLogoutConfirmOpen(false)}

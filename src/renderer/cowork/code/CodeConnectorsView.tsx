@@ -265,9 +265,11 @@ export function CodeConnectorsView({
         </div>
       </header>
 
-      {returnProjectName && (
+      {(returnProjectName || onBack) && (
         <div className="code-connector-return" role="status">
-          <span>Adding a developer account to <strong>{returnProjectName}</strong></span>
+          <span>{returnProjectName
+            ? <>Accounts you connect here are added to <strong>{returnProjectName}</strong>. Connect as many as you need, then go back.</>
+            : 'Connect an account, then return to your task.'}</span>
           {onBack && <Button size="sm" variant="subtle" onClick={onBack}>{backLabel}</Button>}
         </div>
       )}

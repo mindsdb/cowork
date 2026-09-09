@@ -178,6 +178,54 @@ describe('MindsHub organizations', () => {
   });
 });
 
+describe('mindshubFinalize() across shell versions', () => {
+  // Renderer bundles update over the air while `src/main/**` only arrives in a
+  // new installer, so a newer renderer against an older shell is routine. An
+  // older shell's `mindshubFinalize` takes only `organizationId` and silently
+  // drops a second argument, which is how an explicit pick would reach main
+  // without the flag that protects it (ENG-2199).
+
+  it('routes an explicit pick through the method that proves the shell carries it', async () => {
+    const finalize = vi.fn(async () => ({ ok: true }));
+    const finalizeChosen = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubFinalize: finalize,
+      mindshubFinalizeChosen: finalizeChosen,
+    };
+    const host = await importHost();
+
+    await host.mindshubFinalize('org-beta', true);
+
+    expect(finalizeChosen).toHaveBeenCalledWith('org-beta');
+    expect(finalize).not.toHaveBeenCalled();
+    expect(host.canPickOrganization()).toBe(true);
+  });
+
+  it('reports an older shell as unable to take a pick', async () => {
+    // The old bridge: `mindshubFinalize` present, the newer method absent.
+    const finalize = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = { mindshubFinalize: finalize };
+    const host = await importHost();
+
+    expect(host.canPickOrganization()).toBe(false);
+  });
+
+  it('still sends a no-pick finalize through the original method', async () => {
+    const finalize = vi.fn(async () => ({ ok: true }));
+    const finalizeChosen = vi.fn(async () => ({ ok: true }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubFinalize: finalize,
+      mindshubFinalizeChosen: finalizeChosen,
+    };
+    const host = await importHost();
+
+    await host.mindshubFinalize();
+
+    expect(finalize).toHaveBeenCalledWith(undefined, undefined);
+    expect(finalizeChosen).not.toHaveBeenCalled();
+  });
+});
+
 describe('web mode (no bridge)', () => {
   it('reports isWeb, platform "web", ui version "web"', async () => {
     const host = await importHost();

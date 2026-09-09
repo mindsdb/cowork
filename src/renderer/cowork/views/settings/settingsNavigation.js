@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
   { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
   { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
+  { id: 'usage', label: 'Usage', icon: 'chartColumn', group: 'System' },
   { id: 'account', label: 'Account', icon: 'people', group: 'System' },
 ];
 

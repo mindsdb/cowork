@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, RotateCw } from 'lucide-react';
 
 import { getCodeControlPlaneOrigin } from '../../../platform/host';
+import { isLoopbackOrigin } from '../../code/controlPlane';
 import { codingApi } from '../../code/api';
 import { copyText } from '../../lib/clipboard';
 import Button from '../../components/ui/Button';
@@ -14,16 +15,6 @@ function defaultComputerName(platform: string): string {
   if (platform === 'darwin') return 'My Mac';
   if (platform === 'windows') return 'My Windows PC';
   return 'My Linux computer';
-}
-
-
-export function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
-    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
-  } catch {
-    return false;
-  }
 }
 
 

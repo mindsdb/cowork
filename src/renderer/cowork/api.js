@@ -801,8 +801,12 @@ export async function fetchProjects() {
   }
 }
 
-export async function createProject(name) {
-  return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
+// `path` points the project at a folder the user already has, instead of
+// letting the server allocate one under its projects root. Desktop only: the
+// server refuses it on an org deployment and off loopback.
+export async function createProject(name, path) {
+  const body = path ? { name, path } : { name };
+  return req('/projects/', { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
@@ -1399,6 +1403,20 @@ export async function setActiveHubWorkspace(workspaceId) {
     headers: await hubHeaders(),
     body: JSON.stringify({ workspaceId }),
   });
+}
+
+/**
+ * The signed-in account's free monthly tokens, paid balance, and auto top up
+ * state (ENG-1782). Never throws: signed out, an unreachable sidecar, and an
+ * old sidecar with no such route all answer the same dark shape, and the
+ * composer notice and Settings tab render nothing for it.
+ */
+export async function fetchHubUsage() {
+  try {
+    const data = await req('/hub/usage/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch { /* an old sidecar has no such route: stay dark */ }
+  return { reachable: false };
 }
 
 export async function fetchSettings() {

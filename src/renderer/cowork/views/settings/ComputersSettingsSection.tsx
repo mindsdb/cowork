@@ -7,6 +7,7 @@ import { isAppVisible, subscribeAppVisibility } from '../../code/useAppVisible';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { codeControlPlaneReachable } from '../../code/controlPlane';
 import { ConnectComputerModal } from './ConnectComputerModal';
 import { SettingsGroup, SettingsSectionPanel } from './settingsLayout';
 
@@ -48,6 +49,9 @@ export default function ComputersSettingsSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [connectOpen, setConnectOpen] = useState(false);
+  // A plain desktop's Code service is private to this machine, so no other
+  // computer can connect to it: the connect flow only shows where it can work.
+  const canConnectComputers = codeControlPlaneReachable();
   const [editingId, setEditingId] = useState('');
   const [editingName, setEditingName] = useState('');
   const [revokingId, setRevokingId] = useState('');
@@ -122,15 +126,17 @@ export default function ComputersSettingsSection() {
   return (
     <SettingsSectionPanel>
       <SettingsGroup title="Computers">
-        <div className="flex items-start justify-between gap-6 border-b border-x-0 border-t-0 border-solid border-line py-4">
-          <div>
-            <h3 className="m-0 text-base font-semibold text-ink">Run Code beyond this computer</h3>
-            <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">Connected computers can run portable Git projects. Local folders stay on the computer where you added them.</p>
+        {canConnectComputers && (
+          <div className="flex items-start justify-between gap-6 border-b border-x-0 border-t-0 border-solid border-line py-4">
+            <div>
+              <h3 className="m-0 text-base font-semibold text-ink">Run Code beyond this computer</h3>
+              <p className="m-0 mt-1 max-w-[540px] text-sm leading-5 text-ink-3">Connected computers can run portable Git projects. Local folders stay on the computer where you added them.</p>
+            </div>
+            <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
+              <Plus size={13} strokeWidth={1.5} /> Connect computer
+            </Button>
           </div>
-          <Button size="sm" variant="tinted" onClick={() => setConnectOpen(true)}>
-            <Plus size={13} strokeWidth={1.5} /> Connect computer
-          </Button>
-        </div>
+        )}
 
         <div className="divide-y divide-line">
           {loading && !computers.length && <div className="py-5 text-sm text-ink-3">Finding computers…</div>}
@@ -214,7 +220,7 @@ export default function ComputersSettingsSection() {
         </div>
       </SettingsGroup>
 
-      <ConnectComputerModal open={connectOpen} onClose={() => setConnectOpen(false)} />
+      {canConnectComputers && <ConnectComputerModal open={connectOpen} onClose={() => setConnectOpen(false)} />}
     </SettingsSectionPanel>
   );
 }

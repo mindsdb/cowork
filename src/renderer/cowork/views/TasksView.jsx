@@ -28,10 +28,6 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 
-const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO    = 'var(--font-mono)';
-
 const SORT_OPTIONS = [
   { id: 'recent',  label: 'Recent' },
   { id: 'name',    label: 'Name (A–Z)' },
@@ -46,19 +42,16 @@ const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
-    <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
-    }}>{children}</div>
+    <div
+      className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase"
+      style={{ textAlign: align || 'left' }}
+    >{children}</div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div
+      className="grid gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
+      style={{ gridTemplateColumns: LIST_GRID }}
+    >
       <Cell />
       <Cell>Title</Cell>
       <Cell>Project</Cell>
@@ -102,20 +95,16 @@ function TaskRow({
       onActivate={() => onOpen?.(task)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
-        alignItems: 'center',
-      }}
+      className="grid gap-[14px] py-3 px-[14px] items-center"
+      style={{ gridTemplateColumns: LIST_GRID }}
     >
       {/* Status dot */}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <div className="flex justify-center">
         <span
           aria-hidden
-          className={isActive ? 'pulse-dot' : undefined}
+          className={`w-2 h-2 rounded-full ${isActive ? 'pulse-dot' : ''}`}
           title={isActive ? 'Running' : ''}
           style={{
-            width: 8, height: 8, borderRadius: 99,
             background: dotColor,
             boxShadow: isActive ? '0 0 6px var(--success-glow)' : 'none',
           }}
@@ -123,28 +112,15 @@ function TaskRow({
       </div>
 
       {/* Title (+ optional preview as quiet sub-line) */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '0',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{task.title || 'Untitled task'}</div>
+      <div className="min-w-0">
+        <div className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{task.title || 'Untitled task'}</div>
         {task.subtitle && task.subtitle !== updated && (
-          <div style={{
-            fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            marginTop: 2,
-          }}>{task.subtitle}</div>
+          <div className="font-[family-name:var(--font-body)] text-[11.5px] text-ink-4 overflow-hidden text-ellipsis whitespace-nowrap mt-[2px]">{task.subtitle}</div>
         )}
       </div>
 
       {/* Project — clickable when resolved */}
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        minWidth: 0,
-      }}>
+      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
         {projectName ? (
           canOpenProject ? (
             <Tooltip content={`Open ${projectDisplay}`}>
@@ -170,22 +146,17 @@ function TaskRow({
               >{projectDisplay}</button>
             </Tooltip>
           ) : projectDisplay
-        ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
+        ) : <span className="text-ink-5">—</span>}
       </div>
 
       {/* Updated */}
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-      }}>{updated}</div>
+      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em]">{updated}</div>
 
       {/* Hover-revealed trash. Fixed slot width keeps the Updated
           column stable; opacity + pointer-events flip on hover so
           the icon never participates in click bubbling at rest. */}
-      <div onClick={stop} onMouseDown={stop} style={{
-        display: 'flex', justifyContent: 'flex-end',
+      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
         opacity: hover ? 1 : 0,
-        transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
         <Tooltip content="Delete task">
@@ -241,31 +212,26 @@ function ScheduleGroupRow({
   return (
     <CardRow
       as="div"
-      className="grouped"
+      className="grouped grid gap-[14px] py-3 px-[14px] items-center"
       onActivate={onOpenSchedule}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
-        alignItems: 'center',
-      }}
+      style={{ gridTemplateColumns: LIST_GRID }}
     >
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <span aria-hidden title="Scheduled task" style={{
-          width: 8, height: 8, borderRadius: 99,
-          background: isAnyActive ? 'var(--success)' : 'var(--accent)',
-          boxShadow: isAnyActive ? '0 0 6px var(--success-glow)' : '0 0 6px var(--accent-glow)',
-        }} className={isAnyActive ? 'pulse-dot' : undefined} />
+      <div className="flex justify-center">
+        <span
+          aria-hidden
+          title="Scheduled task"
+          className={`w-2 h-2 rounded-full ${isAnyActive ? 'pulse-dot' : ''}`}
+          style={{
+            background: isAnyActive ? 'var(--success)' : 'var(--accent)',
+            boxShadow: isAnyActive ? '0 0 6px var(--success-glow)' : '0 0 6px var(--accent-glow)',
+          }}
+        />
       </div>
 
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '0',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
+      <div className="min-w-0 flex items-center gap-2">
+        <span className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">{schedule?.title || latest?.title || 'Scheduled task'}</span>
         <Badge
           variant="accent"
           size="sm"
@@ -275,12 +241,7 @@ function ScheduleGroupRow({
         </Badge>
       </div>
 
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        minWidth: 0,
-      }}>
+      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
         {projectName ? (
           canOpenProject ? (
             <Tooltip content={`Open ${projectDisplay}`}>
@@ -306,22 +267,17 @@ function ScheduleGroupRow({
               >{projectDisplay}</button>
             </Tooltip>
           ) : projectDisplay
-        ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
+        ) : <span className="text-ink-5">—</span>}
       </div>
 
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-      }}>{updated}</div>
+      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em]">{updated}</div>
 
       {/* Action slot — hover-revealed "Open latest" so the user can
           jump straight to the most recent run instead of going
           through schedule detail. The card click itself routes to
           the schedule view (where per-run history lives). */}
-      <div onClick={stop} onMouseDown={stop} style={{
-        display: 'flex', justifyContent: 'flex-end',
+      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
         opacity: hover ? 1 : 0,
-        transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
         <Tooltip content="Open latest run">
@@ -502,7 +458,7 @@ export default function TasksView({
   }, [projects, projectsWithTasks]);
 
   return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Tasks"
         subtitle="Every conversation across every project. Sort, filter, and jump straight in."
@@ -543,13 +499,13 @@ export default function TasksView({
       {tasks.length === 0 ? (
         <EmptyState
           bordered
-          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>}
+          icon={<span className="inline-flex text-ink-4">{Ico.chats(28)}</span>}
           title="No tasks yet"
           description="Start a conversation from the home screen — every chat shows up here."
           style={{ margin: '40px 28px' }}
         />
       ) : (
-        <div style={{ padding: '8px 28px 28px' }}>
+        <div className="pt-2 px-7 pb-7">
           <ListHeaderRow />
           {visible.map((row) => {
             if (row.kind === 'task') {
@@ -583,11 +539,7 @@ export default function TasksView({
             );
           })}
           {visible.length === 0 && (
-            <div style={{
-              padding: '40px 14px',
-              fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-4)',
-              textAlign: 'center',
-            }}>
+            <div className="py-10 px-[14px] font-[family-name:var(--font-body)] text-[13px] text-ink-4 text-center">
               No tasks match these filters.
             </div>
           )}

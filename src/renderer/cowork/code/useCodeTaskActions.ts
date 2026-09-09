@@ -134,6 +134,7 @@ export function useCodeTaskActions({
         prompt: input.prompt,
         engine_id: input.engineId,
         model: input.model,
+        ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
         permission_mode: input.permissionMode,
         attachments: input.attachments,
         source_contexts: input.sourceContexts,

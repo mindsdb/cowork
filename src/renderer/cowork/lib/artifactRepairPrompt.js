@@ -91,6 +91,9 @@ const STATUS_COPY = {
   no_change: { label: 'No changes were needed',    tone: 'idle' },
   conflict:  { label: 'Could not apply the changes', tone: 'warn' },
   cancelled: { label: 'Cancelled',                 tone: 'idle' },
+  // Distinct from `rejected`: the agent's revision stays in history, the owner
+  // simply closed the review without applying or restoring it.
+  discarded: { label: 'Suggestion dismissed',      tone: 'idle' },
 };
 
 /**

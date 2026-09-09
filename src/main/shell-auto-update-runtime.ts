@@ -2,6 +2,7 @@ import { app, type BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { IPC } from '../shared/ipc-channels';
+import { sendEvent } from './analytics';
 import { resolveShellUpdateFeed } from '../shared/shell-update-feed';
 import { compareUpdaterSemVer } from '../shared/version';
 import { buildKindStrict } from './cowork-home';
@@ -145,6 +146,31 @@ export function configureShellAutoUpdate(options: {
       currentSnapshot = snapshot;
       writeEvidence(snapshot);
       liveWindow(options.getWindow)?.webContents.send(IPC.SHELL_UPDATE_STATUS, snapshot);
+    },
+    onFailure(report) {
+      // Full detail, stack included, to the app log ONLY — never the UI (which
+      // shows the classified message) and never the analytics endpoint (no PII).
+      const target = report.targetVersion ? ` → ${report.targetVersion}` : '';
+      console.error(
+        `[shell-updater] ${report.phase} failed (${report.code}, trigger=${report.trigger ?? 'unknown'}, `
+        + `recoverable=${report.recoverable}) on ${feed.channel} ${report.currentVersion}${target}:`,
+        report.error,
+      );
+      // A benign check failure no longer raises a banner, so a persistently
+      // broken feed would otherwise be invisible. Emit a structured, PII-free
+      // signal (codes and versions only) so ops can spot it without a user
+      // report. pending_update separates a real download/install failure from a
+      // check that never found an update.
+      sendEvent('ANTONAPP_SHELL_UPDATE_FAILED', {
+        phase: report.phase,
+        code: report.code,
+        trigger: report.trigger ?? 'unknown',
+        channel: report.channel,
+        recoverable: String(report.recoverable),
+        pending_update: String(Boolean(report.targetVersion)),
+        current_version: report.currentVersion,
+        target_version: report.targetVersion ?? 'none',
+      });
     },
   });
   console.log(`[shell-updater] configured ${feed.channel} feed (${feed.url}, mode: ${mode})`);

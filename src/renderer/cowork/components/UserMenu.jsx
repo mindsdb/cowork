@@ -101,7 +101,7 @@ export function UserMenu({ user, onOpenSettings }) {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
-  const { loggingOut, logout } = useLogout();
+  const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
   const toastManager = useToastManager();
 
@@ -274,6 +274,10 @@ export function UserMenu({ user, onOpenSettings }) {
         cancelLabel="Cancel"
         destructive
         busy={loggingOut}
+        // Same as the settings Account section: dismissable while the
+        // platform finishes.
+        dismissableWhileBusy
+        note={waitNote}
         busyLabel="Signing out…"
         onConfirm={logout}
         onClose={() => setLogoutConfirmOpen(false)}

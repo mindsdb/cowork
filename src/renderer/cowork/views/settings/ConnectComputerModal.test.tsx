@@ -14,7 +14,8 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('../../code/api', () => ({ codingApi: { computerRegistrationToken } }));
 vi.mock('../../lib/clipboard', () => ({ copyText }));
 
-import { ConnectComputerModal, isLoopbackOrigin, shellSafeComputerName } from './ConnectComputerModal';
+import { isLoopbackOrigin } from '../../code/controlPlane';
+import { ConnectComputerModal, shellSafeComputerName } from './ConnectComputerModal';
 
 beforeEach(() => {
   controlPlane.origin = 'https://code.example.test';

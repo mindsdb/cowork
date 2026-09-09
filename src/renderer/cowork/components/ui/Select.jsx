@@ -216,6 +216,9 @@ export function Select({
   name,
   width,
   minWidth,
+  // Floor for the popup's width, for a compact trigger whose menu carries
+  // descriptions or metas. The popup otherwise matches the trigger's width.
+  menuMinWidth,
   className,
   style,
   zIndex = 95,
@@ -281,6 +284,7 @@ export function Select({
           style={{ zIndex }}
         >
           <BaseSelect.Popup
+            style={menuMinWidth === undefined ? undefined : { minWidth: menuMinWidth }}
             className={cn(
               'min-w-[var(--anchor-width,_160px)] max-h-[var(--available-height,_320px)] overflow-y-auto',
               // Bordered popup matching Menu's look (same var(--surface) bg,

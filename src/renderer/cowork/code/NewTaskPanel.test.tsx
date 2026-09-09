@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -91,6 +91,14 @@ const modelMeta = {
     'gpt-codex': 'gpt-codex',
   },
   modelEnabled: { mindshub_air: true, 'gpt-5.6-sol': true, gpt: true, fable: false, sonnet: false, 'gpt-codex': false },
+  // What the gateway advertised on 2026-09-03; mindshub_air offers no levels.
+  modelEfforts: {
+    'gpt-5.6-sol': { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+    gpt: { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+    fable: { efforts: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
+    sonnet: { efforts: ['low', 'medium', 'high', 'max'], default: 'high' },
+    'gpt-codex': { efforts: ['low', 'medium', 'high', 'xhigh'], default: 'medium' },
+  },
 };
 
 const project = {
@@ -144,7 +152,8 @@ describe('NewTaskPanel', () => {
         base_branch_available: true,
       })),
     });
-    readSourceContext.mockImplementation(async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: string; url: string; connection_name?: string | null }) => ({
+    readSourceContext.mockReset();
+    readSourceContext.mockImplementation(async (_id: string | null, body: { provider: 'github' | 'linear' | 'slack'; kind: string; url: string; connection_name?: string | null }) => ({
       ...body,
       title: 'Linked issue',
       external_id: 'mindsdb/cowork#42',
@@ -295,6 +304,120 @@ describe('NewTaskPanel', () => {
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
     await user.click(screen.getByRole('button', { name: /start task/i }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt' })));
+  });
+
+  it('offers the effort levels the selected model advertises, starting from its default', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    expect(effort).toHaveTextContent('Medium effort');
+    await user.click(effort);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'None', 'Low', 'MediumModel default', 'High', 'Xhigh', 'Max',
+    ]);
+    await user.click(screen.getByRole('option', { name: /^Max/ }));
+    expect(effort).toHaveTextContent('Max effort');
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Think carefully');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'max' })));
+  });
+
+  it('starts from the Code Project default effort when the model offers it', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[{ ...project, default_reasoning_effort: 'low' }]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    expect(effort).toHaveTextContent('Low effort');
+    await user.click(effort);
+    expect(screen.getByRole('option', { name: /^Low/ })).toHaveTextContent('Project default');
+    await user.keyboard('{Escape}');
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use the project default');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'low' })));
+  });
+
+  it('shows no effort pill for a model that advertises no levels', async () => {
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="mindshub_air"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[{ ...project, default_model: 'mindshub_air' }]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('MindsHub Air');
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+  });
+
+  it('drops a chosen level when switching to a model that does not offer it', async () => {
+    const onCreate = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, 'gpt-codex': true } }}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+
+    const effort = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+    await user.click(effort);
+    await user.click(screen.getByRole('option', { name: /^Max/ }));
+    expect(effort).toHaveTextContent('Max effort');
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: /GPT 5.3 Codex|gpt-codex/i }));
+    expect(effort).toHaveTextContent('Medium effort');
+    await user.click(effort);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Low', 'MediumModel default', 'High', 'Xhigh']);
   });
 
   it('falls back to the best model the coding runtime actually exposes', async () => {
@@ -744,7 +867,8 @@ describe('NewTaskPanel', () => {
     expect(await screen.findByText('Linked issue')).toBeInTheDocument();
   });
 
-  it('turns a pasted issue link into task context without manual connector setup steps', async () => {
+  it.each([null, 'project-1'])('preserves native text paste and exposes linked work with project %s', async (projectId) => {
+    const user = userEvent.setup();
     const connectedProject = {
       ...project,
       connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
@@ -758,26 +882,82 @@ describe('NewTaskPanel', () => {
         models={models}
         modelMeta={modelMeta}
         projects={[connectedProject]}
-        selectedProjectId={connectedProject.id}
+        selectedProjectId={projectId}
         onProjectChange={vi.fn()}
         onOpenProjectSettings={vi.fn()}
         onCreate={vi.fn(async () => {})}
       />,
     );
 
-    fireEvent.paste(screen.getByRole('textbox', { name: 'Coding task' }), {
-      clipboardData: {
-        files: [],
-        getData: () => 'https://github.com/mindsdb/cowork/issues/42',
-      },
-    });
+    expect(screen.getByRole('button', { name: 'Add issue or PR' })).toBeVisible();
+    const input = screen.getByRole('textbox', { name: 'Coding task' });
+    for (const text of [
+      'https://linear.app/mindsdb/issue/ENG-2382/cannot-paste-linear-urls',
+      'https://linear.app/mindsdb/issue/ENG-2382',
+      'https://github.com/mindsdb/cowork/issues/42',
+      'https://github.com/mindsdb/cowork/pull/42',
+      'https://example.com',
+      'Plain text\nwith a second line',
+    ]) {
+      await user.clear(input);
+      await user.paste(text);
+      expect(input).toHaveValue(text);
+    }
+    await user.clear(input);
+    await user.type(input, 'Fix this: replace me please');
+    (input as HTMLTextAreaElement).setSelectionRange(10, 20);
+    await user.paste('https://linear.app/mindsdb/issue/ENG-2382');
+    expect(input).toHaveValue('Fix this: https://linear.app/mindsdb/issue/ENG-2382 please');
+    expect(readSourceContext).not.toHaveBeenCalled();
+    expect(updateProject).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: 'Start from existing work' })).not.toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
-      provider: 'github',
-      connection_name: 'work',
-    })));
-    expect(await screen.findByText('Linked issue')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Work on mindsdb/cowork#42: Linked issue');
+  it('includes explicitly linked work when starting a folder-only task and waits for the read', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    let completeRead!: (context: object) => void;
+    readSourceContext.mockImplementation(() => new Promise((resolve) => { completeRead = resolve; }));
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} selectedProjectId={null}
+      connections={[{ engine: 'linear', name: 'work', status: 'connected' }]} onCreate={onCreate} />);
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Fix the issue with a regression test');
+    await user.click(screen.getByRole('button', { name: 'Add issue or PR' }));
+    const url = 'https://linear.app/mindsdb/issue/ENG-2382/cannot-paste-linear-urls';
+    await user.type(screen.getByRole('textbox', { name: 'Issue or pull-request link' }), url);
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(null, expect.objectContaining({ url, connection_name: 'work' })));
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    const context = { provider: 'linear', kind: 'issue', url, title: 'Fix paste', external_id: 'ENG-2382', body: 'Keep pasted URLs', connection_name: 'work' };
+    completeRead(context);
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ projectId: null, sourceContexts: [context], prompt: 'Fix the issue with a regression test' }));
+    expect(updateProject).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending folder issue read when the user changes projects', async () => {
+    const user = userEvent.setup();
+    let completeRead!: (context: object) => void;
+    readSourceContext.mockImplementation(() => new Promise((resolve) => { completeRead = resolve; }));
+    const props = {
+      busy: false, error: '', defaultEngineId: 'codex', defaultModel: 'gpt-5.6-sol',
+      models, modelMeta, ...projectProps,
+      connections: [{ engine: 'linear', name: 'work', status: 'connected' }],
+      onCreate: vi.fn(async () => {}),
+    };
+    const { rerender } = render(<NewTaskPanel {...props} selectedProjectId={null} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Keep this brief');
+    await user.click(screen.getByRole('button', { name: 'Add issue or PR' }));
+    await user.type(screen.getByRole('textbox', { name: 'Issue or pull-request link' }), 'https://linear.app/mindsdb/issue/ENG-2382');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(readSourceContext).toHaveBeenCalledOnce());
+    rerender(<NewTaskPanel {...props} />);
+    await act(async () => { completeRead({ provider: 'linear', url: 'https://linear.app/mindsdb/issue/ENG-2382', external_id: 'ENG-2382', title: 'Old issue' }); });
+    expect(screen.queryByRole('button', { name: 'Remove ENG-2382' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Keep this brief');
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
   });
 
   it('replaces an untouched generated issue prompt when linked work changes', async () => {

@@ -56,6 +56,9 @@ import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
+import { useHubUsage } from './hooks/useHubUsage';
+import { HubUsageContext } from './lib/hubUsageContext';
+import { usageTransitions } from './lib/usageWarnings';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -1571,7 +1574,11 @@ function AppCore() {
   const updateBanner = deriveUpdateBanner({
     ota: updateStatus,
     shellAuto: shellAutoUpdate,
-    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
+    // Linux ships a .deb, which is installed rather than launched, so the
+    // notice names the install command instead of saying to open it.
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed
+      ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
+      : null,
   });
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
@@ -2531,6 +2538,43 @@ function AppCore() {
   useEffect(() => {
     purgeStaleAccountState(codeAccountUser?.sub ?? null);
   }, [codeAccountUser?.sub]);
+
+  // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
+  // and Settings → Usage read it through HubUsageContext. Re-read when a turn
+  // finishes too, so a task that just spent the last free tokens flips the
+  // notice without waiting for the next tick.
+  const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
+  const hubUsageCtx = useMemo(() => ({
+    usage: hubUsage,
+    providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
+    refresh: refreshHubUsage,
+  }), [hubUsage, settings.planningProvider, refreshHubUsage]);
+  const prevInFlightSize = useRef(inFlightSet.size);
+  useEffect(() => {
+    if (inFlightSet.size < prevInFlightSize.current) refreshHubUsage();
+    prevInFlightSize.current = inFlightSet.size;
+  }, [inFlightSet.size, refreshHubUsage]);
+  // A usage change DURING a task lands in that task's timeline: free tokens
+  // ran out (the task went on, now on the balance) or an auto top up failed.
+  // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
+  // ChatView renders them after the transcript so the reply stays next to its
+  // question, and they are client-side only (gone on reload, by design).
+  const prevHubUsage = useRef(hubUsage);
+  useEffect(() => {
+    const before = prevHubUsage.current;
+    prevHubUsage.current = hubUsage;
+    const streamingId = activeStreamingTaskIdRef.current;
+    if (!streamingId || !usageTransitions(before, hubUsage).length) return;
+    const createdAt = new Date().toISOString();
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== streamingId) return t;
+      // The task's own pick decides which resource it spends, same as the
+      // composer: a task on an explicit paid model never hears about free tokens.
+      const changes = usageTransitions(before, hubUsage, { model: t.model });
+      if (!changes.length) return t;
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
+    }));
+  }, [hubUsage]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -4509,7 +4553,7 @@ function AppCore() {
             // drawer. Close it like navigate/onOpenSchedule do, so the new
             // task isn't buried under it.
             if (sidebarPopout) setNavPopoutOpen(false);
-            handleSendFromHome(text);
+            return handleSendFromHome(text);
           }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
@@ -4933,6 +4977,7 @@ function AppCore() {
           >
             <CodeView
               active={effectiveWorkspaceMode === 'code'}
+              account={codeAccountUser}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
@@ -4947,6 +4992,7 @@ function AppCore() {
               connections={connectors}
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
+              onOpenProjects={openCodingProjects}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
@@ -5135,7 +5181,11 @@ function AppCore() {
       <ConfirmModal
         open={pendingDeleteProject != null}
         title={`Delete project "${pendingDeleteProject?.name}"?`}
-        message="All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+        message={
+          pendingDeleteProject?.capabilities?.directoryIsExternal
+            ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`
+            : "All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+        }
         confirmLabel="Delete project"
         cancelLabel="Keep"
         destructive
@@ -5259,8 +5309,10 @@ function AppCore() {
   };
 
   return (
-    <CoworkProvider value={coworkValue}>
-      <CoworkRouterProvider router={routerRef.current} />
-    </CoworkProvider>
+    <HubUsageContext.Provider value={hubUsageCtx}>
+      <CoworkProvider value={coworkValue}>
+        <CoworkRouterProvider router={routerRef.current} />
+      </CoworkProvider>
+    </HubUsageContext.Provider>
   );
 }
