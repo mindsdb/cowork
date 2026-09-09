@@ -156,6 +156,44 @@ describe('NewProjectModal folder selection', () => {
     expect(api.writeProjectFile).not.toHaveBeenCalled();
   });
 
+  it('drops the folder selection so the retry cannot repeat the request', async () => {
+    api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
+    open();
+    fireEvent.click(screen.getByRole('button', { name: CHOOSE }));
+    await waitFor(() => screen.getByText('/Users/me/Documents/notes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => screen.getByText(/does not support pointing a project at a folder/));
+
+    // Back to offering the picker, with the ignored path gone.
+    expect(screen.getByRole('button', { name: CHOOSE })).toBeTruthy();
+    expect(screen.queryByText('/Users/me/Documents/notes')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    // The obvious retry sends no path, so it cannot strand a second managed
+    // project for a folder this server ignores anyway.
+    await waitFor(() => expect(api.createProject).toHaveBeenCalledTimes(2));
+    expect(api.createProject).toHaveBeenLastCalledWith('billing');
+  });
+
+  it('asks the app to refetch, so the project it names is on screen', async () => {
+    api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
+    const changed = vi.fn();
+    window.addEventListener('anton:projects-changed', changed);
+    try {
+      open();
+      fireEvent.click(screen.getByRole('button', { name: CHOOSE }));
+      await waitFor(() => screen.getByText('/Users/me/Documents/notes'));
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      // The message names a project to delete, and onCreated (the only other
+      // refresh signal) is deliberately skipped on this path.
+      await waitFor(() => expect(changed).toHaveBeenCalled());
+    } finally {
+      window.removeEventListener('anton:projects-changed', changed);
+    }
+  });
+
   it('does not check the capability when no folder was chosen', async () => {
     api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
     const { onClose, onCreated } = open();

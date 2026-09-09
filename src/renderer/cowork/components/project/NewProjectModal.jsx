@@ -139,10 +139,17 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       // adopted. Reported, not rolled back: the project exists, and no step
       // here undoes an earlier one.
       if (folderPath && result?.capabilities?.directoryIsExternal !== true) {
+        // Dropped so the obvious retry cannot strand a second managed project
+        // for a folder this server ignores either way.
+        setFolderPath('');
+        // The message names a project to delete, and onCreated (the only other
+        // refresh signal) is skipped here, so ask for the refetch directly.
+        window.dispatchEvent(new CustomEvent('anton:projects-changed'));
         setError(
           'This server does not support pointing a project at a folder. It created '
-          + `"${finalName}" as a normal project instead, so your folder is not in use. `
-          + 'Update Cowork, or delete that project and clear the folder.'
+          + `"${finalName}" as a normal project and cleared your folder selection. `
+          + 'Update Cowork to use your folder, or delete that project if you do '
+          + 'not want it.'
         );
         return;
       }
