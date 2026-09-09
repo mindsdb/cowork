@@ -121,6 +121,7 @@ function ChannelCard({ plugin, status, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [warning, setWarning] = useState('');    // did some of what was asked
   const [fieldErrors, setFieldErrors] = useState({});  // validation, by field name
   // A failed read gives `{ fields: {} }`, which is shape-identical to a
   // channel with nothing stored — the flag is the only way to tell them apart.
@@ -165,23 +166,35 @@ function ChannelCard({ plugin, status, onChanged }) {
     );
     const missing = missingRequired(values);
     if (missing.length) {
-      setError(''); setNotice('');
+      setError(''); setNotice(''); setWarning('');
       setFieldErrors(Object.fromEntries(missing.map((f) => [f.name, `${f.label} is required.`])));
       return;
     }
 
-    setBusy(true); setError(''); setNotice(''); setFieldErrors({});
+    setBusy(true); setError(''); setNotice(''); setWarning(''); setFieldErrors({});
     try {
-      if (Object.keys(values).length) await saveChannelConfig(plugin.channel_type, values);
+      // Blank inputs on a configured channel send nothing, so only a real PUT
+      // may be reported as a save.
+      const saved = Object.keys(values).length > 0;
+      if (saved) await saveChannelConfig(plugin.channel_type, values);
 
       if (caps.supports_webhook_setup) {
         const r = await setupChannel(plugin.channel_type);
         setNotice(r?.detail || (r?.active ? 'Connected.' : 'Setup ran.'));
       } else {
         const r = await reloadChannel(plugin.channel_type);
-        setNotice(r?.active
-          ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
-          : 'Credentials saved, but the channel is not active yet (missing required fields?).');
+        // An adapter can need more than the fields marked required (Slack also
+        // wants an app-level token or a signing secret), so a channel that
+        // stays down here is a real outcome, not something validation missed.
+        if (r?.active) {
+          setNotice(saved
+            ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
+            : 'Adapter active. Register the webhook URL below on the platform.');
+        } else if (saved) {
+          setWarning('Credentials saved, but the channel is not active yet. Check the remaining fields above and the server log.');
+        } else {
+          setError('The channel is not active. Check the stored credentials and the server log.');
+        }
       }
       setDraft({});
       await loadConfig();
@@ -194,7 +207,7 @@ function ChannelCard({ plugin, status, onChanged }) {
   }
 
   async function disconnect() {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setWarning('');
     try {
       if (caps.supports_teardown) {
         try { await teardownChannel(plugin.channel_type); } catch { /* non-fatal */ }
@@ -213,7 +226,7 @@ function ChannelCard({ plugin, status, onChanged }) {
   // Calls the platform with the stored credentials — "configured" only means
   // every required field has some value, not that the platform accepts it.
   async function testConnection() {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setWarning('');
     try {
       const r = await testChannelConnection(plugin.channel_type);
       if (r?.ok) setNotice(r.detail || 'Connection verified.');
@@ -285,6 +298,7 @@ function ChannelCard({ plugin, status, onChanged }) {
       ) : null}
 
       {error ? <p className="channels-error">{error}</p> : null}
+      {warning ? <p className="channels-warn">{warning}</p> : null}
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">

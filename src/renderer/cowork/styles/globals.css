@@ -4759,6 +4759,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-note { font-size: 12px; color: var(--ink-4, #8a8a86); margin: 8px 0 0; }
 .channels-error { font-size: 12px; color: var(--danger, #c0392b); margin: 10px 0 0; }
 .channels-notice { font-size: 12px; color: var(--accent-strong, #1f8a4c); margin: 10px 0 0; }
+.channels-warn { font-size: 12px; color: var(--warning, #B45309); margin: 10px 0 0; }
 .channels-actions { display: flex; gap: 8px; margin-top: 14px; }
 
 /* Channel routes (bindings) */
