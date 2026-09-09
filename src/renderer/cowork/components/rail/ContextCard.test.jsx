@@ -671,6 +671,61 @@ describe('ContextCard — truncated project file listings', () => {
     expect(notice.closest('.overflow-y-auto')).toBeNull();
   });
 
+  // The notice belongs to one project's listing. Two transitions can outlive
+  // it: the no-project effect returns before reloadFiles runs, and a switch
+  // leaves the flag set for the whole of the next project's load.
+  it('drops the notice on the way through no project to the next one', async () => {
+    const pending = [];
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
+      .mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+
+    const { rerender } = render(
+      <ContextCard project={{ name: 'adopted', path: '/Users/me/repo' }} conversationId={null} />,
+    );
+    await act(async () => {});
+    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
+
+    rerender(<ContextCard project={null} conversationId={null} />);
+    await act(async () => {});
+    rerender(
+      <ContextCard project={{ name: 'other', path: '/projects/other' }} conversationId={null} />,
+    );
+    await act(async () => {});
+
+    // The second project's listing has not landed, so nothing here has
+    // reported truncation.
+    expect(pending).not.toHaveLength(0);
+    expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+
+  it('drops the notice while the next project is still loading', async () => {
+    const pending = [];
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
+      .mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+
+    const { rerender } = render(
+      <ContextCard project={{ name: 'adopted', path: '/Users/me/repo' }} conversationId={null} />,
+    );
+    await act(async () => {});
+    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
+
+    rerender(
+      <ContextCard project={{ name: 'other', path: '/projects/other' }} conversationId={null} />,
+    );
+    await act(async () => {});
+
+    expect(pending).not.toHaveLength(0);
+    expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+
   it('drops the notice when a later listing fails', async () => {
     apiMock.uploadProjectFiles.mockResolvedValue({});
     apiMock.listProjectFiles

@@ -514,6 +514,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   }, []);
 
   useEffect(() => {
+    // The notice describes one project's listing: the branch below never
+    // reaches reloadFiles, and a switch would show it through the next load.
+    setFilesTruncated(false);
     if (!project?.name) {
       setProjectFiles([]);
       // Bump the ticket so any in-flight load from a prior project
