@@ -568,9 +568,9 @@ describe('artifact_created → step.data', () => {
   });
 });
 
-describe('response.output_text.reset — a forced continuation replaces the answer', () => {
+describe('response.answer_reset — a forced continuation replaces the answer', () => {
   const DELTA = (delta) => ({ type: 'response.output_text.delta', delta });
-  const RESET = { type: 'response.output_text.reset', item_id: 'msg-1' };
+  const RESET = { type: 'response.answer_reset', item_id: 'msg-1' };
 
   it('drops the answer the replacement supersedes', () => {
     // Anton's verifier judged the turn incomplete and forced a continuation.

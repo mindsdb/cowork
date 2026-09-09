@@ -12,8 +12,8 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //                                   thought.progress             (phase markers)
 //                                   thought.scratchpad.result    (cell output)
 //   response.output_text.delta  — body text streaming, `delta` field
-//   response.output_text.reset  — a forced continuation supersedes the text
-//                                 streamed so far; the next delta replaces it
+//   response.answer_reset       — a forced continuation supersedes the
+//                                 answer so far; the next delta replaces it
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.completed | failed — terminal
@@ -333,7 +333,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // attempt's tool calls really did happen. The server only sends this
   // immediately before the replacement text, so the bubble is never left
   // empty, and a continuation that never speaks sends nothing at all.
-  if (type === 'response.output_text.reset') {
+  if (type === 'response.answer_reset') {
     return { ...state, bodyText: '', currentThought: null };
   }
 
