@@ -40,6 +40,7 @@ vi.mock('../../../platform/host', () => ({
     get isWeb() { return deployment.isWeb; },
     codeModeAvailable: true,
     isMac: () => false,
+    getPlatform: () => 'win32',
     openExternal: vi.fn(),
     serverDiagnostics: spies.serverDiagnostics,
     checkForUpdates: spies.checkForUpdates,

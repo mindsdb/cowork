@@ -236,7 +236,7 @@ export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
   const currentVersion = getAppDisplayVersion();
   if (!shellUpdateIsNewer(latestVersion, currentVersion)) return { available: false };
 
-  return { available: true, currentVersion, latestVersion, downloadUrl: shellDownloadUrl(process.platform, kind) };
+  return { available: true, currentVersion, latestVersion, downloadUrl: shellDownloadUrl(process.platform, kind, process.arch) };
 }
 
 // Start update polling: a boot check (may auto-apply in auto mode) plus a

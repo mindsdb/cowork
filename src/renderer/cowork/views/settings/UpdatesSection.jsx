@@ -5,7 +5,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
-import { shellAutoOwnsBanner } from '../../../../shared/update-banner';
+import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
@@ -221,6 +221,9 @@ export default function UpdatesSection({
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              // Linux ships a .deb, which is installed rather than launched, so
+              // the last step of the copy changes.
+              const debInstaller = host.getPlatform() === 'linux';
               const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
               // Auto-update (electron-updater) drives the primary card. The
               // manual installer-download card only surfaces as a fallback when
@@ -228,6 +231,12 @@ export default function UpdatesSection({
               const autoPhase = shellAutoUpdate?.phase;
               const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
+              const debStep = `${debInstallStep(shellVersion)}.`;
+              const manualHint = autoPhase === 'failed'
+                ? 'You can still download the installer manually.'
+                : shellDownloadStarted
+                  ? `Installer downloading — when it's done, quit MindsHub Cowork and ${debInstaller ? debStep : 'open the installer to finish updating.'}`
+                  : `Download the installer, then quit MindsHub Cowork and ${debInstaller ? debStep : 'open it to finish updating.'}`;
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {
@@ -343,11 +352,7 @@ export default function UpdatesSection({
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
                         <span className="text-[11.5px] text-ink-3">
-                          {autoPhase === 'failed'
-                            ? 'You can still download the installer manually.'
-                            : shellDownloadStarted
-                              ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
-                              : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
+                          {manualHint}
                         </span>
                       </div>
                       <Button

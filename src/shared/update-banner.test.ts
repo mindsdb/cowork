@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, shellAutoOwnsBanner, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 describe('deriveUpdateBanner', () => {
@@ -85,6 +85,22 @@ describe('deriveUpdateBanner', () => {
       const b = deriveUpdateBanner({ shellManual: { version: '0.26.8.2' } });
       expect(b).toMatchObject({ kind: 'shell-manual', actionLabel: 'Download', action: 'download-installer', dismissible: true });
       expect(b?.title).toContain('0.26.8.2');
+    });
+
+    it('carries the caller\'s .deb flag so both surfaces name the real install step', () => {
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: true } })?.debInstaller).toBe(true);
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: false } })?.debInstaller).toBe(false);
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2' } })?.debInstaller).toBe(false);
+    });
+  });
+
+  describe('debInstallStep', () => {
+    it('narrows the glob to the offered version, so a stale .deb in the same folder is not swept in', () => {
+      expect(debInstallStep('2.26.9.7.1')).toBe('run sudo apt install ./mindshub-cowork-2.26.9.7.1*.deb from the directory you downloaded it to');
+    });
+
+    it('falls back to the bare glob when the version is unknown', () => {
+      expect(debInstallStep()).toBe('run sudo apt install ./mindshub-cowork-*.deb from the directory you downloaded it to');
     });
   });
 
