@@ -546,6 +546,40 @@ describe('inline artifact banner for a deleted artifact', () => {
   });
 });
 
+// ENG-1204: the harness's own in-memory, per-turn lint verdict
+// (ChatSession.artifact_lint_status), overlaid server-side onto the card
+// dict as `lintStatus` — never read from the artifact folder itself.
+describe('inline artifact banner lint status (ENG-1204)', () => {
+  it('flags a real finding', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep({ lintStatus: 'has_errors' }))} />);
+
+    expect(screen.getByText('Has errors')).toBeInTheDocument();
+  });
+
+  it('flags a checker that could not run', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep({ lintStatus: 'not_validated' }))} />);
+
+    expect(screen.getByText('Not validated')).toBeInTheDocument();
+  });
+
+  it('shows neither badge when the artifact was never linted', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.queryByText('Has errors')).toBeNull();
+    expect(screen.queryByText('Not validated')).toBeNull();
+  });
+
+  it('does not flag a deleted artifact even if it was left with errors', () => {
+    // A gone artifact has nothing left to validate — the Deleted badge is
+    // the only status that still means anything.
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ lintStatus: 'has_errors' }))} />);
+
+    expect(screen.getByText('Deleted')).toBeInTheDocument();
+    expect(screen.queryByText('Has errors')).toBeNull();
+  });
+});
+
 describe('a failed action revalidates', () => {
   // A .pdf has no inline preview, so the primary button is "Show in folder"
   // (ENG-1988) and the bridge's result is what decides success.
