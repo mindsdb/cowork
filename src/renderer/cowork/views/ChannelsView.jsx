@@ -121,57 +121,109 @@ function ChannelCard({ plugin, status, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [warning, setWarning] = useState('');    // did some of what was asked
+  const [fieldErrors, setFieldErrors] = useState({});  // validation, by field name
+  const [configUnreadable, setConfigUnreadable] = useState(false);
+
+  const fields = config?.fields || {};
+  const configured = status?.configured;
+  // The config read has three outcomes, not two: still out, failed, or landed.
+  // A failure keeps the last good answer, so only the flag marks it stale.
+  const configPending = !config && !configUnreadable;
 
   async function loadConfig() {
     try {
       setConfig(await fetchChannelConfig(plugin.channel_type));
+      setConfigUnreadable(false);
     } catch {
-      setConfig({ fields: {} });
+      setConfigUnreadable(true);
     }
   }
   useEffect(() => { loadConfig(); }, [plugin.channel_type]);
 
   function setField(name, value) {
     setDraft((d) => ({ ...d, [name]: value }));
+    setFieldErrors((e) => (e[name] ? { ...e, [name]: '' } : e));
+  }
+
+  // Required fields with nothing typed and nothing stored. Stands down unless
+  // the stored state is known: a stale local view must never block a reconnect.
+  function missingRequired(values) {
+    if (configPending || configUnreadable || configured) return [];
+    return (plugin.credentials || []).filter(
+      (f) => f.required && !values[f.name] && !fields[f.name]?.is_set,
+    );
   }
 
   async function connect() {
-    setBusy(true); setError(''); setNotice('');
+    // Only send fields the operator actually typed — blank secret fields
+    // keep their stored value (server merge semantics).
+    const values = Object.fromEntries(
+      Object.entries(draft).filter(([, v]) => v != null && v.trim() !== ''),
+    );
+    const missing = missingRequired(values);
+    if (missing.length) {
+      setError(''); setNotice(''); setWarning('');
+      setFieldErrors(Object.fromEntries(missing.map((f) => [f.name, `${f.label} is required.`])));
+      return;
+    }
+
+    setBusy(true); setError(''); setNotice(''); setWarning(''); setFieldErrors({});
+    // Blank inputs on a configured channel send nothing, so only a PUT that
+    // came back may be reported as a save.
+    let saved = false;
     try {
-      // Only send fields the operator actually typed — blank secret fields
-      // keep their stored value (server merge semantics).
-      const values = Object.fromEntries(
-        Object.entries(draft).filter(([, v]) => v != null && v !== ''),
-      );
-      if (Object.keys(values).length) await saveChannelConfig(plugin.channel_type, values);
+      if (Object.keys(values).length) {
+        const stored = await saveChannelConfig(plugin.channel_type, values);
+        saved = true;
+        // The PUT answers with the same shape the config GET does, so the card
+        // is current even if the refresh below cannot confirm it.
+        if (stored?.fields) {
+          setConfig(stored);
+          setConfigUnreadable(false);
+        }
+      }
 
       if (caps.supports_webhook_setup) {
         const r = await setupChannel(plugin.channel_type);
         setNotice(r?.detail || (r?.active ? 'Connected.' : 'Setup ran.'));
       } else {
         const r = await reloadChannel(plugin.channel_type);
-        setNotice(r?.active
-          ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
-          : 'Credentials saved, but the channel is not active yet (missing required fields?).');
+        // A channel can stay down with every required field set, so this is a
+        // real outcome and not something the validation above missed.
+        if (r?.active) {
+          setNotice(saved
+            ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
+            : 'Adapter active. Register the webhook URL below on the platform.');
+        } else if (saved) {
+          setWarning('Credentials saved, but the channel is not active yet. Check the remaining fields above and the server log.');
+        } else {
+          setError('The channel is not active. Check the stored credentials and the server log.');
+        }
       }
       setDraft({});
-      await loadConfig();
       onChanged?.();
     } catch (err) {
-      setError(err?.message || 'Connect failed');
+      const detail = err?.message || 'Connect failed';
+      setError(saved ? `Credentials saved, but connecting failed: ${detail}` : detail);
     } finally {
       setBusy(false);
+      // Whichever way the attempt went, show what is actually stored now.
+      loadConfig();
     }
   }
 
   async function disconnect() {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setWarning('');
     try {
       if (caps.supports_teardown) {
         try { await teardownChannel(plugin.channel_type); } catch { /* non-fatal */ }
       }
       await deleteChannelConfig(plugin.channel_type);
       setDraft({});
+      // The delete landed, so nothing is stored — say so even if the refresh
+      // below cannot confirm it.
+      setConfig({ fields: {} });
       await loadConfig();
       onChanged?.();
     } catch (err) {
@@ -184,7 +236,7 @@ function ChannelCard({ plugin, status, onChanged }) {
   // Calls the platform with the stored credentials — "configured" only means
   // every required field has some value, not that the platform accepts it.
   async function testConnection() {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setWarning('');
     try {
       const r = await testChannelConnection(plugin.channel_type);
       if (r?.ok) setNotice(r.detail || 'Connection verified.');
@@ -196,8 +248,6 @@ function ChannelCard({ plugin, status, onChanged }) {
     }
   }
 
-  const fields = config?.fields || {};
-  const configured = status?.configured;
   const active = status?.status === 'active';
   const webhookPath = (plugin.webhook_paths || [])[0];
   const orgReady = plugin.org_ready !== false;
@@ -224,6 +274,7 @@ function ChannelCard({ plugin, status, onChanged }) {
               key={f.name}
               label={<>{f.label}{isSet ? <Badge variant="muted" size="xs">set</Badge> : null}</>}
               required={f.required}
+              error={fieldErrors[f.name]}
             >
               <input
                 type={f.secret ? 'password' : 'text'}
@@ -257,10 +308,11 @@ function ChannelCard({ plugin, status, onChanged }) {
       ) : null}
 
       {error ? <p className="channels-error">{error}</p> : null}
+      {warning ? <p className="channels-warn">{warning}</p> : null}
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">
-        <Button variant="primary" onClick={connect} disabled={busy || !orgReady}>
+        <Button variant="primary" onClick={connect} disabled={busy || !orgReady || configPending}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
         </Button>
         {configured && caps.supports_verify ? (
