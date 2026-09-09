@@ -25,8 +25,9 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
   const { title, subtitle } = connectionIdentity(connection);
   const needsReconnect = connection.status === 'needs_reconnect';
   // The summary API omits status for healthy saved connections. Do not paint
-  // an unfamiliar explicit status green as if we had checked it successfully.
-  const connected = !connection.status || connection.status === 'connected';
+  // an unfamiliar explicit status green as if we had checked it successfully
+  // — a blank-but-present status ('') is unfamiliar too, not "no status".
+  const connected = connection.status == null || connection.status === 'connected';
   const statusLabel = needsReconnect ? 'Reconnect needed'
     : connected ? 'Connected' : humanLabel(connection.status);
 
@@ -73,6 +74,8 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
             : <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', connected ? 'bg-[var(--success)]' : 'bg-ink-4')} />}
           <span className="truncate">{statusLabel}</span>
         </span>
+        {/* z-20: must stay above the overlay button's z-10, or the whole-card
+            click target swallows this click and Disconnect becomes unreachable. */}
         <Button variant="subtle" size="sm" className="relative z-20" onClick={handleRemove} disabled={busy}>
           {busy ? 'Removing…' : 'Disconnect'}
         </Button>
