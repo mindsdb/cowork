@@ -20,6 +20,15 @@ vi.mock('./MarkdownTable', () => ({
   TableBody: (p) => <tbody {...p} />,
 }));
 
+// Flippable surface: the plugin passes `host.isWeb` into isArtifactLocalPath,
+// and the two ENG-2421 end-to-end cases below need to prove BOTH sides of that
+// gate — with a hard-coded value, dropping the flag pass would stay green.
+const hostState = vi.hoisted(() => ({ isWeb: false }));
+vi.mock('../../../platform/host', async (importOriginal) => {
+  const mod = await importOriginal();
+  return { ...mod, host: { ...mod.host, get isWeb() { return hostState.isWeb; } } };
+});
+
 import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
 
 describe('_normalizeMathDelimiters', () => {
@@ -157,6 +166,62 @@ describe('isArtifactLocalPath', () => {
   });
 });
 
+describe('isArtifactLocalPath — dead-by-construction pod shapes (ENG-2421)', () => {
+  /*
+   * The scratchpad pod hands the agent loopback URLs and /mnt/… paths that are
+   * real INSIDE the pod and dead from the user's browser. Four users hit these
+   * as live links in one week — two shapes slipped the neutraliser: loopback
+   * escaped through the https? early-return, and bare /mnt/ missed both
+   * POSIX markers.
+   */
+  it('neutralises loopback http(s) on web, where it points at the user\'s own machine', () => {
+    expect(isArtifactLocalPath('http://127.0.0.1:8000/dashboard.html', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://localhost:3000/', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('HTTP://LOCALHOST:3000/', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('https://127.0.0.5/report.zip', { web: true })).toBe(true); // whole 127/8 range
+    // URL normalisation makes shorthand loopback spellings the same dotted quad.
+    expect(isArtifactLocalPath('http://127.1:8000/x', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://2130706433/x', { web: true })).toBe(true); // decimal 127.0.0.1
+    expect(isArtifactLocalPath('http://0.0.0.0:8000/a', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://[::1]:8000/a', { web: true })).toBe(true);
+  });
+
+  it('keeps loopback clickable on desktop, where the sidecar and app dev servers are real', () => {
+    expect(isArtifactLocalPath('http://127.0.0.1:26866/api/v1/artifacts/x/budget.xlsx', { web: false })).toBe(false);
+    expect(isArtifactLocalPath('http://localhost:3000/', { web: false })).toBe(false);
+    // The bare call IS the desktop behaviour — the default must never widen.
+    expect(isArtifactLocalPath('http://localhost:3000/')).toBe(false);
+  });
+
+  it('does not swallow real remote links on web — the https bail still guards', () => {
+    expect(isArtifactLocalPath('https://example.com/report.xlsx', { web: true })).toBe(false);
+    expect(isArtifactLocalPath('https://view.mindshub.ai/r/abc', { web: true })).toBe(false);
+    expect(isArtifactLocalPath('https://pub.example.com/.anton/artifacts/x/index.html', { web: true })).toBe(false);
+    // A REGISTERED domain that merely starts with "127." — the loopback test
+    // must match the full dotted quad, not the string prefix (review finding).
+    expect(isArtifactLocalPath('https://127.net/logo.png', { web: true })).toBe(false);
+    expect(isArtifactLocalPath('http://127.0.0.1.evil.example/x', { web: true })).toBe(false);
+  });
+
+  it('catches a bare /mnt pod path on every surface', () => {
+    expect(isArtifactLocalPath('/mnt/cowork-shared/projects/acme/dashboard.html')).toBe(true);
+    expect(isArtifactLocalPath('/mnt/data/out/report.zip', { web: true })).toBe(true);
+  });
+
+  it('leaves ordinary absolute routes and near-misses alone', () => {
+    expect(isArtifactLocalPath('/settings', { web: true })).toBe(false);
+    expect(isArtifactLocalPath('/mnt-docs/file', { web: true })).toBe(false); // anchor is the /mnt/ segment
+    expect(isArtifactLocalPath('docs/mnt/file', { web: true })).toBe(false);
+  });
+
+  it('covers all four shapes users were handed (regression set, ENG-2421)', () => {
+    expect(isArtifactLocalPath('sandbox:/mnt/cowork-shared/x/f.xlsx', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('file:///mnt/cowork-shared/x/f.xlsx', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://127.0.0.1:8000/f.xlsx', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('/mnt/cowork-shared/x/f.xlsx', { web: true })).toBe(true);
+  });
+});
+
 describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
   const PANEL_HINT = 'Live Artifacts panel';
 
@@ -170,6 +235,40 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     expect(container.textContent).toContain('Download Scorecard.xlsx'); // text kept
     expect(span).not.toBeNull();
     expect(span.getAttribute('href')).toBeNull(); // wrapper can never navigate
+  });
+
+  it('renders a pod loopback link as inert panel text on web (ENG-2421)', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(
+        <MarkdownContent text={'[Download it here](http://127.0.0.1:8000/dashboard.html)'} complete />,
+      );
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+      expect(container.textContent).toContain('Download it here');
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+  it('keeps the same loopback link clickable on desktop, where it can be real', () => {
+    // hostState.isWeb is false here — the sidecar and a fullstack app's dev
+    // server genuinely answer on loopback on desktop, so the net must not fire.
+    const { container } = render(
+      <MarkdownContent text={'[open the app](http://localhost:3000/)'} complete />,
+    );
+    const a = container.querySelector('a');
+    expect(a).not.toBeNull();
+    expect(a.getAttribute('href')).toBe('http://localhost:3000/');
+  });
+
+  it('renders a bare /mnt pod path as inert panel text (ENG-2421)', () => {
+    const { container } = render(
+      <MarkdownContent text={'[report.zip](/mnt/cowork-shared/projects/acme/report.zip)'} complete />,
+    );
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+    expect(container.textContent).toContain('report.zip');
   });
 
   it('renders a Windows drive-path link (the majority case) as inert panel text', () => {
