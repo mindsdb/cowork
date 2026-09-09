@@ -310,6 +310,22 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     }
   });
 
+    it('leaves images to pod paths alone — deliberately out of scope (no live link is claimed)', () => {
+    hostState.isWeb = true;
+    try {
+      const text = '![chart](/mnt/x/chart.png) and ![plot][i]\n\n[i]: /mnt/x/plot.png';
+      const { container } = render(<MarkdownContent text={text} complete />);
+      // Not neutralised into panel spans, and no anchor is created either —
+      // an <img> to an unreachable path is a broken image, not a false
+      // delivery claim. Pinned so the scope decision is explicit, not an
+      // omission (re-review on #956).
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(0);
+      expect(container.querySelector('a')).toBeNull();
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
     it('keeps a reference-style loopback link clickable on desktop', () => {
     const text = '[open the app][a]\n\n[a]: http://localhost:3000/';
     const { container } = render(<MarkdownContent text={text} complete />);

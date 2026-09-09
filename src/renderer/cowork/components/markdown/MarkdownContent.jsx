@@ -174,6 +174,12 @@ function remarkArtifactLocalLinks() {
       },
     };
   };
+  // Images (`image` / `imageReference`) are DELIBERATELY not neutralised: an
+  // <img src="/mnt/..."> renders a broken-image icon, not a live link that
+  // claims to deliver a file, and the artifact card next to the message shows
+  // the real image. Neutralising would replace one broken visual with another
+  // while losing the alt text's place in the sentence (decision on #956
+  // re-review; a test pins non-interference).
   // Two passes because reference-style Markdown splits a link across two
   // nodes: `[download][t]` is a `linkReference` whose URL lives on a separate
   // `definition` node (`[t]: /mnt/…`), so a single walk that only inspects
