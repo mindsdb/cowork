@@ -12,6 +12,8 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //                                   thought.progress             (phase markers)
 //                                   thought.scratchpad.result    (cell output)
 //   response.output_text.delta  — body text streaming, `delta` field
+//   response.output_text.reset  — a forced continuation supersedes the text
+//                                 streamed so far; the next delta replaces it
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.completed | failed — terminal
@@ -322,6 +324,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // The model has moved from thinking to producing the visible
     // response — end the current thought burst.
     return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
+  }
+
+  // Anton's completion verifier forced a continuation, so the text that
+  // follows replaces the answer streamed so far instead of continuing it.
+  // Appending both is what lets one message contradict itself with no way to
+  // tell which half is current. `steps` deliberately survive: the superseded
+  // attempt's tool calls really did happen. The server only sends this
+  // immediately before the replacement text, so the bubble is never left
+  // empty, and a continuation that never speaks sends nothing at all.
+  if (type === 'response.output_text.reset') {
+    return { ...state, bodyText: '', currentThought: null };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for

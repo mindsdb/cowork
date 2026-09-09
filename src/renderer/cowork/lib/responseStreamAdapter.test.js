@@ -567,3 +567,35 @@ describe('artifact_created → step.data', () => {
     expect(data.serveUrl).toBe('');
   });
 });
+
+describe('response.output_text.reset — a forced continuation replaces the answer', () => {
+  const DELTA = (delta) => ({ type: 'response.output_text.delta', delta });
+  const RESET = { type: 'response.output_text.reset', item_id: 'msg-1' };
+
+  it('drops the answer the replacement supersedes', () => {
+    // Anton's verifier judged the turn incomplete and forced a continuation.
+    // Everything streamed before the reset is an answer the user already read
+    // and is about to read again — appending is what makes one message
+    // contradict itself.
+    const state = reduceAll([DELTA('SUPERSEDED'), RESET, DELTA('REPLACEMENT')]);
+    expect(state.bodyText).toBe('REPLACEMENT');
+  });
+
+  it('keeps the working steps, which are an honest record of the turn', () => {
+    const withStep = reduceAll([
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', content: 'x = 1' },
+      DELTA('SUPERSEDED'),
+    ]);
+    const after = reduceStream(withStep, RESET);
+    expect(after.steps).toBe(withStep.steps);
+    expect(after.bodyText).toBe('');
+  });
+
+  it('ends the current thought burst, as a delta does', () => {
+    const thinking = reduceAll([
+      { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'hmm' },
+    ]);
+    expect(thinking.currentThought).not.toBeNull();
+    expect(reduceStream(thinking, RESET).currentThought).toBeNull();
+  });
+});
