@@ -233,7 +233,7 @@ export function Select({
     <BaseSelect.Root
       value={value}
       items={itemsForLabels}
-      onValueChange={(next) => onValueChange?.(next)}
+      onValueChange={(next) => { if (next != null) onValueChange?.(next); }}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}

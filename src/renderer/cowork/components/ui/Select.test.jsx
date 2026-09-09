@@ -145,11 +145,16 @@ describe('Select', () => {
     expect(document.querySelector('.shadow-sh-popup').style.minWidth).toBe('280px');
   });
 
+  // Base UI 1.7.0 repointed `Select.Separator` from the generic Separator
+  // (role="separator") at ListboxSeparator (role="presentation"): ARIA allows
+  // only `option` and `group` children inside a `listbox`, so the old role was
+  // itself the bug. Assert on the rendered divider instead, the way the popup
+  // tests above target `.shadow-sh-popup`.
   it('renders a separator between option groups', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole('combobox'));
-    expect(screen.getByRole('separator')).toBeInTheDocument();
+    expect(document.querySelector('.shadow-sh-popup .h-px.bg-line')).not.toBeNull();
   });
 
   // A leading option `icon` renders inside the open list item (used to set a
