@@ -7,6 +7,13 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Loose enough to equate "google_drive" with "Google Drive": cowork-server
+// defaults a fresh connection's user_label to the bare engine id whenever it
+// has no account name to use instead (persist.py's default_user_label()),
+// and that raw id should read as "the title, again" just as much as an
+// exact-cased repeat does.
+const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // Lead with the app; follow with the user's label and account, without
 // repeating either. Keep the slug as a last resort for records with no human
 // identity, so otherwise indistinguishable connections still have a name.
@@ -16,7 +23,7 @@ export function connectionIdentity(connection) {
   const identity = c.display_name || c.displayName || null;
   const title = c.label || humanLabel(c.engine || 'unknown');
   const details = [c.user_label, identity].filter((value, index, values) => (
-    typeof value === 'string' && value && value.toLowerCase() !== title.toLowerCase()
+    typeof value === 'string' && value && normalize(value) !== normalize(title)
     && values.findIndex((other) => typeof other === 'string' && other.toLowerCase() === value.toLowerCase()) === index
   ));
   // `identity` comes from the provider and is effectively unique per account;
