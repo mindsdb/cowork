@@ -4,13 +4,14 @@ import { connectionIdentity, humanLabel } from './connectionIdentity';
 // Fixtures mirror real records observed in ~/.cowork/data-vault — the shapes
 // the summary endpoint actually returns, not invented ones.
 describe('connectionIdentity — title', () => {
-  it('prefers the label the user chose', () => {
+  it('leads with the app and preserves the user label beside the account', () => {
     // The gmail record whose legacy `_label` the server maps to user_label.
-    const { title } = connectionIdentity({
+    const { title, subtitle } = connectionIdentity({
       engine: 'gmail', name: 'gmail-3ce87a', label: 'Gmail',
       user_label: 'Work', display_name: 'alejandro.cantu@mindsdb.com',
     });
-    expect(title).toBe('Work');
+    expect(title).toBe('Gmail');
+    expect(subtitle).toBe('Work · alejandro.cantu@mindsdb.com');
   });
 
   it('falls back to the connector registry label when no user label is set', () => {
@@ -98,8 +99,21 @@ describe('connectionIdentity — subtitle', () => {
       engine: 'gmail', name: 'gmail-3ce87a',
       user_label: 'a@b.com', display_name: 'a@b.com',
     });
-    expect(title).toBe('a@b.com');
-    expect(subtitle).toBe('gmail-3ce87a');
+    expect(title).toBe('Gmail');
+    expect(subtitle).toBe('a@b.com');
+  });
+
+  it('shows a Linear organization once instead of falling back to its internal ID', () => {
+    expect(connectionIdentity({
+      engine: 'linear', name: 'ian-mindsdb-com-ce246b94-2592-437e-a848-c9e25936b4db',
+      label: 'Linear', user_label: 'MindsDB', display_name: 'MindsDB',
+    })).toEqual({ title: 'Linear', subtitle: 'MindsDB' });
+  });
+
+  it('does not repeat an app name used as a custom label', () => {
+    expect(connectionIdentity({
+      engine: 'github', name: 'ianu82', label: 'GitHub', user_label: 'github', display_name: 'ianu82',
+    })).toEqual({ title: 'GitHub', subtitle: 'ianu82' });
   });
 
   it('is never empty', () => {

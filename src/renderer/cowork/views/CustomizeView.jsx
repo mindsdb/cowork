@@ -8,7 +8,6 @@
 // user to wire something up.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TriangleAlert } from 'lucide-react';
 import Ico from '../components/Icons';
 import { Alert, Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
@@ -23,6 +22,7 @@ import {
 } from '../components/collection';
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
+import ConnectionCard from '../components/connector/ConnectionCard';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -73,97 +73,6 @@ function NewConnectionCard({ onClick }) {
         New connection
       </span>
     </button>
-  );
-}
-
-function ConnectionCard({ connection, onDelete, onModify }) {
-  const [busy, setBusy] = useState(false);
-  const engine = connection.engine || 'unknown';
-  const name = connection.name || connection.slug || 'unnamed';
-  // Title and subtitle come from the shared derivation (ENG-1705) — neither is
-  // ever empty, and the subtitle ends at the slug so two connections on the
-  // same engine stay distinguishable.
-  const { title, subtitle } = connectionIdentity(connection);
-  const updated = connection.updated_at || connection.updatedAt || null;
-  const needsReconnect = connection.status === 'needs_reconnect';
-
-  const handleRemove = async (e) => {
-    e.stopPropagation();
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
-    setBusy(true);
-    try {
-      await onDelete?.(connection);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Card click → modify. Mirrors the "+ Connect" flow: pulls up the
-  // same form (same engine spec), pre-filled with this connection's
-  // name. Submitting overwrites the existing entry in the data vault.
-  const canModify = typeof onModify === 'function';
-  const handleCardClick = () => {
-    if (!canModify || busy) return;
-    onModify(connection);
-  };
-
-  return (
-    <div
-      role={canModify ? 'button' : undefined}
-      tabIndex={canModify ? 0 : undefined}
-      onClick={canModify ? handleCardClick : undefined}
-      onKeyDown={canModify ? (e) => { if (e.key === 'Enter') handleCardClick(); } : undefined}
-      className={cn(
-        'relative flex min-h-[120px] flex-col gap-2.5 rounded-[10px] px-4 py-3.5 outline-none',
-        '[transition:background_.15s_ease,border-color_.15s_ease]',
-        canModify ? 'cursor-pointer' : 'cursor-default',
-        needsReconnect
-          ? 'border border-solid border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]'
-          : 'border border-solid border-line bg-surface hover:border-line-2 hover:bg-surface-2',
-      )}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <span
-          className={cn('inline-flex shrink-0', needsReconnect ? 'text-warning' : 'text-ink-3')}
-          title={needsReconnect ? 'Reconnection required' : undefined}
-        >
-          {needsReconnect
-            ? <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" />
-            : Ico.database(14)}
-        </span>
-        <span
-          className="flex-1 min-w-0 truncate font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-normal text-ink"
-          title={title !== name ? name : undefined}
-        >{title}</span>
-        <span className="shrink-0 rounded-full border border-solid border-line bg-surface-3 px-[7px] py-[2px] font-[family-name:var(--font-mono)] text-[10.5px] uppercase tracking-[0.04em] text-ink-4">{engine}</span>
-      </div>
-
-      {subtitle && (
-        <span className="truncate text-sm text-ink-3">{subtitle}</span>
-      )}
-
-      <div className="flex-1" />
-
-      {needsReconnect && (
-        <div className="font-[family-name:var(--font-body)] text-[12px] font-medium text-warning">
-          Reconnection required — click to fix
-        </div>
-      )}
-
-      <div className="flex items-center gap-2.5 border-t border-x-0 border-b-0 border-solid border-line pt-2.5">
-        <span className="flex-1 font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.04em] text-ink-4">
-          {updated ? `updated ${updated}` : 'connected'}
-        </span>
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={handleRemove}
-          disabled={busy}
-        >
-          {busy ? 'Removing…' : 'Disconnect'}
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -618,13 +527,14 @@ export default function CustomizeView({
     let out = (list || []).slice();
     if (q) {
       out = out.filter((c) =>
-        (c.name || '').toLowerCase().includes(q)
-        || (c.engine || '').toLowerCase().includes(q),
+        [c.name, c.engine, ...Object.values(connectionIdentity(c))]
+          .some((value) => (value || '').toLowerCase().includes(q)),
       );
     }
     out.sort((a, b) => {
       switch (sort) {
-        case 'name':   return (a.name || '').localeCompare(b.name || '');
+        case 'name':   return connectionIdentity(a).title.localeCompare(connectionIdentity(b).title)
+          || connectionIdentity(a).subtitle.localeCompare(connectionIdentity(b).subtitle);
         case 'engine': return (a.engine || '').localeCompare(b.engine || '');
         case 'recent':
         default: {
