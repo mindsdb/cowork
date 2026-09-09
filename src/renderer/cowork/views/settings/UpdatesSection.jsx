@@ -5,7 +5,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
-import { shellAutoOwnsBanner } from '../../../../shared/update-banner';
+import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
@@ -221,9 +221,9 @@ export default function UpdatesSection({
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
-              // A .deb is not launched, it is installed, so the last step of the
-              // copy changes. The URL is the only platform signal the renderer has.
-              const debInstaller = !!shellUrl?.endsWith('.deb');
+              // Linux ships a .deb, which is installed rather than launched, so
+              // the last step of the copy changes.
+              const debInstaller = host.getPlatform() === 'linux';
               const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
               // Auto-update (electron-updater) drives the primary card. The
               // manual installer-download card only surfaces as a fallback when
@@ -231,9 +231,7 @@ export default function UpdatesSection({
               const autoPhase = shellAutoUpdate?.phase;
               const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
-              // Same command and reasoning as the download page: apt, not dpkg,
-              // and a glob because the alias URL names the file by version.
-              const debStep = 'run sudo apt install ./mindshub-cowork-*.deb from the directory you downloaded it to.';
+              const debStep = `${debInstallStep(shellVersion)}.`;
               const manualHint = autoPhase === 'failed'
                 ? 'You can still download the installer manually.'
                 : shellDownloadStarted

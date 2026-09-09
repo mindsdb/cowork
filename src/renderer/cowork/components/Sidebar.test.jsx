@@ -254,26 +254,26 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
     expect(onDismissUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('names apt in the manual notice hint when the installer is a .deb', async () => {
+  it('names apt in the manual notice hint on linux, narrowed to the offered version', async () => {
     render(
       <Sidebar
         {...baseProps}
         serverOnline
-        updateBanner={bannerFor({ shellManual: { version: '2.0.0', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' } })}
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', debInstaller: true } })}
         onUpdateAction={vi.fn()}
         onDismissUpdate={vi.fn()}
       />
     );
     await userEvent.hover(screen.getByRole('button', { name: /New version available/ }));
-    expect(await screen.findByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb/)).toBeInTheDocument();
+    expect(await screen.findByText(/run sudo apt install \.\/mindshub-cowork-2\.0\.0\*\.deb from the directory you downloaded it to/)).toBeInTheDocument();
   });
 
-  it('keeps the "open it" hint for a .pkg installer', async () => {
+  it('keeps the "open it" hint off linux', async () => {
     render(
       <Sidebar
         {...baseProps}
         serverOnline
-        updateBanner={bannerFor({ shellManual: { version: '2.0.0', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' } })}
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', debInstaller: false } })}
         onUpdateAction={vi.fn()}
         onDismissUpdate={vi.fn()}
       />

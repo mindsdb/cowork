@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, shellAutoOwnsBanner, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, shellAutoOwnsBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 describe('deriveUpdateBanner', () => {
@@ -87,15 +87,20 @@ describe('deriveUpdateBanner', () => {
       expect(b?.title).toContain('0.26.8.2');
     });
 
-    it('flags a .deb installer so the surfaces can name the real install step', () => {
-      const b = deriveUpdateBanner({ shellManual: { version: '0.26.8.2', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' } });
-      expect(b?.debInstaller).toBe(true);
+    it('carries the caller\'s .deb flag so both surfaces name the real install step', () => {
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: true } })?.debInstaller).toBe(true);
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2', debInstaller: false } })?.debInstaller).toBe(false);
+      expect(deriveUpdateBanner({ shellManual: { version: '0.26.8.2' } })?.debInstaller).toBe(false);
+    });
+  });
+
+  describe('debInstallStep', () => {
+    it('narrows the glob to the offered version, so a stale .deb in the same folder is not swept in', () => {
+      expect(debInstallStep('2.26.9.7.1')).toBe('run sudo apt install ./mindshub-cowork-2.26.9.7.1*.deb from the directory you downloaded it to');
     });
 
-    it('leaves the flag off for a .pkg, a .exe and a missing URL', () => {
-      expect(deriveUpdateBanner({ shellManual: { version: '1', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' } })?.debInstaller).toBe(false);
-      expect(deriveUpdateBanner({ shellManual: { version: '1', downloadUrl: 'https://d/windows/mindshub-cowork-latest.exe' } })?.debInstaller).toBe(false);
-      expect(deriveUpdateBanner({ shellManual: { version: '1' } })?.debInstaller).toBe(false);
+    it('falls back to the bare glob when the version is unknown', () => {
+      expect(debInstallStep()).toBe('run sudo apt install ./mindshub-cowork-*.deb from the directory you downloaded it to');
     });
   });
 

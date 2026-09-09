@@ -1,5 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+// Mutable so the Debian cases can flip the platform the card reads.
+const platformMock = vi.hoisted(() => ({ value: 'darwin' }));
 
 // The desktop Settings "Software updates" section is Electron-only and surfaces
 // the shell (installer) reinstall notice + Download control (ENG-849). Stub the
@@ -15,7 +18,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
-    isMac: () => true,
+    isMac: () => platformMock.value === 'darwin',
+    getPlatform: () => platformMock.value,
     getKeychainPref: vi.fn(async () => false),
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
@@ -33,6 +37,8 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+
+afterEach(() => { platformMock.value = 'darwin'; });
 import { host } from '../../../platform/host';
 
 const baseProps = {
@@ -68,6 +74,7 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
   });
 
   it('tells a Debian user to apt install the .deb, before and after the download', () => {
+    platformMock.value = 'linux';
     render(
       <SettingsView
         {...baseProps}
@@ -77,13 +84,26 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
     );
     // "open it" does nothing on a desktop with no GUI handler for .deb, so the
     // card names the command that actually installs the package.
-    expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb from the directory you downloaded it to\./)).toBeInTheDocument();
+    const step = /run sudo apt install \.\/mindshub-cowork-2\.26\.7\.20\.1\*\.deb from the directory you downloaded it to\./;
+    expect(screen.getByText(step)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Download installer/ }));
     expect(screen.getByText(/Installer downloading/)).toBeInTheDocument();
-    expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb from the directory you downloaded it to\./)).toBeInTheDocument();
+    expect(screen.getByText(step)).toBeInTheDocument();
   });
 
-  it('keeps the "open it" guidance for a .pkg installer', () => {
+  it('names apt on linux even when the old shell supplied no installer URL', () => {
+    platformMock.value = 'linux';
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-2\.26\.7\.20\.1\*\.deb/)).toBeInTheDocument();
+  });
+
+  it('keeps the "open it" guidance off linux', () => {
     render(
       <SettingsView
         {...baseProps}

@@ -1573,7 +1573,11 @@ function AppCore() {
   const updateBanner = deriveUpdateBanner({
     ota: updateStatus,
     shellAuto: shellAutoUpdate,
-    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
+    // Linux ships a .deb, which is installed rather than launched, so the
+    // notice names the install command instead of saying to open it.
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed
+      ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
+      : null,
   });
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
