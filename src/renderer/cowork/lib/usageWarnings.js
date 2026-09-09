@@ -15,6 +15,15 @@ import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '.
 // console alerts at 80% used; this is the same line from the other side.
 export const FREE_TOKENS_LOW_FRACTION = 0.2;
 
+/* Fractions left that the allowance steps down through: the band's own edge,
+   then 90% used (where the console escalates too), then 95%.
+   Two jobs, one scale. A dismissal is keyed to the step the allowance was in
+   when the bar was closed, so closing it at 900K of 5M lets it ask again at
+   500K and at 250K rather than staying shut until the tokens are gone. And a
+   running task reports each step it crosses, for which the edge has to be a
+   mark like the others: entering the band is the first thing worth saying. */
+const FREE_DISMISS_STEPS_FRACTION = [FREE_TOKENS_LOW_FRACTION, 0.1, 0.05];
+
 export const USAGE_ACTIONS = Object.freeze({
   viewUsage: { key: 'viewUsage', label: 'View usage' },
   addFunds: { key: 'addFunds', label: 'Add funds' },
@@ -40,10 +49,24 @@ export function usageActionUrl(action, { isBillingOwner = false } = {}) {
    for; four crossings is the most anyone sees before the balance is empty. */
 const BALANCE_DISMISS_STEPS_USD = [10, 5, 2.5, 1];
 
+/** How many of `marks` a value has fallen below. Reads a missing or
+ *  unparseable value as 0, which is the deepest step: a number we cannot
+ *  read is the one worth asking about, not the one worth hiding. */
+function dismissStep(value, marks) {
+  const n = Number(value) || 0;
+  return marks.filter((mark) => n < mark).length;
+}
+
 /** Which step of the low band a balance sits in: $18 is 0, $9 is 1, $0.50 is 4. */
 export function balanceDismissStep(usd) {
-  const n = Number(usd) || 0;
-  return BALANCE_DISMISS_STEPS_USD.filter((step) => n < step).length;
+  return dismissStep(usd, BALANCE_DISMISS_STEPS_USD);
+}
+
+/** How far down the allowance has stepped, from the fraction still left: 40%
+ *  is 0 (not low at all), 18% is 1, 9% is 2, 4% is 3. A dismissal only ever
+ *  reads this inside the low band, so it never sees 0. */
+export function freeDismissStep(fractionLeft) {
+  return dismissStep(fractionLeft, FREE_DISMISS_STEPS_FRACTION);
 }
 
 /** 620000 → "620K", 1200000 → "1.2M", 5000000 → "5M", 900 → "900". */
@@ -72,16 +95,21 @@ export function formatResetDate(iso) {
 
 // `available`: Air can run on the free tokens right now. -1 is auth's uncapped
 // sentinel; 0 or a missing limit means there is no grant to draw from.
+// `fractionLeft` is a number only for a capped grant, so it doubles as the test
+// for "there is a figure worth showing": an uncapped grant has nothing to count
+// down and a missing one has nothing to count.
 function freeState(free) {
-  if (!free) return { out: false, low: false, available: false };
-  if (free.limit === -1) return { out: false, low: false, available: true };
-  if (!(free.limit > 0)) return { out: false, low: false, available: false };
+  if (!free) return { out: false, low: false, available: false, fractionLeft: null };
+  if (free.limit === -1) return { out: false, low: false, available: true, fractionLeft: null };
+  if (!(free.limit > 0)) return { out: false, low: false, available: false, fractionLeft: null };
   const remaining = Math.max(0, Number(free.remaining) || 0);
+  const fractionLeft = remaining / free.limit;
   return {
     out: remaining <= 0,
-    low: remaining > 0 && remaining / free.limit <= FREE_TOKENS_LOW_FRACTION,
+    low: remaining > 0 && fractionLeft <= FREE_TOKENS_LOW_FRACTION,
     available: remaining > 0,
     remaining,
+    fractionLeft,
   };
 }
 
@@ -226,9 +254,29 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     return {
       kind: 'free_low',
       tone: 'warning',
+      // Stepped like the balance: closing this at 900K of 5M asks again at
+      // 500K, which is also where the console escalates from 80% to 90% used.
+      dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
       title: `${formatTokensShort(f.remaining)} free tokens left`,
       body,
       actions,
+    };
+  }
+
+  // Nothing is wrong, so say where the allowance stands rather than nothing at
+  // all. A warning the person only meets at 20% left is a warning they cannot
+  // plan around, and Settings is somewhere they have to think to go. `resting`
+  // marks this as a figure and not a warning: it carries no close button, and
+  // it does not count as something to warn about (see `usageHealthy`).
+  if (freeInUse && f.available && f.fractionLeft !== null) {
+    const resets = formatResetDate(free.resetsAt);
+    return {
+      kind: 'free_at_rest',
+      tone: 'resting',
+      resting: true,
+      title: `${formatTokensShort(f.remaining)} of ${formatTokensShort(free.limit)} free tokens left`,
+      body: resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.',
+      actions: [USAGE_ACTIONS.viewUsage],
     };
   }
 
@@ -249,8 +297,25 @@ export function usageTransitions(prev, next, { model: modelIn = null } = {}) {
   const out = [];
   const before = freeState(prev.freeTokens);
   const after = freeState(next.freeTokens);
-  if (!before.out && after.out && !isExplicitPaidModel(pickedModelId(modelIn))) {
+  const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
+  if (!before.out && after.out && spendsFree) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
+  }
+  // A long task can cross the low band and empty it without the composer bar
+  // ever being looked at, so the crossing is this task's news too. Stepped on
+  // the same scale as the bar's dismissal, so a task that runs from 2M to 400K
+  // reports on each step rather than on each poll. Both reads have to be a
+  // capped grant, or a grant arriving mid-task would read as one draining, and
+  // `free_used` above owns the last step so reaching zero says the tokens are
+  // gone rather than that they are low.
+  if (!before.out && !after.out && after.low && spendsFree
+      && before.fractionLeft !== null && after.fractionLeft !== null
+      && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
+    out.push({
+      kind: 'free_low',
+      remaining: after.remaining,
+      resetsAt: next.freeTokens?.resetsAt || null,
+    });
   }
   if (prev.autoTopUp?.status !== 'payment_failed' && next.autoTopUp?.status === 'payment_failed') {
     out.push({ kind: 'auto_top_up_failed' });

@@ -735,12 +735,29 @@ ever bills the balance, and the router can land on either, so both matter for it
 The two resources are always named apart. "Out of tokens" on its own is never one
 of the outputs.
 
-Closing a notice hides it per dismissal key, not forever. Most warnings key on
-their kind. A running-low balance is the case that gets wrong, because "low" is a
-band the balance sits in the whole way down, so one close would hide the only
-offer to top up until the balance emptied. Those warnings carry a stepped key
-from `balanceDismissStep`, so a close holds for the step it was made in and the
-next step down asks again. Every dismissal is forgotten once usage is healthy.
+When nothing is wrong, the bar still says where the free grant stands: "3.4M of
+5M free tokens left. Resets on Oct 1." A warning a person first meets at 20% left
+is a warning they cannot plan around, and the grant is the only conversion moment
+the product has, so it is not left to a blank space. The standing figure is
+neutral rather than amber, carries no close button, and is not a live region, so
+a screen reader is not interrupted every poll by a number that has not moved. An
+uncapped grant has nothing to count down and gets no figure. A BYOK user, a
+signed-out one and an unreachable sidecar get nothing, exactly as before.
+
+Closing a notice hides it per dismissal key, not forever. A "low" state is a band
+the resource sits in the whole way down, so keying on the kind alone would let one
+close hide the last warning until the resource emptied. Both low states carry a
+stepped key instead, from `balanceDismissStep` and `freeDismissStep`, so a close
+holds for the step it was made in and the next step down asks again. The free
+grant's steps are 20%, 10% and 5% remaining, and 20% is also the band's own edge,
+so a task that runs from healthy into the band crosses a mark like any other.
+That is what lets `usageTransitions` report a crossing mid-task rather than only
+reporting the tokens being gone. Every dismissal is forgotten once usage is
+healthy, and a standing figure never counts as something to forget.
+
+The free grant's 20% line is the console's 80%-used line read from the other side.
+`FREE_TOKENS_LOW_FRACTION` is the one place it is written, and Settings reads the
+same constant, so the meter's warning tint cannot drift from the bar.
 
 Money moves in the console, never here. Each action opens a console URL through
 `usageActionUrl`. A billing owner lands on the form itself: add credits for "Add
@@ -748,14 +765,18 @@ funds", the automatic tab for "Set up auto top up". Anyone else gets the billing
 page, because every wallet control the console offers is owner-only and a member
 following a deep link would reach a dialog they cannot submit.
 
-Settings carries the same figures at rest under Usage, on desktop only: the free
-grant with its reset date, the balance, the spend for the period and auto top up
-state.
+Settings carries the same figures under Usage, on desktop and on the hosted web
+build alike: the free grant with its reset date, the balance, the spend for the
+period and auto top up state. The web nav drops the sections a hosted user cannot
+act on, and Usage is not one of them. It reads the route both hosts already call
+and every control opens the console in a browser, so hiding it left a hosted free
+user with nowhere to see the grant at all.
 
 To see the notices without an account near its limits, run `npm run dev:renderer`
 and open `/usage-bar-fixture.html`. It renders every state from the real
 `deriveComposerWarning`, so the copy on the page is the copy a user sees. Add
-`?theme=dark` for the dark pass.
+`?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
+screenshot run can crop to one state rather than a page too tall to read.
 
 ---
 

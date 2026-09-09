@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatTokensShort } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1101,11 +1101,22 @@ function formatAllowanceReset(resetAt) {
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBillingOwner }) {
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
+  if (kind === 'free_low') {
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title={`${formatTokensShort(remaining)} free tokens left`}
+        body={`This task is still running on your free monthly tokens. When they are used up it moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+      />
+    );
+  }
   if (kind === 'auto_top_up_failed') {
     return (
       <ActionCard
@@ -2041,6 +2052,7 @@ export default function ChatView({
                   agentLabel={agentLabel}
                   kind={n.kind}
                   resetsAt={n.resetsAt}
+                  remaining={n.remaining}
                   isBillingOwner={isBillingOwner}
                 />
               ));

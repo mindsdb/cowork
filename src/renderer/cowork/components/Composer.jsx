@@ -958,13 +958,16 @@ export default function Composer({
     () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
     [hubUsage, model],
   );
-  // "Healthy" for forgetting closed bars means nothing to say for ANY pick,
-  // not merely that the current paid model hides the free-token warnings.
-  const usageHealthy = useMemo(
-    () => !!hubUsage?.usage?.reachable
-      && deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model: null }) === null,
-    [hubUsage],
-  );
+  // "Healthy" for forgetting closed bars means nothing to WARN about for ANY
+  // pick, not merely that the current paid model hides the free-token warnings.
+  // A resting allowance figure is not a warning: it is showing for every free
+  // user all month, so counting it here would mean a dismissal is never
+  // forgotten again.
+  const usageHealthy = useMemo(() => {
+    if (!hubUsage?.usage?.reachable) return false;
+    const anyPick = deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model: null });
+    return !anyPick || !!anyPick.resting;
+  }, [hubUsage]);
 
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">

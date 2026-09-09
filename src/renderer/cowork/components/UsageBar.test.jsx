@@ -21,6 +21,11 @@ const balanceLow = {
   kind: 'balance_low', tone: 'warning', title: 'Balance running low',
   body: 'You have $8.42 left.', actions: [USAGE_ACTIONS.addFunds],
 };
+const atRest = {
+  kind: 'free_at_rest', tone: 'resting', resting: true,
+  title: '3.4M of 5M free tokens left', body: 'Resets on Sep 11.',
+  actions: [USAGE_ACTIONS.viewUsage],
+};
 
 beforeEach(() => {
   resetUsageBarDismissForTests();
@@ -40,6 +45,26 @@ describe('UsageBar', () => {
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_notice');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('the standing figure cannot be closed: no dismiss button at all', () => {
+    render(<UsageBar warning={atRest} usageKnown />);
+    expect(screen.getByText('3.4M of 5M free tokens left.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+  });
+
+  it('the standing figure is not a live region, so it does not announce', () => {
+    render(<UsageBar warning={atRest} usageKnown />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('counts a click on the standing figure apart from a warning click', async () => {
+    const user = userEvent.setup();
+    render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'View usage' }));
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_at_rest');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
   it('a member is sent to the billing page, not the add-credits dialog', async () => {

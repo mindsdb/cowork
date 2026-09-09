@@ -41,6 +41,17 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
   });
 
+  it('renders the low-allowance alert with the count, before the tokens are gone', () => {
+    render(<ChatView task={task([{ kind: 'free_low', remaining: 620_000, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    const card = screen.getByText('620K free tokens left');
+    const reply = screen.getByText('Done. Here is the digest.');
+    expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/still running on your free monthly tokens/)).toBeInTheDocument();
+    // Not the exhaustion card: the tokens are low, not spent.
+    expect(screen.queryByText('Free monthly tokens used')).toBeNull();
+    expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
+  });
+
   it('renders the auto top up failure with both actions', () => {
     render(<ChatView task={task([{ kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:00:00Z' }])} />);
     expect(screen.getByText('Auto top up failed')).toBeInTheDocument();
