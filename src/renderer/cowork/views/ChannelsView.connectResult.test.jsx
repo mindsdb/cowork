@@ -102,6 +102,33 @@ describe('ChannelsView — what Connect reports', () => {
     expect(msg).not.toHaveTextContent('missing required fields?');
   });
 
+  it('still reports the save when connecting afterwards fails', async () => {
+    api.reloadChannel.mockRejectedValue(new Error('server offline'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.type(within(card).getByLabelText(/Bot token/), 'xoxb-real');
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    expect(api.saveChannelConfig).toHaveBeenCalledWith('slack', { bot_token: 'xoxb-real' });
+    const msg = await within(card).findByText(/Credentials saved, but connecting failed: server offline/);
+    expect(msg).toHaveClass('channels-error');
+  });
+
+  it('does not claim a save when the save itself failed', async () => {
+    api.saveChannelConfig.mockRejectedValue(new Error('403 Forbidden'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.type(within(card).getByLabelText(/Bot token/), 'xoxb-real');
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    expect(await within(card).findByText('403 Forbidden')).toBeInTheDocument();
+    expect(within(card).queryByText(/Credentials saved/)).not.toBeInTheDocument();
+  });
+
   it('reports a channel that stays down with nothing saved as a failure', async () => {
     alreadyConfigured();
     api.reloadChannel.mockResolvedValue({ channel_type: 'slack', active: false });

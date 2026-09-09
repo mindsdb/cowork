@@ -134,6 +134,57 @@ describe('ChannelsView — required credential fields', () => {
     expect(within(card).queryByText('Bot token is required.')).not.toBeInTheDocument();
   });
 
+  it('treats a whitespace-only value as nothing typed', async () => {
+    api.fetchChannelStatus.mockResolvedValue(statusFor('slack'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.type(within(card).getByLabelText(/Bot token/), '   ');
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    expect(await within(card).findByText('Bot token is required.')).toBeInTheDocument();
+    expect(api.saveChannelConfig).not.toHaveBeenCalled();
+  });
+
+  it('holds Connect until the stored config has been read', async () => {
+    api.fetchChannelConfig.mockReturnValue(new Promise(() => {}));  // never settles
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    expect(within(card).getByRole('button', { name: /Connect/ })).toBeDisabled();
+  });
+
+  // The two signals can disagree: `configured` comes from the status list,
+  // `is_set` from this card's own config read, and either can be the fresher.
+  it('accepts a stored field the status list has not caught up with', async () => {
+    api.fetchChannelStatus.mockResolvedValue(statusFor('slack'));  // configured: false
+    api.fetchChannelConfig.mockResolvedValue({ fields: { bot_token: { is_set: true, value: null } } });
+    api.reloadChannel.mockResolvedValue({ channel_type: 'slack', active: true });
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    expect(api.reloadChannel).toHaveBeenCalledWith('slack');
+    expect(within(card).queryByText('Bot token is required.')).not.toBeInTheDocument();
+  });
+
+  it('accepts a channel the server already calls configured', async () => {
+    api.fetchChannelStatus.mockResolvedValue(statusFor('slack', { configured: true }));
+    api.fetchChannelConfig.mockResolvedValue({ fields: {} });  // read did not see it yet
+    api.reloadChannel.mockResolvedValue({ channel_type: 'slack', active: true });
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.click(within(card).getByRole('button', { name: /Save & reconnect/ }));
+
+    expect(api.reloadChannel).toHaveBeenCalledWith('slack');
+    expect(within(card).queryByText('Bot token is required.')).not.toBeInTheDocument();
+  });
+
   it('blocks the webhook-setup path too, without calling setup', async () => {
     api.fetchChannelStatus.mockResolvedValue(statusFor('telegram'));
     const user = userEvent.setup();

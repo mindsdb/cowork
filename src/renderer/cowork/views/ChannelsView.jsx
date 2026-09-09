@@ -123,12 +123,13 @@ function ChannelCard({ plugin, status, onChanged }) {
   const [notice, setNotice] = useState('');
   const [warning, setWarning] = useState('');    // did some of what was asked
   const [fieldErrors, setFieldErrors] = useState({});  // validation, by field name
-  // A failed read gives `{ fields: {} }`, which is shape-identical to a
-  // channel with nothing stored — the flag is the only way to tell them apart.
   const [configUnreadable, setConfigUnreadable] = useState(false);
 
   const fields = config?.fields || {};
   const configured = status?.configured;
+  // The config read has three outcomes, not two: still out, failed, or landed.
+  // A failure gives `{ fields: {} }`, the same shape as nothing stored.
+  const configPending = !config && !configUnreadable;
 
   async function loadConfig() {
     try {
@@ -146,13 +147,10 @@ function ChannelCard({ plugin, status, onChanged }) {
     setFieldErrors((e) => (e[name] ? { ...e, [name]: '' } : e));
   }
 
-  // Required fields with nothing behind them: nothing typed and nothing
-  // stored. Returns nothing while the card cannot see what is stored (read
-  // failed, or not back yet) or once the server calls the channel configured
-  // — the server is the authority, and a stale local view must never block
-  // reconnecting a channel that works.
+  // Required fields with nothing typed and nothing stored. Stands down unless
+  // the stored state is known: a stale local view must never block a reconnect.
   function missingRequired(values) {
-    if (!config || configUnreadable || configured) return [];
+    if (configPending || configUnreadable || configured) return [];
     return (plugin.credentials || []).filter(
       (f) => f.required && !values[f.name] && !fields[f.name]?.is_set,
     );
@@ -162,7 +160,7 @@ function ChannelCard({ plugin, status, onChanged }) {
     // Only send fields the operator actually typed — blank secret fields
     // keep their stored value (server merge semantics).
     const values = Object.fromEntries(
-      Object.entries(draft).filter(([, v]) => v != null && v !== ''),
+      Object.entries(draft).filter(([, v]) => v != null && String(v).trim() !== ''),
     );
     const missing = missingRequired(values);
     if (missing.length) {
@@ -172,20 +170,22 @@ function ChannelCard({ plugin, status, onChanged }) {
     }
 
     setBusy(true); setError(''); setNotice(''); setWarning(''); setFieldErrors({});
+    // Blank inputs on a configured channel send nothing, so only a PUT that
+    // came back may be reported as a save.
+    let saved = false;
     try {
-      // Blank inputs on a configured channel send nothing, so only a real PUT
-      // may be reported as a save.
-      const saved = Object.keys(values).length > 0;
-      if (saved) await saveChannelConfig(plugin.channel_type, values);
+      if (Object.keys(values).length) {
+        await saveChannelConfig(plugin.channel_type, values);
+        saved = true;
+      }
 
       if (caps.supports_webhook_setup) {
         const r = await setupChannel(plugin.channel_type);
         setNotice(r?.detail || (r?.active ? 'Connected.' : 'Setup ran.'));
       } else {
         const r = await reloadChannel(plugin.channel_type);
-        // An adapter can need more than the fields marked required (Slack also
-        // wants an app-level token or a signing secret), so a channel that
-        // stays down here is a real outcome, not something validation missed.
+        // A channel can stay down with every required field set, so this is a
+        // real outcome and not something the validation above missed.
         if (r?.active) {
           setNotice(saved
             ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
@@ -197,11 +197,13 @@ function ChannelCard({ plugin, status, onChanged }) {
         }
       }
       setDraft({});
-      await loadConfig();
       onChanged?.();
     } catch (err) {
-      setError(err?.message || 'Connect failed');
+      const detail = err?.message || 'Connect failed';
+      setError(saved ? `Credentials saved, but connecting failed: ${detail}` : detail);
     } finally {
+      // Whichever way the attempt went, show what is actually stored now.
+      await loadConfig();
       setBusy(false);
     }
   }
@@ -302,7 +304,7 @@ function ChannelCard({ plugin, status, onChanged }) {
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">
-        <Button variant="primary" onClick={connect} disabled={busy || !orgReady}>
+        <Button variant="primary" onClick={connect} disabled={busy || !orgReady || configPending}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
         </Button>
         {configured && caps.supports_verify ? (
