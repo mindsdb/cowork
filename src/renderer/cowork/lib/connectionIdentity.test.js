@@ -119,6 +119,22 @@ describe('connectionIdentity — subtitle', () => {
   it('is never empty', () => {
     expect(connectionIdentity({}).subtitle).toBe('unnamed');
   });
+
+  it('appends the slug when two same-engine connections share only a user label', () => {
+    // No display_name on either — a shared, freely-editable user_label alone
+    // isn't unique, unlike identity, so the slug has to carry the difference.
+    const a = connectionIdentity({ engine: 'github', name: 'github-aaa111', label: 'GitHub', user_label: 'Work' });
+    const b = connectionIdentity({ engine: 'github', name: 'github-bbb222', label: 'GitHub', user_label: 'Work' });
+    expect(a).not.toEqual(b);
+    expect(a.subtitle).toBe('Work · github-aaa111');
+    expect(b.subtitle).toBe('Work · github-bbb222');
+  });
+
+  it('does not throw when user_label or display_name is a non-string truthy value', () => {
+    expect(() => connectionIdentity({
+      engine: 'github', name: 'github-46461b', label: 'GitHub', user_label: 42, display_name: true,
+    })).not.toThrow();
+  });
 });
 
 describe('humanLabel', () => {

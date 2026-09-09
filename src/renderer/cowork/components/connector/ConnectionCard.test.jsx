@@ -30,6 +30,12 @@ describe('ConnectionCard', () => {
     expect(container.querySelector('[class*="bg-[var(--success)]"]')).toBeNull();
   });
 
+  it('does not present a blank-but-present status as healthy', () => {
+    const { container } = render(<ConnectionCard connection={{ ...connection, status: '' }} />);
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    expect(container.querySelector('[class*="bg-[var(--success)]"]')).toBeNull();
+  });
+
   it.each(['../private', '..\\private', '/github', 'https://example.com/icon', 'github?x=1', 'github#icon', '%2e%2e%2fprivate'])('does not construct a logo URL from an unsafe engine: %s', (engine) => {
     const { container } = render(<ConnectionCard connection={{ engine, label: 'Private connector', name: 'one' }} />);
     expect(container.querySelector('img')).toBeNull();

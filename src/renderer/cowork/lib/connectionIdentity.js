@@ -16,9 +16,16 @@ export function connectionIdentity(connection) {
   const identity = c.display_name || c.displayName || null;
   const title = c.label || humanLabel(c.engine || 'unknown');
   const details = [c.user_label, identity].filter((value, index, values) => (
-    value && value.toLowerCase() !== title.toLowerCase()
-    && values.findIndex((other) => other?.toLowerCase() === value.toLowerCase()) === index
+    typeof value === 'string' && value && value.toLowerCase() !== title.toLowerCase()
+    && values.findIndex((other) => typeof other === 'string' && other.toLowerCase() === value.toLowerCase()) === index
   ));
-  const subtitle = details.join(' · ') || slug;
+  // `identity` comes from the provider and is effectively unique per account;
+  // `user_label` is free text a user can reuse across connections. Only trust
+  // the join to be collision-free when identity backs it — otherwise append
+  // the slug (the one field guaranteed unique per connection) so two
+  // same-engine connections sharing just a label never render identical cards.
+  const subtitle = identity
+    ? (details.join(' · ') || slug)
+    : (details.length ? `${details.join(' · ')} · ${slug}` : slug);
   return { title, subtitle };
 }
