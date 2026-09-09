@@ -79,7 +79,7 @@
     "node-pty": "^1.2.0-beta.15"
   },
   "overrides": {
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^4.3.2"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
