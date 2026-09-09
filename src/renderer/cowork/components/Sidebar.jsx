@@ -863,7 +863,7 @@ export default function Sidebar({
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
-                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and open it to update`}>
+                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and ${updateBanner.debInstaller ? 'run sudo apt install ./mindshub-cowork-*.deb' : 'open it to update'}`}>
                   <button
                     type="button"
                     onClick={() => onUpdateAction?.(updateBanner.action)}

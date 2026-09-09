@@ -67,6 +67,33 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
     expect(screen.getByRole('button', { name: /Download again/ })).toBeInTheDocument();
   });
 
+  it('tells a Debian user to apt install the .deb, before and after the download', () => {
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    // "open it" does nothing on a desktop with no GUI handler for .deb, so the
+    // card names the command that actually installs the package.
+    expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb from the directory you downloaded it to\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Download installer/ }));
+    expect(screen.getByText(/Installer downloading/)).toBeInTheDocument();
+    expect(screen.getByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb from the directory you downloaded it to\./)).toBeInTheDocument();
+  });
+
+  it('keeps the "open it" guidance for a .pkg installer', () => {
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/quit MindsHub Cowork and open it to finish updating/)).toBeInTheDocument();
+  });
+
   it('shows no reinstall notice when nothing is pending', () => {
     render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();

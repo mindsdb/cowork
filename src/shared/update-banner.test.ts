@@ -86,6 +86,17 @@ describe('deriveUpdateBanner', () => {
       expect(b).toMatchObject({ kind: 'shell-manual', actionLabel: 'Download', action: 'download-installer', dismissible: true });
       expect(b?.title).toContain('0.26.8.2');
     });
+
+    it('flags a .deb installer so the surfaces can name the real install step', () => {
+      const b = deriveUpdateBanner({ shellManual: { version: '0.26.8.2', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' } });
+      expect(b?.debInstaller).toBe(true);
+    });
+
+    it('leaves the flag off for a .pkg, a .exe and a missing URL', () => {
+      expect(deriveUpdateBanner({ shellManual: { version: '1', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' } })?.debInstaller).toBe(false);
+      expect(deriveUpdateBanner({ shellManual: { version: '1', downloadUrl: 'https://d/windows/mindshub-cowork-latest.exe' } })?.debInstaller).toBe(false);
+      expect(deriveUpdateBanner({ shellManual: { version: '1' } })?.debInstaller).toBe(false);
+    });
   });
 
   describe('shell-first priority (the double-banner bug)', () => {

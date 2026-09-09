@@ -221,6 +221,9 @@ export default function UpdatesSection({
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              // A .deb is not launched, it is installed, so the last step of the
+              // copy changes. The URL is the only platform signal the renderer has.
+              const debInstaller = !!shellUrl?.endsWith('.deb');
               const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
               // Auto-update (electron-updater) drives the primary card. The
               // manual installer-download card only surfaces as a fallback when
@@ -228,6 +231,14 @@ export default function UpdatesSection({
               const autoPhase = shellAutoUpdate?.phase;
               const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
+              // Same command and reasoning as the download page: apt, not dpkg,
+              // and a glob because the alias URL names the file by version.
+              const debStep = 'run sudo apt install ./mindshub-cowork-*.deb from the directory you downloaded it to.';
+              const manualHint = autoPhase === 'failed'
+                ? 'You can still download the installer manually.'
+                : shellDownloadStarted
+                  ? `Installer downloading — when it's done, quit MindsHub Cowork and ${debInstaller ? debStep : 'open the installer to finish updating.'}`
+                  : `Download the installer, then quit MindsHub Cowork and ${debInstaller ? debStep : 'open it to finish updating.'}`;
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {
@@ -343,11 +354,7 @@ export default function UpdatesSection({
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
                         <span className="text-[11.5px] text-ink-3">
-                          {autoPhase === 'failed'
-                            ? 'You can still download the installer manually.'
-                            : shellDownloadStarted
-                              ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
-                              : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
+                          {manualHint}
                         </span>
                       </div>
                       <Button

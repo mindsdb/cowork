@@ -61,7 +61,7 @@ export interface UpdateBannerInput {
   } | null;
   /** Prod-only manual installer notice, already filtered for per-version
    *  dismissal by the caller (a dismissed notice must arrive here as null). */
-  shellManual?: { version?: string } | null;
+  shellManual?: { version?: string; downloadUrl?: string } | null;
 }
 
 export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error';
@@ -83,6 +83,9 @@ export interface UpdateBanner {
   /** Only the manual installer notice can be dismissed (per-version). */
   dismissible: boolean;
   version?: string;
+  /** Manual notice only: the installer is a Debian package, so "open it" is not
+   *  the install step. Set from the URL because the renderer has no platform. */
+  debInstaller?: boolean;
 }
 
 function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): UpdateBanner {
@@ -127,6 +130,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       disabled: false,
       dismissible: true,
       version: shellManual.version,
+      debInstaller: !!shellManual.downloadUrl?.endsWith('.deb'),
     };
   }
 

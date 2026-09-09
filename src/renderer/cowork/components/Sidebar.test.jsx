@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui/Toast';
 
 // Mutable host mock so each test can flip isWeb. getAccessToken resolves the
@@ -251,6 +252,34 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
     expect(onUpdateAction).toHaveBeenCalledWith('download-installer');
     fireEvent.click(screen.getByRole('button', { name: /Dismiss update notice/ }));
     expect(onDismissUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('names apt in the manual notice hint when the installer is a .deb', async () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', downloadUrl: 'https://d/linux-amd64/mindshub-cowork-latest.deb' } })}
+        onUpdateAction={vi.fn()}
+        onDismissUpdate={vi.fn()}
+      />
+    );
+    await userEvent.hover(screen.getByRole('button', { name: /New version available/ }));
+    expect(await screen.findByText(/run sudo apt install \.\/mindshub-cowork-\*\.deb/)).toBeInTheDocument();
+  });
+
+  it('keeps the "open it" hint for a .pkg installer', async () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', downloadUrl: 'https://d/mac/mindshub-cowork-latest.pkg' } })}
+        onUpdateAction={vi.fn()}
+        onDismissUpdate={vi.fn()}
+      />
+    );
+    await userEvent.hover(screen.getByRole('button', { name: /New version available/ }));
+    expect(await screen.findByText(/open it to update/)).toBeInTheDocument();
   });
 
   it('shows exactly one banner (shell-first) when OTA and a shell update both pend', () => {
