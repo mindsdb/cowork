@@ -120,6 +120,25 @@ describe('ChannelsView — what Connect reports', () => {
     expect(within(card).getByRole('button', { name: /Connect/ })).toBeEnabled();
   });
 
+  it('shows the saved credential when the refresh cannot confirm it', async () => {
+    api.saveChannelConfig.mockResolvedValue({
+      channel_type: 'slack', configured: true, fields: { bot_token: { is_set: true, value: null } },
+    });
+    api.fetchChannelConfig
+      .mockResolvedValueOnce({ fields: {} })                // mount
+      .mockRejectedValue(new Error('server offline'));      // the refresh fails
+    api.reloadChannel.mockResolvedValue({ channel_type: 'slack', active: true });
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.type(within(card).getByLabelText(/Bot token/), 'xoxb-real');
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    await within(card).findByText(/Credentials saved — adapter active/);
+    expect(within(card).getByText('set')).toBeInTheDocument();
+  });
+
   it('re-enables Connect even when the refresh afterwards never answers', async () => {
     api.fetchChannelConfig
       .mockResolvedValueOnce({ fields: {} })        // mount

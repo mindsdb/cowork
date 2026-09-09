@@ -174,8 +174,14 @@ function ChannelCard({ plugin, status, onChanged }) {
     let saved = false;
     try {
       if (Object.keys(values).length) {
-        await saveChannelConfig(plugin.channel_type, values);
+        const stored = await saveChannelConfig(plugin.channel_type, values);
         saved = true;
+        // The PUT answers with the same shape the config GET does, so the card
+        // is current even if the refresh below cannot confirm it.
+        if (stored?.fields) {
+          setConfig(stored);
+          setConfigUnreadable(false);
+        }
       }
 
       if (caps.supports_webhook_setup) {
