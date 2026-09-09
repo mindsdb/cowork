@@ -285,7 +285,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               optional
               help={
                 folderPath
-                  ? 'The agent works on the files already in this folder. Deleting the project later leaves the folder untouched.'
+                  ? 'The agent works on the files already in this folder. Cowork adds skills/ and .anton/ folders inside it, and deleting the project leaves your files in place.'
                   : 'By default Cowork creates a new folder for the project.'
               }
             >
