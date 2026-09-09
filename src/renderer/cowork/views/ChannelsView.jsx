@@ -215,6 +215,9 @@ function ChannelCard({ plugin, status, onChanged }) {
       }
       await deleteChannelConfig(plugin.channel_type);
       setDraft({});
+      // The delete landed, so nothing is stored — say so even if the refresh
+      // below cannot confirm it.
+      setConfig({ fields: {} });
       await loadConfig();
       onChanged?.();
     } catch (err) {

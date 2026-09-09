@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Connect used to fire `reload` with an empty form and then report
@@ -183,6 +183,23 @@ describe('ChannelsView — required credential fields', () => {
 
     expect(api.reloadChannel).toHaveBeenCalledWith('slack');
     expect(within(card).queryByText('Bot token is required.')).not.toBeInTheDocument();
+  });
+
+  // A failed read keeps the last good config, which is right after a failed
+  // connect and wrong after a delete that succeeded.
+  it('stops showing a deleted credential as set when the refresh fails', async () => {
+    api.fetchChannelStatus.mockResolvedValue(statusFor('slack', { configured: true }));
+    api.fetchChannelConfig
+      .mockResolvedValueOnce({ fields: { bot_token: { is_set: true, value: null } } })
+      .mockRejectedValue(new Error('server offline'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    expect(await within(card).findByText('set')).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: /Disconnect/ }));
+
+    await waitFor(() => expect(within(card).queryByText('set')).not.toBeInTheDocument());
   });
 
   it('blocks the webhook-setup path too, without calling setup', async () => {
