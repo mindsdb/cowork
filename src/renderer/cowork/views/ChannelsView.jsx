@@ -121,28 +121,57 @@ function ChannelCard({ plugin, status, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});  // validation, by field name
+  // A failed read gives `{ fields: {} }`, which is shape-identical to a
+  // channel with nothing stored — the flag is the only way to tell them apart.
+  const [configUnreadable, setConfigUnreadable] = useState(false);
+
+  const fields = config?.fields || {};
+  const configured = status?.configured;
 
   async function loadConfig() {
     try {
       setConfig(await fetchChannelConfig(plugin.channel_type));
+      setConfigUnreadable(false);
     } catch {
       setConfig({ fields: {} });
+      setConfigUnreadable(true);
     }
   }
   useEffect(() => { loadConfig(); }, [plugin.channel_type]);
 
   function setField(name, value) {
     setDraft((d) => ({ ...d, [name]: value }));
+    setFieldErrors((e) => (e[name] ? { ...e, [name]: '' } : e));
+  }
+
+  // Required fields with nothing behind them: nothing typed and nothing
+  // stored. Returns nothing while the card cannot see what is stored (read
+  // failed, or not back yet) or once the server calls the channel configured
+  // — the server is the authority, and a stale local view must never block
+  // reconnecting a channel that works.
+  function missingRequired(values) {
+    if (!config || configUnreadable || configured) return [];
+    return (plugin.credentials || []).filter(
+      (f) => f.required && !values[f.name] && !fields[f.name]?.is_set,
+    );
   }
 
   async function connect() {
-    setBusy(true); setError(''); setNotice('');
+    // Only send fields the operator actually typed — blank secret fields
+    // keep their stored value (server merge semantics).
+    const values = Object.fromEntries(
+      Object.entries(draft).filter(([, v]) => v != null && v !== ''),
+    );
+    const missing = missingRequired(values);
+    if (missing.length) {
+      setError(''); setNotice('');
+      setFieldErrors(Object.fromEntries(missing.map((f) => [f.name, `${f.label} is required.`])));
+      return;
+    }
+
+    setBusy(true); setError(''); setNotice(''); setFieldErrors({});
     try {
-      // Only send fields the operator actually typed — blank secret fields
-      // keep their stored value (server merge semantics).
-      const values = Object.fromEntries(
-        Object.entries(draft).filter(([, v]) => v != null && v !== ''),
-      );
       if (Object.keys(values).length) await saveChannelConfig(plugin.channel_type, values);
 
       if (caps.supports_webhook_setup) {
@@ -196,8 +225,6 @@ function ChannelCard({ plugin, status, onChanged }) {
     }
   }
 
-  const fields = config?.fields || {};
-  const configured = status?.configured;
   const active = status?.status === 'active';
   const webhookPath = (plugin.webhook_paths || [])[0];
   const orgReady = plugin.org_ready !== false;
@@ -224,6 +251,7 @@ function ChannelCard({ plugin, status, onChanged }) {
               key={f.name}
               label={<>{f.label}{isSet ? <Badge variant="muted" size="xs">set</Badge> : null}</>}
               required={f.required}
+              error={fieldErrors[f.name]}
             >
               <input
                 type={f.secret ? 'password' : 'text'}
