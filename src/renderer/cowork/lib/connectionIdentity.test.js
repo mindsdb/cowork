@@ -116,6 +116,26 @@ describe('connectionIdentity — subtitle', () => {
     })).toEqual({ title: 'GitHub', subtitle: 'ianu82' });
   });
 
+  it('does not repeat the title when user_label is the raw engine id, punctuation and all', () => {
+    // cowork-server defaults a fresh connection's user_label to the bare
+    // engine id (default_user_label()) whenever it has no account name to
+    // use instead — seen live connecting Google Drive: title correctly read
+    // "Google Drive", but the subtitle showed "google_drive · <email>"
+    // because a plain lowercase compare doesn't equate an underscore with
+    // the space in the humanized title.
+    expect(connectionIdentity({
+      engine: 'google_drive', name: 'google_drive-abc123', label: 'Google Drive',
+      user_label: 'google_drive', display_name: 'martyna@mindsdb.com',
+    })).toEqual({ title: 'Google Drive', subtitle: 'martyna@mindsdb.com' });
+  });
+
+  it('falls back to the slug when the raw-engine-id user_label is the only thing on the record', () => {
+    const a = connectionIdentity({ engine: 'google_drive', name: 'google_drive-aaa', label: 'Google Drive', user_label: 'google_drive' });
+    const b = connectionIdentity({ engine: 'google_drive', name: 'google_drive-bbb', label: 'Google Drive', user_label: 'google_drive' });
+    expect(a.subtitle).toBe('google_drive-aaa');
+    expect(b.subtitle).toBe('google_drive-bbb');
+  });
+
   it('is never empty', () => {
     expect(connectionIdentity({}).subtitle).toBe('unnamed');
   });
