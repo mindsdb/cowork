@@ -4,6 +4,8 @@ import { codingApi, type EngineCapability } from './api';
 import { onMindsHubCredentialChanged } from '../../platform/host';
 
 export interface CodingCatalog {
+  /** Model-loading effects depend on this, not on callback identity. */
+  revision: number;
   engines: EngineCapability[];
   enginesLoading: boolean;
   error: string;
@@ -101,9 +103,10 @@ export function useCodingCatalog(enabled = true): CodingCatalog {
     });
     inFlight.current.set(engineId, request);
     return request;
-  }, [enabled, revision]);
+  }, [enabled]);
 
   return {
+    revision,
     engines,
     enginesLoading,
     error: engineError,

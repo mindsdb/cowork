@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkItemPage } from './api';
@@ -69,6 +70,12 @@ vi.mock('./api', () => ({
 }));
 
 import { NewTaskPanel } from './NewTaskPanel';
+import { useCodingCatalog } from './useCodingCatalog';
+
+function CatalogTaskPanel({ source, ...props }: ComponentProps<typeof NewTaskPanel> & { source: string }) {
+  const catalog = useCodingCatalog(source === 'shared');
+  return <NewTaskPanel {...props} catalog={source === 'shared' ? catalog : undefined} />;
+}
 
 const models = [
   { id: 'mindshub_air', name: 'MindsHub Air' },
@@ -221,10 +228,10 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
-  it('preserves the draft, project, attachments, permissions and chosen model during credential refresh', async () => {
+  it.each(['local', 'shared'])('preserves the draft, project, attachments, permissions and chosen model during %s catalogue refresh', async (source) => {
     const user = userEvent.setup();
     const onCreate = vi.fn(async () => {});
-    const { container } = render(<NewTaskPanel
+    const { container } = render(<CatalogTaskPanel source={source}
       busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
       models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate}
     />);
@@ -255,10 +262,10 @@ describe('NewTaskPanel', () => {
     }));
   });
 
-  it('disables task submission on sign-out, then recovers on sign-in without losing the brief', async () => {
+  it.each(['local', 'shared'])('disables task submission on sign-out, then recovers the %s catalogue without losing the brief', async (source) => {
     const user = userEvent.setup();
     const onCreate = vi.fn(async () => {});
-    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+    render(<CatalogTaskPanel source={source} busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
       models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a calculator');
     await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());

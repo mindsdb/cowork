@@ -148,7 +148,7 @@ export function useNewTaskDraft({
     }
   }, [defaultEngineId, engines]);
 
-  useEffect(() => { void codingCatalog.loadModels(engineId); }, [codingCatalog.loadModels, engineId]);
+  useEffect(() => { void codingCatalog.loadModels(engineId); }, [codingCatalog.loadModels, codingCatalog.revision, engineId]);
 
   useEffect(() => {
     let active = true;

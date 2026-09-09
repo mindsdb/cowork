@@ -23,7 +23,7 @@ import { useCodingCatalog } from './useCodingCatalog';
 
 function useConsumer(enabled = true) {
   const catalog = useCodingCatalog(enabled);
-  useEffect(() => { void catalog.loadModels('codex'); }, [catalog.loadModels]);
+  useEffect(() => { void catalog.loadModels('codex'); }, [catalog.loadModels, catalog.revision]);
   return catalog;
 }
 
@@ -89,9 +89,13 @@ describe('useCodingCatalog', () => {
     const { result } = renderHook(() => useConsumer());
     await waitFor(() => expect(result.current.modelError('codex')).toBe('No credential'));
     expect(result.current.error).toBe('Sign in');
+    const loadModels = result.current.loadModels;
+    expect(result.current.revision).toBe(0);
 
     credentialChanged();
     await waitFor(() => expect(result.current.modelIds('codex')).toEqual(['gpt-5.6-sol']));
+    expect(result.current.revision).toBe(1);
+    expect(result.current.loadModels).toBe(loadModels);
     expect(result.current.engines[0].available).toBe(true);
     expect(result.current.error).toBe('');
     expect(result.current.modelError('codex')).toBe('');
