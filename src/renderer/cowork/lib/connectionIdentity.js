@@ -7,22 +7,18 @@ export function humanLabel(name) {
   return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// The card's two lines, neither ever empty. ENG-1705: the title was
-// `user_label || '—'` and nothing backfills `_user_label`, so every connection
-// predating the label field rendered a dash. `label` is the connector
-// registry's display label, already on ConnectionSummaryResponse.
-//
-// Deriving here rather than backfilling is deliberate — a written label is
-// indistinguishable from one the user chose. The slug is terminal because it is
-// the only per-connection unique field: two spec-less connections on one engine
-// would otherwise render identical cards.
+// Lead with the app; follow with the user's label and account, without
+// repeating either. Keep the slug as a last resort for records with no human
+// identity, so otherwise indistinguishable connections still have a name.
 export function connectionIdentity(connection) {
   const c = connection || {};
   const slug = c.name || c.slug || 'unnamed';
   const identity = c.display_name || c.displayName || null;
-  const title = c.user_label || c.label || humanLabel(c.engine || 'unknown');
-  // By value, not provenance: labelling a connection with its own identity
-  // string should show it once, not twice.
-  const subtitle = (identity && identity !== title) ? identity : slug;
+  const title = c.label || humanLabel(c.engine || 'unknown');
+  const details = [c.user_label, identity].filter((value, index, values) => (
+    value && value.toLowerCase() !== title.toLowerCase()
+    && values.findIndex((other) => other?.toLowerCase() === value.toLowerCase()) === index
+  ));
+  const subtitle = details.join(' · ') || slug;
   return { title, subtitle };
 }

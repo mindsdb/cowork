@@ -5,8 +5,9 @@
 // wired back to `connection.user_label || '—'`, so the helper alone does not
 // prove the user-visible bug is fixed. This file covers the wiring.
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const CONNECTIONS = [
   // Unlabelled, has a registry spec → titles from the registry's casing.
@@ -16,7 +17,7 @@ const CONNECTIONS = [
     engine: 'google_calendar', name: 'google_calendar-alecantu7-gmail-com',
     label: 'Google Calendar', user_label: null, display_name: 'alecantu7@gmail.com',
   },
-  // The user's own label wins.
+  // The user's label remains visible beside the account.
   {
     engine: 'gmail', name: 'gmail-3ce87a', label: 'Gmail',
     user_label: 'Work', display_name: 'alejandro.cantu@mindsdb.com',
@@ -24,6 +25,7 @@ const CONNECTIONS = [
   // No registry spec (the ENG-1706 records) → humanized engine + unique slug.
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6', label: null, user_label: null },
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-724e63', label: null, user_label: null },
+  { engine: 'linear', name: 'linear-internal-id', label: 'Linear', user_label: 'MindsDB', display_name: 'MindsDB' },
 ];
 
 vi.mock('../api', () => ({
@@ -40,8 +42,18 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import CustomizeView from './CustomizeView';
+import { deleteDatasource, fetchDatasources } from '../api';
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('CustomizeView connection cards — ENG-1705 wiring', () => {
+  it.each(['Connect', 'New connection'])('opens the existing connect flow from %s', async (name) => {
+    const onConnectNew = vi.fn();
+    render(<CustomizeView connectors={CONNECTIONS} onConnectNew={onConnectNew} />);
+    await userEvent.click(screen.getByRole('button', { name, exact: true }));
+    expect(onConnectNew).toHaveBeenCalledTimes(1);
+  });
+
   it('renders no em-dash title for any connection', () => {
     const { container } = render(<CustomizeView connectors={CONNECTIONS} />);
     // The regression rendered one '—' per unlabelled card. Scoped to the
@@ -64,8 +76,7 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
 
   it("preserves a user's own label", () => {
     render(<CustomizeView connectors={CONNECTIONS} />);
-    expect(screen.getByText('Work')).toBeInTheDocument();
-    expect(screen.getByText('alejandro.cantu@mindsdb.com')).toBeInTheDocument();
+    expect(screen.getByText('Work · alejandro.cantu@mindsdb.com')).toBeInTheDocument();
   });
 
   it('distinguishes two spec-less connections that share an engine', () => {
@@ -74,5 +85,66 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     // the second line is the only thing that tells these two apart.
     expect(screen.getByText('fm_ec163d25cf-2cf3a6')).toBeInTheDocument();
     expect(screen.getByText('fm_ec163d25cf-724e63')).toBeInTheDocument();
+  });
+
+  it.each([['MindsDB', 2], ['alejandro.cantu', 1], ['Google Calendar', 1], ['gmail-3ce87a', 1]])('finds a connection by visible identity or internal name: %s', async (query, count) => {
+    render(<CustomizeView connectors={CONNECTIONS} />);
+    await userEvent.type(screen.getByPlaceholderText('Search connections'), query);
+    expect(screen.getAllByRole('article')).toHaveLength(count);
+    expect(screen.getByText(`Showing ${count} of 6`)).toBeInTheDocument();
+  });
+
+  it('sorts by the app names users see, instead of internal connection IDs', async () => {
+    render(<CustomizeView connectors={CONNECTIONS} />);
+    await userEvent.click(screen.getByRole('button', {name:/Sort: Recent/i}));
+    await userEvent.click(screen.getByRole('button', {name:'Name', exact:true}));
+    const cards = screen.getAllByRole('article');
+    expect(within(cards.at(-1)).getByText('Linear')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Name', [1, 3, 2, 0]],
+    ['Engine', [0, 2, 1, 3]],
+    ['Recent', [1, 2, 0, 3]],
+  ])('preserves %s ordering after deriving each connection identity', async (sort, order) => {
+    const connections = [
+      { engine: 'github', name: 'one', label: 'Zoo', display_name: 'Work', updated_at: '2026-09-01T00:00:00Z' },
+      { engine: 'linear', name: 'two', label: 'Alpha', display_name: 'Team', updatedAt: '2026-09-03T00:00:00Z' },
+      { engine: 'github', name: 'three', label: 'Zoo', display_name: 'Personal', updated_at: '2026-09-02T00:00:00Z' },
+      { engine: 'unknown', name: 'four', label: 'Other', display_name: 'Local' },
+    ];
+    vi.mocked(fetchDatasources).mockResolvedValueOnce({ connections });
+    render(<CustomizeView connectors={connections} />);
+    await userEvent.click(screen.getByRole('button', { name: /Sort: Recent/i }));
+    await userEvent.click(screen.getByRole('button', { name: sort, exact: true }));
+    const cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(connections.length);
+    order.forEach((index, position) => {
+      const connection = connections[index];
+      expect(within(cards[position]).getByRole('button', {
+        name: `Manage ${connection.label}: ${connection.display_name}`,
+      })).toBeInTheDocument();
+    });
+  });
+
+  it('preserves the card and enables retry when disconnect fails', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('alert', vi.fn());
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
+    const onConnectionsSynced = vi.fn();
+    render(<CustomizeView connectors={CONNECTIONS} onConnectionsSynced={onConnectionsSynced} />);
+    const card = screen.getAllByRole('article')[0];
+    await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Could not disconnect: Connection is unavailable'));
+    expect(screen.getAllByRole('article')).toHaveLength(6);
+    expect(within(card).getByRole('button', {name:'Disconnect'})).toBeEnabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    vi.mocked(deleteDatasource).mockResolvedValueOnce({ok:true});
+    vi.mocked(fetchDatasources).mockResolvedValueOnce({connections:CONNECTIONS.slice(1)});
+    await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
+    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(5));
+    expect(onConnectionsSynced).toHaveBeenLastCalledWith(CONNECTIONS.slice(1));
   });
 });
