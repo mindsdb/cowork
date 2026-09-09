@@ -11,9 +11,6 @@ import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 
-const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
-
 export default function ServerOfflineHelpModal({
   open,
   onClose,
@@ -209,25 +206,21 @@ export default function ServerOfflineHelpModal({
       maxHeight="min(640px, 88vh)"
       ariaLabel={HEADER.title}
     >
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: 12,
-          padding: '16px 18px',
-          borderBottom: '1px solid var(--line)',
-        }}>
-          <span style={{
-            display: 'inline-grid', placeItems: 'center',
-            width: 36, height: 36, borderRadius: 8,
-            background: `color-mix(in srgb, ${HEADER.iconBgMix} 14%, var(--surface))`,
-            color: HEADER.iconColor, flexShrink: 0,
-            border: `1px solid color-mix(in srgb, ${HEADER.iconBgMix} 35%, transparent)`,
-          }}>
+        <div className="flex items-start gap-3 py-4 px-[18px] border-b border-t-0 border-x-0 border-solid border-line">
+          <span
+            className="inline-grid place-items-center w-9 h-9 rounded-card-row shrink-0 border border-solid"
+            style={{
+              // Icon tint tracks the live server state (success/accent/ink/danger).
+              background: `color-mix(in srgb, ${HEADER.iconBgMix} 14%, var(--surface))`,
+              color: HEADER.iconColor,
+              borderColor: `color-mix(in srgb, ${HEADER.iconBgMix} 35%, transparent)`,
+            }}
+          >
             {Ico.power(18)}
           </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontWeight: 600, fontSize: 14.5, color: 'var(--ink)',
-            }}>{HEADER.title}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-[14.5px] text-ink">{HEADER.title}</div>
+            <div className="text-sm text-ink-3 mt-[2px] leading-[1.5]">
               {HEADER.subtitle}
             </div>
           </div>
@@ -236,54 +229,32 @@ export default function ServerOfflineHelpModal({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              style={{
-                cursor: 'pointer',
-                background: 'transparent', border: 0,
-                color: 'var(--ink-3)',
-                width: 28, height: 28, borderRadius: 6,
-                display: 'inline-grid', placeItems: 'center',
-                fontSize: 18, lineHeight: 1, flexShrink: 0,
-              }}
+              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
             >×</button>
           </Tooltip>
         </div>
 
-        <div style={{
-          flex: 1, overflowY: 'auto',
-          padding: '14px 18px',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}>
+        <div className="flex-1 overflow-y-auto py-[14px] px-[18px] flex flex-col gap-[14px]">
           {/* Quick facts row — exit code only renders when the
               backend isn't running, otherwise it's irrelevant noise.
               The grid auto-fits whichever tiles are present. */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))`,
-            gap: 10,
-            fontFamily: FONT_MONO, fontSize: 11,
-          }}>
-            <div style={{
-              padding: '8px 10px', borderRadius: 7,
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-            }}>
-              <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Port</div>
-              <div style={{ color: 'var(--ink)', marginTop: 2 }}>{port ?? '—'}</div>
+          <div
+            className="grid gap-[10px] font-[family-name:var(--font-mono)] text-xs"
+            style={{ gridTemplateColumns: `repeat(${state === 'offline' ? 3 : 2}, minmax(0, 1fr))` }}
+          >
+            <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
+              <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Port</div>
+              <div className="text-ink mt-[2px]">{port ?? '—'}</div>
             </div>
             {state === 'offline' && (
-              <div style={{
-                padding: '8px 10px', borderRadius: 7,
-                background: 'var(--surface-2)', border: '1px solid var(--line)',
-              }}>
-                <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Exit code</div>
-                <div style={{ color: 'var(--ink)', marginTop: 2 }}>{exitLabel}</div>
+              <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
+                <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Exit code</div>
+                <div className="text-ink mt-[2px]">{exitLabel}</div>
               </div>
             )}
-            <div style={{
-              padding: '8px 10px', borderRadius: 7,
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-            }}>
-              <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Last attempt</div>
-              <div style={{ color: 'var(--ink)', marginTop: 2 }}>{startedAt ?? '—'}</div>
+            <div className="py-2 px-[10px] rounded-[7px] bg-surface-2 border border-solid border-line">
+              <div className="text-ink-4 uppercase tracking-[0.06em] text-2xs">Last attempt</div>
+              <div className="text-ink mt-[2px]">{startedAt ?? '—'}</div>
             </div>
           </div>
 
@@ -292,62 +263,33 @@ export default function ServerOfflineHelpModal({
               skip the error block entirely; the header subtitle
               already explains why the backend is down. */}
           {state === 'offline' && offlineKind === 'failed' && (error ? (
-            <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
+            <Alert variant="danger" className="font-[family-name:var(--font-mono)] break-words">{error}</Alert>
           ) : (
-            <div style={{
-              padding: '10px 12px', borderRadius: 8,
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-              color: 'var(--ink-3)', fontSize: 13, lineHeight: 1.5,
-            }}>
+            <div className="py-[10px] px-3 rounded-card-row bg-surface-2 border border-solid border-line text-ink-3 text-[13px] leading-[1.5]">
               No specific start error was captured. Check the log tail below — the python process may have died after a successful start.
             </div>
           ))}
 
           {/* Recent log */}
           <div>
-            <div style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-              letterSpacing: '0.1em', textTransform: 'uppercase',
-              marginBottom: 6,
-            }}>Recent log</div>
-            <pre style={{
-              margin: 0,
-              padding: '10px 12px',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
-              borderRadius: 8,
-              fontFamily: FONT_MONO, fontSize: 11.5, lineHeight: 1.55,
-              color: 'var(--ink-2)',
-              maxHeight: 280,
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              userSelect: 'text',
-            }}>{log || '(no log captured yet)'}</pre>
+            <div className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.1em] uppercase mb-[6px]">Recent log</div>
+            <pre className="m-0 py-[10px] px-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[280px] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
           </div>
 
           {/* What actually happened + what to do about it. Driven by the
               failure kind, so the panel never asks for a log in the state
               where no log can exist. */}
           {state === 'offline' && offlineKind === 'failed' && (
-            <div style={{
-              fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5,
-            }}>
-              <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div className="text-[12px] text-ink-3 leading-[1.5]">
+              <div className="text-ink-2 font-semibold mb-1">{failureCopy.headline}</div>
+              <ul className="m-0 pl-[18px] flex flex-col gap-[3px]">
                 {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
               </ul>
             </div>
           )}
         </div>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          gap: 8,
-          padding: '12px 18px',
-          borderTop: '1px solid var(--line)',
-          background: 'var(--surface)',
-        }}>
+        <div className="flex items-center justify-end gap-2 py-3 px-[18px] border-t border-b-0 border-x-0 border-solid border-line bg-surface">
           <Button
             variant="subtle"
             onClick={onClose}

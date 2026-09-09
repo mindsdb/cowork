@@ -947,17 +947,25 @@ describe('shellUpdateIsNewer (ENG-849)', () => {
 describe('shellDownloadUrl (ENG-849)', () => {
   const base = 'https://downloads.mindshub.ai/mindshub-cowork';
   it.each([
-    ['darwin', 'prod', `${base}/mac/mindshub-cowork-latest.pkg`],
-    ['win32', 'prod', `${base}/windows/mindshub-cowork-latest.exe`],
-    ['darwin', 'stable', `${base}/mac/mindshub-cowork-staging.pkg`],
-    ['win32', 'stable', `${base}/windows/mindshub-cowork-staging.exe`],
-    ['darwin', 'preview', null],
-    ['darwin', 'dev', null],
-    ['darwin', null, null],
-    ['linux', 'prod', null],
-    ['', 'prod', null],
-  ])('%s / %s', (platform, kind, expected) => {
-    expect(shellDownloadUrl(platform, kind)).toBe(expected);
+    ['darwin', 'prod', 'arm64', `${base}/mac/mindshub-cowork-latest.pkg`],
+    ['win32', 'prod', 'x64', `${base}/windows/mindshub-cowork-latest.exe`],
+    ['darwin', 'stable', 'arm64', `${base}/mac/mindshub-cowork-staging.pkg`],
+    ['win32', 'stable', 'x64', `${base}/windows/mindshub-cowork-staging.exe`],
+    ['darwin', 'preview', 'arm64', null],
+    ['darwin', 'dev', 'arm64', null],
+    ['darwin', null, 'arm64', null],
+    ['', 'prod', 'x64', null],
+    ['linux', 'prod', 'x64', `${base}/linux-amd64/mindshub-cowork-latest.deb`],
+    ['linux', 'prod', 'arm64', `${base}/linux-arm64/mindshub-cowork-latest.deb`],
+    ['linux', 'stable', 'x64', `${base}/linux-amd64/mindshub-cowork-staging.deb`],
+    ['linux', 'stable', 'arm64', `${base}/linux-arm64/mindshub-cowork-staging.deb`],
+    // 32-bit arches have no build; a 64-bit .deb would fail at dpkg install.
+    ['linux', 'prod', 'arm', null],
+    ['linux', 'prod', 'ia32', null],
+    ['linux', 'prod', '', null],
+    ['linux', 'preview', 'x64', null],
+  ])('%s / %s / %s', (platform, kind, arch, expected) => {
+    expect(shellDownloadUrl(platform, kind, arch)).toBe(expected);
   });
 });
 

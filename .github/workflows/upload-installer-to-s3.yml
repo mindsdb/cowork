@@ -297,10 +297,10 @@ jobs:
       # immutable signed payload. Publish payload/blockmap first and latest*.yml
       # last so clients can never observe metadata for bytes that do not exist.
       - name: Publish shell updater feed
-        # linux ships no electron-updater feed — a .deb install updates via
-        # apt/dpkg, not the Squirrel-style feed mac/windows use — so skip this
-        # step for linux platforms rather than hitting the "Unknown updater
-        # platform" branch below and failing the upload.
+        # linux ships no electron-updater feed, and no apt repository exists
+        # either: a prod .deb gets the in-app notice and a direct download,
+        # a stable one gets neither. Skip rather than hit the "Unknown updater
+        # platform" branch below.
         if: >-
           (inputs.build_kind == 'prod' || inputs.build_kind == 'stable')
           && (inputs.platform == 'mac' || inputs.platform == 'windows')

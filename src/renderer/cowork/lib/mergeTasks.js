@@ -30,6 +30,10 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     // a pin (e.g. the card's Switch to MindsHub Air, ENG-1304) on the next
     // fetchSessions. Carry the local value through every merge path.
     const model = l.model ?? server.model ?? null;
+    // Same story for the in-chat usage alerts (ENG-1782): client-only, the
+    // server never has them, and a fetchSessions must not drop the card that
+    // explains why a task moved onto the balance while it ran.
+    const usageNotices = Array.isArray(l.usageNotices) && l.usageNotices.length ? l.usageNotices : undefined;
     const lMessages = Array.isArray(l.messages) ? l.messages : [];
     const sMessages = Array.isArray(server.messages) ? server.messages : [];
     const isStreaming = lMessages.some((m) => m?.role === '_streaming');
@@ -41,12 +45,13 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       // before any stream events arrive, so a fetchSessions that
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
-      return { ...server, model, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
+      return { ...server, model, usageNotices, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
     }
     if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
       return {
         ...server,
         model,
+        usageNotices,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
         disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
         attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
@@ -57,6 +62,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     return {
       ...server,
       model,
+      usageNotices,
       // Local wins for the live conversation surface.
       messages: lMessages,
       status: l.status || server.status,

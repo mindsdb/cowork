@@ -49,11 +49,6 @@ import {
 } from '../../lib/authenticatedResource';
 import { downloadFilename } from '../../lib/browserDownload';
 
-const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
-const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
-
-
 // Join a project root + relative path into a forward-slash absolute
 // path so `host.openPath(...)` resolves correctly even
 // when the relative side carries embedded slashes.
@@ -88,21 +83,13 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
         onClick={() => {
           downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
         }}
-        style={{
-          textDecoration: 'none',
-          cursor: 'pointer',
-          background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)',
-          padding: '6px 12px', borderRadius: 6,
-          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}
+        className="no-underline cursor-pointer bg-transparent border border-solid border-line text-ink-2 py-[6px] px-3 rounded-[6px] font-[family-name:var(--font-body)] text-sm font-medium inline-flex items-center gap-[6px]"
       >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</button>
     );
   }
 
   return (
-    <div style={{ display: 'inline-flex', gap: 4 }}>
+    <div className="inline-flex gap-1">
       {hasProjectFile && (
         <Tooltip content="Reveal in Finder">
           <Button
@@ -132,31 +119,11 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
 // modal stays useful even when nothing can be displayed inline.
 function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl }) {
   return (
-    <div style={{
-      flex: 1, minHeight: 0,
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 14, textAlign: 'center',
-      padding: '32px 20px',
-      borderRadius: 8,
-      background: 'var(--surface-2)',
-      border: '1px solid transparent',
-    }}>
-      <div style={{
-        display: 'inline-grid', placeItems: 'center',
-        width: 56, height: 56, borderRadius: 12,
-        background: 'color-mix(in srgb, var(--ink-4) 14%, transparent)',
-        color: 'var(--ink-3)',
-      }}>{Ico.doc ? Ico.doc(26) : '📄'}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-          color: 'var(--ink)',
-        }}>{fileName}</span>
-        <span style={{
-          fontFamily: FONT_BODY, fontSize: 12.5,
-          color: 'var(--ink-3)', maxWidth: 380, lineHeight: 1.5,
-        }}>
+    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[14px] text-center py-8 px-5 rounded-card-row bg-surface-2 border border-solid border-transparent">
+      <div className="inline-grid place-items-center w-[56px] h-[56px] rounded-card bg-[color-mix(in_srgb,var(--ink-4)_14%,transparent)] text-ink-3">{Ico.doc ? Ico.doc(26) : '📄'}</div>
+      <div className="flex flex-col gap-1">
+        <span className="font-[family-name:var(--font-display)] text-[14.5px] font-semibold text-ink">{fileName}</span>
+        <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 max-w-[380px] leading-[1.5]">
           This file can't be displayed inline (binary, too large, or not text). Use the
           actions below to view it.
         </span>
@@ -465,24 +432,14 @@ export default function ContextFileModal({
       closeOnBackdrop={!busy}
       closeOnEsc={!busy}
     >
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 18px',
-        }}>
-          <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h2 className="s-h3" style={{
-              margin: 0,
-              color: 'var(--ink)',
-              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{headerTitle}</h2>
+        <div className="flex items-center justify-between py-[14px] px-[18px]">
+          <div className="min-w-0 flex-1 flex items-baseline gap-[10px]">
+            <h2 className="s-h3 m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{headerTitle}</h2>
             {headerSubtitle && (
-              <span style={{
-                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-              }}>{headerSubtitle}</span>
+              <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.06em] uppercase">{headerSubtitle}</span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="flex items-center gap-[6px]">
             {mode === 'text' && !editing && !loading && (
               <Button
                 disabled={!editable}
@@ -505,17 +462,10 @@ export default function ContextFileModal({
             <Tooltip content="Close">
               <button
                 type="button"
-                className="hover-tint hover-tint-text"
+                className="hover-tint hover-tint-text bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none"
                 onClick={() => !busy && onClose?.()}
                 aria-label="Close"
-                style={{
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--ink-3)',
-                  width: 28, height: 28, borderRadius: 6,
-                  display: 'inline-grid', placeItems: 'center',
-                  fontSize: 18, lineHeight: 1,
-                }}
+                style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
               >×</button>
             </Tooltip>
           </div>
@@ -525,13 +475,9 @@ export default function ContextFileModal({
             `flex: 1` and fill the same vertical space identically.
             The body itself doesn't scroll — content scrolls inside
             the textarea or the pre. */}
-        <div style={{
-          flex: 1, minHeight: 0,
-          padding: '16px 18px',
-          display: 'flex', flexDirection: 'column', gap: 10,
-        }}>
+        <div className="flex-1 min-h-0 py-4 px-[18px] flex flex-col gap-[10px]">
           {loading && (
-            <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>
+            <div className="text-ink-3 text-[13px]">Loading…</div>
           )}
           {error && (
             <Alert variant="danger" className="shrink-0">{error}</Alert>
@@ -548,17 +494,12 @@ export default function ContextFileModal({
           {/* HTML branch — render inside a sandboxed iframe with the
               preview-mount URL so relative assets resolve. */}
           {!loading && mode === 'html' && previewUrl && (
-            <div style={{
-              flex: 1, minHeight: 0,
-              borderRadius: 8, overflow: 'hidden',
-              border: '1px solid var(--line)',
-              background: 'var(--surface-2)',
-            }}>
+            <div className="flex-1 min-h-0 rounded-card-row overflow-hidden border border-solid border-line bg-surface-2">
               <iframe
                 title={headerTitle || 'Preview'}
                 src={previewUrl}
                 sandbox="allow-scripts allow-popups allow-forms allow-modals"
-                style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+                className="w-full h-full border-0 bg-white"
               />
             </div>
           )}
@@ -566,18 +507,11 @@ export default function ContextFileModal({
               area the html/binary modes use. On load failure, fall back
               to the binary panel so the user keeps a Reveal/Open escape. */}
           {!loading && mode === 'image' && previewUrl && (
-            <div style={{
-              flex: 1, minHeight: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              borderRadius: 8, overflow: 'hidden',
-              border: '1px solid var(--line)',
-              background: 'var(--surface-2)',
-              padding: 12,
-            }}>
+            <div className="flex-1 min-h-0 flex items-center justify-center rounded-card-row overflow-hidden border border-solid border-line bg-surface-2 p-3">
               <img
                 src={previewUrl}
                 alt={headerTitle}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                className="max-w-full max-h-full object-contain"
                 onError={() => { setMode('binary'); setBinaryDetail('Could not load image.'); }}
               />
             </div>
@@ -601,65 +535,29 @@ export default function ContextFileModal({
               placeholder={editorPlaceholder}
               spellCheck={false}
               disabled={busy}
-              style={{
-                flex: 1, minHeight: 0,
-                width: '100%',
-                padding: '12px 14px', borderRadius: 8,
-                background: 'var(--surface-2)',
-                // Transparent border — content panel blends into the
-                // modal body instead of nesting a hard rectangle. The
-                // border is kept (rather than removed) so the panel
-                // keeps its layout footprint identical to the
-                // markdown viewer below; both must size identically
-                // for the view↔edit swap to feel seamless.
-                border: '1px solid transparent',
-                color: 'var(--ink)',
-                fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
-                outline: 'none',
-                resize: 'none',
-                boxSizing: 'border-box',
-              }}
+              // Transparent border — content panel blends into the modal body
+              // instead of nesting a hard rectangle. The border is kept (rather
+              // than removed) so the panel keeps its layout footprint identical
+              // to the markdown viewer below; both must size identically for the
+              // view↔edit swap to feel seamless.
+              className="flex-1 min-h-0 w-full py-3 px-[14px] rounded-card-row bg-surface-2 border border-solid border-transparent text-ink font-[family-name:var(--font-mono)] text-[13px] leading-[1.55] [outline:none] resize-none box-border"
             />
           ) : isMarkdown ? (
             // Beautiful markdown render for `.md` files (anton.md,
             // memory entries, anything else markdown-shaped). The
             // outer container handles the panel chrome + scroll; the
             // MarkdownContent component just lays out the body.
-            <div style={{
-              flex: 1, minHeight: 0,
-              padding: '14px 18px',
-              background: 'var(--surface-2)',
-              border: '1px solid transparent',
-              borderRadius: 8,
-              overflowY: 'auto',
-            }}>
+            <div className="flex-1 min-h-0 py-[14px] px-[18px] bg-surface-2 border border-solid border-transparent rounded-card-row overflow-y-auto">
               {content
                 ? <MarkdownContent text={content} id={`ctx-${referencePath || 'doc'}`} complete dense={dense} />
-                : <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>{emptyText}</span>}
+                : <span className="text-ink-3 text-[13px]">{emptyText}</span>}
             </div>
           ) : (
-            <pre style={{
-              flex: 1, minHeight: 0,
-              margin: 0,
-              padding: '14px 16px',
-              background: 'var(--surface-2)',
-              border: '1px solid transparent',
-              borderRadius: 8,
-              fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
-              color: 'var(--ink-2)',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              overflowY: 'auto',
-            }}>{content || emptyText}</pre>
+            <pre className="flex-1 min-h-0 m-0 py-[14px] px-4 bg-surface-2 border border-solid border-transparent rounded-card-row font-[family-name:var(--font-mono)] text-[13px] leading-[1.55] text-ink-2 whitespace-pre-wrap break-words overflow-y-auto">{content || emptyText}</pre>
           ))}
         </div>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 8,
-          padding: '12px 18px',
-          background: 'var(--surface)',
-        }}>
+        <div className="flex items-center justify-between gap-2 py-3 px-[18px] bg-surface">
           <div>
             {deleteApplicable && !editing && !loading && (
               <Button
@@ -670,7 +568,7 @@ export default function ContextFileModal({
               >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flex gap-2">
             {editing && (
               <Button
                 variant="subtle"

@@ -87,13 +87,7 @@ export function ConfirmModal({
           {busy && (
             <span
               aria-hidden="true"
-              style={{
-                width: 13, height: 13, borderRadius: '50%',
-                border: '2px solid rgba(255,255,255,0.4)',
-                borderTopColor: '#fff',
-                display: 'inline-block',
-                animation: 'spin 0.7s linear infinite',
-              }}
+              className="w-[13px] h-[13px] rounded-full border-2 border-solid border-[rgba(255,255,255,0.4)] border-t-white inline-block [animation:spin_0.7s_linear_infinite]"
             />
           )}
           {busy ? (busyLabel || confirmLabel) : confirmLabel}

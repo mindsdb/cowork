@@ -22,6 +22,7 @@ import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
 import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
+import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
@@ -2313,6 +2314,15 @@ export default function SettingsView({
     />
   );
 
+  // Usage (ENG-1782): free monthly tokens, balance, auto top up. Reads the
+  // usage App polls (HubUsageContext); every action deep-links to the console.
+  const renderUsageSection = () => (
+    <UsageSection
+      isSsoConnected={isSsoConnected}
+      onOpenAccount={onSectionChange ? () => onSectionChange('account') : undefined}
+    />
+  );
+
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
@@ -2329,6 +2339,7 @@ export default function SettingsView({
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
+      usage: renderUsageSection,
       account: renderAccountSection,
     };
     const activeItem = visibleNav.find((i) => i.id === section) || null;
@@ -2417,6 +2428,7 @@ export default function SettingsView({
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'usage' && renderUsageSection()}
       {effectiveSection === 'account' && renderAccountSection()}
     </div>
   );

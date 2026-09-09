@@ -15,8 +15,6 @@ import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
-
 function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;
   // Length-checked, not just shape-checked: since ENG-2246 a task can carry an
@@ -69,7 +67,7 @@ export function TaskCard({
 
   return (
     <div
-      style={{ position: 'relative' }}
+      className="relative"
       {...hoverProps}
     >
       <Card
@@ -77,17 +75,10 @@ export function TaskCard({
         interactive
         padding="cozy"
         onActivate={onClick}
-        style={{
-          width: '100%',
-          display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto',
-          gap: 14, alignItems: 'flex-start',
-        }}
+        className="w-full grid grid-cols-[minmax(0,1fr)_auto] gap-[14px] items-start"
       >
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            minWidth: 0,
-          }}>
+        <div className="min-w-0 flex flex-col gap-1">
+          <span className="flex items-center gap-2 min-w-0">
             {isActive && (
               // Subtle accent dot — same `pulse-dot` keyframe used
               // elsewhere in the app. Soft accent glow so it reads
@@ -95,22 +86,11 @@ export function TaskCard({
               // with the title text.
               <span
                 aria-hidden
-                className="pulse-dot"
+                className="pulse-dot w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_55%,transparent)] shrink-0"
                 title="Running"
-                style={{
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: 'var(--accent)',
-                  boxShadow: '0 0 8px color-mix(in srgb, var(--accent) 55%, transparent)',
-                  flexShrink: 0,
-                }}
               />
             )}
-            <span style={{
-              fontFamily: FONT_BODY, fontWeight: 600,
-              fontSize: 14, color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}>
+            <span className="font-body font-semibold text-base text-ink overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
               {task.title || 'Untitled'}
             </span>
             {task._scheduleGroup && (
@@ -123,12 +103,7 @@ export function TaskCard({
             )}
           </span>
           {subtitle && (
-            <span style={{
-              fontFamily: FONT_BODY,
-              fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.4,
-              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}>
+            <span className="font-body text-sm text-ink-3 leading-[1.4] line-clamp-2">
               {subtitle}
             </span>
           )}
@@ -136,25 +111,19 @@ export function TaskCard({
 
         {/* Right meta column. Fixed-width slot so the row width never
             shifts when the kebab fades in over the timestamp/turns. */}
-        <div style={{
-          position: 'relative',
-          minWidth: 80, height: 32,
-          display: 'flex', alignItems: 'flex-start',
-          justifyContent: 'flex-end',
-          flexShrink: 0,
-        }}>
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
-            gap: 4,
-            opacity: showKebab ? 0 : 1,
-            transition: 'opacity 120ms ease',
-            pointerEvents: showKebab ? 'none' : 'auto',
-          }}>
-            <span style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)' }}>
+        <div className="relative min-w-[80px] h-8 flex items-start justify-end shrink-0">
+          <div
+            className="flex flex-col items-end gap-1 [transition:opacity_120ms_ease]"
+            style={{
+              opacity: showKebab ? 0 : 1,
+              pointerEvents: showKebab ? 'none' : 'auto',
+            }}
+          >
+            <span className="font-body text-[11.5px] text-ink-4">
               {updated || '—'}
             </span>
             {turns != null && (
-              <span style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)' }}>
+              <span className="font-body text-[11.5px] text-ink-4">
                 {turns} {turns === 1 ? 'turn' : 'turns'}
               </span>
             )}
@@ -165,18 +134,11 @@ export function TaskCard({
               role="button"
               aria-label="Task menu"
               onClick={openMenu}
+              className="absolute top-0 right-0 w-[26px] h-[26px] rounded-[6px] inline-flex items-center justify-center text-ink-3 hover:text-ink bg-transparent hover:bg-surface-2 cursor-pointer [transition:opacity_120ms_ease,background_120ms_ease,color_120ms_ease]"
               style={{
-                position: 'absolute', top: 0, right: 0,
-                width: 26, height: 26, borderRadius: 6,
-                display: 'inline-flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: 'var(--ink-3)', cursor: 'pointer',
                 opacity: showKebab ? 1 : 0,
                 pointerEvents: showKebab ? 'auto' : 'none',
-                transition: 'opacity 120ms ease, background 120ms ease, color 120ms ease',
               }}
-              onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
             >
               {Ico.moreVert(14)}
             </span>
