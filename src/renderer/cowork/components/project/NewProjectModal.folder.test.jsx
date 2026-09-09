@@ -35,15 +35,26 @@ import NewProjectModal from './NewProjectModal';
 const CHOOSE = 'Use an existing folder';
 
 function open() {
-  render(<NewProjectModal open onClose={vi.fn()} onCreated={vi.fn()} />);
+  const onClose = vi.fn();
+  const onCreated = vi.fn();
+  render(<NewProjectModal open onClose={onClose} onCreated={onCreated} />);
   fireEvent.change(screen.getByPlaceholderText('acme-engineering'), {
     target: { value: 'billing' },
   });
+  return { onClose, onCreated };
 }
 
 describe('NewProjectModal folder selection', () => {
   beforeEach(() => {
     api.createProject.mockClear();
+    // The adopted-folder response a current server sends. An older one has no
+    // such capability, which is its own test below.
+    api.createProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'billing',
+      capabilities: { directoryIsExternal: true },
+    });
+    api.writeProjectFile.mockClear();
     platform.pickCodeFolder.mockClear();
     platform.pickCodeFolder.mockResolvedValue({
       ok: true,
@@ -112,6 +123,46 @@ describe('NewProjectModal folder selection', () => {
 
     await waitFor(() => screen.getByText('ipc channel closed'));
     expect(api.createProject).not.toHaveBeenCalled();
+  });
+
+  it('completes when the server confirms it adopted the folder', async () => {
+    const { onClose, onCreated } = open();
+    fireEvent.click(screen.getByRole('button', { name: CHOOSE }));
+    await waitFor(() => screen.getByText('/Users/me/Documents/notes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('refuses to report success when the server ignored the folder', async () => {
+    // A server that predates the `path` field drops it and creates a managed
+    // project, answering 200. Without the capability in the response there is
+    // nothing to distinguish that from an adopted folder.
+    api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
+    const { onClose, onCreated } = open();
+    fireEvent.change(screen.getByPlaceholderText(/Tell the agent how to work/), {
+      target: { value: 'Keep billing changes backwards compatible.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: CHOOSE }));
+    await waitFor(() => screen.getByText('/Users/me/Documents/notes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => screen.getByText(/does not support pointing a project at a folder/));
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // Stopped before the instructions write, so nothing was put in a
+    // directory the user did not choose.
+    expect(api.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it('does not check the capability when no folder was chosen', async () => {
+    api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
+    const { onClose, onCreated } = open();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('is not offered in the browser, where a path would be meaningless', () => {

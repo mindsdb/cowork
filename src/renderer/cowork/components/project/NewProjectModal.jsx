@@ -134,6 +134,19 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         : await createProject(trimmed);
       const finalName = result?.name || trimmed;
 
+      // A server without this capability drops the unknown `path` and
+      // allocates its own directory, so a 200 is not proof the folder was
+      // adopted. Reported, not rolled back: the project exists, and no step
+      // here undoes an earlier one.
+      if (folderPath && result?.capabilities?.directoryIsExternal !== true) {
+        setError(
+          'This server does not support pointing a project at a folder. It created '
+          + `"${finalName}" as a normal project instead, so your folder is not in use. `
+          + 'Update Cowork, or delete that project and clear the folder.'
+        );
+        return;
+      }
+
       // 2) Write instructions if the user typed any. Use the final
       //    (post-sanitisation) project name.
       const trimmedInstr = (instructions || '').trim();
