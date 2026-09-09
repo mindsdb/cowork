@@ -128,7 +128,7 @@ function ChannelCard({ plugin, status, onChanged }) {
   const fields = config?.fields || {};
   const configured = status?.configured;
   // The config read has three outcomes, not two: still out, failed, or landed.
-  // A failure gives `{ fields: {} }`, the same shape as nothing stored.
+  // A failure keeps the last good answer, so only the flag marks it stale.
   const configPending = !config && !configUnreadable;
 
   async function loadConfig() {
@@ -136,7 +136,6 @@ function ChannelCard({ plugin, status, onChanged }) {
       setConfig(await fetchChannelConfig(plugin.channel_type));
       setConfigUnreadable(false);
     } catch {
-      setConfig({ fields: {} });
       setConfigUnreadable(true);
     }
   }
@@ -160,7 +159,7 @@ function ChannelCard({ plugin, status, onChanged }) {
     // Only send fields the operator actually typed — blank secret fields
     // keep their stored value (server merge semantics).
     const values = Object.fromEntries(
-      Object.entries(draft).filter(([, v]) => v != null && String(v).trim() !== ''),
+      Object.entries(draft).filter(([, v]) => v != null && v.trim() !== ''),
     );
     const missing = missingRequired(values);
     if (missing.length) {
@@ -202,9 +201,9 @@ function ChannelCard({ plugin, status, onChanged }) {
       const detail = err?.message || 'Connect failed';
       setError(saved ? `Credentials saved, but connecting failed: ${detail}` : detail);
     } finally {
-      // Whichever way the attempt went, show what is actually stored now.
-      await loadConfig();
       setBusy(false);
+      // Whichever way the attempt went, show what is actually stored now.
+      loadConfig();
     }
   }
 

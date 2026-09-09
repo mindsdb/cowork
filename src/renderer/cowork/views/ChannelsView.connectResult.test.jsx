@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // What Connect reports has to match what it did. Blank inputs on a channel
@@ -114,6 +114,43 @@ describe('ChannelsView — what Connect reports', () => {
     expect(api.saveChannelConfig).toHaveBeenCalledWith('slack', { bot_token: 'xoxb-real' });
     const msg = await within(card).findByText(/Credentials saved, but connecting failed: server offline/);
     expect(msg).toHaveClass('channels-error');
+    // The card has to catch up with what is stored, or it keeps showing the
+    // field as unset while the credential is saved.
+    await waitFor(() => expect(api.fetchChannelConfig).toHaveBeenCalledTimes(2));
+    expect(within(card).getByRole('button', { name: /Connect/ })).toBeEnabled();
+  });
+
+  it('re-enables Connect even when the refresh afterwards never answers', async () => {
+    api.fetchChannelConfig
+      .mockResolvedValueOnce({ fields: {} })        // mount
+      .mockReturnValue(new Promise(() => {}));      // the refresh hangs
+    api.reloadChannel.mockRejectedValue(new Error('server offline'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    await user.type(within(card).getByLabelText(/Bot token/), 'xoxb-real');
+    await user.click(within(card).getByRole('button', { name: /Connect/ }));
+
+    await within(card).findByText(/Credentials saved, but connecting failed/);
+    expect(within(card).getByRole('button', { name: /Connect/ })).toBeEnabled();
+  });
+
+  it('keeps showing what is stored when the refresh also fails', async () => {
+    alreadyConfigured();
+    api.fetchChannelConfig
+      .mockResolvedValueOnce({ fields: { bot_token: { is_set: true, value: null } } })
+      .mockRejectedValue(new Error('server offline'));
+    api.reloadChannel.mockRejectedValue(new Error('server offline'));
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const card = await slackCard();
+    expect(await within(card).findByText('set')).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: /Save & reconnect/ }));
+
+    await within(card).findByText('server offline');
+    expect(within(card).getByText('set')).toBeInTheDocument();
   });
 
   it('does not claim a save when the save itself failed', async () => {
