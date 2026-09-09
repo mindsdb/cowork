@@ -711,6 +711,52 @@ browser unlocks the rows on the next open rather than after a restart. A failed
 refresh keeps the map already held, and a model the map does not mention counts
 as available, so a degraded response can never empty a picker.
 
+### The app says how much is left before a task stops
+
+The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
+and again whenever the window regains focus, so a top-up made in a browser shows
+up without a relaunch. `useHubUsage` holds the answer. One read carries the free
+monthly token grant, the paid balance, auto top up state and credit spend for the
+period. `reachable: false` is the resting state, so every surface renders exactly
+as it did before this existed until the sidecar says otherwise. A sidecar too old
+to serve the route answers 404, which reads as unreachable and paints nothing.
+
+`deriveComposerWarning` in `lib/usageWarnings.js` turns that read into at most one
+notice, and it is the only thing that decides which. The notice sits above the
+composer rather than in the conversation, so it is in view when the next task
+starts and never becomes part of the task history. `usageTransitions` handles the
+other half: when the free tokens run out or auto top up fails while a task is
+streaming, `ChatView` drops a card into the timeline instead, because that turn is
+still running and the person has not come back to the composer yet.
+
+Which resource the warning names depends on what the next turn will spend. An
+explicit MindsHub Air pick runs on the free tokens, an explicit paid model only
+ever bills the balance, and the router can land on either, so both matter for it.
+The two resources are always named apart. "Out of tokens" on its own is never one
+of the outputs.
+
+Closing a notice hides it per dismissal key, not forever. Most warnings key on
+their kind. A running-low balance is the case that gets wrong, because "low" is a
+band the balance sits in the whole way down, so one close would hide the only
+offer to top up until the balance emptied. Those warnings carry a stepped key
+from `balanceDismissStep`, so a close holds for the step it was made in and the
+next step down asks again. Every dismissal is forgotten once usage is healthy.
+
+Money moves in the console, never here. Each action opens a console URL through
+`usageActionUrl`. A billing owner lands on the form itself: add credits for "Add
+funds", the automatic tab for "Set up auto top up". Anyone else gets the billing
+page, because every wallet control the console offers is owner-only and a member
+following a deep link would reach a dialog they cannot submit.
+
+Settings carries the same figures at rest under Usage, on desktop only: the free
+grant with its reset date, the balance, the spend for the period and auto top up
+state.
+
+To see the notices without an account near its limits, run `npm run dev:renderer`
+and open `/usage-bar-fixture.html`. It renders every state from the real
+`deriveComposerWarning`, so the copy on the page is the copy a user sees. Add
+`?theme=dark` for the dark pass.
+
 ---
 
 ## Over-the-Air Updates

@@ -3,12 +3,13 @@ import {
   deriveComposerWarning,
   usageTransitions,
   usageActionUrl,
+  balanceDismissStep,
   formatTokensShort,
   formatUsd,
   formatResetDate,
   USAGE_ACTIONS,
 } from './usageWarnings';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
 const RESET = '2099-09-11T12:00:00Z';
 
@@ -263,5 +264,55 @@ describe('usageActionUrl', () => {
     expect(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner: true })).toBe(MINDS_ADD_FUNDS_URL);
     expect(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner: false })).toBe(MINDS_BILLING_URL);
     expect(usageActionUrl(USAGE_ACTIONS.viewUsage, { isBillingOwner: true })).toBe(MINDS_BILLING_URL);
+  });
+
+  it('opens the auto top up form itself, so the offer is one click rather than a hunt', () => {
+    expect(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner: true })).toBe(MINDS_AUTO_TOP_UP_URL);
+    expect(usageActionUrl(USAGE_ACTIONS.manageAutoTopUp, { isBillingOwner: true })).toBe(MINDS_AUTO_TOP_UP_URL);
+  });
+
+  it('a member gets the billing page for every action: the wallet controls are owner-only', () => {
+    expect(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner: false })).toBe(MINDS_BILLING_URL);
+    expect(usageActionUrl(USAGE_ACTIONS.manageAutoTopUp, { isBillingOwner: false })).toBe(MINDS_BILLING_URL);
+    expect(usageActionUrl(USAGE_ACTIONS.updatePaymentMethod, { isBillingOwner: false })).toBe(MINDS_BILLING_URL);
+  });
+});
+
+describe('balanceDismissStep', () => {
+  it('steps down as the balance drains, so a closed bar can ask again', () => {
+    expect(balanceDismissStep(18)).toBe(0);
+    expect(balanceDismissStep(10)).toBe(0);
+    expect(balanceDismissStep(9.99)).toBe(1);
+    expect(balanceDismissStep(5)).toBe(1);
+    expect(balanceDismissStep(4.99)).toBe(2);
+    expect(balanceDismissStep(2.5)).toBe(2);
+    expect(balanceDismissStep(2.49)).toBe(3);
+    expect(balanceDismissStep(1)).toBe(3);
+    expect(balanceDismissStep(0.99)).toBe(4);
+    expect(balanceDismissStep(0)).toBe(4);
+  });
+
+  it('reads a missing or unparseable balance as empty rather than as healthy', () => {
+    expect(balanceDismissStep(null)).toBe(4);
+    expect(balanceDismissStep(undefined)).toBe(4);
+  });
+
+  it('every balance_low warning carries the step, and the step moves with the balance', () => {
+    const at = (usd) => deriveComposerWarning(usage({
+      balance: { usd, canConsume: true, hasToppedUp: true, alert: 'low' },
+    }), { model: 'claude-sonnet-4' });
+    expect(at(18).dismissKey).toBe('balance_low:0');
+    expect(at(8.42).dismissKey).toBe('balance_low:1');
+    expect(at(0.4).dismissKey).toBe('balance_low:4');
+  });
+
+  it('carries the step on the auto-top-up variants too, so none of them can stick', () => {
+    const withAuto = (over) => deriveComposerWarning(usage({
+      balance: { usd: 3.2, canConsume: true, hasToppedUp: true, alert: 'low' },
+      autoTopUp: { enabled: true, thresholdUsd: 10, rechargeToUsd: 50, ...over },
+    }), { model: 'claude-sonnet-4' });
+    expect(withAuto({ status: 'ok' }).dismissKey).toBe('balance_low:2');
+    expect(withAuto({ status: 'pending_action' }).dismissKey).toBe('balance_low:2');
+    expect(withAuto({ status: 'cap_reached' }).dismissKey).toBe('balance_low:2');
   });
 });

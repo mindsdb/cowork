@@ -10,7 +10,7 @@ vi.mock('../lib/analytics', () => analyticsMock);
 import UsageBar from './UsageBar';
 import { USAGE_ACTIONS } from '../lib/usageWarnings';
 import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
 const freeLow = {
   kind: 'free_low', tone: 'warning', title: '620K free tokens left',
@@ -62,6 +62,30 @@ describe('UsageBar', () => {
     // A different state: shows again.
     rerender(<UsageBar warning={balanceLow} />);
     expect(screen.getByText('Balance running low.')).toBeInTheDocument();
+  });
+
+  it('a closed low-balance bar comes back at the next step down, before the balance empties', async () => {
+    const user = userEvent.setup();
+    const atStep = (step, usd) => ({ ...balanceLow, dismissKey: `balance_low:${step}`, body: `You have $${usd} left.` });
+    const { rerender } = render(<UsageBar warning={atStep(0, '18.00')} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('Balance running low.')).toBeNull();
+
+    // Still draining inside the same step: the person is not asked twice.
+    rerender(<UsageBar warning={atStep(0, '12.00')} usageKnown />);
+    expect(screen.queryByText('Balance running low.')).toBeNull();
+
+    // A step lower, and still above zero: the offer to top up is back.
+    rerender(<UsageBar warning={atStep(1, '8.42')} usageKnown />);
+    expect(screen.getByText('Balance running low.')).toBeInTheDocument();
+  });
+
+  it('offers auto top up as a one-click choice for the owner', async () => {
+    const user = userEvent.setup();
+    const warning = { ...balanceLow, actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp] };
+    render(<UsageBar warning={warning} isBillingOwner />);
+    await user.click(screen.getByRole('button', { name: 'Set up auto top up' }));
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_AUTO_TOP_UP_URL);
   });
 
   it('forgets dismissals once usage is known to be healthy', async () => {

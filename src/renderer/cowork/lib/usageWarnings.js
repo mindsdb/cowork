@@ -9,7 +9,7 @@
 // the PAID balance. "Out of tokens" on its own is never one of the outputs.
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
 // Free tokens read as "running low" once this fraction or less remains. The
 // console alerts at 80% used; this is the same line from the other side.
@@ -23,12 +23,27 @@ export const USAGE_ACTIONS = Object.freeze({
   updatePaymentMethod: { key: 'updatePaymentMethod', label: 'Update payment method' },
 });
 
-/** Where an action opens in the console. Only the owner can add funds, and only
- *  the owner's console lands in the add-credits dialog; anyone else goes to the
- *  billing page itself. */
+/** Where an action opens in the console. Every wallet control the console
+ *  offers is owner-only, so only an owner is deep-linked into a dialog; anyone
+ *  else goes to the billing page itself and sees what they are allowed to. */
 export function usageActionUrl(action, { isBillingOwner = false } = {}) {
-  if (action?.key === 'addFunds' && isBillingOwner) return MINDS_ADD_FUNDS_URL;
+  if (!isBillingOwner) return MINDS_BILLING_URL;
+  if (action?.key === 'addFunds') return MINDS_ADD_FUNDS_URL;
+  if (action?.key === 'setUpAutoTopUp' || action?.key === 'manageAutoTopUp') return MINDS_AUTO_TOP_UP_URL;
   return MINDS_BILLING_URL;
+}
+
+/* Dollar marks inside the "low" band. A dismissal is keyed to the step the
+   balance was in when the bar was closed, so closing it at $18 lets it ask
+   again at $9 rather than staying closed until the balance empties. The steps
+   tighten as zero approaches, which is when a top-up is worth interrupting
+   for; four crossings is the most anyone sees before the balance is empty. */
+const BALANCE_DISMISS_STEPS_USD = [10, 5, 2.5, 1];
+
+/** Which step of the low band a balance sits in: $18 is 0, $9 is 1, $0.50 is 4. */
+export function balanceDismissStep(usd) {
+  const n = Number(usd) || 0;
+  return BALANCE_DISMISS_STEPS_USD.filter((step) => n < step).length;
 }
 
 /** 620000 → "620K", 1200000 → "1.2M", 5000000 → "5M", 900 → "900". */
@@ -147,17 +162,20 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
 
   if (balanceLow && paidInUse) {
     const title = 'Balance running low';
+    // Closing the bar hides this step only; the next step down asks again.
+    const dismissKey = `balance_low:${balanceDismissStep(balance.usd)}`;
     if (auto?.enabled && auto.status === 'ok') {
       const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
       const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
       const detail = target && floor
         ? `Auto top up refills it to ${target} when it drops below ${floor}.`
         : 'Auto top up will cover it.';
-      return { kind: 'balance_low', tone: 'warning', title, body: `${usd} left. ${detail}`, actions: [] };
+      return { kind: 'balance_low', dismissKey, tone: 'warning', title, body: `${usd} left. ${detail}`, actions: [] };
     }
     if (auto?.enabled && auto.status === 'pending_action') {
       return {
         kind: 'balance_low',
+        dismissKey,
         tone: 'warning',
         title,
         body: `${usd} left. Auto top up is waiting on your bank.`,
@@ -167,6 +185,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     if (auto?.enabled && auto.status === 'cap_reached') {
       return {
         kind: 'balance_low',
+        dismissKey,
         tone: 'warning',
         title,
         body: `${usd} left and auto top up hit its monthly cap. Add funds to keep going.`,
@@ -175,6 +194,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     }
     return {
       kind: 'balance_low',
+      dismissKey,
       tone: 'warning',
       title,
       body: `${usd} left. Add funds or turn on auto top up.`,
