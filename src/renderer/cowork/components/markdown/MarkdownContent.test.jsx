@@ -291,7 +291,26 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     }
   });
 
-  it('keeps a reference-style loopback link clickable on desktop', () => {
+  it('resolves reference variants the agent actually writes: mixed case, shortcut, shared definition', () => {
+    hostState.isWeb = true;
+    try {
+      // mdast normalises identifiers, so [Download][T] matches [t]: …;
+      // shortcut references ([t] alone) and several references sharing one
+      // definition are all real agent-emitted shapes (adversarial probe set).
+      const text = [
+        '[Download][T], go to [t] now, and [a copy][t].',
+        '',
+        '[t]: /mnt/cowork-shared/x/f.zip',
+      ].join('\n');
+      const { container } = render(<MarkdownContent text={text} complete />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(3);
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+    it('keeps a reference-style loopback link clickable on desktop', () => {
     const text = '[open the app][a]\n\n[a]: http://localhost:3000/';
     const { container } = render(<MarkdownContent text={text} complete />);
     expect(container.querySelector('a')).not.toBeNull();
