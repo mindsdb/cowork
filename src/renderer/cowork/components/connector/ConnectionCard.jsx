@@ -4,15 +4,11 @@ import { Button } from '../ui';
 import { cn } from '../../lib/cn';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
 
-// Resolve only bundled assets. Unknown connectors never trigger a remote
-// favicon request or a guessed asset URL; they receive a neutral initial.
-const LOGOS = import.meta.glob('../../../public/logos/*.svg', {
-  eager: true, query: '?url&no-inline', import: 'default',
-});
-
 function ConnectionLogo({ engine, label }) {
   const [failed, setFailed] = useState(null);
-  const src = LOGOS[`../../../public/logos/${engine}.svg`];
+  // Reuse public assets without emitting a second, hashed copy. Only safe
+  // connector IDs can form a local path; missing logos fall back to an initial.
+  const src = /^[a-z0-9_]+$/.test(engine) ? `logos/${engine}.svg` : null;
   return (
     <span aria-hidden="true" className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-sm font-semibold text-ink-2">
       {src && failed !== src

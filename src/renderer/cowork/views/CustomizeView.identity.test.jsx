@@ -102,6 +102,31 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     expect(within(cards.at(-1)).getByText('Linear')).toBeInTheDocument();
   });
 
+  it.each([
+    ['Name', [1, 3, 2, 0]],
+    ['Engine', [0, 2, 1, 3]],
+    ['Recent', [1, 2, 0, 3]],
+  ])('preserves %s ordering after deriving each connection identity', async (sort, order) => {
+    const connections = [
+      { engine: 'github', name: 'one', label: 'Zoo', display_name: 'Work', updated_at: '2026-09-01T00:00:00Z' },
+      { engine: 'linear', name: 'two', label: 'Alpha', display_name: 'Team', updatedAt: '2026-09-03T00:00:00Z' },
+      { engine: 'github', name: 'three', label: 'Zoo', display_name: 'Personal', updated_at: '2026-09-02T00:00:00Z' },
+      { engine: 'unknown', name: 'four', label: 'Other', display_name: 'Local' },
+    ];
+    vi.mocked(fetchDatasources).mockResolvedValueOnce({ connections });
+    render(<CustomizeView connectors={connections} />);
+    await userEvent.click(screen.getByRole('button', { name: /Sort: Recent/i }));
+    await userEvent.click(screen.getByRole('button', { name: sort, exact: true }));
+    const cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(connections.length);
+    order.forEach((index, position) => {
+      const connection = connections[index];
+      expect(within(cards[position]).getByRole('button', {
+        name: `Manage ${connection.label}: ${connection.display_name}`,
+      })).toBeInTheDocument();
+    });
+  });
+
   it('preserves the card and enables retry when disconnect fails', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());

@@ -524,27 +524,27 @@ export default function CustomizeView({
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = (list || []).slice();
+    let out = (list || []).map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
-      out = out.filter((c) =>
-        [c.name, c.engine, ...Object.values(connectionIdentity(c))]
+      out = out.filter(({ connection, identity }) =>
+        [connection.name, connection.engine, identity.title, identity.subtitle]
           .some((value) => (value || '').toLowerCase().includes(q)),
       );
     }
     out.sort((a, b) => {
       switch (sort) {
-        case 'name':   return connectionIdentity(a).title.localeCompare(connectionIdentity(b).title)
-          || connectionIdentity(a).subtitle.localeCompare(connectionIdentity(b).subtitle);
-        case 'engine': return (a.engine || '').localeCompare(b.engine || '');
+        case 'name':   return a.identity.title.localeCompare(b.identity.title)
+          || a.identity.subtitle.localeCompare(b.identity.subtitle);
+        case 'engine': return (a.connection.engine || '').localeCompare(b.connection.engine || '');
         case 'recent':
         default: {
-          const ta = Date.parse(a.updated_at || a.updatedAt || '') || 0;
-          const tb = Date.parse(b.updated_at || b.updatedAt || '') || 0;
+          const ta = Date.parse(a.connection.updated_at || a.connection.updatedAt || '') || 0;
+          const tb = Date.parse(b.connection.updated_at || b.connection.updatedAt || '') || 0;
           return tb - ta;
         }
       }
     });
-    return out;
+    return out.map(({ connection }) => connection);
   }, [list, search, sort]);
 
   const total = list.length;

@@ -9,7 +9,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('ConnectionCard', () => {
   it('uses a bundled app logo and a text-labelled healthy state', () => {
     const { container } = render(<ConnectionCard connection={connection} />);
-    expect(container.querySelector('img').getAttribute('src')).toContain('github.svg');
+    expect(container.querySelector('img')).toHaveAttribute('src', 'logos/github.svg');
     expect(container.querySelector('img')).toHaveAttribute('alt', '');
     expect(screen.getByText('GitHub')).toBeInTheDocument();
     expect(screen.getByText('ianu82')).toBeInTheDocument();
@@ -30,8 +30,16 @@ describe('ConnectionCard', () => {
     expect(container.querySelector('[class*="bg-[var(--success)]"]')).toBeNull();
   });
 
-  it('uses an initial for unknown connectors, without requesting a guessed URL', () => {
-    const { container } = render(<ConnectionCard connection={{ engine: '../private', label: 'Private connector', name: 'one' }} />);
+  it.each(['../private', '..\\private', '/github', 'https://example.com/icon', 'github?x=1', 'github#icon', '%2e%2e%2fprivate'])('does not construct a logo URL from an unsafe engine: %s', (engine) => {
+    const { container } = render(<ConnectionCard connection={{ engine, label: 'Private connector', name: 'one' }} />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('P')).toBeInTheDocument();
+  });
+
+  it('falls back to an initial when a safe connector ID has no public logo', () => {
+    const { container } = render(<ConnectionCard connection={{ engine: 'private_connector_2', label: 'Private connector', name: 'one' }} />);
+    expect(container.querySelector('img')).toHaveAttribute('src', 'logos/private_connector_2.svg');
+    fireEvent.error(container.querySelector('img'));
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('P')).toBeInTheDocument();
   });
