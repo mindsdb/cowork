@@ -14,6 +14,8 @@ import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTo
 //   response.output_text.delta  — body text streaming, `delta` field
 //   response.answer_reset       — a forced continuation supersedes the
 //                                 answer so far; the next delta replaces it
+//   response.answer_restore     — that continuation handed back instead of
+//                                 replacing; carries the set-aside answer
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.completed | failed — terminal
@@ -335,6 +337,16 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // empty, and a continuation that never speaks sends nothing at all.
   if (type === 'response.answer_reset') {
     return { ...state, bodyText: '', currentThought: null };
+  }
+
+  // The continuation never delivered the replacement the boundary promised —
+  // it handed back and explained instead — so the answer that was set aside
+  // comes back in front of whatever has streamed since. The server carries the
+  // text because this side threw it away.
+  if (type === 'response.answer_restore') {
+    const text = typeof event.text === 'string' ? event.text : '';
+    if (!text) return state;
+    return { ...state, bodyText: text + state.bodyText };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for

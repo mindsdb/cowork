@@ -591,6 +591,25 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
     expect(after.bodyText).toBe('');
   });
 
+  it('gives the answer back when the continuation hands back instead', () => {
+    // A continuation narrates before its first tool call, so that narration
+    // spends the boundary. If the turn then hands back rather than answering,
+    // the answer the user had already read has to return.
+    const state = reduceAll([
+      DELTA('THE ANSWER THE USER READ'),
+      RESET,
+      DELTA('Checking.'),
+      { type: 'response.answer_restore', text: 'THE ANSWER THE USER READ' },
+      DELTA(' Giving up.'),
+    ]);
+    expect(state.bodyText).toBe('THE ANSWER THE USER READChecking. Giving up.');
+  });
+
+  it('ignores a restore carrying no text', () => {
+    const before = reduceAll([DELTA('kept')]);
+    expect(reduceStream(before, { type: 'response.answer_restore' })).toBe(before);
+  });
+
   it('ends the current thought burst, as a delta does', () => {
     const thinking = reduceAll([
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'hmm' },
