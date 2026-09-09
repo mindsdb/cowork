@@ -122,8 +122,15 @@ export function isArtifactLocalPath(href, { web = false } = {}) {
   if (web && /^https?:/i.test(h)) {
     let hostname = '';
     try { hostname = new URL(h).hostname.toLowerCase(); } catch { return false; }
+    // A single trailing root dot is the same name (RFC 1034) — `localhost.`
+    // and `127.0.0.1.` must not slip past the exact-match tests below.
+    hostname = hostname.replace(/\.$/, '');
     if (
-      hostname === 'localhost' || hostname === '0.0.0.0'
+      // RFC 6761 reserves `localhost` AND every name under `.localhost` as
+      // loopback (`app.localhost` resolves to 127.0.0.1 in browsers), while
+      // `localhost.example.com` is an ordinary name and stays live.
+      hostname === 'localhost' || hostname.endsWith('.localhost')
+      || hostname === '0.0.0.0'
       || hostname === '[::1]' || hostname === '::1'
       // Full dotted-quad only — `^127\.` alone would catch REGISTERED domains
       // like `127.net` (review finding on #956). Loses no loopback coverage:
@@ -156,25 +163,54 @@ const _ARTIFACT_LOCAL_LINK_TITLE =
 // override could see it, so only here are Windows/POSIX/file/sandbox caught
 // uniformly. The <span>'s leftover href isn't allowlisted → sanitize drops it.
 function remarkArtifactLocalLinks() {
-  const walk = (node) => {
+  const neutralize = (node) => {
+    node.data = {
+      ...(node.data || {}),
+      hName: 'span',
+      hProperties: {
+        ...((node.data && node.data.hProperties) || {}),
+        className: ['artifact-local-link'],
+        title: _ARTIFACT_LOCAL_LINK_TITLE,
+      },
+    };
+  };
+  // Two passes because reference-style Markdown splits a link across two
+  // nodes: `[download][t]` is a `linkReference` whose URL lives on a separate
+  // `definition` node (`[t]: /mnt/…`), so a single walk that only inspects
+  // `link.url` never sees the destination — the exact ENG-2421 failure
+  // reproduced through valid Markdown (review finding on #956). Definitions
+  // are collected first (they can appear after their references), then both
+  // node kinds are tested against the same predicate.
+  const collectDefinitions = (node, defs) => {
     if (!node || !Array.isArray(node.children)) return;
     for (const child of node.children) {
-      if (child.type === 'link' && isArtifactLocalPath(child.url, { web: host.isWeb })) {
-        child.data = {
-          ...(child.data || {}),
-          hName: 'span',
-          hProperties: {
-            ...((child.data && child.data.hProperties) || {}),
-            className: ['artifact-local-link'],
-            title: _ARTIFACT_LOCAL_LINK_TITLE,
-          },
-        };
+      if (child.type === 'definition' && child.identifier) {
+        defs.set(child.identifier, child.url || '');
       } else if (child.type !== 'code' && child.type !== 'inlineCode') {
-        walk(child);
+        collectDefinitions(child, defs);
       }
     }
   };
-  return (tree) => walk(tree);
+  const walk = (node, defs, web) => {
+    if (!node || !Array.isArray(node.children)) return;
+    for (const child of node.children) {
+      const url = child.type === 'link'
+        ? child.url
+        : child.type === 'linkReference'
+          ? defs.get(child.identifier)
+          : undefined;
+      if (url !== undefined && isArtifactLocalPath(url, { web })) {
+        neutralize(child);
+      } else if (child.type !== 'code' && child.type !== 'inlineCode') {
+        walk(child, defs, web);
+      }
+    }
+  };
+  return (tree) => {
+    const defs = new Map();
+    collectDefinitions(tree, defs);
+    walk(tree, defs, host.isWeb);
+  };
 }
 
 function openMarkdownHref(href) {

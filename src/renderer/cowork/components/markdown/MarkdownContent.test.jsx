@@ -184,6 +184,12 @@ describe('isArtifactLocalPath — dead-by-construction pod shapes (ENG-2421)', (
     expect(isArtifactLocalPath('http://2130706433/x', { web: true })).toBe(true); // decimal 127.0.0.1
     expect(isArtifactLocalPath('http://0.0.0.0:8000/a', { web: true })).toBe(true);
     expect(isArtifactLocalPath('http://[::1]:8000/a', { web: true })).toBe(true);
+    // RFC 6761: every name under .localhost is loopback, and a trailing root
+    // dot is the same name (review finding on #956).
+    expect(isArtifactLocalPath('http://app.localhost:3000/', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://localhost.:3000/', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://app.localhost.:3000/', { web: true })).toBe(true);
+    expect(isArtifactLocalPath('http://127.0.0.1.:8000/x', { web: true })).toBe(true);
   });
 
   it('keeps loopback clickable on desktop, where the sidecar and app dev servers are real', () => {
@@ -201,6 +207,9 @@ describe('isArtifactLocalPath — dead-by-construction pod shapes (ENG-2421)', (
     // must match the full dotted quad, not the string prefix (review finding).
     expect(isArtifactLocalPath('https://127.net/logo.png', { web: true })).toBe(false);
     expect(isArtifactLocalPath('http://127.0.0.1.evil.example/x', { web: true })).toBe(false);
+    // ".localhost" must be a SUFFIX LABEL match, not a substring anywhere.
+    expect(isArtifactLocalPath('https://localhost.example.com/x', { web: true })).toBe(false);
+    expect(isArtifactLocalPath('https://mylocalhost.com/x', { web: true })).toBe(false);
   });
 
   it('catches a bare /mnt pod path on every surface', () => {
@@ -251,7 +260,44 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     }
   });
 
-  it('keeps the same loopback link clickable on desktop, where it can be real', () => {
+  it('neutralises REFERENCE-style pod links too — the URL lives on a definition node (review finding)', () => {
+    hostState.isWeb = true;
+    try {
+      const text = [
+        'Your files: [download the report][r] and [open the app][a].',
+        '',
+        '[r]: /mnt/cowork-shared/projects/acme/report.zip',
+        '[a]: http://localhost:3000/',
+      ].join('\n');
+      const { container } = render(<MarkdownContent text={text} complete />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(2);
+      expect(container.textContent).toContain('download the report');
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+  it('leaves a reference-style link to a real URL clickable', () => {
+    hostState.isWeb = true;
+    try {
+      const text = 'See [the docs][d].\n\n[d]: https://example.com/docs';
+      const { container } = render(<MarkdownContent text={text} complete />);
+      const a = container.querySelector('a');
+      expect(a).not.toBeNull();
+      expect(a.getAttribute('href')).toBe('https://example.com/docs');
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+  it('keeps a reference-style loopback link clickable on desktop', () => {
+    const text = '[open the app][a]\n\n[a]: http://localhost:3000/';
+    const { container } = render(<MarkdownContent text={text} complete />);
+    expect(container.querySelector('a')).not.toBeNull();
+  });
+
+    it('keeps the same loopback link clickable on desktop, where it can be real', () => {
     // hostState.isWeb is false here — the sidecar and a fullstack app's dev
     // server genuinely answer on loopback on desktop, so the net must not fire.
     const { container } = render(
