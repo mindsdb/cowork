@@ -15,12 +15,21 @@
 //      everything we already have inline-styled. Utilities still work;
 //      we just skip the reset.
 //
+//   3. theme.extend.screens.sm — bound to PHONE_MAX from
+//      lib/breakpoints.js, the app's single source of truth for layout-mode
+//      switches. Without it `sm:`/`max-sm:` sit on Tailwind's own 640px and
+//      would silently stay behind if that boundary ever moved. Only `sm` is
+//      bound; md and up keep Tailwind's defaults, since nothing in the
+//      layout-mode scale corresponds to them.
+//
 //   2. theme.extend.colors — bound to CSS variables from globals.css so
 //      `bg-surface`, `text-ink`, `border-line`, etc. follow the active
 //      light/dark theme without needing Tailwind's own dark-mode flag.
 //      The body[data-theme="dark"] selector in globals.css already
 //      flips the var values; Tailwind utilities just read them.
 //
+import { PHONE_MAX } from './src/renderer/cowork/lib/breakpoints.js';
+
 export default {
   content: [
     './src/renderer/index.html',
@@ -34,6 +43,9 @@ export default {
   },
   theme: {
     extend: {
+      screens: {
+        sm: `${PHONE_MAX}px`,
+      },
       colors: {
         // Surfaces
         bg:         'var(--bg)',
