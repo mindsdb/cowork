@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
+import { notifyOrganizationChanged } from '../lib/organizationChanges';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -132,6 +133,9 @@ export function useMindsOrgs(accountUser) {
         });
         return result;
       }
+      // Desktop has handed the new credential to the sidecar before success.
+      // Its readers must refresh even if this menu unmounted during the switch.
+      if (result?.ok) notifyOrganizationChanged(sub);
       if (generation.current !== mine) return result;
       if (result?.ok) {
         /**

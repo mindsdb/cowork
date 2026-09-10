@@ -1,5 +1,5 @@
-// `<WorkspaceSelector>` — the MindsHub workspace control at the top of the
-// sidebar, between the wordmark and the New task CTA.
+// `<WorkspaceSelector>` — the MindsHub workspace control, docked with the
+// account row at the bottom of the sidebar.
 //
 // A **MindsHub Workspace** is an org-internal container that owns hub resources
 // (API keys, artifacts, model entitlements) and lives in the auth service. It is
@@ -11,18 +11,23 @@
 // workspace was invisible until you opened the menu, which is the opposite of
 // what a scope indicator is for. And the account menu is where the organization
 // selector lands, so two levels of the same hierarchy would have been nested
-// inside a menu that is about identity rather than scope. Both reference
-// consoles put the scope picker at the top of the rail, above the primary
-// action, and show the current value on the trigger.
+// inside a menu that is about identity rather than scope.
 //
-// **It renders for a single workspace too.** There is nothing to switch to, but
-// "which workspace am I in" is worth answering on its own, and that question was
-// the reason this moved out of the account menu.
+// **It sits at the bottom rather than the top of the rail.** A workspace is a
+// container inside the organization, not what a reader starts a task from, and
+// the top of the rail is where the first task begins.
+//
+// **One workspace draws nothing.** There is nothing to move to, so the control
+// would be a switch that switches nothing: a person opening the app for the
+// first time gets `Default` and no explanation of what a workspace is. It
+// appears once the organization has a second one, which is the first moment the
+// question "which workspace am I in" has more than one answer.
 //
 // No create entry: workspaces are created in the console, and the last row deep
 // links there rather than growing a second create flow that would have to open a
 // browser anyway.
 
+import { useCallback } from 'react';
 import { ArrowUpRight, Check, ChevronDown, Settings2 } from 'lucide-react';
 import Menu from './ui/Menu';
 import { useToastManager } from './ui/Toast';
@@ -47,10 +52,19 @@ export function WorkspaceTile({ id, name, size = 18 }) {
 
 const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
 
-export function WorkspaceSelector({ user }) {
+export function WorkspaceSelector({ user, returnFocusRef }) {
   const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
   const toastManager = useToastManager();
+  const preserveFocusOnRemoval = useCallback((element) => {
+    // React 19 calls this cleanup before removing the focused trigger. A delayed
+    // switch can hide it after the menu has already restored focus here.
+    return () => {
+      if (element.contains(element.ownerDocument.activeElement)) {
+        returnFocusRef?.current?.focus({ preventScroll: true });
+      }
+    };
+  }, [returnFocusRef]);
 
   const pick = async (workspaceId) => {
     try {
@@ -79,16 +93,25 @@ export function WorkspaceSelector({ user }) {
   const active =
     workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
-  // Nothing to show until the gate is on and the hub answered. Rendering a
-  // placeholder row would reserve space in the rail for a control that may
-  // never appear, which reads as a layout bug on every launch.
+  // Nothing to show until the gate is on, the hub answered, and there is
+  // somewhere to move to. Rendering a placeholder row would reserve space for a
+  // control that may never appear, which reads as a layout bug on every launch.
   //
   // `reachable` is checked rather than inferred from an empty list. The server
   // does send both, and today an unreachable read also carries no rows, so
   // leaning on that would pass every test while resting on a coincidence: the
   // moment a partial answer arrives, the control would name a workspace nobody
   // confirmed.
-  if (!enabled || !reachable || !active) return null;
+  //
+  // The count is checked on `workspaces` because that list is already what the
+  // server offers as places to work: `selectable()` in cowork-server drops
+  // archived workspaces, keeping one only while it is the active row so the
+  // check can never sit on nothing. So a live workspace beside an archived one
+  // counts as one and draws nothing, but a live workspace beside the archived
+  // one you are currently in counts as two and does draw. That second case is
+  // deliberate: the control is the only way out of a workspace that was
+  // archived under you.
+  if (!enabled || !reachable || !active || workspaces.length < 2) return null;
 
   const activeName = workspaceName(active);
 
@@ -159,11 +182,13 @@ export function WorkspaceSelector({ user }) {
   );
 
   return (
-    <div className="anton-sidebar__workspace-wrap px-2.5 pb-1.5">
+    <div ref={preserveFocusOnRemoval} className="anton-sidebar__workspace-wrap px-2.5 py-1.5">
       <Menu
         trigger={trigger}
         items={items}
-        side="bottom"
+        // Opens upward, like the `UserMenu` directly below it: the trigger
+        // sits against the footer, so there is no room beneath it.
+        side="top"
         align="start"
         width={248}
         ariaLabel="Workspace"
