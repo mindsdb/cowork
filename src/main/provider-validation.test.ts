@@ -8,6 +8,7 @@ import {
   validateOpenAICompatible,
   type HttpRequestOptions,
 } from './provider-validation';
+import { MINDS_REQUEST_KIND_HEADER, MINDS_REQUEST_KIND_PROBE } from './minds-urls';
 
 /*
  * These assert what goes on the wire, which is the whole defect: MindsHub bills
@@ -17,9 +18,13 @@ import {
  * so without these the desktop half of the fix was covered by nothing.
  */
 function recorder(status = 200, body = '{}') {
-  const calls: Array<{ url: string; payload: any }> = [];
+  const calls: Array<{ url: string; payload: any; headers: Record<string, string> }> = [];
   const request = async (url: string, options: HttpRequestOptions) => {
-    calls.push({ url, payload: options.body ? JSON.parse(options.body) : undefined });
+    calls.push({
+      url,
+      payload: options.body ? JSON.parse(options.body) : undefined,
+      headers: options.headers,
+    });
     return { status, body };
   };
   return { calls, request };
@@ -71,6 +76,12 @@ describe('validateMinds', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Cannot connect');
   });
+
+  it('marks the probe so the Traces list can hide it', async () => {
+    const { calls, request } = recorder();
+    await validateMinds('mdb_x', 'https://api.mindshub.ai', request);
+    expect(calls[0].headers[MINDS_REQUEST_KIND_HEADER]).toBe(MINDS_REQUEST_KIND_PROBE);
+  });
 });
 
 describe('validateOpenAICompatible', () => {
@@ -103,6 +114,16 @@ describe('validateOpenAICompatible', () => {
       'http://localhost:11434/v1/chat/completions',
       'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     ]);
+  });
+
+  it('marks the probe on a MindsHub host, but not on a third-party endpoint', async () => {
+    // The marker is our own header — sent to MindsHub, which reads it to hide the
+    // probe from the Traces list, and to no arbitrary endpoint (ENG-2310).
+    const { calls, request } = recorder();
+    await validateOpenAICompatible('mdb_x', 'https://api.mindshub.ai/v1', undefined, request);
+    await validateOpenAICompatible('sk_x', 'https://api.openai.com/v1', 'gpt-4o', request);
+    expect(calls[0].headers[MINDS_REQUEST_KIND_HEADER]).toBe(MINDS_REQUEST_KIND_PROBE);
+    expect(calls[1].headers[MINDS_REQUEST_KIND_HEADER]).toBeUndefined();
   });
 });
 

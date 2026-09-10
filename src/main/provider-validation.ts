@@ -26,7 +26,12 @@
  * index.ts rather than moving a security-relevant line into a new file.
  */
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
-import { MINDS_PROBE_MODEL, isMindsHost } from './minds-urls';
+import {
+  MINDS_PROBE_MODEL,
+  MINDS_REQUEST_KIND_HEADER,
+  MINDS_REQUEST_KIND_PROBE,
+  isMindsHost,
+} from './minds-urls';
 
 export interface HttpResponse {
   status: number;
@@ -97,6 +102,8 @@ export async function validateMinds(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        // Always a MindsHub host here, so always mark the probe (ENG-2310).
+        [MINDS_REQUEST_KIND_HEADER]: MINDS_REQUEST_KIND_PROBE,
       },
       body: JSON.stringify({
         /* Never the configured or recommended model: this is a reachability and
@@ -131,12 +138,19 @@ export async function validateOpenAICompatible(
     const chatUrl = /\/v\d/.test(normalizedBase)
       ? `${normalizedBase}/chat/completions`
       : `${normalizedBase}/v1/chat/completions`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+    // Mark the probe on the MindsHub fallback only — the same host gate as the
+    // model choice below. Our own header, meaningless to a third-party endpoint;
+    // only MindsHub reads it to hide the probe from the Traces list (ENG-2310).
+    if (isMindsHost(normalizedBase)) {
+      headers[MINDS_REQUEST_KIND_HEADER] = MINDS_REQUEST_KIND_PROBE;
+    }
     const res = await request(chatUrl, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         /* An omitted model against a MindsHub host takes the free probe model.
          * The generic default below is not a MindsHub alias, so it 404s there,
