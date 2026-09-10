@@ -10,6 +10,7 @@ import {
   formatTokensShort,
   formatUsd,
   formatResetDate,
+  FREE_TOKENS_LOW_FRACTION,
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
 
@@ -46,7 +47,9 @@ function FreeTokensCard({ free, isBillingOwner }) {
   const remaining = Math.max(0, free.remaining || 0);
   const fraction = unlimited ? 0 : used / free.limit;
   const exhausted = !unlimited && remaining <= 0;
-  const low = !unlimited && !exhausted && remaining / free.limit <= 0.2;
+  // Same line as the composer bar, read from the one constant, so the meter's
+  // warning tint and the bar cannot drift apart.
+  const low = !unlimited && !exhausted && remaining / free.limit <= FREE_TOKENS_LOW_FRACTION;
   const reset = formatResetDate(free.resetsAt);
   return (
     <div className={CARD}>

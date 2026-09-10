@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatTokensShort } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1101,11 +1101,29 @@ function formatAllowanceReset(resetAt) {
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBillingOwner }) {
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
+  if (kind === 'free_low') {
+    // Headline names the crossing, not the count: the composer bar carries
+    // the live count a few pixels above, and two identical headlines that
+    // then drift apart (the bar tracks the next poll, this card is frozen at
+    // the crossing) read as two different figures for one number.
+    // The body says what is true of the allowance rather than of this turn.
+    // The router resolves per turn and can land on a paid model, so "this
+    // task is running on free tokens" is a claim the crossing does not prove.
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Free monthly tokens running low"
+        body={`${formatTokensShort(remaining)} left of this month's free tokens. When they are used up, MindsHub Air moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+      />
+    );
+  }
   if (kind === 'auto_top_up_failed') {
     return (
       <ActionCard
@@ -2041,6 +2059,7 @@ export default function ChatView({
                   agentLabel={agentLabel}
                   kind={n.kind}
                   resetsAt={n.resetsAt}
+                  remaining={n.remaining}
                   isBillingOwner={isBillingOwner}
                 />
               ));

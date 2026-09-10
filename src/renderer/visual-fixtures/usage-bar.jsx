@@ -70,12 +70,42 @@ const CASES = [
     usage: usage({ freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET } }),
     opts: AIR,
   },
+  {
+    label: 'The standing figure: healthy allowance, no warning, no close button. This is what used to be a blank space.',
+    usage: usage(),
+    opts: AIR,
+  },
+  {
+    label: 'The standing figure on the router, which is the default pick.',
+    usage: usage(),
+    opts: { model: null },
+  },
+  {
+    label: 'The standing figure with no reset date to quote.',
+    usage: usage({ freeTokens: { limit: 5_000_000, used: 1_000_000, remaining: 4_000_000, resetsAt: null } }),
+    opts: AIR,
+  },
+  {
+    label: 'The standing figure naming an empty balance, which is said at rest rather than waiting for 20%.',
+    usage: usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
+    opts: AIR,
+  },
+  {
+    label: 'An uncapped grant has nothing to count down, so there is still no figure.',
+    usage: usage({ freeTokens: { limit: -1, used: 30 } }),
+    opts: AIR,
+  },
 ];
+
+const slug = (label) => `case-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`;
 
 function Case({ label, usage: view, opts, owner = true }) {
   const warning = deriveComposerWarning(view, opts);
   return (
-    <section style={{ marginBottom: 28 }}>
+    // Anchored per case, so a screenshot run can crop to one state instead of
+    // a page too tall to read at review size. Off the label, because several
+    // cases render the same `kind`.
+    <section id={slug(label)} style={{ marginBottom: 28 }}>
       <p style={{ font: '12px/1.4 var(--font-body, system-ui)', color: 'var(--text-faint)', margin: '0 0 6px' }}>
         {label}{warning ? '' : ' — nothing to show'}
       </p>
