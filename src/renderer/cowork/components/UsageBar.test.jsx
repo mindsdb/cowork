@@ -26,6 +26,13 @@ const atRest = {
   title: '3.4M of 5M free tokens left', body: 'Resets on Sep 11.',
   actions: [USAGE_ACTIONS.viewUsage],
 };
+// What `deriveComposerWarning` attaches to a free warning: the figure the bar
+// steps down to when the warning is closed.
+const freeLowWithFallback = { ...freeLow, dismissKey: 'free_low:1', whenDismissed: atRest };
+
+// The announcement region is always mounted so it can be filled later; what
+// matters is whether it has anything in it.
+const liveText = () => screen.getByRole('status').textContent;
 
 beforeEach(() => {
   resetUsageBarDismissForTests();
@@ -34,9 +41,12 @@ beforeEach(() => {
 });
 
 describe('UsageBar', () => {
-  it('renders nothing without a warning', () => {
+  it('renders no bar without a warning, only the empty announcement region', () => {
     const { container } = render(<UsageBar warning={null} />);
-    expect(container).toBeEmptyDOMElement();
+    expect(container.querySelector('.usage-bar')).toBeNull();
+    // The region has to be in the DOM and empty BEFORE a warning arrives, or
+    // filling it later announces nothing (see AskUserCard for the same rule).
+    expect(liveText()).toBe('');
   });
 
   it('shows the copy and opens the console on an action, counting the click', async () => {
@@ -53,10 +63,55 @@ describe('UsageBar', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
-  it('the standing figure is not a live region, so it does not announce', () => {
+  it('the standing figure announces nothing, so a poll does not interrupt', () => {
     render(<UsageBar warning={atRest} usageKnown />);
+    // The bar itself is never the live region, and the region stays empty for
+    // a figure that is on screen all month.
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.usage-bar')?.getAttribute('role')).toBeNull();
+    expect(liveText()).toBe('');
+  });
+
+  it('the standing figure is neutral, not amber', () => {
+    render(<UsageBar warning={atRest} usageKnown />);
+    const bar = document.querySelector('.usage-bar');
+    expect(bar.className).toContain('bg-surface-2');
+    expect(bar.className).not.toContain('bg-warning-bg');
+  });
+
+  it('a warning replacing the standing figure lands in the already-mounted region', () => {
+    const { rerender } = render(<UsageBar warning={atRest} usageKnown />);
+    expect(liveText()).toBe('');
+    rerender(<UsageBar warning={freeLow} usageKnown />);
+    // Same region node, filled on a later commit — which is the only form of
+    // change aria-live actually announces.
+    expect(liveText()).toBe('620K free tokens left. After that, MindsHub Air usage will use your balance until they reset on Sep 11.');
+  });
+
+  it('closing a free warning steps down to the standing figure, not to nothing', async () => {
+    const user = userEvent.setup();
+    render(<UsageBar warning={freeLowWithFallback} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // The number survives the close; only the warning does not.
+    expect(screen.getByText('3.4M of 5M free tokens left.')).toBeTruthy();
+    expect(screen.queryByText('620K free tokens left.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(liveText()).toBe('');
+  });
+
+  it('a standing figure forgets an earlier dismissal, so next month warns again', async () => {
+    const user = userEvent.setup();
+    // Close the warning at 620K, the way a user does mid-month...
+    const first = render(<UsageBar warning={freeLowWithFallback} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    first.unmount();
+    // ...the grant resets, so the bar rests. A resting figure IS the healthy
+    // state, so the stored key is forgotten here. Without that, `usageHealthy`
+    // would be false for every free user all month and the dismissal would
+    // outlive the reset.
+    render(<UsageBar warning={atRest} usageKnown />).unmount();
+    render(<UsageBar warning={freeLowWithFallback} usageKnown />);
+    expect(screen.getByText('620K free tokens left.')).toBeTruthy();
   });
 
   it('counts a click on the standing figure apart from a warning click', async () => {

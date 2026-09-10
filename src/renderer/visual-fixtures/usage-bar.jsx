@@ -86,6 +86,11 @@ const CASES = [
     opts: AIR,
   },
   {
+    label: 'The standing figure naming an empty balance, which is said at rest rather than waiting for 20%.',
+    usage: usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
+    opts: AIR,
+  },
+  {
     label: 'An uncapped grant has nothing to count down, so there is still no figure.',
     usage: usage({ freeTokens: { limit: -1, used: 30 } }),
     opts: AIR,
@@ -101,7 +106,7 @@ function Case({ label, usage: view, opts, owner = true }) {
     // a page too tall to read at review size. Off the label, because several
     // cases render the same `kind`.
     <section id={slug(label)} style={{ marginBottom: 28 }}>
-      <p style={{ font: '12px/1.4 var(--font-body, system-ui)', opacity: 0.7, margin: '0 0 6px' }}>
+      <p style={{ font: '12px/1.4 var(--font-body, system-ui)', color: 'var(--text-faint)', margin: '0 0 6px' }}>
         {label}{warning ? '' : ' — nothing to show'}
       </p>
       <div style={{ width: 640, maxWidth: '100%' }}>
@@ -113,9 +118,16 @@ function Case({ label, usage: view, opts, owner = true }) {
   );
 }
 
-// The app themes off body[data-theme]; honour the same switch so both passes
-// can be captured from this one page.
+/* The app themes off body[data-theme], so honour the same switch and paint the
+   themed ground behind it. Without the background the page keeps the browser's
+   white default and the dark pass is unreadable. globals.css also pins
+   html/body to overflow:hidden for the app shell, which would clip a full-page
+   screenshot of a list this long, so the fixture scrolls instead. */
 document.body.dataset.theme = new URLSearchParams(window.location.search).get('theme') === 'dark' ? 'dark' : 'light';
+document.body.style.background = 'var(--bg)';
+document.documentElement.style.overflow = 'auto';
+document.body.style.overflow = 'auto';
+document.body.style.height = 'auto';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

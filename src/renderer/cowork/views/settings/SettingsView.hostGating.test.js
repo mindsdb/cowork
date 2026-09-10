@@ -73,6 +73,16 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     expect(navItemsForHost(true, true, true).some((i) => i.id === 'backend')).toBe(false);
   });
 
+  it('web renders the group headers its sections belong to, Usage under System', () => {
+    // The nav prints a heading whenever the group changes, so unhiding Usage
+    // gives the hosted build a SYSTEM heading it never had. Kept rather than
+    // regrouped, because Usage sits under System on desktop and one grouping
+    // for both hosts beats a web-only exception. Pinned so the next nav
+    // change sees it.
+    expect(navItemsForHost(true, true, true).map((i) => i.group))
+      .toEqual(['General', 'App', 'App', 'System']);
+  });
+
   it('offers Usage on web: it reads a route both hosts call and only links out', () => {
     // The web filter exists for surfaces that would be misleading without a
     // tenant-aware counterpart. Usage has none: the figure comes from the same

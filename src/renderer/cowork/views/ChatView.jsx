@@ -1107,12 +1107,19 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBilling
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
   if (kind === 'free_low') {
+    // Headline names the crossing, not the count: the composer bar carries
+    // the live count a few pixels above, and two identical headlines that
+    // then drift apart (the bar tracks the next poll, this card is frozen at
+    // the crossing) read as two different figures for one number.
+    // The body says what is true of the allowance rather than of this turn.
+    // The router resolves per turn and can land on a paid model, so "this
+    // task is running on free tokens" is a claim the crossing does not prove.
     return (
       <ActionCard
         time={time}
         agentLabel={agentLabel}
-        title={`${formatTokensShort(remaining)} free tokens left`}
-        body={`This task is still running on your free monthly tokens. When they are used up it moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        title="Free monthly tokens running low"
+        body={`${formatTokensShort(remaining)} left of this month's free tokens. When they are used up, MindsHub Air moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
       />
     );

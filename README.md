@@ -530,11 +530,14 @@ flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=t
 on the sidecar is an ON-only development override for walking the surface where no
 rule targets you.
 
-**The workspace selector never calls Django auth directly.** It calls its own
-sidecar at `/api/v1/hub/workspaces/`, which forwards. Django auth's ingress
-allows the console origins and no Cowork host, and a per-PR Cowork host cannot
-be added to a static allow-list. A direct call would therefore work in the
-packaged app (`webSecurity` is off there) and fail in the web SPA.
+**Nothing under `/api/v1/hub/*` calls Django auth directly.** The workspace
+selector calls its own sidecar at `/api/v1/hub/workspaces/`, which forwards, and
+`/api/v1/hub/usage/` is the second route under the same rule. Django auth's
+ingress allows the console origins and no Cowork host, and a per-PR Cowork host
+cannot be added to a static allow-list. A direct call would therefore work in the
+packaged app (`webSecurity` is off there) and fail in the web SPA. Going through
+the sidecar is what lets both hosts read the same thing, which is why Settings →
+Usage is offered on the hosted build and not filtered off it.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
@@ -725,9 +728,11 @@ to serve the route answers 404, which reads as unreachable and paints nothing.
 notice, and it is the only thing that decides which. The notice sits above the
 composer rather than in the conversation, so it is in view when the next task
 starts and never becomes part of the task history. `usageTransitions` handles the
-other half: when the free tokens run out or auto top up fails while a task is
-streaming, `ChatView` drops a card into the timeline instead, because that turn is
-still running and the person has not come back to the composer yet.
+other half: when the free tokens cross a step of the low band, run out, or auto
+top up fails while a task is streaming, `ChatView` drops a card into the timeline
+instead, because that turn is still running and the person has not come back to
+the composer yet. It reads the same BYOK gate the bar does, so a task billing
+someone else's key never hears about these tokens.
 
 Which resource the warning names depends on what the next turn will spend. An
 explicit MindsHub Air pick runs on the free tokens, an explicit paid model only
@@ -739,10 +744,25 @@ When nothing is wrong, the bar still says where the free grant stands: "3.4M of
 5M free tokens left. Resets on Oct 1." A warning a person first meets at 20% left
 is a warning they cannot plan around, and the grant is the only conversion moment
 the product has, so it is not left to a blank space. The standing figure is
-neutral rather than amber, carries no close button, and is not a live region, so
-a screen reader is not interrupted every poll by a number that has not moved. An
-uncapped grant has nothing to count down and gets no figure. A BYOK user, a
-signed-out one and an unreachable sidecar get nothing, exactly as before.
+neutral rather than amber and carries no close button. An uncapped grant has
+nothing to count down and gets no figure. A BYOK user, a signed-out one and an
+unreachable sidecar get nothing, exactly as before. An empty balance is named
+here too, in the same words the warning uses, because it is true and actionable
+from the moment it empties rather than from the moment the grant crosses 20%.
+The tone stays neutral: while the grant can still pay, nothing is blocked.
+
+An explicit paid pick cannot spend the grant, so it gets no figure, but the bar's
+height is reserved with a hidden copy of it. Otherwise switching picks moved the
+whole composer up and down, and for a free user the healthy state is the state
+they are in nearly all month.
+
+Announcing is a separate, permanently mounted `sr-only` region rather than a role
+on the bar. `aria-live` announces content CHANGES, so a region has to be in the
+DOM and empty first; since the bar is now on screen all month, adding a role to
+it when a warning arrives would only be promoting a node that is already there,
+and the warning would be silent. The region is polite rather than assertive, and
+a standing figure puts nothing in it, so nothing is read out on a poll that only
+moves the number.
 
 Closing a notice hides it per dismissal key, not forever. A "low" state is a band
 the resource sits in the whole way down, so keying on the kind alone would let one
@@ -754,6 +774,11 @@ so a task that runs from healthy into the band crosses a mark like any other.
 That is what lets `usageTransitions` report a crossing mid-task rather than only
 reporting the tokens being gone. Every dismissal is forgotten once usage is
 healthy, and a standing figure never counts as something to forget.
+
+Closing the free warning steps down to the standing figure, never to nothing. The
+close button means stop shouting, not hide the number, and 20% left is where the
+number is worth most. The warning carries that figure with it as `whenDismissed`,
+so one place decides what the bar says at rest.
 
 The free grant's 20% line is the console's 80%-used line read from the other side.
 `FREE_TOKENS_LOW_FRACTION` is the one place it is written, and Settings reads the

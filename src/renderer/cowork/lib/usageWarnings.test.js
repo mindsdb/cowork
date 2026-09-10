@@ -5,6 +5,7 @@ import {
   usageActionUrl,
   balanceDismissStep,
   freeDismissStep,
+  countsAsWarning,
   formatTokensShort,
   formatUsd,
   formatResetDate,
@@ -69,6 +70,19 @@ describe('deriveComposerWarning', () => {
     }));
     expect(w.kind).toBe('free_at_rest');
     expect(w.body).toBe('Air runs on these until they are used up.');
+  });
+
+  it('a free warning carries the figure a dismissal steps down to', () => {
+    const w = deriveComposerWarning(usage({
+      freeTokens: { limit: 5_000_000, used: 4_100_000, remaining: 900_000, resetsAt: RESET },
+    }));
+    expect(w.kind).toBe('free_low');
+    // Closing it must leave the allowance somewhere, not nowhere.
+    expect(w.whenDismissed.kind).toBe('free_at_rest');
+    expect(w.whenDismissed.resting).toBe(true);
+    expect(w.whenDismissed.title).toBe('900K of 5M free tokens left');
+    // And the figure is the same object the healthy state builds.
+    expect(w.whenDismissed.dismissKey).toBeUndefined();
   });
 
   it('is quiet when signed out, unreachable, or on a BYOK provider', () => {
@@ -195,13 +209,29 @@ describe('deriveComposerWarning', () => {
     // cowork-server swaps a wallet-locked model for Air while the grant lasts,
     // so the next task starts. Only an explicit paid pick is stuck.
     const depleted = usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
-    // A resting figure is a figure, not a stop sign: no danger tone, no CTA to
-    // add funds, and nothing that reads as the next task being refused.
+    // A resting figure is a figure, not a stop sign: no danger tone and
+    // nothing that reads as the next task being refused. It does still name
+    // the empty wallet, in the warning's own words, because that is true and
+    // actionable now rather than at 20% left — the same fact must not appear
+    // to arrive with the threshold that has nothing to do with it.
     for (const model of ['model-router', null, 'mindshub_air']) {
       const w = deriveComposerWarning(depleted, { model });
       expect(w.kind).toBe('free_at_rest');
       expect(w.tone).toBe('resting');
-      expect(labels(w)).toEqual(['View usage']);
+      expect(w.body).toMatch(/Your balance is empty\.$/);
+      expect(labels(w)).toEqual(['View usage', 'Add funds']);
+    }
+    // The disclosure does not hinge on the crossing: one token either side of
+    // the 20% edge says the same thing about the wallet.
+    const edge = (remaining) => deriveComposerWarning(usage({
+      freeTokens: { limit: 5_000_000, used: 5_000_000 - remaining, remaining, resetsAt: RESET },
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    }), { model: null });
+    expect(edge(1_000_001).kind).toBe('free_at_rest');
+    expect(edge(1_000_000).kind).toBe('free_low');
+    for (const w of [edge(1_000_001), edge(1_000_000)]) {
+      expect(w.body).toMatch(/Your balance is empty\.$/);
+      expect(labels(w)).toContain('Add funds');
     }
     expect(deriveComposerWarning(depleted, { model: 'claude-sonnet-4' })?.kind).toBe('balance_empty');
     // Free tokens low as well: the free-token line carries the balance news.
@@ -297,11 +327,35 @@ describe('usageTransitions', () => {
   });
 
   it('does not read a grant appearing, or an uncapped one, as running low', () => {
+    // These hold on the step comparison alone: a read with no fraction to
+    // measure is the deepest step, which no later step can exceed. The
+    // explicit guards in the branch are belt and braces, so deleting them
+    // would not move this test — the comment there says as much.
     const uncapped = usage({ freeTokens: { limit: -1, used: 30 } });
     const none = usage({ freeTokens: null });
     expect(usageTransitions(none, free(900_000))).toEqual([]);
     expect(usageTransitions(uncapped, free(900_000))).toEqual([]);
     expect(usageTransitions(free(900_000), uncapped)).toEqual([]);
+  });
+
+  it('reports the deepest crossing too, not just the first two', () => {
+    // 10% into 5%: the third mark, and the last one before free_used owns it.
+    expect(usageTransitions(free(400_000), free(200_000))).toEqual([
+      { kind: 'free_low', remaining: 200_000, resetsAt: RESET },
+    ]);
+  });
+
+  it('stays quiet for a BYOK task, the same silence the composer bar keeps', () => {
+    // The poll is keyed on the MindsHub sign-in, not the planning provider, so
+    // it keeps answering while a task bills someone else's key. That task
+    // never spends these tokens, so a crossing is not its news.
+    expect(usageTransitions(free(2_000_000), free(900_000), { providerType: 'openai' })).toEqual([]);
+    expect(usageTransitions(free(900_000), free(0), { providerType: 'openai' })).toEqual([]);
+    expect(usageTransitions(
+      usage({ autoTopUp: { status: 'ok' } }),
+      usage({ autoTopUp: { status: 'payment_failed' } }),
+      { providerType: 'anthropic' },
+    )).toEqual([]);
   });
 
   it('reports the free grant running out', () => {
@@ -397,6 +451,36 @@ describe('freeDismissStep', () => {
     // Closing at 900K and again at 400K are different keys, which is the whole
     // point: the bar comes back rather than staying shut for the month.
     expect(at(900_000).dismissKey).not.toBe(at(400_000).dismissKey);
+  });
+});
+
+describe('countsAsWarning', () => {
+  it('a standing figure is not a warning, so dismissals are still forgotten', () => {
+    // This is the whole of criterion 9. If a resting figure counted as a
+    // warning, `usageHealthy` would be false for every free user all month,
+    // the dismissal store would never be wiped, and a bar closed at 900K in
+    // September would still be closed at 900K in October.
+    const resting = deriveComposerWarning(usage());
+    expect(resting.kind).toBe('free_at_rest');
+    expect(countsAsWarning(resting)).toBe(false);
+    // Nothing at all is likewise nothing to warn about.
+    expect(countsAsWarning(null)).toBe(false);
+  });
+
+  it('every non-resting descriptor does count, including the one it steps down to', () => {
+    const low = deriveComposerWarning(usage({
+      freeTokens: { limit: 5_000_000, used: 4_100_000, remaining: 900_000, resetsAt: RESET },
+    }));
+    expect(countsAsWarning(low)).toBe(true);
+    // The figure a dismissal falls back to is still not a warning: closing
+    // the bar must not keep the account looking unhealthy forever.
+    expect(countsAsWarning(low.whenDismissed)).toBe(false);
+    expect(countsAsWarning(deriveComposerWarning(usage({
+      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+    })))).toBe(true);
+    expect(countsAsWarning(deriveComposerWarning(usage({
+      autoTopUp: { enabled: true, status: 'payment_failed' },
+    })))).toBe(true);
   });
 });
 

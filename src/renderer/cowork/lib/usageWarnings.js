@@ -63,8 +63,10 @@ export function balanceDismissStep(usd) {
 }
 
 /** How far down the allowance has stepped, from the fraction still left: 40%
- *  is 0 (not low at all), 18% is 1, 9% is 2, 4% is 3. A dismissal only ever
- *  reads this inside the low band, so it never sees 0. */
+ *  is 0 (not low at all), 18% is 1, 9% is 2, 4% is 3. Step 0 is reachable from
+ *  inside the band: `low` takes the edge (`<=`) while a step is strictly below
+ *  each mark (`<`), so a read landing on exactly 0.2 shows the bar and keys its
+ *  dismissal to step 0. The key is opaque, so nothing downstream cares. */
 export function freeDismissStep(fractionLeft) {
   return dismissStep(fractionLeft, FREE_DISMISS_STEPS_FRACTION);
 }
@@ -113,6 +115,15 @@ function freeState(free) {
   };
 }
 
+/** Whether a bar descriptor is something to WARN about, as opposed to the
+ *  standing figure. The one place that rule is written: a resting figure
+ *  shows for every free user all month, so counting it as a warning would
+ *  mean a dismissal is never forgotten again and a bar closed in one month
+ *  would still be closed in the next. */
+export function countsAsWarning(descriptor) {
+  return !!descriptor && !descriptor.resting;
+}
+
 /** The picked model id: an id string, a catalog option ({ id }), or null. */
 function pickedModelId(modelIn) {
   return typeof modelIn === 'string' ? modelIn : modelIn?.id ?? null;
@@ -126,6 +137,32 @@ function isExplicitPaidModel(model) {
 function resetClause(free, lead) {
   const date = formatResetDate(free?.resetsAt);
   return date ? `${lead} on ${date}` : lead;
+}
+
+/* The standing allowance figure: what the bar says when nothing is wrong.
+   Built here because two branches need the same object. The terminal branch
+   below returns it, and `free_low` carries it as the state a dismissal falls
+   back to, so closing the warning drops to the number rather than to nothing. */
+function restingFigure(free, f, { balanceEmpty = false } = {}) {
+  const resets = formatResetDate(free.resetsAt);
+  let body = resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.';
+  const actions = [USAGE_ACTIONS.viewUsage];
+  // An empty wallet is true and actionable from the moment it empties, so it
+  // is said here rather than appearing as a surprise clause on the warning
+  // once the grant crosses 20%. The tone stays neutral: while the grant can
+  // still pay, nothing is blocked and this is not a stop sign.
+  if (balanceEmpty) {
+    body += ' Your balance is empty.';
+    actions.push(USAGE_ACTIONS.addFunds);
+  }
+  return {
+    kind: 'free_at_rest',
+    tone: 'resting',
+    resting: true,
+    title: `${formatTokensShort(f.remaining)} of ${formatTokensShort(free.limit)} free tokens left`,
+    body,
+    actions,
+  };
 }
 
 /**
@@ -257,6 +294,10 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       // Stepped like the balance: closing this at 900K of 5M asks again at
       // 500K, which is also where the console escalates from 80% to 90% used.
       dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
+      // Closing a warning steps down to the standing figure, never to nothing.
+      // Hiding the only place the allowance is visible is what this bar exists
+      // to stop, and 20% left is where the number matters most.
+      whenDismissed: restingFigure(free, f, { balanceEmpty }),
       title: `${formatTokensShort(f.remaining)} free tokens left`,
       body,
       actions,
@@ -267,17 +308,9 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   // all. A warning the person only meets at 20% left is a warning they cannot
   // plan around, and Settings is somewhere they have to think to go. `resting`
   // marks this as a figure and not a warning: it carries no close button, and
-  // it does not count as something to warn about (see `usageHealthy`).
+  // it does not count as something to warn about (see `countsAsWarning`).
   if (freeInUse && f.available && f.fractionLeft !== null) {
-    const resets = formatResetDate(free.resetsAt);
-    return {
-      kind: 'free_at_rest',
-      tone: 'resting',
-      resting: true,
-      title: `${formatTokensShort(f.remaining)} of ${formatTokensShort(free.limit)} free tokens left`,
-      body: resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.',
-      actions: [USAGE_ACTIONS.viewUsage],
-    };
+    return restingFigure(free, f, { balanceEmpty });
   }
 
   return null;
@@ -291,9 +324,15 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
  *                    the router). A task on an explicit paid model was on the
  *                    balance all along, so the free tokens running out is not
  *                    its news.
+ * @param opts.providerType  the planning provider. The poll keeps running on a
+ *                    BYOK provider because it is keyed on the MindsHub sign-in,
+ *                    but a task billing someone else's key never spends these
+ *                    tokens, so an account-wide change is not its news either.
+ *                    Same gate `deriveComposerWarning` applies to the bar.
  */
-export function usageTransitions(prev, next, { model: modelIn = null } = {}) {
+export function usageTransitions(prev, next, { model: modelIn = null, providerType = 'minds-cloud' } = {}) {
   if (!prev?.reachable || !next?.reachable) return [];
+  if (providerType && providerType !== 'minds-cloud') return [];
   const out = [];
   const before = freeState(prev.freeTokens);
   const after = freeState(next.freeTokens);
@@ -308,6 +347,11 @@ export function usageTransitions(prev, next, { model: modelIn = null } = {}) {
   // capped grant, or a grant arriving mid-task would read as one draining, and
   // `free_used` above owns the last step so reaching zero says the tokens are
   // gone rather than that they are low.
+  // The first four terms are belt and braces, not load-bearing: `after.low`
+  // already implies a capped grant with tokens left, and `freeDismissStep`
+  // reads a null fraction as the deepest step, which no later step can exceed.
+  // They stay because the step comparison carrying all of that alone does not
+  // read as the rule it enforces.
   if (!before.out && !after.out && after.low && spendsFree
       && before.fractionLeft !== null && after.fractionLeft !== null
       && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
