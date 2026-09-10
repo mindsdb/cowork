@@ -279,6 +279,39 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(effortPill()).toHaveTextContent('Medium effort');
   });
 
+  // An empty pick sends no effort, and the server then runs the turn at the
+  // effort saved beside the planning model in Settings. The pill has to say
+  // so, or a saved High runs while the pill reads Medium.
+  it('shows the effort saved in Settings when nothing was picked', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS, planningReasoningEffort: 'high' },
+      model: MODELS[1],
+      effort: '',
+    });
+    expect(effortPill()).toHaveTextContent('High effort');
+  });
+
+  it('lets an explicit pick win over the effort saved in Settings', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS, planningReasoningEffort: 'high' },
+      model: MODELS[1],
+      effort: 'low',
+    });
+    expect(effortPill()).toHaveTextContent('Low effort');
+  });
+
+  it("falls back to the model's default when the saved Settings effort is a level it does not offer", () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS, planningReasoningEffort: 'max' },
+      model: MODELS[1],
+      effort: '',
+    });
+    expect(effortPill()).toHaveTextContent('Medium effort');
+  });
+
   it('renders no effort pill for a model with no levels', () => {
     renderComposer({
       models: MODELS,

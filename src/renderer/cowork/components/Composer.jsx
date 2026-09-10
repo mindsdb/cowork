@@ -419,14 +419,18 @@ export default function Composer({
 
   // Effort levels the picked model advertises; null (no pill) when it has
   // none, the catalog hasn't loaded, or the harness has no effort knob. The
-  // pill always shows the level the task will run at: the explicit pick, or
-  // the model's own default when nothing was picked.
+  // pill always shows the level the task will run at: the explicit pick,
+  // else the effort saved beside the planning model in Settings, else the
+  // model's own default. The middle step mirrors the server: an empty pick
+  // sends no effort, and providers.build_llm_client then applies the saved
+  // planning effort to the turn, whichever model was picked here. Without it
+  // a saved High would run while the pill said Medium.
   const effortLevels = useMemo(
     () => (effortHarness === 'hermes' ? null : effortLevelsFor(model?.id, modelMeta?.modelEfforts)),
     [effortHarness, model?.id, modelMeta?.modelEfforts],
   );
   const resolvedEffort = effortLevels
-    ? (resolveEffort(effort, null, effortLevels) ?? effortLevels.levels[0])
+    ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
     : '';
 
   // Drop a pick the current model does not offer, so the pill never names a
