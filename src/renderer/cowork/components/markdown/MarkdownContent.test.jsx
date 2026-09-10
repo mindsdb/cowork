@@ -250,7 +250,7 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     hostState.isWeb = true;
     try {
       const { container } = render(
-        <MarkdownContent text={'[Download it here](http://127.0.0.1:8000/dashboard.html)'} complete />,
+        <MarkdownContent text={'[Download it here](http://127.0.0.1:8000/dashboard.html)'} complete isAssistant />,
       );
       expect(container.querySelector('a')).toBeNull();
       expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
@@ -269,7 +269,7 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
         '[r]: /mnt/cowork-shared/projects/acme/report.zip',
         '[a]: http://localhost:3000/',
       ].join('\n');
-      const { container } = render(<MarkdownContent text={text} complete />);
+      const { container } = render(<MarkdownContent text={text} complete isAssistant />);
       expect(container.querySelector('a')).toBeNull();
       expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(2);
       expect(container.textContent).toContain('download the report');
@@ -339,7 +339,7 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     hostState.isWeb = true;
     try {
       const { container } = render(<MarkdownContent
-        text={'Open http://127.0.0.1:8000/dash.html or see https://example.com/docs.'} complete />);
+        text={'Open http://127.0.0.1:8000/dash.html or see https://example.com/docs.'} complete isAssistant />);
       const a = container.querySelectorAll('a');
       expect(a.length).toBe(1);
       expect(a[0].getAttribute('href')).toBe('https://example.com/docs');
@@ -358,7 +358,7 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
         '',
         '[r]: http://127.0.0.1:9999/f',
       ].join('\n');
-      const { container } = render(<MarkdownContent text={t} complete />);
+      const { container } = render(<MarkdownContent text={t} complete isAssistant />);
       expect(container.querySelector('a')).toBeNull();
       expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(2);
     } finally { hostState.isWeb = false; }
@@ -378,6 +378,33 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     } finally {
       hostState.isWeb = false;
     }
+  });
+
+    it('keeps a USER-typed loopback link live on web — only assistant output is neutralised', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent
+        text={'my dev server: [app](http://localhost:3000/)'} complete variant="user" enableForms={false} enableCharts={false} />);
+      const a = container.querySelector('a');
+      expect(a).not.toBeNull();
+      expect(a.getAttribute('href')).toBe('http://localhost:3000/');
+    } finally { hostState.isWeb = false; }
+  });
+
+  it('keeps a loopback link in a non-assistant Markdown document live on web', () => {
+    // Artifact/document previews render through the same component with the
+    // default isAssistant=false — a doc describing localhost services must not
+    // get the Live Artifacts tooltip (review finding, round 3). Pod PATH
+    // shapes stay neutralised everywhere; only loopback is assistant-scoped.
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent
+        text={'Run it at [dev](http://127.0.0.1:8000/) — output lands in [f](/mnt/x/f.zip)'} complete />);
+      const a = container.querySelector('a');
+      expect(a).not.toBeNull();
+      expect(a.getAttribute('href')).toBe('http://127.0.0.1:8000/');
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(1); // the /mnt link
+    } finally { hostState.isWeb = false; }
   });
 
     it('keeps a reference-style loopback link clickable on desktop', () => {

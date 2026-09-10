@@ -162,7 +162,7 @@ const _ARTIFACT_LOCAL_LINK_TITLE =
 // strips a disallowed-scheme href (C:\…, sandbox:, file:) before the `a`
 // override could see it, so only here are Windows/POSIX/file/sandbox caught
 // uniformly. The <span>'s leftover href isn't allowlisted → sanitize drops it.
-function remarkArtifactLocalLinks() {
+function remarkArtifactLocalLinks({ web = false } = {}) {
   const neutralize = (node) => {
     node.data = {
       ...(node.data || {}),
@@ -220,7 +220,7 @@ function remarkArtifactLocalLinks() {
   return (tree) => {
     const defs = new Map();
     collectDefinitions(tree, defs);
-    walk(tree, defs, host.isWeb);
+    walk(tree, defs, web);
   };
 }
 
@@ -607,9 +607,16 @@ export function MarkdownContent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       [remarkSkillMentions, skillNames],
-      remarkArtifactLocalLinks,
+      // Loopback neutralisation is scoped to ASSISTANT chat output on web —
+      // a user typing http://localhost:3000 in their own turn, or a Markdown
+      // document/artifact preview referencing one, is describing a service on
+      // their own machine and must stay live (review finding on #956, round
+      // 3). The path shapes (file:, sandbox:, C:\, /mnt/, .anton/artifacts)
+      // stay neutralised for every consumer: only the `web` option gates the
+      // loopback branch inside isArtifactLocalPath.
+      [remarkArtifactLocalLinks, { web: host.isWeb && isAssistant }],
     ],
-    [skillNames],
+    [skillNames, isAssistant],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
