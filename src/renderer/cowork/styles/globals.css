@@ -4363,6 +4363,12 @@ body[data-theme="dark"] .chat-card-btn--primary {
 body[data-theme="dark"] .chat-card-btn--primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
+/* Touch needs a real target, and `all: unset` above resets `position`, so an
+   absolutely-placed overlay would escape to some other ancestor. Growing the
+   control itself avoids that and is honest about where the button is. */
+@media (hover: none), (pointer: coarse) {
+  .chat-card-btn { min-height: 44px; }
+}
 
 /* Progress-panel done marker: keep the brand --accent fill in light, but in
    dark drop to the deeper --accent-3 so a column of checks reads as a quiet
@@ -4482,6 +4488,14 @@ body[data-theme="dark"] .phase-check-done {
   color: var(--accent);
 }
 .turn-action-btn--danger:hover { color: var(--danger); }
+/* 28px controls 4px apart put their centres 32px apart, so centred 44px
+   overlays would reach 22px either way and Delete's would cover the right
+   edge of Copy's visible box. 40px controls with an 8px gap sit 48px apart:
+   a real target, no overlap, and the same 40px the mobile shell uses. */
+@media (hover: none), (pointer: coarse) {
+  .turn-actions { gap: 8px; }
+  .turn-action-btn { width: 40px; height: 40px; }
+}
 
 .user-turn-attachment {
   display: flex;
