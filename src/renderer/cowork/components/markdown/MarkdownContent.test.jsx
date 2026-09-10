@@ -333,6 +333,37 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     } finally { hostState.isWeb = false; }
   });
 
+    it('neutralises a BARE loopback URL in prose (GFM autolink literal) and keeps bare remote URLs live', () => {
+    // Agents paste raw URLs constantly; remark-gfm turns them into link nodes,
+    // so the guard must cover them (round-3 adversarial probe set).
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent
+        text={'Open http://127.0.0.1:8000/dash.html or see https://example.com/docs.'} complete />);
+      const a = container.querySelectorAll('a');
+      expect(a.length).toBe(1);
+      expect(a[0].getAttribute('href')).toBe('https://example.com/docs');
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(1);
+    } finally { hostState.isWeb = false; }
+  });
+
+  it('neutralises pod links inside GFM table cells, inline and reference-style', () => {
+    hostState.isWeb = true;
+    try {
+      const t = [
+        '| file | link |',
+        '|---|---|',
+        '| model | [download](/mnt/x/model.xlsx) |',
+        '| data  | [grab][r] |',
+        '',
+        '[r]: http://127.0.0.1:9999/f',
+      ].join('\n');
+      const { container } = render(<MarkdownContent text={t} complete />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(2);
+    } finally { hostState.isWeb = false; }
+  });
+
     it('leaves images to pod paths alone — deliberately out of scope (no live link is claimed)', () => {
     hostState.isWeb = true;
     try {
