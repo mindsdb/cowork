@@ -27,6 +27,7 @@
 // links there rather than growing a second create flow that would have to open a
 // browser anyway.
 
+import { useCallback } from 'react';
 import { ArrowUpRight, Check, ChevronDown, Settings2 } from 'lucide-react';
 import Menu from './ui/Menu';
 import { useToastManager } from './ui/Toast';
@@ -51,10 +52,19 @@ export function WorkspaceTile({ id, name, size = 18 }) {
 
 const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
 
-export function WorkspaceSelector({ user }) {
+export function WorkspaceSelector({ user, returnFocusRef }) {
   const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
   const toastManager = useToastManager();
+  const preserveFocusOnRemoval = useCallback((element) => {
+    // React 19 calls this cleanup before removing the focused trigger. A delayed
+    // switch can hide it after the menu has already restored focus here.
+    return () => {
+      if (element.contains(element.ownerDocument.activeElement)) {
+        returnFocusRef?.current?.focus({ preventScroll: true });
+      }
+    };
+  }, [returnFocusRef]);
 
   const pick = async (workspaceId) => {
     try {
@@ -172,7 +182,7 @@ export function WorkspaceSelector({ user }) {
   );
 
   return (
-    <div className="anton-sidebar__workspace-wrap px-2.5 py-1.5">
+    <div ref={preserveFocusOnRemoval} className="anton-sidebar__workspace-wrap px-2.5 py-1.5">
       <Menu
         trigger={trigger}
         items={items}

@@ -293,6 +293,7 @@ export default function Sidebar({
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
+  const workspaceReturnFocusRef = useRef(null);
 
   // Footer states. The status pill wins over everything (Electron-only, the
   // server needs attention); otherwise a signed-in user gets the account row.
@@ -899,7 +900,7 @@ export default function Sidebar({
             container inside the organization, not the thing a reader starts a
             task from, and the top of the rail is where the first task begins.
             Renders nothing until the org has a second workspace to move to. */}
-        {accountUser && <WorkspaceSelector user={accountUser} />}
+        {accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so
@@ -948,6 +949,7 @@ export default function Sidebar({
                 </Tooltip>
                 <Tooltip content="Settings">
                   <button
+                    ref={workspaceReturnFocusRef}
                     className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                     onClick={() => onNavigate('settings:backend')}
                     aria-label="Settings"
@@ -974,6 +976,7 @@ export default function Sidebar({
                     floating corner button — see App.jsx. */}
                 <Tooltip content="Settings">
                   <button
+                    ref={workspaceReturnFocusRef}
                     className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
                     onClick={() => onNavigate('settings')}
                     aria-label="Open Settings"
@@ -984,6 +987,7 @@ export default function Sidebar({
               </>
             ) : (
               <button
+                ref={workspaceReturnFocusRef}
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings')}
                 aria-label="Settings"

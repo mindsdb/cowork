@@ -8,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
 vi.mock('../api', () => apiMock);
 
 import { useHubWorkspaces } from './useHubWorkspaces';
+import { notifyOrganizationChanged } from '../lib/organizationChanges';
 
 const USER = { sub: 'user-1', name: 'Hazem', org: 'MindsDB' };
 const OTHER_USER = { sub: 'user-2', name: 'David', org: 'MindsDB' };
@@ -330,6 +331,30 @@ describe('useHubWorkspaces', () => {
 
     await act(async () => { await result.current.refresh(); });
 
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores another account\'s organization change and unsubscribes on unmount', async () => {
+    const { result, unmount } = renderHook(() => useHubWorkspaces(USER));
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+
+    act(() => { notifyOrganizationChanged(OTHER_USER.sub); });
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1);
+
+    unmount();
+    act(() => { notifyOrganizationChanged(USER.sub); });
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the old organization\'s retry when its replacement read succeeds', async () => {
+    apiMock.fetchHubWorkspaces.mockRejectedValueOnce(new Error('down'));
+    const { result } = renderHook(() => useHubWorkspaces(USER));
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1));
+
+    await act(async () => { notifyOrganizationChanged(USER.sub); });
+    expect(result.current.enabled).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
     expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(2);
   });
 });

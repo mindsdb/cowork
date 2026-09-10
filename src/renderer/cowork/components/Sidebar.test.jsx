@@ -471,6 +471,23 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
   it.each([
     ['desktop', false],
     ['web', true],
+  ])('keeps keyboard focus in the footer when the workspace control disappears on %s', async (_shell, isWeb) => {
+    hostMock.isWeb = isWeb;
+    withWorkspaces([DEFAULT_WS, CLIENT_A]);
+    const { rerender } = render(<Sidebar {...baseProps} serverOnline />);
+    const trigger = await screen.findByRole('button', { name: 'Workspace: Default' });
+    trigger.focus();
+
+    withWorkspaces([DEFAULT_WS]);
+    rerender(<Sidebar {...baseProps} serverOnline />);
+
+    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toHaveFocus();
+  });
+
+  it.each([
+    ['desktop', false],
+    ['web', true],
   ])('draws nothing for a one-workspace organization on %s', async (_shell, isWeb) => {
     hostMock.isWeb = isWeb;
     withWorkspaces([DEFAULT_WS]);

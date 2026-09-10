@@ -551,6 +551,12 @@ is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
 because a sidecar without the route will not grow one, and neither is a
 gate-off answer, because it is definite.
 
+After a successful desktop organization switch, `useMindsOrgs` notifies
+`useHubWorkspaces` to discard the old listing and read the new organization.
+Late reads and workspace switches from the old organization cannot replace it.
+If leaving an archived workspace hides the focused selector, focus moves to the
+sidebar's Settings button. Focus already moved elsewhere stays there.
+
 **The switch is a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
 server SDK, and reports the verdict; cowork-server reads it and passes it on. So
