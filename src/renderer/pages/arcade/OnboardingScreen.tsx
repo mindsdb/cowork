@@ -218,6 +218,12 @@ export default function OnboardingScreen({
   // effect (which re-runs on `provider` toggles) can't double-save /
   // double-fire onComplete.
   const finalizedRef = useRef(false);
+  // When the desktop-app link was last opened. host.openExternal is
+  // window.open() on web, so an accidental double-click lands two tabs on the
+  // download page. Deliberately NOT a one-shot latch like finalizedRef above:
+  // this screen stays mounted after the click, so latching would leave the
+  // link dead for anyone who closes the tab and comes back for it.
+  const downloadOpenedAtRef = useRef(0);
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
   // Which MindsHub organization the API key gets minted in. Only ever asked
@@ -724,7 +730,16 @@ export default function OnboardingScreen({
               nothing about it. An offer beside Continue, not ahead of it. */}
           <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
             Cowork also runs on your desktop.{' '}
-            <button type="button" className="arc-link" onClick={() => host.openExternal(MINDS_DOWNLOAD_URL)}>
+            <button
+              type="button"
+              className="arc-link"
+              onClick={() => {
+                const now = Date.now();
+                if (now - downloadOpenedAtRef.current < 1000) return; // swallow a double-click
+                downloadOpenedAtRef.current = now;
+                host.openExternal(MINDS_DOWNLOAD_URL);
+              }}
+            >
               Get the desktop app
             </button>
           </div>

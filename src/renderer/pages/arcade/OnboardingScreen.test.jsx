@@ -89,6 +89,38 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     );
   });
 
+  // ENG-2311 review: host.openExternal is window.open() on web, so two clicks
+  // land two tabs on the download page. Guarded by elapsed time rather than by
+  // a one-shot latch like Continue's finalizedRef: this screen stays mounted
+  // after the click, so a latch would leave the link permanently dead for a
+  // user who closed the tab and came back.
+  it('double-clicking the desktop-app link opens one tab, not two', async () => {
+    hostMock.openExternal = vi.fn();
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    const link = await screen.findByRole('button', { name: 'Get the desktop app' });
+    // Two click events is what a browser dispatches for a double-click
+    // (click, click, dblclick); React's onClick never sees the dblclick.
+    fireEvent.click(link);
+    fireEvent.click(link);
+    expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+  });
+
+  // The other half of the guard: it must expire. Date.now is stubbed only
+  // after the async find, so testing-library's own waitFor timers are unharmed.
+  it('the desktop-app link still works on a later, deliberate second click', async () => {
+    hostMock.openExternal = vi.fn();
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    const link = await screen.findByRole('button', { name: 'Get the desktop app' });
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    fireEvent.click(link);
+    fireEvent.click(link);
+    expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    nowSpy.mockReturnValue(1_000_000 + 5_000);
+    fireEvent.click(link);
+    expect(hostMock.openExternal).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
   // ENG-2311 (AC1): the HUD credits the copyright to MindsDB, Inc., the entity
   // that holds it. It previously read a bare "MINDSDB", which on a
   // MindsHub-branded signup reads as a stray product name. ArcadeShell renders
