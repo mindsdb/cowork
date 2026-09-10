@@ -2,26 +2,16 @@
 // Extracted so the permanent-write-failure path is unit-testable.
 
 import * as fs from 'fs';
+import { CREDENTIAL_ENV_KEYS } from './credential-env-keys';
 import { writeEnvFileAtomic } from './minds-auth';
 
 // Keys stripped from the .env on sign-out — for the standalone anton CLI and
-// the next-boot migration. ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are
-// intentionally NOT stripped (ENG-739): preserving them on sign-in but deleting
-// them on sign-out would break the same "a `latest:` value may be a deliberate
-// choice — never silently mutate it" rule the sign-in path follows. A model is
-// CLI-only in .env; the DB (product) is cleared separately.
-export const LOGOUT_ENV_KEYS = [
-  'ANTON_MINDS_API_KEY',
-  'ANTON_MINDS_URL',
-  'ANTON_MINDS_ENABLED',
-  'ANTON_OPENAI_API_KEY',
-  'ANTON_OPENAI_BASE_URL',
-  'ANTON_OPENAI_API_KEY_CUSTOM',
-  'ANTON_ANTHROPIC_API_KEY',
-  'ANTON_GEMINI_API_KEY',
-  'ANTON_PLANNING_PROVIDER',
-  'ANTON_CODING_PROVIDER',
-];
+// the next-boot migration. Preserving a model on sign-in but deleting it on
+// sign-out would break the same "a `latest:` value may be a deliberate choice,
+// never silently mutate it" rule the sign-in path follows, so the model keys are
+// deliberately not in this list. A model is CLI-only in .env; the DB (product)
+// is cleared separately.
+export const LOGOUT_ENV_KEYS = CREDENTIAL_ENV_KEYS;
 
 // Remove the credential keys from the .env file and from this process's
 // inherited copies. The file write goes through writeEnvFileAtomic, which

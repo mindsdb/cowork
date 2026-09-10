@@ -23,7 +23,15 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { buildKindStrict, migrateLegacyHomeInto, readBuildConfigKind } from './cowork-home';
+import {
+  accountDataRoot,
+  buildKindStrict,
+  coworkEnvPath,
+  coworkHome,
+  coworkStatePath,
+  migrateLegacyHomeInto,
+  readBuildConfigKind,
+} from './cowork-home';
 
 let resourcesDir: string;
 let originalResourcesPath: string | undefined;
@@ -279,5 +287,67 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
 
     expect(fs.existsSync(home)).toBe(true);
     expect(fs.readdirSync(home)).toEqual([]);
+  });
+});
+
+// The account's own dotenv and provider state live in its own data root, so a
+// second account cannot write its provider key into the owning account's file —
+// which is where the owner would then import it from on their next sign-in.
+describe('the account data root', () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-env-root-'));
+    process.env.COWORK_DEV_HOME = home;
+    appState.isPackaged = false;
+  });
+
+  afterEach(() => {
+    delete process.env.COWORK_DEV_HOME;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  const record = (value: unknown) =>
+    fs.writeFileSync(path.join(home, 'active-account.json'), JSON.stringify(value), 'utf-8');
+  const claim = (accountId: string) =>
+    fs.writeFileSync(path.join(home, '.account'), JSON.stringify({ accountId }), 'utf-8');
+  const observeFresh = () =>
+    fs.writeFileSync(path.join(home, '.pre-existing-data'), JSON.stringify({ hadData: false }), 'utf-8');
+
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+  it('is the shared home for the account that owns it', () => {
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_A, lastAccountId: ACCOUNT_A });
+    expect(accountDataRoot()).toBe(home);
+    expect(coworkEnvPath()).toBe(path.join(home, '.env'));
+    expect(coworkStatePath()).toBe(path.join(home, 'state.json'));
+  });
+
+  it('is the account subtree for anyone else', () => {
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_B, lastAccountId: ACCOUNT_B });
+    const own = path.join(home, 'accounts', ACCOUNT_B);
+    expect(accountDataRoot()).toBe(own);
+    expect(coworkEnvPath()).toBe(path.join(own, '.env'));
+    expect(coworkStatePath()).toBe(path.join(own, 'state.json'));
+  });
+
+  it('leaves the shared home for a fresh install with nobody signed in', () => {
+    observeFresh();
+    expect(accountDataRoot()).toBe(home);
+  });
+
+  it('does NOT move the identity files, which answer who is signed in', () => {
+    // Those cannot be per-account without a bootstrap cycle: the record is what
+    // tells us which account root to use in the first place.
+    observeFresh();
+    claim(ACCOUNT_A);
+    record({ accountId: ACCOUNT_B, lastAccountId: ACCOUNT_B });
+    expect(coworkHome()).toBe(home);
+    expect(accountDataRoot()).not.toBe(home);
   });
 });

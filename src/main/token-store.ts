@@ -2,6 +2,8 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { clearActiveAccountRecord, writeActiveAccountSync } from './account-data';
+import { accountIdFromToken } from './jwt';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
@@ -140,7 +142,39 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
+  recordSignedInAccount(accessToken);
   broadcastAuthChanged(true);
+}
+
+// Which account the app is signed in as, recorded HERE because this is the one
+// choke point every MindsHub auth transition flows through: a sign-in that never
+// reaches the finalize step still records, and the account stays nameable at
+// boot with no network. Writing it here and clearing it in clearTokens keeps the
+// record's lifetime equal to the session's, so "no record" and "no session" are
+// one state rather than two.
+function recordSignedInAccount(accessToken: string): void {
+  const accountId = accountIdFromToken(accessToken);
+  if (!accountId) return;
+  try {
+    writeActiveAccountSync(coworkHome(), accountId);
+  } catch (e) {
+    // NOT best-effort. A lost write does not repair itself: the record still
+    // names the PREVIOUS account, so this account is resolved onto that
+    // account's data root and every check downstream compares against the same
+    // stale record and agrees. Removing it instead leaves the record absent,
+    // which resolves to an empty quarantine root rather than someone else's
+    // data. An empty app is recoverable; a cross-account read is the bug.
+    console.warn('[token-store] could not record the signed-in account', e);
+    try {
+      clearActiveAccountRecord(coworkHome());
+    } catch (removeErr) {
+      console.error(
+        '[token-store] could not record OR clear the signed-in account — '
+        + 'this session may resolve onto another account data root',
+        removeErr,
+      );
+    }
+  }
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
@@ -166,6 +200,14 @@ export function clearTokens(): void {
   _accessToken = null;
   _expiresAt = 0;
   deleteTokenFiles();
+  // Same choke point, same reason: a sign-out recorded here keeps the account
+  // this install was using, so it stays on its own data root rather than
+  // falling back onto whichever account owns the default one.
+  try {
+    writeActiveAccountSync(coworkHome(), null);
+  } catch (e) {
+    console.warn('[token-store] could not record the sign-out', e);
+  }
   broadcastAuthChanged(false);
 }
 

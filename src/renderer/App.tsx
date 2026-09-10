@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
+import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host } from './platform/host';
+import { host, type AccountOwnershipQuestion } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
@@ -301,6 +302,45 @@ export default function App() {
     await handlePostAuth();
   };
 
+  // Who owns the data already on this machine, when nothing on disk can say.
+  //
+  // Mounted HERE, in the shell, rather than inside CoworkApp: an account that has
+  // been resolved onto its own empty root has no credentials in that root, so
+  // config_ready is false and boot routes to 'auth'. A dialog living on the
+  // 'terminal' route would be unreachable in exactly the state that needs it.
+  const [ownership, setOwnership] = useState<AccountOwnershipQuestion | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    host.accountOwnershipPending()
+      .then((question) => { if (!cancelled) setOwnership(question); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, [page]);
+
+  const [ownershipError, setOwnershipError] = useState<string | null>(null);
+  const decideOwnership = useCallback(async (keepExisting: boolean) => {
+    if (!ownership) return;
+    const { ok, reason } = await host.decideAccountOwnership(ownership.accountId, keepExisting);
+    if (!ok) {
+      // The claim can fail to write or lose a race to another launch. Closing
+      // the dialog here would leave the person on an empty app having just said
+      // the history was theirs, with nothing said about why it is not.
+      setOwnershipError(
+        reason === 'account-changed'
+          ? 'The signed-in account changed. Sign in again to answer this.'
+          : 'Could not take that history. Nothing was changed — try again.',
+      );
+      return;
+    }
+    setOwnershipError(null);
+    setOwnership(null);
+    // Reload on BOTH answers. Taking the data restarted the sidecar onto it;
+    // declining moved the sidecar off it. Either way everything already on
+    // screen, and the conversation caches behind it, came from the other
+    // database.
+    window.location.reload();
+  }, [ownership]);
+
   const isMac = host.isMac();
   const isArcadePage = page !== 'terminal';
 
@@ -308,6 +348,16 @@ export default function App() {
     <>
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
+
+      {ownership && (
+        <AccountOwnershipModal
+          open
+          accountLabel={ownership.accountLabel}
+          error={ownershipError}
+          onDecide={decideOwnership}
+          onDismiss={() => { setOwnershipError(null); setOwnership(null); }}
+        />
+      )}
 
       {page === 'loading' && (
         <div
