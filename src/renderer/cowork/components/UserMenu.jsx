@@ -8,13 +8,13 @@
  * readable label. External destinations carry an ↗ hint so the jump out of the
  * app is telegraphed before the click.
  *
- * **The organization picker lives here rather than in the rail.** An
- * organization is who is paying, and the account menu is about identity, so the
- * organization belongs in it. The console puts its organization selector in
- * exactly this menu too. A MindsHub workspace is a container inside an
- * organization rather than identity, which is why its picker left this menu for
- * its own control. The sidebar no longer draws that control either, and this
- * menu is where it was rejected first.
+ * **The organization picker lives here rather than in the rail**, which is the
+ * opposite of where the workspace selector ended up, and the two decisions are
+ * the same decision. An organization is who is paying; a workspace is a
+ * container inside it. The account menu is about identity, so the organization
+ * belongs in it and the workspace does not, which is why the workspace picker
+ * moved out to its own control above the New task CTA. The console puts its
+ * organization selector in exactly this menu too.
  *
  * Switching costs more than a label: the active organization controls the
  * tenant that subsequent requests address. Desktop refreshes its session in

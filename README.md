@@ -486,8 +486,8 @@ if you need one for that.
 its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/`
 carries the free monthly grant, the balance, the period's credit spend and auto
 top up state, and backs Settings → Usage. `/api/v1/hub/workspaces/` answers the
-MindsHub workspace listing and currently has no caller, as the next section
-explains.
+MindsHub workspace listing and backs the workspace selector described in the
+next section.
 
 Django auth's ingress allows the console origins and no Cowork host, and a
 per-PR Cowork host cannot be added to a static allow-list. A direct call would
@@ -500,38 +500,65 @@ off it.
 main process overwrites `Authorization` on every loopback request with the
 sidecar's own token, so the Keycloak JWT cannot arrive under that name.
 
-### The workspace selector, which the sidebar does not draw
+### The MindsHub workspace selector
 
-Nothing mounts it. No Cowork resource is workspace-scoped, so choosing a
-workspace changed no task, no skill, no memory, no usage row and no model list,
-and a reader who found the control could not tell what it was for. The sidebar
-now runs the mode switch straight into the New task CTA.
+A bordered control at the bottom of the sidebar, docked with the account row,
+names the MindsHub workspace you are working in and opens a menu listing every
+workspace you can use with a check on the active one. A **MindsHub Workspace**
+is an org-internal container that owns hub resources (API keys, artifacts, model
+entitlements) and lives in the auth service. It is not the working folder this
+app also calls a workspace, which is why the stored key and the code are named
+`hubWorkspace` throughout. There is no create entry: workspaces are created in
+the console, and the last row deep-links there.
 
-A **MindsHub Workspace** is an org-internal container that owns hub resources
-(API keys, artifacts, model entitlements) and lives in the auth service. It is
-not the working folder this app also calls a workspace, which is why the stored
-key and the code are named `hubWorkspace` throughout.
+**One workspace draws nothing.** Everyone starts in `Default` on their own, and
+a switch offering only the place you are already in asks a first-time reader to
+work out what a workspace is for no benefit. The control appears once the
+organization has a second one, which is the first moment "which workspace am I
+in" has more than one answer. The count is taken on the rows the sidecar offers,
+which already exclude archived workspaces and always keep the active one, so one
+live workspace beside an archived one counts as one.
 
-`components/WorkspaceSelector.jsx`, `hooks/useHubWorkspaces.js` and
-`lib/letterTile.js` stay in the tree, keep their tests, and keep their coverage
-pins, and cowork-server keeps both routes. The surface returns when there are
-features behind it, and it returns in the sidebar footer rather than at the top.
-Two things follow from the renderer having no call site: it issues no
-`/api/v1/hub/workspaces/` read at all, and a `hub_workspace_id` already stored
-for someone is left alone rather than cleared, so an earlier pick survives.
+**It sits at the bottom rather than the top of the rail.** A workspace is a
+container inside the organization, not what a reader starts a task from, and the
+top of the rail is where the first task begins. It is not a group inside the
+account menu either, which is where it shipped first. Two things were wrong with
+that: the current workspace was invisible until you opened the menu, which is
+the opposite of what a scope indicator is for, and the account menu is where the
+organization selector lands, so two levels of one hierarchy would have nested
+inside a menu about identity.
 
-**The switch was a server-side Statsig gate, not a build flag.** Auth declares
+| State | Control |
+|-------|---------|
+| The gate is off | absent |
+| The read has not come back yet | absent |
+| The hub could not be reached | absent |
+| Gate on and reachable, but the org has no workspace | absent |
+| One workspace, with nowhere to move to | absent |
+| Two or more, gate on | shown |
+
+A read that has not settled is retried three times over about forty seconds and
+then left alone. The renderer can mount before the sidecar is listening, so one
+attempt per session made an ordinary cold-start blip hide the control until the
+app was relaunched. Two shapes count as unsettled: a thrown transport error or
+5xx, and a 200 that says the gate is on but the hub could not be reached, which
+is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
+because a sidecar without the route will not grow one, and neither is a
+gate-off answer, because it is definite.
+
+**The switch is a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
-server SDK, and reports the verdict; cowork-server reads it and passes it on.
-One gate governed the console's authorization surfaces and this app alike, and
-the console still needs it on. That is why Cowork stopped reading the gate
-rather than anyone turning it off. `COWORK_HUB_WORKSPACES_FORCE_ON=true` on the
-sidecar is still an ON-only development override for the route, and now turns on
-no Cowork surface, because nothing draws one.
+server SDK, and reports the verdict; cowork-server reads it and passes it on. So
+one gate governs the console and this app, and turning the surface off does not
+need an installer. That matters here specifically: `src/main/**` reaches users
+only through a new installer, so a `CODING_MODE_OPTIONS_ENABLED`-style preload
+flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=true`
+on the sidecar is an ON-only development override for walking the surface where no
+rule targets you.
 
-**A workspace pick never changed what a turn is billed to.** Attribution rides
-the credential a turn presents, and neither credential carries a workspace
-today.
+**Picking a workspace changes what this app shows, not what a turn is billed to.**
+Attribution rides the credential a turn presents, and neither credential carries a
+workspace today.
 
 ### Which organization the session uses
 
@@ -571,8 +598,8 @@ account with one organization makes no extra round-trip.
 Changing it later happens in the account menu's Organization group
 (`components/UserMenu.jsx`, hook `hooks/useMindsOrgs.js`). It lives there
 because an organization is who pays. A MindsHub workspace is a container inside
-one, which is why its picker was never a group in this menu, and the sidebar
-draws no workspace control at all now.
+one, which is why its picker is its own control lower down the rail rather than
+a group in this menu.
 
 Desktop lists and switches through `mindshub:list-orgs` and
 `mindshub:switch-org`. Main switches the Keycloak session, refreshes its token,

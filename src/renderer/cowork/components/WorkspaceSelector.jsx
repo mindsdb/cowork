@@ -1,27 +1,27 @@
-// `<WorkspaceSelector>` — the MindsHub workspace control. No call site remains
-// in the renderer. Nothing in this app is workspace-scoped yet, so picking a
-// workspace changed no task, skill, memory, usage row or model list, and the
-// sidebar stopped drawing a switch that changed nothing a reader could see.
-// This component, `useHubWorkspaces` and `lib/letterTile` are kept and tested
-// for when there are features behind the surface.
+// `<WorkspaceSelector>` — the MindsHub workspace control, docked with the
+// account row at the bottom of the sidebar.
 //
 // A **MindsHub Workspace** is an org-internal container that owns hub resources
 // (API keys, artifacts, model entitlements) and lives in the auth service. It is
 // not the working folder this app also calls a workspace, which is why
 // everything here is named `hubWorkspace`.
 //
-// **Where it sat, for whoever brings it back.** It was a group inside the
-// account menu first, and two things were wrong with that. The current
+// **Why it is its own control and not a group inside the account menu.** It was
+// a group in there first, and two things were wrong with that. The current
 // workspace was invisible until you opened the menu, which is the opposite of
 // what a scope indicator is for. And the account menu is where the organization
-// selector lands, so two levels of the same hierarchy nested inside a menu that
-// is about identity rather than scope. It moved to its own control above the
-// New task CTA, where both reference consoles put the scope picker. When it
-// returns it goes in the sidebar footer, not back to either.
+// selector lands, so two levels of the same hierarchy would have been nested
+// inside a menu that is about identity rather than scope.
 //
-// **It rendered for a single workspace too.** There is nothing to switch to,
-// but "which workspace am I in" is worth answering on its own, and that
-// question was the reason it left the account menu.
+// **It sits at the bottom rather than the top of the rail.** A workspace is a
+// container inside the organization, not what a reader starts a task from, and
+// the top of the rail is where the first task begins.
+//
+// **One workspace draws nothing.** There is nothing to move to, so the control
+// would be a switch that switches nothing: a person opening the app for the
+// first time gets `Default` and no explanation of what a workspace is. It
+// appears once the organization has a second one, which is the first moment the
+// question "which workspace am I in" has more than one answer.
 //
 // No create entry: workspaces are created in the console, and the last row deep
 // links there rather than growing a second create flow that would have to open a
@@ -83,16 +83,22 @@ export function WorkspaceSelector({ user }) {
   const active =
     workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
-  // Nothing to show until the gate is on and the hub answered. Rendering a
-  // placeholder row would reserve space in the rail for a control that may
-  // never appear, which reads as a layout bug on every launch.
+  // Nothing to show until the gate is on, the hub answered, and there is
+  // somewhere to move to. Rendering a placeholder row would reserve space for a
+  // control that may never appear, which reads as a layout bug on every launch.
   //
   // `reachable` is checked rather than inferred from an empty list. The server
   // does send both, and today an unreachable read also carries no rows, so
   // leaning on that would pass every test while resting on a coincidence: the
   // moment a partial answer arrives, the control would name a workspace nobody
   // confirmed.
-  if (!enabled || !reachable || !active) return null;
+  //
+  // The count is checked on `workspaces` rather than on the menu rows, because
+  // that list is already what the server offers as places to work: it drops
+  // archived workspaces and keeps the active one whatever its state. So a lone
+  // live workspace beside an archived one counts as one, which is the answer a
+  // reader would give.
+  if (!enabled || !reachable || !active || workspaces.length < 2) return null;
 
   const activeName = workspaceName(active);
 

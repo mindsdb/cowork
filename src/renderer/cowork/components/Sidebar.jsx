@@ -9,6 +9,7 @@ import { debInstallStep } from '../../../shared/update-banner';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
+import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
@@ -892,6 +893,13 @@ export default function Sidebar({
             </button>
           );
         })()}
+
+        {/* The MindsHub workspace this session is scoped to, docked with the
+            account row rather than at the top of the rail. A workspace is a
+            container inside the organization, not the thing a reader starts a
+            task from, and the top of the rail is where the first task begins.
+            Renders nothing until the org has a second workspace to move to. */}
+        {accountUser && <WorkspaceSelector user={accountUser} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so

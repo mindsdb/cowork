@@ -15,9 +15,9 @@ import { prepareForOrganizationReload } from '../lib/organizationTransition';
  * Every failure resolves to no organizations, and that is the resting state
  * too: while the read is in flight, when the person is signed out, and when the
  * installed main process predates these channels. The account menu then renders
- * exactly as it does today. There is no loading affordance, because a group
- * that appeared, flickered and vanished reads worse than one that appears a
- * beat late.
+ * exactly as it does today. There is no loading affordance for the same reason
+ * the workspace selector has none — a group that appeared, flickered and
+ * vanished reads worse than one that appears a beat late.
  *
  * Web reads identify a transient failure with `reachable: false`. Retry those:
  * the first request can race authentication settling, and one miss must not hide
