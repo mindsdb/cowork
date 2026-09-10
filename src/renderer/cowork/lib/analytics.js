@@ -311,6 +311,21 @@ export function setAntonInstallId(id) {
   antonInstallId = AID_SHAPE.test(next) ? next : null;
 }
 
+// Drop every cached per-identity value back to unknown.
+//
+// Three call sites in getDistinctId reach this: no token, a token with no sub,
+// and a throw while resolving. All three mean "the identity we cached is no
+// longer established", and every value derived from it has to go — not just the
+// one somebody remembered. `isInternal` was cleared alone until ENG-2206 put
+// `organization_id` and `plan_tier` on the event, at which point a stale
+// personProps replayed a prior session's org onto an anonymous event, which is
+// ENG-672's bug in a new field. One function so the next value added to
+// personProps is cleared by construction rather than by memory.
+function forgetIdentity() {
+  identity.isInternal = null;
+  identity.personProps = {};
+}
+
 async function getDistinctId() {
   if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
@@ -320,12 +335,12 @@ async function getDistinctId() {
     // cached flag back to unknown so a later anonymous-keyed event omits it
     // rather than replaying a prior session's value (ENG-672).
     if (!token) {
-      identity.isInternal = null;
+      forgetIdentity();
       return null;
     }
     const payload = decodeJwtPayload(token);
     if (!payload?.sub) {
-      identity.isInternal = null;
+      forgetIdentity();
       return null;
     }
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
@@ -355,8 +370,8 @@ async function getDistinctId() {
     return identity.distinctId;
   } catch {
     // Any failure resolving identity leaves it unknown (see the token guards
-    // above for why the flag must not linger as a stale boolean).
-    identity.isInternal = null;
+    // above for why a stale value must not linger).
+    forgetIdentity();
     return null;
   }
 }
@@ -477,22 +492,36 @@ function capture(event, properties = {}) {
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
       if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
-      // The subject a limit actually binds to (ENG-2206). Both also ride the
-      // person `$set`, but a person property is the CURRENT value: it
-      // re-attributes an August rejection to whichever org the person sits in
-      // today, and someone who switches org silently moves their own past
-      // events. Stamped on the event so "how many organisations hit this limit
-      // in August" is answerable at all. Same reasoning that put is_internal
-      // here (ENG-672), and additive, so no existing query changes meaning.
+      // The signed-in session's organisation and tier, on the event as well as in
+      // the person `$set` (ENG-2206). Same reasoning that put is_internal here
+      // (ENG-672): a person property is the CURRENT value, so it re-attributes an
+      // August rejection to whichever org the person sits in today, and someone
+      // who switches org silently moves their own past events. Additive, so no
+      // existing query changes meaning.
+      //
+      // READ THIS BEFORE TREATING IT AS THE SUBJECT A LIMIT BOUND TO. It is not,
+      // and ENG-2206 asks for that. Two reasons, both found in review:
+      //
+      //   1. A user-supplied `mdb_` key takes precedence over the session token
+      //      (`src/main/minds-credential.ts:48`). A request denied against that
+      //      key's organisation is reported here as the SSO organisation, or with
+      //      none at all. The authoritative subject can only come from the denied
+      //      request or the gateway response.
+      //   2. Limits are organisation-scoped with per-org Statsig overrides
+      //      (`auth/entitlements/services/usage_limits.py`), not tier-scoped. Two
+      //      accounts both on `free` can hit different ceilings, so `plan_tier`
+      //      does NOT identify which limit applied. It is a segment.
       //
       // Omitted rather than nulled when unresolved. Present-and-null is worse
-      // than absent: a filter on the property counts the row and the column
-      // looks populated. `app_version` and `is_internal` follow the same rule.
+      // than absent: a filter on the property counts the row and the column looks
+      // populated. `app_version` and `is_internal` follow the same rule.
+      //
+      // Still stale for up to five minutes after an in-place org switch, because
+      // getDistinctId returns early on its own cache and never re-resolves inside
+      // the window. forgetIdentity fixes the post-expiry case only.
       if (identity.personProps.organization_id) {
         eventProps.organization_id = identity.personProps.organization_id;
       }
-      // plan_tier because WHICH limit applies is tier-dependent, so a rejection
-      // without it cannot be read against the ceiling that produced it.
       if (identity.personProps.plan_tier) {
         eventProps.plan_tier = identity.personProps.plan_tier;
       }
@@ -756,8 +785,7 @@ export async function trackBootScreenResolved(target) {
 // cleared: the machine is still installed, so app_installed must not re-fire
 // (installs are counted per device, once).
 export function resetDeviceIdentity() {
-  identity.isInternal = null;
-  identity.personProps = {};
+  forgetIdentity();
   identity.deviceId = null;
   identity.distinctId = null;
   identity.cacheExpiry = 0;

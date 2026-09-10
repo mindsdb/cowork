@@ -983,3 +983,113 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     expect(event.properties.device_id).toBeTruthy();
   });
 });
+
+describe('identity transitions must not leak a prior session\'s org (ENG-2206, Codex finding 2)', () => {
+  // Promoting organization_id onto the event gave `personProps` the exact defect
+  // ENG-672 fixed for `is_internal`: the three paths in getDistinctId that drop a
+  // now-invalid identity cleared `isInternal` and nothing else. The comment on
+  // those lines already said why — "so a later anonymous-keyed event omits it
+  // rather than replaying a prior session's value". That argument applies
+  // verbatim to org and tier, and I missed it.
+  //
+  // These are the transition cases the first four tests could not catch: each
+  // starts from a fresh module and never goes identified -> anonymous.
+
+  const V = () => 'u-1';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('omits organization_id after the session becomes invalid', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: V(),
+        email: 'a@example.com',
+        activate_organization: { id: 'org-A', name: 'A' },
+        realm_access: { roles: ['free'] },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+
+    // Session dies. The identity cache holds for five minutes, so step past it:
+    // within the window getDistinctId returns early and never re-resolves, which
+    // is a SEPARATE known gap recorded on the PR. This pins the reset path.
+    getAccessToken.mockResolvedValue(null);
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+
+    const later = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(later.properties).not.toHaveProperty('organization_id');
+    expect(later.properties).not.toHaveProperty('plan_tier');
+  });
+
+  it('omits organization_id when a later token decodes but carries no sub', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: V(), email: 'a@example.com', activate_organization: { id: 'org-A', name: 'A' } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    await trackTokenCapHit('token_limit');
+    // trackTokenCapHit does not return capture()'s promise, so the await above
+    // does not wait for delivery. Wait for the event before changing the mock.
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+
+    getAccessToken.mockResolvedValue(fakeJwt({ email: 'a@example.com' })); // no sub
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
+      'organization_id'
+    );
+  });
+
+  it('omits organization_id when resolving identity throws', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: V(), email: 'a@example.com', activate_organization: { id: 'org-A', name: 'A' } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+
+    getAccessToken.mockRejectedValue(new Error('token endpoint down'));
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
+      'organization_id'
+    );
+  });
+
+  it('clears the org on resetDeviceIdentity, and a test proves it', async () => {
+    // The mutation Codex found surviving: deleting `identity.personProps = {}`
+    // from resetDeviceIdentity failed none of the original four tests.
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: V(), email: 'a@example.com', activate_organization: { id: 'org-A', name: 'A' } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit, resetDeviceIdentity } = await importAnalytics();
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+
+    resetDeviceIdentity();
+    getAccessToken.mockResolvedValue(null);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
+      'organization_id'
+    );
+  });
+});
