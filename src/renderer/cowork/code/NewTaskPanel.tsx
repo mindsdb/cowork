@@ -16,13 +16,13 @@ import { ExecutionTargetSelect } from './ExecutionTargetSelect';
 import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
-import { parseDeveloperSourceUrl } from './developerTools';
 import { TaskSourceLinks } from './TaskSourceLinks';
 import { TaskExecutionControls } from './TaskExecutionControls';
 import { useNewTaskDraft } from './useNewTaskDraft';
 import type { CodingCatalog } from './useCodingCatalog';
 
 export function NewTaskPanel({
+  suspended = false,
   busy,
   error,
   defaultEngineId,
@@ -40,6 +40,7 @@ export function NewTaskPanel({
   onCreate,
   catalog,
 }: {
+  suspended?: boolean;
   busy: boolean;
   error: string;
   defaultEngineId: string;
@@ -57,8 +58,9 @@ export function NewTaskPanel({
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
   catalog?: CodingCatalog;
 }) {
+  const [sourceLoading, setSourceLoading] = useState(false);
   const draft = useNewTaskDraft({
-    busy, defaultEngineId, defaultModel, models, modelMeta,
+    busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
     projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate, catalog,
   });
   const {
@@ -80,9 +82,8 @@ export function NewTaskPanel({
     query: commandQuery,
     projectId: selectedProjectId,
   });
-  const [autoLinkUrl, setAutoLinkUrl] = useState('');
   useEffect(() => setPaletteIndex(0), [commandQuery]);
-  const readinessText = readinessMessage;
+  const readinessText = sourceLoading ? 'Loading issue or PR…' : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -94,7 +95,9 @@ export function NewTaskPanel({
   };
 
   return (
-    <main className="code-new-task">
+    // Keep the in-memory draft intact during its Connectors detour, without
+    // leaving its controls visible or keyboard-accessible behind that view.
+    <main className="code-new-task" style={suspended ? { display: 'none' } : undefined}>
       <div className="code-new-task__content">
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">
@@ -217,11 +220,6 @@ export function NewTaskPanel({
                 attachFiles(event.clipboardData.files);
                 return;
               }
-              const pasted = event.clipboardData.getData('text').trim();
-              if (!prompt.trim() && parseDeveloperSourceUrl(pasted)) {
-                event.preventDefault();
-                setAutoLinkUrl(pasted);
-              }
             }}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if (commandQuery != null && paletteItems.length > 0) {
@@ -258,14 +256,14 @@ export function NewTaskPanel({
             onRemove={(attachmentPath) => setAttachments((current) => current.filter((item) => item.path !== attachmentPath))}
           />
           <TaskSourceLinks
+            key={selectedProject?.id ?? 'standalone'}
             project={selectedProject}
             availableConnections={connections}
             value={sourceContexts}
             onChange={setSourceContexts}
             onOpenConnectors={onOpenConnectors}
             onProjectConnectionsChange={onProjectConnectionsChange}
-            autoLinkUrl={autoLinkUrl}
-            onAutoLinkHandled={() => setAutoLinkUrl('')}
+            onAddingChange={setSourceLoading}
             busy={busy}
           />
 

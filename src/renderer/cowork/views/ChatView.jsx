@@ -52,6 +52,8 @@ import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisible
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
+import { useHubUsageContext } from '../lib/hubUsageContext';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatTokensShort } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1101,7 +1103,60 @@ function formatAllowanceReset(resetAt) {
   const d = new Date(resetAt);
   if (Number.isNaN(d.getTime())) return 'next month';
   if (d.getTime() <= Date.now()) return 'next month';
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  return formatResetDate(resetAt) || 'next month';
+}
+
+// ── UsageAlertCard: a usage-state change that happened DURING this task ────
+// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
+// task moved onto the paid balance, or an auto top up failed. The composer
+// notice carries the same facts for the *next* task; this card explains why
+// *this* one's behaviour changed, in the timeline where it happened.
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBillingOwner }) {
+  const open = (action) => () => {
+    trackBillingOpened('usage_alert');
+    host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  };
+  if (kind === 'free_low') {
+    // Headline names the crossing, not the count: the composer bar carries
+    // the live count a few pixels above, and two identical headlines that
+    // then drift apart (the bar tracks the next poll, this card is frozen at
+    // the crossing) read as two different figures for one number.
+    // The body says what is true of the allowance rather than of this turn.
+    // The router resolves per turn and can land on a paid model, so "this
+    // task is running on free tokens" is a claim the crossing does not prove.
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Free monthly tokens running low"
+        body={`${formatTokensShort(remaining)} left of this month's free tokens. When they are used up, MindsHub Air moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+      />
+    );
+  }
+  if (kind === 'auto_top_up_failed') {
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Auto top up failed"
+        body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
+        buttons={[
+          { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
+          { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
+        ]}
+      />
+    );
+  }
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title="Free monthly tokens used"
+      body={`This task is now using your balance. Your free tokens reset on ${formatAllowanceReset(resetsAt)}.`}
+      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+    />
+  );
 }
 
 // ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
@@ -1592,6 +1647,10 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
+  // Usage state (ENG-1782): decides where "Add funds" lands and whether the
+  // stopped-task cards offer auto top up. Null outside the provider (tests).
+  const hubUsage = useHubUsageContext();
+  const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
@@ -1685,10 +1744,11 @@ export default function ChatView({
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) for as long as there's real work
-  // going on — steps and thoughts keep streaming above the growing
-  // answer text throughout, so the orb stays put for the whole turn
+  // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
+  // the same header renders the pre-step placeholder and the
+  // active-with-steps state, on one `header:streaming` slot — for as long
+  // as there's real work going on. Steps and thoughts keep streaming above
+  // the growing answer text throughout, so the orb stays put for the whole turn
   // rather than handing off once body text starts. Shares
   // isThinkingActive with ThinkingBlock's own header so the two can't
   // drift out of sync again the way they did before (ENG-1107/1109):
@@ -1999,7 +2059,21 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              return visibleMessages.map((m, i) => {
+              // Usage alerts that happened during this task (ENG-1782) sit after
+              // the turns, so the reply stays next to its question and the
+              // card reads as "while this ran, this changed".
+              const usageAlertCards = (task.usageNotices || []).map((n, i) => (
+                <UsageAlertCard
+                  key={`usage-${i}`}
+                  time={formatMetaTime(n.createdAt)}
+                  agentLabel={agentLabel}
+                  kind={n.kind}
+                  resetsAt={n.resetsAt}
+                  remaining={n.remaining}
+                  isBillingOwner={isBillingOwner}
+                />
+              ));
+              const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
                 const turnIdxForThisUser = userInputIdx;
@@ -2097,20 +2171,22 @@ export default function ChatView({
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="You're out of credits"
+                      // A billing failure ends the turn; there is no resume,
+                      // so this is "stopped", never "paused" (ENG-1782).
+                      title="Task stopped"
                       // Fixed copy, not the server string (ENG-1304) — the
                       // gateway's wording predates pay as you go.
-                      body="You've used your available MindsHub tokens. Top up your balance to keep working."
+                      body="Your balance ran out before this task finished. Add funds before starting another task."
                       buttons={[
                         {
-                          label: 'Top up balance',
+                          label: 'Add funds',
                           // ENG-1533: the click, not an impression. token_cap_hit
                           // already counts the impression once per receipt in the
                           // stream adapter; an impression here would re-fire on
                           // every paint.
                           onClick: () => {
                             trackBillingOpened('token_limit');
-                            host.openExternal(MINDS_BILLING_URL);
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
                           },
                           primary: true,
                         },
@@ -2308,11 +2384,13 @@ export default function ChatView({
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="You've used this month's free tokens"
-                      body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
+                      // The gate only issues this code when the org has no
+                      // balance to fall onto, so the turn ended (ENG-1782).
+                      title="Task stopped"
+                      body={`Your free monthly tokens are used up and your balance is empty. Add funds to keep working, or wait until ${formatAllowanceReset(m.resetAt)} when your free tokens reset.`}
                       buttons={[
                         {
-                          label: 'Add credits',
+                          label: 'Add funds',
                           // ENG-1533: the click, not an impression — same rule as
                           // the drained-wallet card above. token_cap_hit already
                           // counts this impression once per receipt in the stream
@@ -2320,10 +2398,18 @@ export default function ChatView({
                           // once and this one is not the exception.
                           onClick: () => {
                             trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(MINDS_BILLING_URL);
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
                           },
                           primary: true,
                         },
+                        // Only offer auto top up when it isn't already on.
+                        ...(hubUsage?.usage?.autoTopUp?.enabled ? [] : [{
+                          label: USAGE_ACTIONS.setUpAutoTopUp.label,
+                          onClick: () => {
+                            trackBillingOpened('included_allowance_exhausted');
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
+                          },
+                        }]),
                       ]}
                     />
                   );
@@ -2454,11 +2540,29 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
+              return [...turns, ...usageAlertCards];
             })()}
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" showActions={false}>
-                {(streamingMsg.steps?.length > 0 || streamingMsg.currentThought?.text) && (
+                {/* ONE in-flight header for the whole pre-answer phase.
+                    ThinkingBlock renders its active header even with zero
+                    steps, so it also serves as the pre-step "Thinking…"
+                    placeholder — the bridge state between the first stream
+                    event arriving (which strips the activity placeholder)
+                    and the first step, thought, or body chunk landing.
+                    Routing the placeholder through the SAME component keeps
+                    the header's box identical from placeholder → steps and
+                    keeps the element mounted across that transition, so the
+                    indicator no longer jumps ~8px when reasoning traces
+                    begin. Hidden once real body text streams with no steps,
+                    so a plain text answer isn't topped by a "Thinking…"
+                    header. `_placeholderLabel` is set by the pre-first-event
+                    stub in App.jsx `withThinkingPlaceholder` ("Creating
+                    task…" for new tasks, "Thinking…" for replies). */}
+                {(streamingMsg.steps?.length > 0
+                  || streamingMsg.currentThought?.text
+                  || (isThinkingActive(streamingMsg.streamStatus) && !streamingMsg.content)) && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
@@ -2467,13 +2571,13 @@ export default function ChatView({
                     currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
                       // The header stays the WORKING message (active step
-                      // label, else "Thinking…") — never the live thought
-                      // text. The thought has its own distinct line at the
-                      // bottom of the steps; letting it also drive the
-                      // header made the working message flicker/overwrite
-                      // as each reasoning delta streamed in.
+                      // label, else the placeholder label, else "Thinking…")
+                      // — never the live thought text. The thought has its
+                      // own distinct line at the bottom of the steps; letting
+                      // it also drive the header made the working message
+                      // flicker/overwrite as each reasoning delta streamed in.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      return active?.label || null;
+                      return active?.label || streamingMsg._placeholderLabel || null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
@@ -2487,23 +2591,6 @@ export default function ChatView({
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                 />
-                {/* Bridge state: between the first stream event arriving
-                    (which strips the activity placeholder) and the first
-                    step, thought, or body chunk landing, the AnswerTurn
-                    would otherwise render empty — the user sees the
-                    message "appear, vanish, then come back" once
-                    scratchpad output starts. Keep the working indicator
-                    visible whenever there's nothing else occupying the
-                    same slot yet. `_placeholderLabel` is set by the
-                    pre-first-event stub in App.jsx
-                    `withThinkingPlaceholder` ("Creating task…" for new
-                    tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
-                  <WorkingIndicator
-                    slotId="header:streaming"
-                    label={streamingMsg._placeholderLabel || 'Thinking…'}
-                  />
-                )}
                 {streamingMsg.content && (
                   <div className="relative">
                     <TextBlock text={streamingMsg.content} id="streaming" complete={false} conversationId={task.id} />

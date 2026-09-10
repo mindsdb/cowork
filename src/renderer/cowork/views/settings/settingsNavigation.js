@@ -6,13 +6,17 @@ const NAV_ITEMS = [
   { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
   { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
   { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
+  { id: 'usage', label: 'Usage', icon: 'chartColumn', group: 'System' },
   { id: 'account', label: 'Account', icon: 'people', group: 'System' },
 ];
 
 // Hosted does not expose controls for local processes, app updates, account
 // bootstrap, or desktop coding runtimes. Those surfaces would be misleading
 // or unsafe without their tenant-aware service counterparts.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+// Usage is none of those: it reads the same sidecar route both hosts already
+// call and its every control opens the console in a browser, so a hosted user
+// gets a working surface rather than a misleading one.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels', 'usage']);
 
 export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false) {
   if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id));

@@ -22,10 +22,6 @@
 import { memo, useCallback, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 
-// Theme-driven font — the 8-bit skin (and others) override --font-body,
-// so the overlay label follows whatever theme the user picked.
-const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-
 function dragHasFiles(e) {
   const types = e?.dataTransfer?.types;
   if (!types) return false;
@@ -162,46 +158,27 @@ export const FileDropOverlay = memo(function FileDropOverlay({ active, label, bu
   return (
     <div
       aria-hidden={!visible}
+      className="absolute inset-0 z-[120] flex items-center justify-center pointer-events-none rounded-card [backdrop-filter:blur(1.5px)] [-webkit-backdrop-filter:blur(1.5px)] [transition:opacity_140ms_ease,transform_160ms_cubic-bezier(.2,.7,.3,1)]"
       style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 120,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none',
-        borderRadius: 12,
+        // Dynamic: dashed border colour + fill switch on the error state; the
+        // whole overlay fades + scales on `visible`.
         border: `2px dashed ${error ? '#C2453B' : 'var(--accent)'}`,
         background: error
           ? 'color-mix(in srgb, #C2453B 8%, var(--bg))'
           : 'color-mix(in srgb, var(--accent) 7%, var(--bg))',
-        backdropFilter: 'blur(1.5px)',
-        WebkitBackdropFilter: 'blur(1.5px)',
         opacity: visible ? 1 : 0,
         transform: visible ? 'scale(1)' : 'scale(0.985)',
-        transition: 'opacity 140ms ease, transform 160ms cubic-bezier(.2,.7,.3,1)',
       }}
     >
       <div
+        className="inline-flex items-center gap-[10px] py-3 px-[18px] rounded-[10px] bg-surface border border-solid border-line shadow-[0_8px_28px_rgba(0,0,0,0.18)] font-[family-name:var(--font-body)] text-base font-semibold [transition:transform_160ms_cubic-bezier(.2,.7,.3,1)]"
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '12px 18px',
-          borderRadius: 10,
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
-          fontFamily: FONT_BODY,
-          fontSize: 14,
-          fontWeight: 600,
           color: error ? '#C2453B' : 'var(--ink)',
           transform: visible ? 'translateY(0)' : 'translateY(6px)',
-          transition: 'transform 160ms cubic-bezier(.2,.7,.3,1)',
         }}
       >
         {/* upload-into-tray glyph (inherits currentColor) */}
-        <Upload size={18} strokeWidth={1.5} aria-hidden="true" style={{ flex: '0 0 auto' }} />
+        <Upload size={18} strokeWidth={1.5} aria-hidden="true" className="flex-none" />
         <span>{text}</span>
       </div>
     </div>

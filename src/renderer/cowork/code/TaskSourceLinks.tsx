@@ -32,8 +32,7 @@ export function TaskSourceLinks({
   onChange,
   onOpenConnectors,
   onProjectConnectionsChange,
-  autoLinkUrl,
-  onAutoLinkHandled,
+  onAddingChange,
   busy,
 }: {
   project: CodeProject | null;
@@ -42,8 +41,7 @@ export function TaskSourceLinks({
   onChange: (contexts: SourceContext[]) => void;
   onOpenConnectors: () => void;
   onProjectConnectionsChange?: () => Promise<void> | void;
-  autoLinkUrl: string;
-  onAutoLinkHandled: () => void;
+  onAddingChange: (adding: boolean) => void;
   busy: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -52,9 +50,20 @@ export function TaskSourceLinks({
   const [link, setLink] = useState('');
   const [connectionName, setConnectionName] = useState('');
   const [items, setItems] = useState<WorkItemSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const addInFlight = useRef(false);
+  const mounted = useRef(false);
   const [error, setError] = useState('');
   const assignedConnections = useRef(new Set<string>());
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  useEffect(() => {
+    onAddingChange(adding);
+    return () => { onAddingChange(false); };
+  }, [adding, onAddingChange]);
   const connections = useMemo(
     () => availableConnections === undefined
       ? developerConnections(project?.connections || [])
@@ -98,8 +107,9 @@ export function TaskSourceLinks({
   }, [onProjectConnectionsChange, project]);
 
   const addSource = useCallback(async (sourceUrl: string, preferredConnection = '') => {
+    if (busy || addInFlight.current) return;
     const parsed = parseDeveloperSourceUrl(sourceUrl);
-    if (!project || !parsed) {
+    if (!parsed) {
       setError('Paste a GitHub or Linear issue or pull-request link.');
       setOpen(true);
       return;
@@ -112,37 +122,41 @@ export function TaskSourceLinks({
       setOpen(true);
       return;
     }
-    setLoading(true);
+    addInFlight.current = true;
+    setAdding(true);
     setError('');
     try {
       await ensureProjectConnection(connection);
-      const context = await codingApi.readSourceContext(project.id, {
+      if (!mounted.current) return;
+      const context = await codingApi.readSourceContext(project?.id ?? null, {
         provider: parsed.provider,
         kind: parsed.kind,
         url: parsed.url,
         connection_name: connection.name,
       });
+      if (!mounted.current) return;
       onChange([...value.filter((item) => item.url !== context.url), context]);
       setLink('');
       setOpen(false);
     } catch (reason) {
+      if (!mounted.current) return;
       setError(reason instanceof Error ? reason.message : 'Could not load that work item.');
       setOpen(true);
     } finally {
-      setLoading(false);
+      addInFlight.current = false;
+      if (mounted.current) setAdding(false);
     }
-  }, [connectionName, connections, ensureProjectConnection, onChange, project, value]);
+  }, [busy, connectionName, connections, ensureProjectConnection, onChange, project, value]);
 
   useEffect(() => {
-    if (!open || !project || !connectionName || busy) return undefined;
+    if (!open || !connectionName || busy || adding) return undefined;
     const connection = providerConnections.find((item) => item.name === connectionName);
     if (!connection) return undefined;
     let active = true;
     const timer = window.setTimeout(async () => {
-      setLoading(true);
-      setError('');
+      setSearching(true);
       try {
-        const page = await codingApi.searchWorkItems(project.id, {
+        const page = await codingApi.searchWorkItems(project?.id ?? null, {
           provider,
           query: query.trim(),
           connection_name: connection.name,
@@ -155,23 +169,11 @@ export function TaskSourceLinks({
           setError(reason instanceof Error ? reason.message : 'Could not search connected work.');
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) setSearching(false);
       }
     }, SEARCH_DELAY_MS);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [busy, connectionName, open, project, provider, providerConnections, query]);
-
-  useEffect(() => {
-    if (!autoLinkUrl) return;
-    const parsed = parseDeveloperSourceUrl(autoLinkUrl);
-    if (parsed) setProvider(parsed.provider);
-    setLink(autoLinkUrl);
-    setOpen(true);
-    onAutoLinkHandled();
-    void addSource(autoLinkUrl);
-  }, [addSource, autoLinkUrl, onAutoLinkHandled]);
-
-  if (!project) return null;
+    return () => { active = false; window.clearTimeout(timer); setSearching(false); };
+  }, [adding, busy, connectionName, open, project, provider, providerConnections, query]);
 
   return (
     <div className="code-task-sources">
@@ -185,7 +187,7 @@ export function TaskSourceLinks({
                 <span>{context.title}</span>
                 {sourceContextMeta(context) && <small>{sourceContextMeta(context)}</small>}
               </span>
-              <button type="button" aria-label={`Remove ${sourceContextLabel(context)}`} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(11)}</button>
+              <button type="button" disabled={busy || adding} aria-label={`Remove ${sourceContextLabel(context)}`} onClick={() => onChange(value.filter((item) => item.url !== context.url))}>{Ico.close(11)}</button>
             </div>
           ))}
         </div>
@@ -202,18 +204,24 @@ export function TaskSourceLinks({
           query={query}
           onQueryChange={(next) => { setQuery(next); setError(''); }}
           items={items}
-          loading={loading}
+          loading={searching}
+          adding={adding}
           error={error}
           link={link}
-          onLinkChange={(next) => { setLink(next); setError(''); }}
+          onLinkChange={(next) => {
+            setLink(next);
+            setError('');
+            const parsed = parseDeveloperSourceUrl(next);
+            if (parsed && providers.includes(parsed.provider)) setProvider(parsed.provider);
+          }}
           onChoose={(item) => void addSource(item.url, item.connection_name)}
           onAddLink={() => void addSource(link)}
           onOpenConnectors={onOpenConnectors}
           onClose={() => { setOpen(false); setError(''); }}
-          busy={busy}
+          busy={busy || adding}
         />
       )}
-      <Button size="sm" variant="subtle" className="code-add-source" onClick={() => { setOpen((current) => !current); setError(''); }} disabled={busy}>
+      <Button size="sm" variant="subtle" className="code-add-source" onClick={() => { setOpen((current) => !current); setError(''); }} disabled={busy || adding}>
         {Ico.link(12)} {value.length ? 'Add another issue or PR' : 'Add issue or PR'}
       </Button>
     </div>
