@@ -2551,17 +2551,18 @@ function AppCore() {
     const before = prevHubUsage.current;
     prevHubUsage.current = hubUsage;
     const streamingId = activeStreamingTaskIdRef.current;
-    if (!streamingId || !usageTransitions(before, hubUsage).length) return;
+    const providerType = hubUsageCtx.providerType;
+    if (!streamingId || !usageTransitions(before, hubUsage, { providerType }).length) return;
     const createdAt = new Date().toISOString();
     setTasks((prev) => prev.map((t) => {
       if (t.id !== streamingId) return t;
       // The task's own pick decides which resource it spends, same as the
       // composer: a task on an explicit paid model never hears about free tokens.
-      const changes = usageTransitions(before, hubUsage, { model: t.model });
+      const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
       return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
     }));
-  }, [hubUsage]);
+  }, [hubUsage, hubUsageCtx.providerType]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its

@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Closing the usage bar (ENG-1782). A dismissal is per warning KIND, so closing
-// "620K free tokens left" keeps it closed while the tokens drain, and the bar
-// comes back the moment the state changes to something else (free tokens used,
-// balance low, ...). Everything is forgotten once usage is healthy again, so
-// the next time a limit approaches the bar shows up as new.
+/* Closing the usage bar. A dismissal is per KEY, and the key is the warning's
+   kind unless the warning narrows it: closing "620K free tokens left" keeps it
+   closed while the tokens drain, and the bar comes back the moment the state
+   changes to something else (free tokens used, balance low, ...).
+   A balance running low is the case a bare kind gets wrong. "Low" is a band the
+   balance sits in the whole way down, so one close would hide the only offer to
+   top up until the balance emptied. Those warnings carry a stepped dismissKey
+   instead (see balanceDismissStep in usageWarnings.js), so a close holds for the
+   step it was made in and the next step down asks again.
+   Everything is forgotten once usage is healthy again, so the next time a limit
+   approaches the bar shows up as new. */
 
 const KEY = 'anton.usageBar.dismissed';
 
@@ -26,7 +32,7 @@ function write(kinds) {
 }
 
 /**
- * @param kind the current warning's kind, or null when there is nothing to show
+ * @param kind the current warning's dismissal key, or null when there is nothing to show
  * @param opts.resetWhenClear true only when usage is KNOWN and has nothing to
  *        warn about. "Not loaded yet" and "unreachable" also yield a null kind,
  *        and neither may wipe a dismissal (that was how a closed bar came back
