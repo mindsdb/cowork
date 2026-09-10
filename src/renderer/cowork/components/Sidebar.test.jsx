@@ -35,16 +35,20 @@ const hubWorkspacesMock = vi.hoisted(() => ({
     refresh: vi.fn(),
   })),
 }));
-// Stubbed rather than exercised here: these tests are about the account
-// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
-// at module load and this file's host mock does not provide one. The workspace
-// group has its own test file.
+// Mocked rather than exercised: the real hook pulls in api.js, which reads
+// host.getApiOrigin at module load and this file's host mock does not provide
+// one. The hook has its own test file.
+//
+// It doubles as the assertion point for the sidebar drawing no MindsHub
+// workspace control. `WorkspaceSelector` calls `useHubWorkspaces` at its first
+// line, before its own early return, so a hook nobody called is what proves
+// the renderer issues no `/hub/workspaces/` read at all.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
-// WorkspaceSelector calls `useToastManager()` unconditionally, before its own
-// early return, and Base UI requires a provider for it. The real tree has one
-// (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
-// than making the component tolerate its absence.
+// The footer's `UserMenu` calls `useToastManager()`, and Base UI requires a
+// provider for it. The real tree has one (App wraps AppCore, and the sidebar is
+// inside it), so wrap here too rather than making the component tolerate its
+// absence.
 const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';
@@ -408,6 +412,49 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+  });
+});
+
+describe('Sidebar — no MindsHub workspace control', () => {
+  // The sidebar stopped drawing the MindsHub workspace selector while no Cowork
+  // resource is workspace-scoped. `WorkspaceSelector` and its hook are retained
+  // and tested on their own; what belongs here is that nothing mounts them.
+  //
+  // Signing in first is what makes this a real assertion. The control used to
+  // sit behind the resolved account user, so a signed-out render draws no
+  // workspace control either way and would pass before the change too.
+  //
+  // The hook is stubbed with the one answer that would draw the control, so a
+  // re-added render site fails on the name rather than passing quietly.
+  beforeEach(() => {
+    getAccessTokenMock.mockResolvedValue(
+      jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
+    );
+    hubWorkspacesMock.useHubWorkspaces.mockClear();
+    hubWorkspacesMock.useHubWorkspaces.mockReturnValue({
+      enabled: true,
+      reachable: true,
+      workspaces: [{ id: 'ws-1', displayName: 'Acme Analytics' }],
+      activeWorkspaceId: 'ws-1',
+      switching: false,
+      switchWorkspace: vi.fn(),
+      refresh: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    getAccessTokenMock.mockResolvedValue(null);
+  });
+
+  it.each([
+    ['desktop', false],
+    ['web', true],
+  ])('names no workspace and reads none on %s', async (_shell, isWeb) => {
+    hostMock.isWeb = isWeb;
+    render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    expect(hubWorkspacesMock.useHubWorkspaces).not.toHaveBeenCalled();
+    expect(screen.queryByText('Acme Analytics')).toBeNull();
   });
 });
 

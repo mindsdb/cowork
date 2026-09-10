@@ -1,23 +1,27 @@
-// `<WorkspaceSelector>` — the MindsHub workspace control at the top of the
-// sidebar, between the wordmark and the New task CTA.
+// `<WorkspaceSelector>` — the MindsHub workspace control. No call site remains
+// in the renderer. Nothing in this app is workspace-scoped yet, so picking a
+// workspace changed no task, skill, memory, usage row or model list, and the
+// sidebar stopped drawing a switch that changed nothing a reader could see.
+// This component, `useHubWorkspaces` and `lib/letterTile` are kept and tested
+// for when there are features behind the surface.
 //
 // A **MindsHub Workspace** is an org-internal container that owns hub resources
 // (API keys, artifacts, model entitlements) and lives in the auth service. It is
 // not the working folder this app also calls a workspace, which is why
 // everything here is named `hubWorkspace`.
 //
-// **Why it is its own control and not a group inside the account menu.** It was
-// a group in there first, and two things were wrong with that. The current
+// **Where it sat, for whoever brings it back.** It was a group inside the
+// account menu first, and two things were wrong with that. The current
 // workspace was invisible until you opened the menu, which is the opposite of
 // what a scope indicator is for. And the account menu is where the organization
-// selector lands, so two levels of the same hierarchy would have been nested
-// inside a menu that is about identity rather than scope. Both reference
-// consoles put the scope picker at the top of the rail, above the primary
-// action, and show the current value on the trigger.
+// selector lands, so two levels of the same hierarchy nested inside a menu that
+// is about identity rather than scope. It moved to its own control above the
+// New task CTA, where both reference consoles put the scope picker. Neither
+// placement is settled for a return.
 //
-// **It renders for a single workspace too.** There is nothing to switch to, but
-// "which workspace am I in" is worth answering on its own, and that question was
-// the reason this moved out of the account menu.
+// **It rendered for a single workspace too.** There is nothing to switch to,
+// but "which workspace am I in" is worth answering on its own, and that
+// question was the reason it left the account menu.
 //
 // No create entry: workspaces are created in the console, and the last row deep
 // links there rather than growing a second create flow that would have to open a

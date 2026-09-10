@@ -3,18 +3,21 @@ import { fetchHubWorkspaces, setActiveHubWorkspace } from '../api';
 
 // The MindsHub workspaces this person can use, and which one they are in.
 //
+// `WorkspaceSelector` is the only caller and the sidebar no longer draws it, so
+// this runs in its own tests and nowhere else. Kept with the component for when
+// the surface returns.
+//
 // Read when the signed-in identity resolves rather than on every menu open: the
 // sidecar caches the hub reads behind a short TTL, so a per-open fetch would
-// mostly return the same answer, and the control is mounted for the whole
+// mostly return the same answer, and the control stayed mounted for the whole
 // session. `refresh` exists for a manual re-read.
 //
 // Everything about the failure shape is deliberate. `enabled` false is the
-// resting state, so the sidebar renders exactly as it does today until something
-// definitely says otherwise: while the read is in flight, when the person is
-// signed out, when the sidecar is too old to have the route, and when the gate
-// is off. There is no loading affordance for the same reason. A control that
-// appeared, flickered, and vanished would be worse than one that appears a beat
-// late.
+// resting state, so the caller renders nothing until something definitely says
+// otherwise: while the read is in flight, when the person is signed out, when
+// the sidecar is too old to have the route, and when the gate is off. There is
+// no loading affordance for the same reason. A control that appeared,
+// flickered, and vanished would be worse than one that appears a beat late.
 //
 // **A read that has not settled is retried, because one read per session made a
 // blip permanent.** The renderer can mount before the sidecar is listening,

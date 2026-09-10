@@ -1378,6 +1378,9 @@ async function hubHeaders() {
  * starting are all transient, and collapsing those into the disabled shape too
  * is how one blip at launch hid the control for the rest of the session. The
  * caller decides how many times to ask again.
+ *
+ * `useHubWorkspaces` is the only caller, and the selector it feeds is no longer
+ * drawn in the sidebar, so this reaches the network from tests only.
  */
 export async function fetchHubWorkspaces() {
   try {
