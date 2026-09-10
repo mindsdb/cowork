@@ -546,10 +546,10 @@ describe('inline artifact banner for a deleted artifact', () => {
   });
 });
 
-// ENG-1204: the harness's own in-memory, per-turn lint verdict
+// the harness's own in-memory, per-turn lint verdict
 // (ChatSession.artifact_lint_status), overlaid server-side onto the card
 // dict as `lintStatus` — never read from the artifact folder itself.
-describe('inline artifact banner lint status (ENG-1204)', () => {
+describe('inline artifact banner lint status', () => {
   it('flags a real finding', () => {
     render(<ChatView task={taskWithArtifact(artifactStep({ lintStatus: 'has_errors' }))} />);
 

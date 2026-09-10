@@ -886,7 +886,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
           {artifact.kind || 'live artifact'}
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
-          {/* ENG-1204: the harness's own in-memory, per-turn lint verdict
+          {/* the harness's own in-memory, per-turn lint verdict
               (session.artifact_lint_status), overlaid onto the card server-
               side — never a claim the artifact folder itself carries, so it
               never applies to a deleted one. */}

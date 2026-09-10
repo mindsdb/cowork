@@ -1,7 +1,7 @@
 // Entry point: the app itself (`app.ts`), or a one-shot headless HTML lint.
 //
 // A packaged binary always loads its own resources/app.asar and ignores a
-// script passed as an argument, so anton's artifact checker (ENG-1204) cannot
+// script passed as an argument, so anton's artifact checker cannot
 // re-invoke this binary with its own runner the way a bare `electron` allows.
 // It asks for lint mode through the environment instead, and the branch has to
 // happen here, before a single one of the app's modules is loaded:

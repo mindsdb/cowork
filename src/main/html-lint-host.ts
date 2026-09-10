@@ -1,4 +1,4 @@
-// Headless host for anton's HTML artifact checker (ENG-1204 Fix 3).
+// Headless host for anton's HTML artifact checker.
 //
 // Deliberately a dumb host: it only isolates the profile and hands control to
 // the runner script anton ships, so the checker's logic stays in anton (which
