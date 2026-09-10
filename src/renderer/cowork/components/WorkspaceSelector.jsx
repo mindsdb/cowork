@@ -93,11 +93,14 @@ export function WorkspaceSelector({ user }) {
   // moment a partial answer arrives, the control would name a workspace nobody
   // confirmed.
   //
-  // The count is checked on `workspaces` rather than on the menu rows, because
-  // that list is already what the server offers as places to work: it drops
-  // archived workspaces and keeps the active one whatever its state. So a lone
-  // live workspace beside an archived one counts as one, which is the answer a
-  // reader would give.
+  // The count is checked on `workspaces` because that list is already what the
+  // server offers as places to work: `selectable()` in cowork-server drops
+  // archived workspaces, keeping one only while it is the active row so the
+  // check can never sit on nothing. So a live workspace beside an archived one
+  // counts as one and draws nothing, but a live workspace beside the archived
+  // one you are currently in counts as two and does draw. That second case is
+  // deliberate: the control is the only way out of a workspace that was
+  // archived under you.
   if (!enabled || !reachable || !active || workspaces.length < 2) return null;
 
   const activeName = workspaceName(active);
@@ -169,11 +172,13 @@ export function WorkspaceSelector({ user }) {
   );
 
   return (
-    <div className="anton-sidebar__workspace-wrap px-2.5 pb-1.5">
+    <div className="anton-sidebar__workspace-wrap px-2.5 py-1.5">
       <Menu
         trigger={trigger}
         items={items}
-        side="bottom"
+        // Opens upward, like the `UserMenu` directly below it: the trigger
+        // sits against the footer, so there is no room beneath it.
+        side="top"
         align="start"
         width={248}
         ariaLabel="Workspace"

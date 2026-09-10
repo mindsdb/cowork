@@ -100,6 +100,32 @@ describe('WorkspaceSelector — the trigger', () => {
     expect(screen.getByRole('button', { name: 'Workspace: Default' })).toBeTruthy();
   });
 
+  it('still draws when the second row is the archived workspace you are in', () => {
+    // The one case where an organization with a single live workspace should
+    // see the control. cowork-server's `selectable()` drops archived rows but
+    // keeps one while it is the active row, so the payload carries two. Hiding
+    // here would strand the reader inside a workspace that was archived under
+    // them, with nothing on screen to move them out of it.
+    const ARCHIVED_ACTIVE = {
+      id: 'ws-old',
+      displayName: 'Old client',
+      isDefault: false,
+      archivedAt: '2026-08-01T00:00:00Z',
+      role: 'manager',
+    };
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({
+        enabled: true,
+        reachable: true,
+        workspaces: [ARCHIVED_ACTIVE, DEFAULT_WS],
+        activeWorkspaceId: 'ws-old',
+      }),
+    );
+    render(<WorkspaceSelector user={user} />);
+
+    expect(screen.getByRole('button', { name: 'Workspace: Old client' })).toBeTruthy();
+  });
+
   it('falls back to the first workspace when the stored active one is not in the list', () => {
     hookMock.useHubWorkspaces.mockReturnValue(three('ws-gone'));
     render(<WorkspaceSelector user={user} />);

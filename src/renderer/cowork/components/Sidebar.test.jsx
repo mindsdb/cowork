@@ -441,6 +441,18 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
 
   afterEach(() => {
     getAccessTokenMock.mockResolvedValue(null);
+    // Back to the file's resting answer. Nothing below this block mentions
+    // workspaces, so a leaked `mockReturnValue` would quietly hand them a
+    // rendered control and they would never say why they changed.
+    hubWorkspacesMock.useHubWorkspaces.mockReturnValue({
+      enabled: false,
+      reachable: false,
+      workspaces: [],
+      activeWorkspaceId: null,
+      switching: false,
+      switchWorkspace: vi.fn(),
+      refresh: vi.fn(),
+    });
   });
 
   it('draws it below the New task CTA, against the footer', async () => {
