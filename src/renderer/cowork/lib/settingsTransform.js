@@ -285,7 +285,11 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // takes the server's order as-is; it is the order the next open starts from.
     recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
-    modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
+    // Merged, not replaced: when the MindsHub fetch fails the server still
+    // sends the static direct-provider entries, and taking that partial map
+    // as the whole catalog dropped every MindsHub model's levels (ENG-2591).
+    // A live entry wins over a held one; an entry the server omits is kept.
+    modelEfforts: { ...(base.modelEfforts || {}), ...(overlayMap(null, rec.modelEfforts)) },
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
     // Picker grouping metadata, same rule: an empty map from the server (older

@@ -239,7 +239,10 @@ export function Combobox({
                         <span className={cn('inline-flex justify-center', item.icon ? 'text-ink-3' : 'text-accent')}>
                           {item.icon || <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>}
                         </span>
-                        <span className="min-w-0 truncate">{item.label}</span>
+                        {/* Wraps rather than truncates: a name is the one
+                            thing a row must show in full, and a locked row's
+                            tag plus action can leave it under 100px. */}
+                        <span className="min-w-0 break-words">{item.label}</span>
                         {(item.icon || item.tag || item.action) && (
                           <span className="shrink-0 flex items-center gap-[6px]">
                             {item.tag && (

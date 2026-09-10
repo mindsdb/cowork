@@ -329,6 +329,19 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(queryEffortPill()).toBeNull();
   });
 
+  it('keeps a pick when the catalog has no entry for the model', () => {
+    // A partial map: the MindsHub bucket failed and only the direct-provider
+    // entries came back. Missing is not the same as "no levels".
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: { 'claude-opus-4-8': { efforts: ['low', 'high'], default: 'high' } } },
+      model: MODELS[1],
+      effort: 'low',
+      onEffortChange: vi.fn(),
+    });
+    expect(props.onEffortChange).not.toHaveBeenCalled();
+  });
+
   it('keeps a pick the model offers', () => {
     const props = renderComposer({
       models: MODELS,

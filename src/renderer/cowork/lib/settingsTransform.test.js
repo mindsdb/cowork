@@ -424,6 +424,27 @@ describe('mergeRecommendedModels', () => {
     expect(merged.modelEfforts).toEqual(held.modelEfforts);
   });
 
+  it('keeps held effort entries the server left out of a partial map', () => {
+    // When the MindsHub fetch fails, cowork-server still sends the static
+    // direct-provider entries. That map is real but partial; taking it as the
+    // whole catalog dropped every MindsHub model's levels (ENG-2591).
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': [] },
+      modelEfforts: { 'claude-opus-4-8': { efforts: ['low', 'medium', 'high'], default: 'high' } },
+    });
+    expect(merged.modelEfforts).toEqual({
+      sonnet: { efforts: ['low', 'high'], default: 'high' },
+      'claude-opus-4-8': { efforts: ['low', 'medium', 'high'], default: 'high' },
+    });
+  });
+
+  it('lets a live effort entry replace the held one for the same model', () => {
+    const merged = mergeRecommendedModels(held, {
+      modelEfforts: { sonnet: { efforts: ['low', 'medium', 'high', 'max'], default: 'medium' } },
+    });
+    expect(merged.modelEfforts.sonnet).toEqual({ efforts: ['low', 'medium', 'high', 'max'], default: 'medium' });
+  });
+
   it('returns null when the request itself failed, so the caller changes nothing', () => {
     expect(mergeRecommendedModels(held, null)).toBeNull();
     expect(mergeRecommendedModels(held, undefined)).toBeNull();

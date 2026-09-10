@@ -431,14 +431,14 @@ export default function Composer({
 
   // Drop a pick the current model does not offer, so the pill never names a
   // level the request will not send (Code mode does the same in
-  // useNewTaskDraft). Waits for the catalog so a pick is not cleared before
-  // the model's levels are known; an empty map is the not-loaded state, not
-  // a catalog with no levels.
-  const modelEfforts = modelMeta?.modelEfforts;
+  // useNewTaskDraft). Only a known entry can veto a pick: a model missing
+  // from the map may mean the catalog has not loaded, or that the MindsHub
+  // bucket failed and the server sent only the direct-provider entries, and
+  // neither is a reason to throw away a saved choice.
+  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
   useEffect(() => {
-    if (!effort || !model?.id || !modelEfforts || !Object.keys(modelEfforts).length) return;
-    if (!(modelEfforts[model.id]?.efforts || []).includes(effort)) onEffortChange?.('');
-  }, [effort, modelEfforts, model?.id, onEffortChange]);
+    if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
+  }, [effort, knownLevels, onEffortChange]);
 
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
