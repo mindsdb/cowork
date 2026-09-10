@@ -8,12 +8,18 @@
 // can use their utility classes verbatim, and so future migration of
 // existing surfaces to Tailwind can happen incrementally.
 //
-// Two important calls:
+// Three important calls:
 //
 //   1. corePlugins.preflight = false — Tailwind's "preflight" CSS reset
 //      would aggressively reset buttons / lists / etc. That'd clobber
 //      everything we already have inline-styled. Utilities still work;
 //      we just skip the reset.
+//
+//   2. theme.extend.colors — bound to CSS variables from globals.css so
+//      `bg-surface`, `text-ink`, `border-line`, etc. follow the active
+//      light/dark theme without needing Tailwind's own dark-mode flag.
+//      The body[data-theme="dark"] selector in globals.css already
+//      flips the var values; Tailwind utilities just read them.
 //
 //   3. theme.extend.screens.sm — bound to PHONE_MAX from
 //      lib/breakpoints.js, the app's single source of truth for layout-mode
@@ -21,12 +27,6 @@
 //      would silently stay behind if that boundary ever moved. Only `sm` is
 //      bound; md and up keep Tailwind's defaults, since nothing in the
 //      layout-mode scale corresponds to them.
-//
-//   2. theme.extend.colors — bound to CSS variables from globals.css so
-//      `bg-surface`, `text-ink`, `border-line`, etc. follow the active
-//      light/dark theme without needing Tailwind's own dark-mode flag.
-//      The body[data-theme="dark"] selector in globals.css already
-//      flips the var values; Tailwind utilities just read them.
 //
 import { PHONE_MAX } from './src/renderer/cowork/lib/breakpoints.js';
 
