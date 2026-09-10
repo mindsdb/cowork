@@ -897,14 +897,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         )}
       </div>
       <div className="chat-artifact-card__actions">
-        {status && (
-          <span
-            aria-live="polite"
-            className={`self-center max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
-          >
-            {status.text}
-          </span>
-        )}
         {canExport && (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Tooltip content="Export to another format">
@@ -973,6 +965,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </Tooltip>
         )}
       </div>
+      {status && (
+        <span
+          aria-live="polite"
+          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+        >
+          {status.text}
+        </span>
+      )}
     </Card>
   );
 }

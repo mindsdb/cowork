@@ -636,12 +636,12 @@ describe('inline artifact card layout hooks', () => {
     }
   });
 
-  it('marks the action status live, which is also what stacks the card', async () => {
+  it('keeps the action status out of the button row', async () => {
     /*
-     * The status message shares the actions row and is wide enough to crush
-     * the filename track beside it, so the stacking rule keys off its
-     * aria-live attribute. That makes the attribute load-bearing for layout
-     * as well as for screen readers.
+     * A status message long enough to matter used to sit inside the button
+     * row and squeeze the filename track next to it down to nothing. It now
+     * takes a row of its own, which only works while it is a child of the
+     * card rather than of the actions element.
      */
     setOrgMode(true);
     downloadArtifactFile.mockResolvedValueOnce(false);
@@ -650,9 +650,9 @@ describe('inline artifact card layout hooks', () => {
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
-    const actions = container.querySelector('.chat-artifact-card__actions');
-    const status = actions.querySelector('[aria-live]');
+    const card = container.querySelector('.chat-artifact-card');
+    const status = card.querySelector(':scope > .chat-artifact-card__status');
     expect(status).not.toBeNull();
-    expect(status).toHaveTextContent('This artifact has no downloadable file yet.');
+    expect(card.querySelector('.chat-artifact-card__actions')).not.toContainElement(status);
   });
 });

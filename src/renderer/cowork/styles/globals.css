@@ -4314,16 +4314,17 @@ body[data-theme="dark"] .mshell__drawer-title {
   .chat-artifact-card { grid-template-columns: 64px minmax(0, 1fr); }
   .chat-artifact-card__actions { grid-column: 1 / -1; }
 }
-/* The transient status message shares the actions row and is wide enough
-   that the filename track collapses beside it at every column width this
-   app can offer, so its presence stacks the card on its own. A container
-   query cannot see it; the widest track combination needs ~755px and the
-   transcript column caps at 720px, so no threshold covers this instead. */
-.chat-artifact-card:has(.chat-artifact-card__actions [aria-live]) {
-  grid-template-columns: 64px minmax(0, 1fr);
-}
-.chat-artifact-card:has(.chat-artifact-card__actions [aria-live]) .chat-artifact-card__actions {
+/* The action status gets a row of its own rather than a slot in the button
+   row. Sharing that row made a long message crush the filename track beside
+   it, and any rule that reacted to the message instead would restructure the
+   card for the second or two it is on screen. */
+.chat-artifact-card__status {
   grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── Chat-view accent damping ───────────────────────────────────────────────
