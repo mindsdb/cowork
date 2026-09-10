@@ -429,6 +429,16 @@ export default function Composer({
     ? (resolveEffort(effort, null, effortLevels) ?? effortLevels.levels[0])
     : '';
 
+  // Drop a pick the current model does not offer, so the pill never names a
+  // level the request will not send (Code mode does the same in
+  // useNewTaskDraft). Waits for the catalog so a pick is not cleared before
+  // the model's levels are known.
+  const modelEfforts = modelMeta?.modelEfforts;
+  useEffect(() => {
+    if (!effort || !modelEfforts || !model?.id) return;
+    if (!(modelEfforts[model.id]?.efforts || []).includes(effort)) onEffortChange?.('');
+  }, [effort, modelEfforts, model?.id, onEffortChange]);
+
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
   // provider) empty. Claude Code still needs its own real model regardless,
@@ -1448,8 +1458,10 @@ export default function Composer({
             )}
             {/* Reasoning effort as its own pill (ENG-2591), the same
                 <Select> Code mode's composer uses. Fixed with the model
-                once a task's model is read-only. */}
-            {!modelReadOnly && effortLevels && (
+                once a task's model is read-only, and absent with no
+                provider connected, where the model pill is only a
+                shortcut to Settings. */}
+            {!modelReadOnly && !noRealModels && effortLevels && (
               <Select
                 value={resolvedEffort}
                 onValueChange={onEffortChange}

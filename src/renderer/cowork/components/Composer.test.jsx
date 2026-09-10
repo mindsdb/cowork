@@ -305,6 +305,41 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(props.onEffortChange).toHaveBeenCalledWith('high');
   });
 
+  it('drops a pick the model does not offer, so the pill and the request agree', () => {
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet: low / medium / high
+      effort: 'max',
+      onEffortChange: vi.fn(),
+    });
+    expect(props.onEffortChange).toHaveBeenCalledWith('');
+    expect(effortPill()).toHaveTextContent('Medium effort');
+  });
+
+  it('keeps a pick the model offers', () => {
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'high',
+      onEffortChange: vi.fn(),
+    });
+    expect(props.onEffortChange).not.toHaveBeenCalled();
+  });
+
+  it('renders no effort pill when no provider is connected', () => {
+    renderComposer({
+      models: [],
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'medium',
+      onOpenSettings: vi.fn(),
+    });
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    expect(queryEffortPill()).toBeNull();
+  });
+
   it('hides the effort pill under the Hermes harness, which has no effort knob', () => {
     renderComposer({
       models: MODELS,
