@@ -965,9 +965,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </Tooltip>
         )}
       </div>
+      {/* Announcing happens here, not on the visible message. aria-live
+          announces content CHANGES, so a region that arrives with its text
+          already in place is silent (same rule as AskUserCard). `status`
+          starts null, so this mounts empty and fills on a later commit. */}
+      <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
       {status && (
         <span
-          aria-live="polite"
           className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
         >
           {status.text}
