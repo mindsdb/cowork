@@ -934,7 +934,7 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
     expect(event.properties.reason).toBe('included_allowance_exhausted');
-    expect(event.properties.organization_id).toBe('org-abc');
+    expect(event.properties.sso_organization_id).toBe('org-abc');
   });
 
   it('stamps plan_tier on a limit rejection, because which limit applies depends on it', async () => {
@@ -952,7 +952,7 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     await trackTokenCapHit('token_limit');
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(event.properties.plan_tier).toBe('free');
+    expect(event.properties.sso_plan_tier).toBe('free');
   });
 
   it('omits organization_id rather than sending null when the claim is absent', async () => {
@@ -966,7 +966,7 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     await trackTokenCapHit('token_limit');
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(event.properties).not.toHaveProperty('organization_id');
+    expect(event.properties).not.toHaveProperty('sso_organization_id');
   });
 
   it('sends nothing org-shaped before sign-in, rather than guessing', async () => {
@@ -979,7 +979,7 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     await trackTokenCapHit('token_limit');
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(event.properties).not.toHaveProperty('organization_id');
+    expect(event.properties).not.toHaveProperty('sso_organization_id');
     expect(event.properties.device_id).toBeTruthy();
   });
 });
@@ -1017,7 +1017,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     const { trackTokenCapHit } = await importAnalytics();
 
     await trackTokenCapHit('token_limit');
-    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_organization_id).toBe('org-A');
 
     // Session dies. The identity cache holds for five minutes, so step past it:
     // within the window getDistinctId returns early and never re-resolves, which
@@ -1028,8 +1028,8 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     await trackTokenCapHit('token_limit');
 
     const later = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(later.properties).not.toHaveProperty('organization_id');
-    expect(later.properties).not.toHaveProperty('plan_tier');
+    expect(later.properties).not.toHaveProperty('sso_organization_id');
+    expect(later.properties).not.toHaveProperty('sso_plan_tier');
   });
 
   it('omits organization_id when a later token decodes but carries no sub', async () => {
@@ -1041,7 +1041,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     await trackTokenCapHit('token_limit');
     // trackTokenCapHit does not return capture()'s promise, so the await above
     // does not wait for delivery. Wait for the event before changing the mock.
-    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_organization_id).toBe('org-A');
 
     getAccessToken.mockResolvedValue(fakeJwt({ email: 'a@example.com' })); // no sub
     vi.setSystemTime(Date.now() + 6 * 60 * 1000);
@@ -1060,7 +1060,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
     await trackTokenCapHit('token_limit');
-    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_organization_id).toBe('org-A');
 
     getAccessToken.mockRejectedValue(new Error('token endpoint down'));
     vi.setSystemTime(Date.now() + 6 * 60 * 1000);
@@ -1081,7 +1081,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     const fetchMock = mockFetch();
     const { trackTokenCapHit, resetDeviceIdentity } = await importAnalytics();
     await trackTokenCapHit('token_limit');
-    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.organization_id).toBe('org-A');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_organization_id).toBe('org-A');
 
     resetDeviceIdentity();
     getAccessToken.mockResolvedValue(null);

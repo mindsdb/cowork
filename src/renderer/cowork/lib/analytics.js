@@ -78,6 +78,16 @@ const EVENTS = {
   // release squash-merges staging into main, so a branch compare reports
   // content main already has as diverged and will tell you prod is missing a
   // condition it has been emitting for weeks.
+  //
+  // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` now ride
+  // EVERY event, not just this one. Additive, so no existing query changes
+  // meaning, and both are absent on pre-login events and before this build.
+  // They are the signed-in session's org and tier. **They are not the subject a
+  // limit bound to** — a user-supplied `mdb_` key overrides the session token,
+  // and limits are org-scoped with per-org overrides rather than tier-scoped.
+  // Segment on them; do not count organisations-per-limit with them. The `sso_`
+  // prefix exists to stop the unprefixed name reading as authoritative, and
+  // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent (ENG-1533, ENG-1782). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
@@ -492,15 +502,17 @@ function capture(event, properties = {}) {
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
       if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
-      // The signed-in session's organisation and tier, on the event as well as in
+      // The signed-in SESSION's organisation and tier, on the event as well as in
       // the person `$set` (ENG-2206). Same reasoning that put is_internal here
       // (ENG-672): a person property is the CURRENT value, so it re-attributes an
       // August rejection to whichever org the person sits in today, and someone
       // who switches org silently moves their own past events. Additive, so no
       // existing query changes meaning.
       //
-      // READ THIS BEFORE TREATING IT AS THE SUBJECT A LIMIT BOUND TO. It is not,
-      // and ENG-2206 asks for that. Two reasons, both found in review:
+      // The `sso_` prefix is load-bearing and is why these are not called
+      // `organization_id` and `plan_tier`. Neither is the subject a limit bound
+      // to, which is what ENG-2206 actually asks for, and an unprefixed name
+      // would read as though it were. Two reasons, both found in review:
       //
       //   1. A user-supplied `mdb_` key takes precedence over the session token
       //      (`src/main/minds-credential.ts:48`). A request denied against that
@@ -509,8 +521,14 @@ function capture(event, properties = {}) {
       //      request or the gateway response.
       //   2. Limits are organisation-scoped with per-org Statsig overrides
       //      (`auth/entitlements/services/usage_limits.py`), not tier-scoped. Two
-      //      accounts both on `free` can hit different ceilings, so `plan_tier`
-      //      does NOT identify which limit applied. It is a segment.
+      //      accounts both on `free` can hit different ceilings, so tier does NOT
+      //      identify which limit applied.
+      //
+      // So these are segments. Segment on them freely; do not answer "how many
+      // organisations hit this limit" with them. ENG-2206 stays open for that.
+      //
+      // The person `$set` keeps the unprefixed `organization_id` / `plan_tier`,
+      // which are correct there: a person property IS the current session's org.
       //
       // Omitted rather than nulled when unresolved. Present-and-null is worse
       // than absent: a filter on the property counts the row and the column looks
@@ -520,10 +538,10 @@ function capture(event, properties = {}) {
       // getDistinctId returns early on its own cache and never re-resolves inside
       // the window. forgetIdentity fixes the post-expiry case only.
       if (identity.personProps.organization_id) {
-        eventProps.organization_id = identity.personProps.organization_id;
+        eventProps.sso_organization_id = identity.personProps.organization_id;
       }
       if (identity.personProps.plan_tier) {
-        eventProps.plan_tier = identity.personProps.plan_tier;
+        eventProps.sso_plan_tier = identity.personProps.plan_tier;
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
