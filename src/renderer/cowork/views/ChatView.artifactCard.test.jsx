@@ -626,9 +626,33 @@ describe('inline artifact card layout hooks', () => {
     const card = container.querySelector('.chat-artifact-card');
     const actions = card?.querySelector(':scope > .chat-artifact-card__actions');
     expect(actions).not.toBeNull();
+    // The query container is the other half of the seam: without this
+    // ancestor the @container rule can never match, and the card silently
+    // keeps its three-track desktop layout at every width.
+    expect(card.closest('.chat-transcript-col')).not.toBeNull();
 
     for (const label of ['Shared link', 'Download', 'Preview']) {
       expect(actions).toContainElement(screen.getByRole('button', { name: label }));
     }
+  });
+
+  it('marks the action status live, which is also what stacks the card', async () => {
+    /*
+     * The status message shares the actions row and is wide enough to crush
+     * the filename track beside it, so the stacking rule keys off its
+     * aria-live attribute. That makes the attribute load-bearing for layout
+     * as well as for screen readers.
+     */
+    setOrgMode(true);
+    downloadArtifactFile.mockResolvedValueOnce(false);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    const actions = container.querySelector('.chat-artifact-card__actions');
+    const status = actions.querySelector('[aria-live]');
+    expect(status).not.toBeNull();
+    expect(status).toHaveTextContent('This artifact has no downloadable file yet.');
   });
 });

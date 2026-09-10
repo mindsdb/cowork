@@ -4303,6 +4303,8 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .chat-artifact-card__actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 /* Below this the actions and a readable filename stop fitting on one line:
@@ -4310,11 +4312,18 @@ body[data-theme="dark"] .mshell__drawer-title {
    actions take their own full-width row rather than crushing the title. */
 @container chat-col (max-width: 560px) {
   .chat-artifact-card { grid-template-columns: 64px minmax(0, 1fr); }
-  .chat-artifact-card__actions {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
+  .chat-artifact-card__actions { grid-column: 1 / -1; }
+}
+/* The transient status message shares the actions row and is wide enough
+   that the filename track collapses beside it at every column width this
+   app can offer, so its presence stacks the card on its own. A container
+   query cannot see it; the widest track combination needs ~755px and the
+   transcript column caps at 720px, so no threshold covers this instead. */
+.chat-artifact-card:has(.chat-artifact-card__actions [aria-live]) {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.chat-artifact-card:has(.chat-artifact-card__actions [aria-live]) .chat-artifact-card__actions {
+  grid-column: 1 / -1;
 }
 
 /* ─── Chat-view accent damping ───────────────────────────────────────────────
