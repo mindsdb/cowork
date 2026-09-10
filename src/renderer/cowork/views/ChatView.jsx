@@ -832,6 +832,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * hover lift mark the entire surface as interactive at a glance.
    */
   return (
+    <>
+      {/* Outside the Card on purpose: Card renders role="button", and ARIA
+          treats a button's non-focusable descendants as presentational, so a
+          region nested inside it can be left out of the accessibility tree.
+          It mounts empty because `status` starts null, which is what lets
+          aria-live see a content CHANGE when an action fills it. */}
+      <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
     <Card
       as="div"
       interactive={canActivate}
@@ -965,11 +972,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </Tooltip>
         )}
       </div>
-      {/* Announcing happens here, not on the visible message. aria-live
-          announces content CHANGES, so a region that arrives with its text
-          already in place is silent (same rule as AskUserCard). `status`
-          starts null, so this mounts empty and fills on a later commit. */}
-      <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
       {status && (
         <span
           className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
@@ -978,6 +980,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         </span>
       )}
     </Card>
+    </>
   );
 }
 

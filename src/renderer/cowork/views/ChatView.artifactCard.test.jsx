@@ -661,28 +661,26 @@ describe('inline artifact card layout hooks', () => {
   });
 
   it('announces an action result through a region that was already mounted', async () => {
-    /*
-     * aria-live announces content CHANGES, so a region that appears with its
-     * message already in it says nothing. The card used to mount the whole
-     * live node together with its text, which is why an error a sighted user
-     * reads was silent. Holding the same node across the click is the point:
-     * it proves the region pre-existed rather than arriving with the message.
-     */
+    // Holding the node across the click is the point: aria-live reacts to a
+    // content change, so the region has to pre-date the message.
     setOrgMode(true);
     downloadArtifactFile.mockResolvedValueOnce(false);
     const user = userEvent.setup();
     const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
-    const card = container.querySelector('.chat-artifact-card');
-    const live = card.querySelector('[role="status"][aria-live="polite"]');
+    const live = container.querySelector('[role="status"][aria-live="polite"]');
     expect(live).not.toBeNull();
     expect(live.textContent).toBe('');
+    // ARIA treats a button's non-focusable descendants as presentational, and
+    // the card itself is role="button", so nesting the region would hide it.
+    const card = container.querySelector('.chat-artifact-card');
+    expect(card).not.toContainElement(live);
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     expect(live).toHaveTextContent('This artifact has no downloadable file yet.');
-    // The visible message is decoration for this; two live nodes would say it
-    // twice.
-    expect(card.querySelector('.chat-artifact-card__status')).not.toHaveAttribute('aria-live');
+    const visible = card.querySelector('.chat-artifact-card__status');
+    expect(visible).not.toBeNull();
+    expect(visible).not.toHaveAttribute('aria-live');
   });
 });
