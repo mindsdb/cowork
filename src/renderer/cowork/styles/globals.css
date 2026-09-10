@@ -4389,6 +4389,13 @@ body[data-theme="dark"] .phase-check-done {
 .turn-actions:focus-within {
   opacity: 1;
 }
+/* A touch device never fires hover, so the rule above left every toolbar
+   except the last turn's permanently invisible. Placed after the rules it
+   overrides so it wins on order, without the !important the older
+   coarse-pointer block needs to reach back up the file. */
+@media (hover: none), (pointer: coarse) {
+  .turn-actions { opacity: 1; }
+}
 /* Footer meta bottom-right of an answer — "Jun 21, 7:39 AM · Anton".
    Hover-only by design (no .is-last exception): the agent + timestamp
    are reference details, not part of the reading flow. */
