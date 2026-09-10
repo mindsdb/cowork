@@ -191,7 +191,12 @@ function remarkArtifactLocalLinks() {
     if (!node || !Array.isArray(node.children)) return;
     for (const child of node.children) {
       if (child.type === 'definition' && child.identifier) {
-        defs.set(child.identifier, child.url || '');
+        // First definition wins — CommonMark resolves duplicate reference
+        // definitions from the FIRST occurrence, and remark renders the
+        // anchor from that one. A last-wins Map.set made this guard judge a
+        // different URL than the one the anchor actually carries, in both
+        // directions (review finding on #956, round 2).
+        if (!defs.has(child.identifier)) defs.set(child.identifier, child.url || '');
       } else if (child.type !== 'code' && child.type !== 'inlineCode') {
         collectDefinitions(child, defs);
       }

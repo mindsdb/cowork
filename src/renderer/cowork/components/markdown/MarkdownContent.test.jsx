@@ -310,6 +310,29 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     }
   });
 
+    it('resolves a duplicate definition from the FIRST occurrence — pod path first neutralises', () => {
+    // CommonMark: the FIRST definition wins and is what the anchor renders;
+    // a last-wins collection judged the other URL (review finding, round 2).
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent
+        text={'[x][r]\n\n[r]: /mnt/a\n\n[r]: https://example.com/a'} complete />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelectorAll(`span[title*="${PANEL_HINT}"]`).length).toBe(1);
+    } finally { hostState.isWeb = false; }
+  });
+
+  it('keeps a remote FIRST definition live even when a pod path follows', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent
+        text={'[x][r]\n\n[r]: https://example.com/a\n\n[r]: /mnt/a'} complete />);
+      const a = container.querySelector('a');
+      expect(a).not.toBeNull();
+      expect(a.getAttribute('href')).toBe('https://example.com/a');
+    } finally { hostState.isWeb = false; }
+  });
+
     it('leaves images to pod paths alone — deliberately out of scope (no live link is claimed)', () => {
     hostState.isWeb = true;
     try {
