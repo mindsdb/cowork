@@ -317,6 +317,18 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(effortPill()).toHaveTextContent('Medium effort');
   });
 
+  it('keeps a pick until the catalog has loaded', () => {
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: {} },
+      model: MODELS[1],
+      effort: 'max',
+      onEffortChange: vi.fn(),
+    });
+    expect(props.onEffortChange).not.toHaveBeenCalled();
+    expect(queryEffortPill()).toBeNull();
+  });
+
   it('keeps a pick the model offers', () => {
     const props = renderComposer({
       models: MODELS,
