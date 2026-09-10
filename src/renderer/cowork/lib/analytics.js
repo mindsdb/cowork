@@ -80,8 +80,11 @@ const EVENTS = {
   // condition it has been emitting for weeks.
   //
   // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` now ride
-  // this rejection event. Additive, so no existing query changes meaning, and
-  // both are absent on pre-login events and before this build.
+  // EVERY event this module emits, not only this one: they are stamped in
+  // capture(), beside is_internal. Noted here because this is the event they
+  // were added for and this is where a reader looks. Additive, so no existing
+  // query changes meaning, and both are absent on pre-login events and on any
+  // event from a build older than this one.
   // They are the signed-in session's org and tier. **They are not the subject a
   // limit bound to** — a user-supplied `mdb_` key overrides the session token,
   // and limits are org-scoped with per-org overrides rather than tier-scoped.
