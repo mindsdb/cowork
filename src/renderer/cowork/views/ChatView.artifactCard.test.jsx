@@ -609,3 +609,26 @@ describe('inline artifact banner on web', () => {
     expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
   });
 });
+
+describe('inline artifact card layout hooks', () => {
+  it('groups every action in the element the container query targets', () => {
+    /*
+     * The card's grid and its narrow-column fallback live in globals.css and
+     * key off these two class names. Layout itself is not observable here —
+     * jsdom computes none — so this only guards the seam: if the actions stop
+     * being one grouped child of the card, the rule that moves them onto
+     * their own row below 560px silently stops applying and the filename
+     * collapses to zero width again.
+     */
+    setOrgMode(true);
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    const card = container.querySelector('.chat-artifact-card');
+    const actions = card?.querySelector(':scope > .chat-artifact-card__actions');
+    expect(actions).not.toBeNull();
+
+    for (const label of ['Shared link', 'Download', 'Preview']) {
+      expect(actions).toContainElement(screen.getByRole('button', { name: label }));
+    }
+  });
+});

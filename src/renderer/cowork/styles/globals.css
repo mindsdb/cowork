@@ -4289,6 +4289,34 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .user-turn-more:hover { color: var(--ink); }
 
+/* ─── Inline artifact card in the transcript ─────────────────────────────
+   Laid out from the chat column's width, not the window's. With the right
+   rail docked, a 900px window leaves this column near 340px — narrower than
+   a phone — so a viewport breakpoint would leave the action row overflowing
+   on exactly the desktop case it was reported on. */
+.chat-transcript-col { container: chat-col / inline-size; }
+.chat-artifact-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+.chat-artifact-card__actions {
+  display: flex;
+  gap: 6px;
+}
+/* Below this the actions and a readable filename stop fitting on one line:
+   the three-button row measures 246px and the filename needs ~120px. The
+   actions take their own full-width row rather than crushing the title. */
+@container chat-col (max-width: 560px) {
+  .chat-artifact-card { grid-template-columns: 64px minmax(0, 1fr); }
+  .chat-artifact-card__actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
 /* ─── Chat-view accent damping ───────────────────────────────────────────────
    Two spots hard-filled the raw bright --accent and read as glare in dark mode
    (the inline artifact-card CTA and the Progress-panel done markers). Both now

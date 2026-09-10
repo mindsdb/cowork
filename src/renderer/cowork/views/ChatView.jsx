@@ -840,7 +840,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
+      className="chat-artifact-card"
     >
       <div
         className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
@@ -896,7 +896,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </span>
         )}
       </div>
-      <div className="flex gap-1.5">
+      <div className="chat-artifact-card__actions">
         {status && (
           <span
             aria-live="polite"
@@ -2026,7 +2026,7 @@ export default function ChatView({
           data-scroll="true"
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
