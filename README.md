@@ -516,8 +516,11 @@ a switch offering only the place you are already in asks a first-time reader to
 work out what a workspace is for no benefit. The control appears once the
 organization has a second one, which is the first moment "which workspace am I
 in" has more than one answer. The count is taken on the rows the sidecar offers,
-which already exclude archived workspaces and always keep the active one, so one
-live workspace beside an archived one counts as one.
+which already exclude archived workspaces except the one you are currently in.
+So a live workspace beside an archived one counts as one and draws nothing, and
+a live workspace beside the archived one you are in counts as two and does draw.
+The second case is deliberate: the control is the only way out of a workspace
+that was archived under you.
 
 **It sits at the bottom rather than the top of the rail.** A workspace is a
 container inside the organization, not what a reader starts a task from, and the
@@ -535,6 +538,8 @@ inside a menu about identity.
 | The hub could not be reached | absent |
 | Gate on and reachable, but the org has no workspace | absent |
 | One workspace, with nowhere to move to | absent |
+| One live workspace and an archived one you are not in | absent |
+| One live workspace and the archived one you are in | shown, so you can leave it |
 | Two or more, gate on | shown |
 
 A read that has not settled is retried three times over about forty seconds and
