@@ -477,6 +477,25 @@ function capture(event, properties = {}) {
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
       if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
+      // The subject a limit actually binds to (ENG-2206). Both also ride the
+      // person `$set`, but a person property is the CURRENT value: it
+      // re-attributes an August rejection to whichever org the person sits in
+      // today, and someone who switches org silently moves their own past
+      // events. Stamped on the event so "how many organisations hit this limit
+      // in August" is answerable at all. Same reasoning that put is_internal
+      // here (ENG-672), and additive, so no existing query changes meaning.
+      //
+      // Omitted rather than nulled when unresolved. Present-and-null is worse
+      // than absent: a filter on the property counts the row and the column
+      // looks populated. `app_version` and `is_internal` follow the same rule.
+      if (identity.personProps.organization_id) {
+        eventProps.organization_id = identity.personProps.organization_id;
+      }
+      // plan_tier because WHICH limit applies is tier-dependent, so a rejection
+      // without it cannot be read against the ceiling that produced it.
+      if (identity.personProps.plan_tier) {
+        eventProps.plan_tier = identity.personProps.plan_tier;
+      }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
