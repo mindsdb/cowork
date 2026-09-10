@@ -16,8 +16,8 @@
 // what a scope indicator is for. And the account menu is where the organization
 // selector lands, so two levels of the same hierarchy nested inside a menu that
 // is about identity rather than scope. It moved to its own control above the
-// New task CTA, where both reference consoles put the scope picker. Neither
-// placement is settled for a return.
+// New task CTA, where both reference consoles put the scope picker. When it
+// returns it goes in the sidebar footer, not back to either.
 //
 // **It rendered for a single workspace too.** There is nothing to switch to,
 // but "which workspace am I in" is worth answering on its own, and that

@@ -515,10 +515,10 @@ key and the code are named `hubWorkspace` throughout.
 `components/WorkspaceSelector.jsx`, `hooks/useHubWorkspaces.js` and
 `lib/letterTile.js` stay in the tree, keep their tests, and keep their coverage
 pins, and cowork-server keeps both routes. The surface returns when there are
-features behind it, and where it goes then is not settled. Two things follow
-from the renderer having no call site: it issues no `/api/v1/hub/workspaces/`
-read at all, and a `hub_workspace_id` already stored for someone is left alone
-rather than cleared, so an earlier pick survives.
+features behind it, and it returns in the sidebar footer rather than at the top.
+Two things follow from the renderer having no call site: it issues no
+`/api/v1/hub/workspaces/` read at all, and a `hub_workspace_id` already stored
+for someone is left alone rather than cleared, so an earlier pick survives.
 
 **The switch was a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
