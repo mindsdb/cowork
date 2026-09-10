@@ -80,8 +80,8 @@ const EVENTS = {
   // condition it has been emitting for weeks.
   //
   // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` now ride
-  // EVERY event, not just this one. Additive, so no existing query changes
-  // meaning, and both are absent on pre-login events and before this build.
+  // this rejection event. Additive, so no existing query changes meaning, and
+  // both are absent on pre-login events and before this build.
   // They are the signed-in session's org and tier. **They are not the subject a
   // limit bound to** — a user-supplied `mdb_` key overrides the session token,
   // and limits are org-scoped with per-org overrides rather than tier-scoped.
@@ -502,12 +502,10 @@ function capture(event, properties = {}) {
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
       if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
-      // The signed-in SESSION's organisation and tier, on the event as well as in
-      // the person `$set` (ENG-2206). Same reasoning that put is_internal here
-      // (ENG-672): a person property is the CURRENT value, so it re-attributes an
-      // August rejection to whichever org the person sits in today, and someone
-      // who switches org silently moves their own past events. Additive, so no
-      // existing query changes meaning.
+      // The signed-in SESSION's organisation and tier on a limit-rejection event,
+      // as well as in the person `$set` (ENG-2206). Keep these specific to the
+      // event the ticket measures; adding them to every product event would widen
+      // this instrumentation change beyond the rejection boundary.
       //
       // The `sso_` prefix is load-bearing and is why these are not called
       // `organization_id` and `plan_tier`. Neither is the subject a limit bound
@@ -537,11 +535,13 @@ function capture(event, properties = {}) {
       // Still stale for up to five minutes after an in-place org switch, because
       // getDistinctId returns early on its own cache and never re-resolves inside
       // the window. forgetIdentity fixes the post-expiry case only.
-      if (identity.personProps.organization_id) {
-        eventProps.sso_organization_id = identity.personProps.organization_id;
-      }
-      if (identity.personProps.plan_tier) {
-        eventProps.sso_plan_tier = identity.personProps.plan_tier;
+      if (event === EVENTS.TOKEN_CAP_HIT) {
+        if (identity.personProps.organization_id) {
+          eventProps.sso_organization_id = identity.personProps.organization_id;
+        }
+        if (identity.personProps.plan_tier) {
+          eventProps.sso_plan_tier = identity.personProps.plan_tier;
+        }
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.

@@ -955,6 +955,25 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     expect(event.properties.sso_plan_tier).toBe('free');
   });
 
+  it('does not widen the session segments onto unrelated events', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: 'user-cap',
+        email: 'a@example.com',
+        activate_organization: { id: 'org-abc', name: 'Acme' },
+        realm_access: { roles: ['free'] },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackDataSourceConnected } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+
+    const event = await sentEvent(fetchMock, 'data_source_connected');
+    expect(event.properties).not.toHaveProperty('sso_organization_id');
+    expect(event.properties).not.toHaveProperty('sso_plan_tier');
+  });
+
   it('omits organization_id rather than sending null when the claim is absent', async () => {
     // Present-and-null is worse than absent: a query filtering on the property
     // counts the row, and PostHog shows a populated column that means nothing.
@@ -1049,7 +1068,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     await trackTokenCapHit('token_limit');
 
     expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
-      'organization_id'
+      'sso_organization_id'
     );
   });
 
@@ -1068,7 +1087,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     await trackTokenCapHit('token_limit');
 
     expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
-      'organization_id'
+      'sso_organization_id'
     );
   });
 
@@ -1089,7 +1108,7 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     await trackTokenCapHit('token_limit');
 
     expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
-      'organization_id'
+      'sso_organization_id'
     );
   });
 });
