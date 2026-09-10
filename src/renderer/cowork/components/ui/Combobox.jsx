@@ -161,8 +161,10 @@ export function Combobox({
           <BaseCombobox.Popup
             className={cn(
               // overflow-hidden clips the square-cornered search row to the
-              // popup's rounded corners.
-              'flex flex-col overflow-hidden w-[max(var(--anchor-width),240px)] max-w-[var(--available-width)]',
+              // popup's rounded corners. The 320px floor keeps the longest
+              // catalog names on one line under a compact trigger such as the
+              // composer's model pill; at 240px they truncated (ENG-2591).
+              'flex flex-col overflow-hidden w-[max(var(--anchor-width),320px)] max-w-[var(--available-width)]',
               // Same bordered-popup treatment as Select/Menu. `border-solid`
               // is load-bearing: preflight is disabled, so a bare `border`
               // sets width but leaves style at the UA default `none`.

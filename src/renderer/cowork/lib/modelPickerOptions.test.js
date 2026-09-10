@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildModelPickerOptions, withModelPickerFallback } from './modelPickerOptions';
 
 describe('buildModelPickerOptions', () => {
-  it('produces the same provider, family, version, and wallet metadata for every picker', () => {
+  it('produces the same provider, family order, and wallet metadata for every picker', () => {
     const models = [
       { id: 'sonnet-4-5', name: 'Claude Sonnet 4.5' },
       { id: 'mindshub_air', name: 'MindsHub Air' },
@@ -14,13 +14,13 @@ describe('buildModelPickerOptions', () => {
       modelFamilies: { mindshub_air: 'mindshub_air', sonnet: 'sonnet', 'sonnet-4-5': 'sonnet' },
       modelEnabled: { mindshub_air: true, sonnet: false, 'sonnet-4-5': false },
     })).toEqual([
-      { value: 'mindshub_air', label: 'MindsHub Air', tag: 'Latest', provider: 'openai' },
+      { value: 'mindshub_air', label: 'MindsHub Air', provider: 'openai' },
       {
         value: 'sonnet',
         label: 'Claude Sonnet 5',
         disabled: true,
         locked: true,
-        tag: 'Latest · Needs credits',
+        tag: 'Needs credits',
         provider: 'anthropic',
       },
       {
@@ -28,7 +28,7 @@ describe('buildModelPickerOptions', () => {
         label: 'Claude Sonnet 4.5',
         disabled: true,
         locked: true,
-        tag: 'Older version · Needs credits',
+        tag: 'Needs credits',
         provider: 'anthropic',
       },
     ]);
