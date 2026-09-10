@@ -122,6 +122,12 @@ export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
 export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
 
+// Desktop app download. `os=auto` lets the marketing page detect the visitor's
+// OS server-side and serve the right installer; `from` tags the referral
+// source for attribution, so traffic off the post-verification welcome page is
+// separable from the in-app "coming soon to Cloud" prompt (`from=cowork-web`).
+export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-welcome';
+
 // MindsHub sign-up: the Keycloak registration flow (not the account
 // page), which lands the new user back on the console. Built from the
 // base vars so it stays correct if VITE_KEYCLOAK_URL / VITE_MINDS_API_URL

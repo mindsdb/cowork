@@ -75,6 +75,33 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  // ENG-2311 (AC2): the page a just-verified user lands on said nothing about
+  // the desktop app, though the onboarding email sent minutes earlier makes
+  // getting it step 1 of 5. Continue stays the primary action; this is an
+  // offer next to it.
+  it('welcome page offers the desktop app and opens the download page externally', async () => {
+    hostMock.openExternal = vi.fn();
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    const link = await screen.findByRole('button', { name: 'Get the desktop app' });
+    fireEvent.click(link);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      'https://mindshub.ai/download?os=auto&from=cowork-welcome',
+    );
+  });
+
+  // ENG-2311 (AC1): the HUD credits the copyright to MindsDB, Inc., the entity
+  // that holds it. It previously read a bare "MINDSDB", which on a
+  // MindsHub-branded signup reads as a stray product name. ArcadeShell renders
+  // the string twice (an invisible width mirror plus the visible copy), so both
+  // occurrences are asserted.
+  it('welcome page HUD credits the copyright to the entity, not a bare product name', async () => {
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument(),
+    );
+    expect(screen.getAllByText(`©${new Date().getFullYear()} MINDSDB, INC.`)).toHaveLength(2);
+  });
+
   it('web + config_ready:false → full provider flow (key prompt), no short-circuit', async () => {
     hostMock.checkConfigured = vi.fn(async () => ({ configured: false, provider: '' }));
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
