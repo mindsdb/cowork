@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useCodingCatalog } from './useCodingCatalog';
 
 import type { CodeProject, PlaybookStatus, SkillLibraryItem } from './api';
 
@@ -20,7 +21,12 @@ const { engines, models, pickCodeFolder, playbook, skillLibrary } = vi.hoisted((
   })),
 }));
 
+const credentialListeners = vi.hoisted(() => new Set<() => void>());
 vi.mock('../../platform/host', () => ({
+  onMindsHubCredentialChanged: (listener: () => void) => {
+    credentialListeners.add(listener);
+    return () => credentialListeners.delete(listener);
+  },
   host: {
     openExternal: vi.fn(),
     openPath: vi.fn(),
@@ -64,7 +70,37 @@ const project: CodeProject = {
 describe('ProjectSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    credentialListeners.clear();
     resetSkillLibraryCache();
+  });
+
+  it.each(['local', 'shared'])('refreshes an open project’s %s catalogue without resetting its draft', async (source) => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    function Editor() {
+      const catalog = useCodingCatalog(source === 'shared');
+      return <ProjectSettingsModal open project={project} connections={[]} busy={false}
+        catalog={source === 'shared' ? catalog : undefined} onClose={vi.fn()} onSave={onSave} />;
+    }
+    render(<Editor />);
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('combobox', { name: 'Default coding model' }));
+    expect(screen.getByRole('option', { name: /fable/ })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.clear(screen.getByRole('textbox', { name: 'Name' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Keep my project draft');
+
+    models.mockResolvedValueOnce({ items: ['gpt-5.6-sol', 'new-account-model'] });
+    act(() => credentialListeners.forEach((listener) => listener()));
+    await waitFor(() => expect(models).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByRole('combobox', { name: 'Default coding model' }));
+    expect(screen.getByRole('option', { name: /new-account-model/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /fable/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: /new-account-model/ }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Keep my project draft', default_model: 'new-account-model', resources: project.resources,
+    })));
   });
 
   it('keeps account management out of an unsaved project draft while making skills selectable', async () => {
@@ -373,6 +409,7 @@ describe('ProjectSettingsModal', () => {
       ],
       modelMeta: { modelProviders: { gpt: 'openai', 'gpt-codex': 'openai' } },
       catalog: {
+        revision: 0,
         engines: [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }],
         enginesLoading: false,
         error: '',

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkItemPage } from './api';
@@ -30,7 +31,13 @@ const {
 
 vi.mock('../../platform/host', () => ({
   host: { pickCodeFolder, getPathForFile },
+  onMindsHubCredentialChanged: (listener: () => void) => {
+    credentialListeners.add(listener);
+    return () => credentialListeners.delete(listener);
+  },
 }));
+
+const credentialListeners = vi.hoisted(() => new Set<() => void>());
 
 vi.mock('../lib/skillsStore', () => ({ useSkills: () => ({ skills: [] }) }));
 
@@ -63,6 +70,12 @@ vi.mock('./api', () => ({
 }));
 
 import { NewTaskPanel } from './NewTaskPanel';
+import { useCodingCatalog } from './useCodingCatalog';
+
+function CatalogTaskPanel({ source, ...props }: ComponentProps<typeof NewTaskPanel> & { source: string }) {
+  const catalog = useCodingCatalog(source === 'shared');
+  return <NewTaskPanel {...props} catalog={source === 'shared' ? catalog : undefined} />;
+}
 
 const models = [
   { id: 'mindshub_air', name: 'MindsHub Air' },
@@ -213,6 +226,59 @@ describe('NewTaskPanel', () => {
 
     expect(await screen.findByText('Add credits or choose an available model.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
+  it.each(['local', 'shared'])('preserves the draft, project, attachments, permissions and chosen model during %s catalogue refresh', async (source) => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    const { container } = render(<CatalogTaskPanel source={source}
+      busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate}
+    />);
+    const prompt = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(prompt, 'Keep this task brief');
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: /MindsHub Air/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
+    await user.click(screen.getByRole('option', { name: 'Full access' }));
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['brief'], 'brief.md')] },
+    });
+
+    let settle!: (value: { items: string[] }) => void;
+    codingModels.mockReturnValueOnce(new Promise((resolve) => { settle = resolve; }));
+    act(() => credentialListeners.forEach((listener) => listener()));
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Coding task' })).toBe(prompt);
+    expect(prompt).toHaveValue('Keep this task brief');
+    await act(async () => { settle({ items: ['mindshub_air', 'gpt-5.6-sol'] }); });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('MindsHub Air');
+    expect(screen.getByRole('combobox', { name: 'Coding permissions' })).toHaveTextContent('Full access');
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: project.id, prompt: 'Keep this task brief', model: 'mindshub_air',
+      permissionMode: 'full_access', attachments: [expect.objectContaining({ name: 'brief.md' })],
+    }));
+  });
+
+  it.each(['local', 'shared'])('disables task submission on sign-out, then recovers the %s catalogue without losing the brief', async (source) => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<CatalogTaskPanel source={source} busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a calculator');
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    codingModels.mockRejectedValueOnce(new Error('Sign in to use coding models'));
+    act(() => credentialListeners.forEach((listener) => listener()));
+    await screen.findByText('Sign in to use coding models');
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Coding task' }), { key: 'Enter', metaKey: true });
+    expect(onCreate).not.toHaveBeenCalled();
+    act(() => credentialListeners.forEach((listener) => listener()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    expect(screen.queryByText('Sign in to use coding models')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Build a calculator');
   });
 
   it('shows the server sign-in mismatch detail when the model catalogue is rejected', async () => {
