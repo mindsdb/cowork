@@ -49,10 +49,15 @@ Assembled by `src/renderer/cowork/lib/diagnostics.js`:
 recognisable provider key formats, and `key=value` pairs whose name says the
 value is a secret — before the text is shown or copied.
 
-It runs at every consumer of the tail, not just the clipboard: the backend
-settings panel and the offline help modal render the same text. If you add a
-third consumer, call `scrubLog` there too. The tail is raw sidecar stdout and
-stderr, and nothing upstream of the renderer redacts anything.
+It runs at every renderer consumer of the tail, not just the clipboard: the
+backend settings panel and the offline help modal render the same text. If you
+add a third consumer, call `scrubLog` there too.
 
-The scrub is a safety net over a surface we do not fully control, not a licence
-to log secrets in the first place. Server-side logging rules still apply.
+**It is not a boundary around the log itself.** The sidecar's output is written
+unredacted to `cowork-server.log` (see `main/server-process.ts`), which Help >
+Reveal Logs opens, and it crosses IPC raw before any scrub happens. The scrub
+covers what this app displays or copies, and nothing further upstream.
+
+So it is a safety net over a surface we do not fully control, not a licence to
+log secrets in the first place. Server-side logging rules still apply, and the
+right fix for a leaked value is to stop logging it.

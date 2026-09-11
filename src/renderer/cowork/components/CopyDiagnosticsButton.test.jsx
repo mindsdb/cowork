@@ -45,15 +45,27 @@ describe('CopyDiagnosticsButton', () => {
     expect(copyText.mock.calls[0][0]).not.toMatch(/sk-proj-1234567890abcdef/);
   });
 
-  it('still copies what it has when diagnostics are unavailable', async () => {
-    // Web mode, or a sidecar that died: the bridge call rejects.
-    serverDiagnostics.mockRejectedValue(new Error('unsupported'));
+  it('still copies what it has when the diagnostics call rejects', async () => {
+    serverDiagnostics.mockRejectedValue(new Error('bridge gone'));
     render(<CopyDiagnosticsButton requestId="r" code="anton_error" health={undefined} />);
     await userEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
 
     const text = copyText.mock.calls[0][0];
     expect(text).toContain('Reference: r');
     expect(text).toMatch(/server was unreachable/i);
+  });
+
+  it('omits the log section in web mode, where the stub answers with none', async () => {
+    // platform/host.ts resolves a web shape rather than rejecting, so this is
+    // the path a browser user actually takes.
+    serverDiagnostics.mockResolvedValue({ running: true, recentLog: '' });
+    render(<CopyDiagnosticsButton requestId="r" code="anton_error" health={health} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+
+    const text = copyText.mock.calls[0][0];
+    expect(text).toContain('Reference: r');
+    expect(text).toContain('Server: 4.5.6');
+    expect(text).not.toContain('Recent server log:');
   });
 
   it('says so when the clipboard write fails rather than looking inert', async () => {

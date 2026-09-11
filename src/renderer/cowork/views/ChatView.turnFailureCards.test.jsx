@@ -398,6 +398,24 @@ describe('anton_error / unmapped failure fallback', () => {
     expect(copied).toContain('tail of the sidecar log');
   });
 
+  it('adds neither a reference nor a copy action to a carded failure', () => {
+    // The criterion is that a recognised failure keeps exactly its current
+    // card. That holds today only because every carded code returns before
+    // the generic branch; nothing else pins it, so a refactor that lifted the
+    // reference block above the code switch would go unnoticed.
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'rate_limited', 'Rate limit reached.', { requestId: 'corr-abc' },
+        ))}
+        health={{ server_version: '4.5.6', anton_version: '7.8.9' }}
+      />,
+    );
+    expect(screen.queryByText(/Reference:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).toBeNull();
+    expect(screen.queryByText(/corr-abc/)).toBeNull();
+  });
+
   it('offers no copy action when the failure carries no id', () => {
     // The older-server-under-a-newer-UI case: a response.failed with no
     // request_id has to render exactly as it did before this existed.
