@@ -16,7 +16,9 @@ vi.mock('../../platform/host', () => ({
     getApiOrigin: () => 'http://localhost:1',
     openPath: vi.fn(),
     openExternal: vi.fn(),
+    serverDiagnostics: vi.fn(async () => ({ recentLog: 'tail of the sidecar log' })),
   },
+  getVersionInfo: vi.fn(async () => ({ app: '1.2.3', ui: null, source: 'bundled', buildKind: null })),
   getAccessToken: vi.fn(async () => null),
   isElectron: false,
 }));
@@ -376,6 +378,51 @@ describe('anton_error / unmapped failure fallback', () => {
     );
     const alert = screen.getByRole('alert');
     expect(alert).not.toHaveTextContent('Reference:');
+  });
+
+  it('offers Copy diagnostics beside the reference', async () => {
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+        ))}
+        health={{ server_version: '4.5.6', anton_version: '7.8.9' }}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Copy diagnostics' });
+    await userEvent.click(button);
+    const copied = await navigator.clipboard.readText();
+    expect(copied).toContain('Reference: corr-abc');
+    expect(copied).toContain('Error code: anton_error');
+    expect(copied).toContain('Server: 4.5.6');
+    expect(copied).toContain('tail of the sidecar log');
+  });
+
+  it('adds neither a reference nor a copy action to a carded failure', () => {
+    // The criterion is that a recognised failure keeps exactly its current
+    // card. That holds today only because every carded code returns before
+    // the generic branch; nothing else pins it, so a refactor that lifted the
+    // reference block above the code switch would go unnoticed.
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'rate_limited', 'Rate limit reached.', { requestId: 'corr-abc' },
+        ))}
+        health={{ server_version: '4.5.6', anton_version: '7.8.9' }}
+      />,
+    );
+    expect(screen.queryByText(/Reference:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).toBeNull();
+    expect(screen.queryByText(/corr-abc/)).toBeNull();
+  });
+
+  it('offers no copy action when the failure carries no id', () => {
+    // The older-server-under-a-newer-UI case: a response.failed with no
+    // request_id has to render exactly as it did before this existed.
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).toBeNull();
   });
 
   it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {

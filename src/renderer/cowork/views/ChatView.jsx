@@ -22,6 +22,7 @@ import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText } from '../lib/clipboard';
+import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
@@ -1455,6 +1456,10 @@ export function redirectForTask(redirects, taskId) {
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
+  // The last /health snapshot, for the diagnostics a user copies off a failed
+  // turn. Read from App rather than re-fetched at click time: the turn may
+  // have failed because the server is the thing that went away.
+  health,
   onSend,
   onSwitchToAirAndResend,
   onBack,
@@ -2446,8 +2451,16 @@ export default function ChatView({
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
-                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Reference: {m.requestId}
+                        <div
+                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <span>Reference: {m.requestId}</span>
+                          <CopyDiagnosticsButton
+                            requestId={m.requestId}
+                            code={m.code}
+                            health={health}
+                          />
                         </div>
                       )}
                     </Alert>
