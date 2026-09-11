@@ -118,7 +118,7 @@ describe('validateOpenAICompatible', () => {
 
   it('marks the probe on a MindsHub host, but not on a third-party endpoint', async () => {
     // The marker is our own header — sent to MindsHub, which reads it to hide the
-    // probe from the Traces list, and to no arbitrary endpoint (ENG-2310).
+    // probe from the Traces list, and to no arbitrary endpoint.
     const { calls, request } = recorder();
     await validateOpenAICompatible('mdb_x', 'https://api.mindshub.ai/v1', undefined, request);
     await validateOpenAICompatible('sk_x', 'https://api.openai.com/v1', 'gpt-4o', request);

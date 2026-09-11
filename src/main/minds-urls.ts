@@ -89,7 +89,7 @@ export const MINDS_PROBE_MODEL = 'mindshub_air';
 
 /*
  * Marks a request as a connectivity/health-check probe so the Traces list can
- * hide it by default (ENG-2310). Read by mindshub_inference on the
+ * hide it by default. Read by mindshub_inference on the
  * /chat/completions path; it is our own header and means nothing to a non-Minds
  * endpoint, so it is only ever sent to a Minds host. Mirrors cowork-server's
  * MINDS_REQUEST_KIND_* constants (cowork/services/providers.py).

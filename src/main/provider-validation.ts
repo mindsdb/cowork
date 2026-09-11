@@ -102,7 +102,7 @@ export async function validateMinds(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        // Always a MindsHub host here, so always mark the probe (ENG-2310).
+        // Always a MindsHub host here, so always mark the probe.
         [MINDS_REQUEST_KIND_HEADER]: MINDS_REQUEST_KIND_PROBE,
       },
       body: JSON.stringify({
@@ -144,7 +144,7 @@ export async function validateOpenAICompatible(
     };
     // Mark the probe on the MindsHub fallback only — the same host gate as the
     // model choice below. Our own header, meaningless to a third-party endpoint;
-    // only MindsHub reads it to hide the probe from the Traces list (ENG-2310).
+    // only MindsHub reads it to hide the probe from the Traces list.
     if (isMindsHost(normalizedBase)) {
       headers[MINDS_REQUEST_KIND_HEADER] = MINDS_REQUEST_KIND_PROBE;
     }
