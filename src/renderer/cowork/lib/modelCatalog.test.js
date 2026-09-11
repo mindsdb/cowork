@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, hasFrozenVersions, isModelLocked, orderByFamily, OTHER_MAKER,
+  modelMaker, groupModelOptions, hasFrozenVersions, isModelLocked, orderByFamily,
+  isCurrentVersionPin, isOlderVersion, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -198,6 +199,46 @@ describe('hasFrozenVersions', () => {
     expect(hasFrozenVersions(['sonnet', 'kimi'], { sonnet: 'sonnet', kimi: 'kimi' })).toBe(false);
     expect(hasFrozenVersions(['sonnet', 'kimi'])).toBe(false);
     expect(hasFrozenVersions()).toBe(false);
+  });
+});
+
+describe('isCurrentVersionPin / isOlderVersion', () => {
+  // `gpt` serves GPT-6 Astra today. Both pins name `gpt` as their family, so
+  // `modelFamilies` alone makes them indistinguishable — which is how the picker
+  // came to call `gpt-6-astra` an older version of GPT-6 Astra (ENG-2629).
+  const IDS = ['gpt', 'gpt-6-astra', 'gpt-5-6-sol'];
+  const FAMILIES = { gpt: 'gpt', 'gpt-6-astra': 'gpt', 'gpt-5-6-sol': 'gpt' };
+  const CURRENT = { gpt: 'gpt-6-astra' };
+
+  it('separates the twin from the older release', () => {
+    expect(isCurrentVersionPin('gpt-6-astra', FAMILIES, CURRENT)).toBe(true);
+    expect(isOlderVersion('gpt-6-astra', IDS, FAMILIES, CURRENT)).toBe(false);
+
+    expect(isCurrentVersionPin('gpt-5-6-sol', FAMILIES, CURRENT)).toBe(false);
+    expect(isOlderVersion('gpt-5-6-sol', IDS, FAMILIES, CURRENT)).toBe(true);
+  });
+
+  it('says neither of a moving alias', () => {
+    expect(isCurrentVersionPin('gpt', FAMILIES, CURRENT)).toBe(false);
+    expect(isOlderVersion('gpt', IDS, FAMILIES, CURRENT)).toBe(false);
+  });
+
+  it('falls back to the old two-state reading when the map is missing', () => {
+    // An older cowork-server, or a moving alias with no twin. Unknown must not
+    // promote an arbitrary pin, so nothing is "the current version" and the pins
+    // read as older exactly as they did before this field existed.
+    expect(isCurrentVersionPin('gpt-6-astra', FAMILIES, {})).toBe(false);
+    expect(isOlderVersion('gpt-6-astra', IDS, FAMILIES, {})).toBe(true);
+    expect(isCurrentVersionPin('gpt-6-astra', FAMILIES)).toBe(false);
+  });
+
+  it('leaves an orphaned pin unmarked either way', () => {
+    // Head not listed: "older" is a claim relative to a newer row the user cannot
+    // see, so the row carries no version marker at all.
+    const orphan = { 'gpt-6-astra': 'gpt' };
+    expect(isOlderVersion('gpt-6-astra', ['gpt-6-astra'], orphan, {})).toBe(false);
+    // Still recognised as the twin, though, because that claim needs no sibling.
+    expect(isCurrentVersionPin('gpt-6-astra', orphan, CURRENT)).toBe(true);
   });
 });
 

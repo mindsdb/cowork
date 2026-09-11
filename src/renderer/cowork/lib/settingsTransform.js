@@ -18,7 +18,10 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
-import { isMovingAlias, isFrozenAlias, hasFrozenVersions, isModelLocked, orderByFamily } from './modelCatalog';
+import {
+  isMovingAlias, isCurrentVersionPin, isOlderVersion,
+  hasFrozenVersions, isModelLocked, orderByFamily,
+} from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -294,6 +297,7 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // tags rather than breaking it.
     modelProviders: overlayMap(base.modelProviders, rec.modelProviders),
     modelFamilies: overlayMap(base.modelFamilies, rec.modelFamilies),
+    modelCurrentVersions: overlayMap(base.modelCurrentVersions, rec.modelCurrentVersions),
     // Which model the server's per-turn route gate runs on (ENG-1851). Sent by
     // servers that resolve it apart from the router pick; an older server sends
     // nothing and the row falls back to describing what that server does.
@@ -451,7 +455,7 @@ export function buildModelOptions(
   const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
-  const { modelProviders = {}, modelFamilies = {} } = meta || {};
+  const { modelProviders = {}, modelFamilies = {}, modelCurrentVersions = {} } = meta || {};
   // Family rules come from lib/modelCatalog so this picker and the composer cannot
   // disagree about them. Presence in `modelFamilies` is the signal, NOT the map
   // being non-empty: the map is global to the settings blob while `modelList` is
@@ -459,11 +463,15 @@ export function buildModelOptions(
   // "is its own head" tagged every BYOK model "(latest)", including dated
   // snapshots that provably never move.
   const isMoving = (m) => isMovingAlias(m, modelFamilies);
-  // A frozen version whose head is also listed. An orphan — a typo'd `family`, or a
-  // head filtered out upstream — is listed but carries no tag at all: "older
-  // version" is a claim relative to a newer one, and with no head present there is
-  // nothing for the user to read it against.
-  const isPinnedUnderHead = (m) => isFrozenAlias(m, modelFamilies) && list.includes(modelFamilies[m]);
+  // Which KIND of frozen row it is. `modelFamilies` cannot say: a same-model twin
+  // and an older release both simply name a head, and calling the twin an "older
+  // version" is a false claim about the model a customer is choosing (ENG-2629).
+  //
+  // `isOlderVersion` also carries the orphan rule these two used to share: a pin
+  // whose head is NOT in this list carries no tag at all, because "older" is a claim
+  // relative to a newer row the user cannot see.
+  const isCurrentPin = (m) => isCurrentVersionPin(m, modelFamilies, modelCurrentVersions);
+  const isOlder = (m) => isOlderVersion(m, list, modelFamilies, modelCurrentVersions);
 
   // The moving-alias marker only earns its place once something in this list is NOT
   // the latest. On a catalog of all-moving aliases it would sit on every row, which
@@ -492,7 +500,8 @@ export function buildModelOptions(
   // and marks a frozen version by indenting it under its head instead.
   const tagFor = (m) => [
     tagMoving && isMoving(m) ? 'Latest' : '',
-    isPinnedUnderHead(m) ? 'Older version' : '',
+    isCurrentPin(m) ? 'Fixed version' : '',
+    isOlder(m) ? 'Older version' : '',
     isLocked(m) ? 'Needs credits' : '',
   ].filter(Boolean).join(' · ');
 

@@ -254,6 +254,40 @@ export function isFrozenAlias(id, families = {}) {
 }
 
 /**
+ * True when `id` is the pin that resolves what its moving alias resolves TODAY.
+ *
+ * `families` says a row is frozen; it cannot say WHAT it froze, and the two
+ * possibilities are opposite claims to a user. `gpt-6-astra` and `gpt-5-6-sol` are
+ * both frozen versions of `gpt`, but the first is the model `gpt` serves right now
+ * and the second is one it has moved on from. Calling the first "older version" —
+ * which is what this picker did before ENG-2629 — tells a customer that GPT-6 Astra
+ * is an older version of GPT-6 Astra.
+ *
+ * `currentVersions` is keyed by the MOVING alias, so the question is asked of the
+ * head rather than of the row. Absent means no row is known to be the current pin
+ * (an older gateway, or a moving alias with no twin such as `mindshub_air`), which
+ * is why this returns false rather than guessing: unknown must fall back to the
+ * two-state behaviour, not promote an arbitrary pin.
+ */
+export function isCurrentVersionPin(id, families = {}, currentVersions = {}) {
+  if (!isFrozenAlias(id, families)) return false;
+  return (currentVersions || {})[families[id]] === id;
+}
+
+/**
+ * True when `id` froze a model its moving alias has since moved on from.
+ *
+ * The only state that may be labelled "older version". Deliberately narrower than
+ * "frozen": a pin whose head is not listed carries no marker at all, because
+ * "older" is a claim relative to a newer row the user cannot see.
+ */
+export function isOlderVersion(id, ids, families = {}, currentVersions = {}) {
+  if (!isFrozenAlias(id, families)) return false;
+  if (!(ids || []).includes(families[id])) return false;
+  return !isCurrentVersionPin(id, families, currentVersions);
+}
+
+/**
  * True when at least one id in `ids` is a frozen version of a head that is ALSO in
  * `ids`.
  *

@@ -1,8 +1,9 @@
 import {
   hasFrozenVersions,
-  isFrozenAlias,
+  isCurrentVersionPin,
   isModelLocked,
   isMovingAlias,
+  isOlderVersion,
   orderByFamily,
 } from './modelCatalog';
 
@@ -15,6 +16,13 @@ export interface ModelPickerSource {
 export interface ModelPickerMeta {
   modelProviders?: Record<string, string>;
   modelFamilies?: Record<string, string>;
+  /**
+   * Moving alias id → the fixed alias resolving what it resolves today. Keyed by
+   * the moving alias, so a frozen row asks
+   * `modelCurrentVersions[modelFamilies[id]] === id`. Absent means no row is known
+   * to be the current pin: an older server, or a moving alias with no pin.
+   */
+  modelCurrentVersions?: Record<string, string>;
   modelEnabled?: Record<string, boolean>;
   /** Per-model reasoning effort levels the gateway advertises: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default?: string }>;
@@ -55,7 +63,9 @@ export function buildModelPickerOptions(
   models: ModelPickerSource[] = [],
   modelMeta: ModelPickerMeta = {},
 ): ModelPickerOption[] {
-  const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
+  const {
+    modelProviders = {}, modelFamilies = {}, modelCurrentVersions = {}, modelEnabled = {},
+  } = modelMeta || {};
   const list = (models || []).filter(Boolean);
   const ids = list.map((model) => model.id);
   const byId = new Map(list.map((model) => [model.id, model]));
@@ -68,7 +78,14 @@ export function buildModelPickerOptions(
     const locked = isModelLocked(modelEnabled, model.id);
     const tag = [
       tagMoving && isMovingAlias(model.id, modelFamilies) ? 'Latest' : '',
-      isFrozenAlias(model.id, modelFamilies) && byId.has(modelFamilies[model.id]) ? 'Older version' : '',
+      // The pin holding what its moving alias serves right now. Same model, different
+      // promise: it will not move when the head does. It is NOT an older version, and
+      // calling it one is what ENG-2629 was filed about.
+      isCurrentVersionPin(model.id, modelFamilies, modelCurrentVersions) ? 'Fixed version' : '',
+      // A frozen row whose head is listed AND which is not that head's current pin.
+      // An orphan carries no tag: "older" is a claim relative to a newer row the user
+      // cannot see.
+      isOlderVersion(model.id, ids, modelFamilies, modelCurrentVersions) ? 'Older version' : '',
       locked ? 'Needs credits' : '',
     ].filter(Boolean).join(' · ');
 

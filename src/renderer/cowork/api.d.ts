@@ -29,6 +29,13 @@ export interface RecommendedModels {
    * moving alias this entry is a frozen version of.
    */
   modelFamilies?: Record<string, string>;
+  /**
+   * Moving alias id -> the pinned alias that resolves what it resolves today.
+   * Keyed by the moving alias, so a frozen row asks
+   * `modelCurrentVersions[modelFamilies[id]] === id`. Absent means no row is known
+   * to be the current pin: an older server, or a moving alias with no twin.
+   */
+  modelCurrentVersions?: Record<string, string>;
   [key: string]: unknown;
 }
 

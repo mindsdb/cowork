@@ -1640,7 +1640,11 @@ export default function SettingsView({
                             const modelOptions = buildModelOptions(
                               curModel, modelList, allowOther, showStalePin, modelEnabled,
                               settings.modelLabels || {},
-                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                              {
+                                modelProviders: settings.modelProviders,
+                                modelFamilies: settings.modelFamilies,
+                                modelCurrentVersions: settings.modelCurrentVersions,
+                              },
                             );
                             return (
                               <>

@@ -1261,6 +1261,7 @@ function AppCore() {
   const modelMeta = useMemo(() => ({
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
+    modelCurrentVersions: settings.modelCurrentVersions,
     modelEnabled: settings.modelEnabled,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
@@ -1272,7 +1273,7 @@ function AppCore() {
     // actually configured account-wide.
     harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelCurrentVersions, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
