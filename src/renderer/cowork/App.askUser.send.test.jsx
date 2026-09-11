@@ -137,7 +137,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
-import { trackTurnFailed } from './lib/analytics';
+import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -146,6 +146,7 @@ import {
   uploadAttachments,
   renameConversation,
   moveTaskToProject,
+  cancelScratchpad,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -1268,5 +1269,185 @@ describe('a background refresh must not blank the open transcript (ENG-2246)', (
 
     await waitFor(() => expect(moveTaskToProject).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText(LINE)).toBeInTheDocument());
+  });
+});
+
+describe('a tail displaced by opening another running conversation', () => {
+  it('is still torn down when its own conversation is stopped', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Opening Beta attaches a second tail. Concurrent background streams are
+    // intended (see the two draining suites above), so Alpha's must survive.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    expect(tailB.kind).toBe('tail');
+    expect(tailA.abort).not.toHaveBeenCalled();
+
+    // Back on Alpha, which re-attaches. The tail conv-a held before must be
+    // torn down rather than left attached with nothing able to abort it: a
+    // leaked tail keeps replaying into the turn and its own idle timer can
+    // cancel it later with no UI trace.
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+    expect(tailA2.kind).toBe('tail');
+    await waitFor(() => expect(tailA.abort).toHaveBeenCalled());
+
+    // Stopping conv-a leaves the other conversation streaming.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    expect(tailB.abort).not.toHaveBeenCalled();
+  });
+
+  it('leaves a running conversation attached when the opened one is idle', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-a' }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    expect(tailA.kind).toBe('tail');
+
+    // Beta has no producer, so opening it must not reach any teardown: the
+    // common navigation must never touch the conversation that is running.
+    await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-b'));
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('Stop with a scratchpad cell open', () => {
+  it('cancels the cell of a conversation started from home', async () => {
+    const user = userEvent.setup();
+    // Open a task first so HomeView mounts with its composer (see the
+    // new-session suite above for why).
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+    cancelScratchpad.mockClear();
+
+    await send(user, composer, 'start something');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+
+    // The agent opens a cell, so Stop has to cancel it: cancelling the turn
+    // alone leaves the cell executing on the server.
+    await emitOn(handle, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(handle, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('Stop after re-attaching to a conversation with a cell open', () => {
+  it('still cancels the cell the conversation opened before the re-attach', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    cancelScratchpad.mockClear();
+
+    // Alpha opens a cell, then the user leaves and comes back, which re-attaches.
+    await emitOn(tailA, {
+      type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'tc1',
+    });
+    await emitOn(tailA, {
+      type: 'response.in_progress',
+      thought_role: 'thought.scratchpad.end',
+      tool_use_id: 'tc1',
+      content: JSON.stringify({ name: 'pad-1', one_line_description: 'run', code: 'x=1' }),
+    });
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+    await openByTitle(user, 'Alpha task');
+    const tailA2 = await waitForStream(tailB);
+
+    // The replay has not re-reported the cell yet, so the record is all that
+    // remembers it. Stop must still cancel it rather than leave it executing.
+    await emitOn(tailA2, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(cancelScratchpad).toHaveBeenCalledWith('pad-1'));
+  });
+});
+
+describe('a stream that ends while silenced by a Stop elsewhere', () => {
+  it('still drops its registry record', async () => {
+    const user = userEvent.setup();
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    await openByTitle(user, 'Alpha task');
+    const tailA = await waitForStream();
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(tailA);
+
+    // Stop on Beta bumps the shared generation, which silences Alpha's tail.
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'working' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then finishes. The record has to go even though the rest of
+    // the terminal is skipped, or the registry keeps claiming a dead stream.
+    await act(async () => { tailA.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // Proof it went: re-attaching finds nothing to replace, so the finished
+    // tail is never aborted on its way out.
+    await openByTitle(user, 'Alpha task');
+    await waitForStream(tailB);
+    expect(tailA.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Stop on one conversation', () => {
+  it('does not silence another conversation that is still streaming', async () => {
+    const user = userEvent.setup();
+    // Only Beta has a producer to re-attach to, so Alpha's stream is its own
+    // send and navigating back to it opens no tail to confuse the assertion.
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: cid === 'conv-b' }));
+    const composer = await openTask(user);
+
+    await send(user, composer, 'alpha turn');
+    const alpha = await waitForStream();
+    expect(alpha.kind).toBe('reply');
+    await emitOn(alpha, { type: 'response.output_text.delta', delta: 'alpha answer' });
+
+    // Stop Beta, whose turn is unrelated to Alpha's.
+    await openByTitle(user, 'Beta task');
+    const tailB = await waitForStream(alpha);
+    await emitOn(tailB, { type: 'response.output_text.delta', delta: 'beta answer' });
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-b'));
+
+    // Alpha's turn then completes. Its terminal has to run: it is what commits
+    // the answer, records the turn and releases Alpha's queue.
+    classifyFirstResponse.mockClear();
+    await act(async () => { alpha.opts.onDone(); await Promise.resolve(); });
+    expect(classifyFirstResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ isConfigError: false }),
+    );
   });
 });
