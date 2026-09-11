@@ -23,6 +23,8 @@ import {
   writeProjectFile,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
+import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
 
 // Kept for the Input/Textarea `style` props below: those carry the
 // `.field-input` globals class (which itself declares padding/border/bg), so
@@ -64,8 +66,15 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [folderPath, setFolderPath] = useState('');
   const nameRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // A chosen folder is a desktop capability: the server has to be on the same
+  // machine as the folder, and it refuses the path in org mode anyway. Hidden
+  // rather than offered and refused.
+  const orgMode = useOrgMode();
+  const canChooseFolder = host.isElectron && !orgMode;
 
   // Reset everything when the modal opens — `open` flipping false→true
   // should always present a clean form.
@@ -77,6 +86,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(false);
     setError('');
     setDragActive(false);
+    setFolderPath('');
     const id = requestAnimationFrame(() => nameRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -117,8 +127,32 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     try {
       // 1) Create the folder. Server sanitises + dedupes — `result.name`
       //    is the canonical name the rest of the steps must use.
-      const result = await createProject(trimmed);
+      // Called with the name alone when no folder was chosen, so the
+      // request body stays exactly what it was before this option existed.
+      const result = folderPath
+        ? await createProject(trimmed, folderPath)
+        : await createProject(trimmed);
       const finalName = result?.name || trimmed;
+
+      // A server without this capability drops the unknown `path` and
+      // allocates its own directory, so a 200 is not proof the folder was
+      // adopted. Reported, not rolled back: the project exists, and no step
+      // here undoes an earlier one.
+      if (folderPath && result?.capabilities?.directoryIsExternal !== true) {
+        // Dropped so the obvious retry cannot strand a second managed project
+        // for a folder this server ignores either way.
+        setFolderPath('');
+        // The message names a project to delete, and onCreated (the only other
+        // refresh signal) is skipped here, so ask for the refetch directly.
+        window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+        setError(
+          'This server does not support pointing a project at a folder. It created '
+          + `"${finalName}" as a normal project and cleared your folder selection. `
+          + 'Update Cowork to use your folder, or delete that project if you do '
+          + 'not want it.'
+        );
+        return;
+      }
 
       // 2) Write instructions if the user typed any. Use the final
       //    (post-sanitisation) project name.
@@ -154,6 +188,25 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   };
 
   const removeFile = (i) => setFiles((prev) => prev.filter((_, j) => j !== i));
+
+  const chooseFolder = async () => {
+    setError('');
+    let result;
+    try {
+      result = await host.pickCodeFolder();
+    } catch (e) {
+      // A rejected invoke would otherwise throw out of the click handler and
+      // the button would look like it did nothing.
+      setError(e?.message || 'Could not open the folder picker.');
+      return;
+    }
+    if (result?.cancelled) return;
+    if (!result?.ok || !result.path) {
+      setError(result?.reason || 'Could not open the folder picker.');
+      return;
+    }
+    setFolderPath(result.path);
+  };
 
   return (
     <Modal
@@ -225,6 +278,41 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               }}
             />
           </Field>
+
+          {canChooseFolder && (
+            <Field
+              label="Location"
+              optional
+              help={
+                folderPath
+                  ? 'The agent works on the files already in this folder. Cowork adds skills/ and .anton/ folders inside it, and deleting the project leaves your files in place.'
+                  : 'By default Cowork creates a new folder for the project.'
+              }
+            >
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={folderPath ? 'subtle' : 'tinted'}
+                  disabled={busy}
+                  onClick={chooseFolder}
+                >
+                  {folderPath ? 'Change folder' : 'Use an existing folder'}
+                </Button>
+                {folderPath && (
+                  <>
+                    <span
+                      title={folderPath}
+                      className="flex-1 min-w-0 font-[family-name:var(--font-mono)] text-[12px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap [direction:rtl] text-left"
+                    >
+                      {folderPath}
+                    </span>
+                    <Button variant="subtle" disabled={busy} onClick={() => setFolderPath('')}>
+                      Clear
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Field>
+          )}
 
           <div className="flex flex-col gap-[6px]">
             <span className="font-[family-name:var(--font-mono)] text-xs tracking-[0.06em] uppercase text-ink-4 font-semibold">Files <span className="normal-case tracking-[0] text-ink-4 font-[family-name:var(--font-body)] font-normal">(optional)</span></span>

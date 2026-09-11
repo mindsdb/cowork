@@ -480,27 +480,56 @@ A sidecar you start by hand, outside the app, therefore has no MindsHub
 credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
 if you need one for that.
 
-### The workspace selector at the top of the sidebar
+### The MindsHub hub routes
 
-A bordered control between the wordmark and the New task CTA names the MindsHub
-workspace you are working in, and opens a menu listing every workspace you can
-use with a check on the active one. A **MindsHub Workspace** is an org-internal
-container that owns hub resources (API keys, artifacts, model entitlements) and
-lives in the auth service. It is not the working folder this app calls a
-workspace, which is why the stored key and the code are named `hubWorkspace`
-throughout. There is no create entry: workspaces are created in the console, and
-the last row deep-links there.
+**Nothing under `/api/v1/hub/*` calls Django auth directly.** The renderer calls
+its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/`
+carries the free monthly grant, the balance, the period's credit spend and auto
+top up state, and backs Settings → Usage. `/api/v1/hub/workspaces/` answers the
+MindsHub workspace listing and backs the workspace selector described in the
+next section.
 
-It sits in the sidebar rather than inside the account menu, which is where it
-shipped first. Two things were wrong with that: the current workspace was
-invisible until you opened the menu, which is the opposite of what a scope
-indicator is for, and the account menu is where the organization selector lands,
-so two levels of one hierarchy would have nested inside a menu about identity.
+Django auth's ingress allows the console origins and no Cowork host, and a
+per-PR Cowork host cannot be added to a static allow-list. A direct call would
+therefore work in the packaged app (`webSecurity` is off there) and fail in the
+web SPA. Going through the sidecar is what lets both hosts read the same thing,
+which is why Settings → Usage is offered on the hosted build and not filtered
+off it.
 
-Four states hide the control, and each of them leaves the sidebar exactly as it
-looks today. A single workspace does NOT: "which workspace am I in" is the
-question this exists to answer, and hiding it below two workspaces reproduces
-the invisibility it fixes.
+**The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
+main process overwrites `Authorization` on every loopback request with the
+sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+
+### The MindsHub workspace selector
+
+A bordered control at the bottom of the sidebar, docked with the account row,
+names the MindsHub workspace you are working in and opens a menu listing every
+workspace you can use with a check on the active one. A **MindsHub Workspace**
+is an org-internal container that owns hub resources (API keys, artifacts, model
+entitlements) and lives in the auth service. It is not the working folder this
+app also calls a workspace, which is why the stored key and the code are named
+`hubWorkspace` throughout. There is no create entry: workspaces are created in
+the console, and the last row deep-links there.
+
+**One workspace draws nothing.** Everyone starts in `Default` on their own, and
+a switch offering only the place you are already in asks a first-time reader to
+work out what a workspace is for no benefit. The control appears once the
+organization has a second one, which is the first moment "which workspace am I
+in" has more than one answer. The count is taken on the rows the sidecar offers,
+which already exclude archived workspaces except the one you are currently in.
+So a live workspace beside an archived one counts as one and draws nothing, and
+a live workspace beside the archived one you are in counts as two and does draw.
+The second case is deliberate: the control is the only way out of a workspace
+that was archived under you.
+
+**It sits at the bottom rather than the top of the rail.** A workspace is a
+container inside the organization, not what a reader starts a task from, and the
+top of the rail is where the first task begins. It is not a group inside the
+account menu either, which is where it shipped first. Two things were wrong with
+that: the current workspace was invisible until you opened the menu, which is
+the opposite of what a scope indicator is for, and the account menu is where the
+organization selector lands, so two levels of one hierarchy would have nested
+inside a menu about identity.
 
 | State | Control |
 |-------|---------|
@@ -508,7 +537,9 @@ the invisibility it fixes.
 | The read has not come back yet | absent |
 | The hub could not be reached | absent |
 | Gate on and reachable, but the org has no workspace | absent |
-| One workspace and nothing to switch to | shown, and it opens |
+| One workspace, with nowhere to move to | absent |
+| One live workspace and an archived one you are not in | absent |
+| One live workspace and the archived one you are in | shown, so you can leave it |
 | Two or more, gate on | shown |
 
 A read that has not settled is retried three times over about forty seconds and
@@ -520,6 +551,12 @@ is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
 because a sidecar without the route will not grow one, and neither is a
 gate-off answer, because it is definite.
 
+After a successful desktop organization switch, `useMindsOrgs` notifies
+`useHubWorkspaces` to discard the old listing and read the new organization.
+Late reads and workspace switches from the old organization cannot replace it.
+If leaving an archived workspace hides the focused selector, focus moves to the
+sidebar's Settings button. Focus already moved elsewhere stays there.
+
 **The switch is a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
 server SDK, and reports the verdict; cowork-server reads it and passes it on. So
@@ -529,16 +566,6 @@ only through a new installer, so a `CODING_MODE_OPTIONS_ENABLED`-style preload
 flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=true`
 on the sidecar is an ON-only development override for walking the surface where no
 rule targets you.
-
-**The workspace selector never calls Django auth directly.** It calls its own
-sidecar at `/api/v1/hub/workspaces/`, which forwards. Django auth's ingress
-allows the console origins and no Cowork host, and a per-PR Cowork host cannot
-be added to a static allow-list. A direct call would therefore work in the
-packaged app (`webSecurity` is off there) and fail in the web SPA.
-
-**The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
-main process overwrites `Authorization` on every loopback request with the
-sidecar's own token, so the Keycloak JWT cannot arrive under that name.
 
 **Picking a workspace changes what this app shows, not what a turn is billed to.**
 Attribution rides the credential a turn presents, and neither credential carries a
@@ -581,8 +608,9 @@ account with one organization makes no extra round-trip.
 
 Changing it later happens in the account menu's Organization group
 (`components/UserMenu.jsx`, hook `hooks/useMindsOrgs.js`). It lives there
-because an organization is who pays; the workspace selector is a container
-inside one and lives above the New task CTA.
+because an organization is who pays. A MindsHub workspace is a container inside
+one, which is why its picker is its own control lower down the rail rather than
+a group in this menu.
 
 Desktop lists and switches through `mindshub:list-orgs` and
 `mindshub:switch-org`. Main switches the Keycloak session, refreshes its token,
@@ -710,6 +738,95 @@ Availability is re-read whenever either picker opens, so a top-up made in a
 browser unlocks the rows on the next open rather than after a restart. A failed
 refresh keeps the map already held, and a model the map does not mention counts
 as available, so a degraded response can never empty a picker.
+
+### The app says how much is left before a task stops
+
+The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
+and again whenever the window regains focus, so a top-up made in a browser shows
+up without a relaunch. `useHubUsage` holds the answer. One read carries the free
+monthly token grant, the paid balance, auto top up state and credit spend for the
+period. `reachable: false` is the resting state, so every surface renders exactly
+as it did before this existed until the sidecar says otherwise. A sidecar too old
+to serve the route answers 404, which reads as unreachable and paints nothing.
+
+`deriveComposerWarning` in `lib/usageWarnings.js` turns that read into at most one
+notice, and it is the only thing that decides which. The notice sits above the
+composer rather than in the conversation, so it is in view when the next task
+starts and never becomes part of the task history. `usageTransitions` handles the
+other half: when the free tokens cross a step of the low band, run out, or auto
+top up fails while a task is streaming, `ChatView` drops a card into the timeline
+instead, because that turn is still running and the person has not come back to
+the composer yet. It reads the same BYOK gate the bar does, so a task billing
+someone else's key never hears about these tokens.
+
+Which resource the warning names depends on what the next turn will spend. An
+explicit MindsHub Air pick runs on the free tokens, an explicit paid model only
+ever bills the balance, and the router can land on either, so both matter for it.
+The two resources are always named apart. "Out of tokens" on its own is never one
+of the outputs.
+
+When nothing is wrong, the bar still says where the free grant stands: "3.4M of
+5M free tokens left. Resets on Oct 1." A warning a person first meets at 20% left
+is a warning they cannot plan around, and the grant is the only conversion moment
+the product has, so it is not left to a blank space. The standing figure is
+neutral rather than amber and carries no close button. An uncapped grant has
+nothing to count down and gets no figure. A BYOK user, a signed-out one and an
+unreachable sidecar get nothing, exactly as before. An empty balance is named
+here too, in the same words the warning uses, because it is true and actionable
+from the moment it empties rather than from the moment the grant crosses 20%.
+The tone stays neutral: while the grant can still pay, nothing is blocked.
+
+An explicit paid pick cannot spend the grant, so it gets no figure, but the bar's
+height is reserved with a hidden copy of it. Otherwise switching picks moved the
+whole composer up and down, and for a free user the healthy state is the state
+they are in nearly all month.
+
+Announcing is a separate, permanently mounted `sr-only` region rather than a role
+on the bar. `aria-live` announces content CHANGES, so a region has to be in the
+DOM and empty first; since the bar is now on screen all month, adding a role to
+it when a warning arrives would only be promoting a node that is already there,
+and the warning would be silent. The region is polite rather than assertive, and
+a standing figure puts nothing in it, so nothing is read out on a poll that only
+moves the number.
+
+Closing a notice hides it per dismissal key, not forever. A "low" state is a band
+the resource sits in the whole way down, so keying on the kind alone would let one
+close hide the last warning until the resource emptied. Both low states carry a
+stepped key instead, from `balanceDismissStep` and `freeDismissStep`, so a close
+holds for the step it was made in and the next step down asks again. The free
+grant's steps are 20%, 10% and 5% remaining, and 20% is also the band's own edge,
+so a task that runs from healthy into the band crosses a mark like any other.
+That is what lets `usageTransitions` report a crossing mid-task rather than only
+reporting the tokens being gone. Every dismissal is forgotten once usage is
+healthy, and a standing figure never counts as something to forget.
+
+Closing the free warning steps down to the standing figure, never to nothing. The
+close button means stop shouting, not hide the number, and 20% left is where the
+number is worth most. The warning carries that figure with it as `whenDismissed`,
+so one place decides what the bar says at rest.
+
+The free grant's 20% line is the console's 80%-used line read from the other side.
+`FREE_TOKENS_LOW_FRACTION` is the one place it is written, and Settings reads the
+same constant, so the meter's warning tint cannot drift from the bar.
+
+Money moves in the console, never here. Each action opens a console URL through
+`usageActionUrl`. A billing owner lands on the form itself: add credits for "Add
+funds", the automatic tab for "Set up auto top up". Anyone else gets the billing
+page, because every wallet control the console offers is owner-only and a member
+following a deep link would reach a dialog they cannot submit.
+
+Settings carries the same figures under Usage, on desktop and on the hosted web
+build alike: the free grant with its reset date, the balance, the spend for the
+period and auto top up state. The web nav drops the sections a hosted user cannot
+act on, and Usage is not one of them. It reads the route both hosts already call
+and every control opens the console in a browser, so hiding it left a hosted free
+user with nowhere to see the grant at all.
+
+To see the notices without an account near its limits, run `npm run dev:renderer`
+and open `/usage-bar-fixture.html`. It renders every state from the real
+`deriveComposerWarning`, so the copy on the page is the copy a user sees. Add
+`?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
+screenshot run can crop to one state rather than a page too tall to read.
 
 ---
 

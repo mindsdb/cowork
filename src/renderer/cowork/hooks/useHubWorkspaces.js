@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubWorkspaces, setActiveHubWorkspace } from '../api';
+import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 
 // The MindsHub workspaces this person can use, and which one they are in.
 //
 // Read when the signed-in identity resolves rather than on every menu open: the
 // sidecar caches the hub reads behind a short TTL, so a per-open fetch would
 // mostly return the same answer, and the control is mounted for the whole
-// session. `refresh` exists for a manual re-read.
+// session. A successful in-place organization switch starts a new read through
+// useMindsOrgs' notification. `refresh` exists for a manual re-read.
 //
 // Everything about the failure shape is deliberate. `enabled` false is the
 // resting state, so the sidebar renders exactly as it does today until something
@@ -52,9 +54,8 @@ function normalize(payload) {
 export function useHubWorkspaces(accountUser) {
   const [state, setState] = useState(DARK);
   const [switching, setSwitching] = useState(false);
-  // Bumped on every identity change. A read that resolves after the identity
-  // moved on compares its own generation and drops itself, which is what stops
-  // the previous account's workspaces landing in the new account's menu.
+  // Bumped on every identity or organization change. Late reads and switches
+  // compare their own generation so the old scope cannot overwrite the new one.
   const generation = useRef(0);
 
   // Keyed on the account's subject rather than the object: `useAccountUser`
@@ -92,21 +93,28 @@ export function useHubWorkspaces(accountUser) {
   }, [sub]);
 
   useEffect(() => {
-    generation.current += 1;
-    // An in-flight switch belongs to the identity that started it. Leaving the
-    // flag set would hand the next account a menu with every row disabled until
-    // that switch settled.
-    setSwitching(false);
-    const mine = generation.current;
     let timer;
-    const attempt = async (n) => {
-      if (await load()) return;
-      if (generation.current !== mine) return;
-      const delay = RETRY_DELAYS_MS[n];
-      if (delay === undefined) return;
-      timer = setTimeout(() => attempt(n + 1), delay);
+    const resetAndLoad = () => {
+      generation.current += 1;
+      // Rows, switches and retries all belong to the scope that started them.
+      // Hide its answer while the replacement organization is being read.
+      setState(DARK);
+      setSwitching(false);
+      clearTimeout(timer);
+      const mine = generation.current;
+      const attempt = async (n) => {
+        if (await load()) return;
+        if (generation.current !== mine) return;
+        const delay = RETRY_DELAYS_MS[n];
+        if (delay === undefined) return;
+        timer = setTimeout(() => attempt(n + 1), delay);
+      };
+      attempt(0);
     };
-    attempt(0);
+    resetAndLoad();
+    const unsubscribe = subscribeOrganizationChanges((subject) => {
+      if (subject === sub) resetAndLoad();
+    });
     return () => {
       // Bumped here as well as on entry, because unmount is the one way out of
       // this effect that changes no identity. Without it a `load()` still in
@@ -115,8 +123,9 @@ export function useHubWorkspaces(accountUser) {
       // seconds after the control is gone.
       generation.current += 1;
       clearTimeout(timer);
+      unsubscribe();
     };
-  }, [load]);
+  }, [load, sub]);
 
   // Rejects on failure; the caller owns the message. Nothing is applied
   // optimistically, because the server is the only thing that decides whether a

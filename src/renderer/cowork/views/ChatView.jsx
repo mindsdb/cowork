@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatTokensShort } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -832,6 +832,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * hover lift mark the entire surface as interactive at a glance.
    */
   return (
+    <>
+      {/* Outside the Card on purpose: Card renders role="button", and ARIA
+          treats a button's non-focusable descendants as presentational, so a
+          region nested inside it can be left out of the accessibility tree.
+          It mounts empty because `status` starts null, which is what lets
+          aria-live see a content CHANGE when an action fills it. */}
+      <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
     <Card
       as="div"
       interactive={canActivate}
@@ -840,7 +847,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
+      className="chat-artifact-card"
     >
       <div
         className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
@@ -896,15 +903,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </span>
         )}
       </div>
-      <div className="flex gap-1.5">
-        {status && (
-          <span
-            aria-live="polite"
-            className={`self-center max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
-          >
-            {status.text}
-          </span>
-        )}
+      <div className="chat-artifact-card__actions">
         {canExport && (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Tooltip content="Export to another format">
@@ -973,7 +972,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </Tooltip>
         )}
       </div>
+      {status && (
+        <span
+          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+        >
+          {status.text}
+        </span>
+      )}
     </Card>
+    </>
   );
 }
 
@@ -1101,11 +1108,29 @@ function formatAllowanceReset(resetAt) {
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBillingOwner }) {
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
+  if (kind === 'free_low') {
+    // Headline names the crossing, not the count: the composer bar carries
+    // the live count a few pixels above, and two identical headlines that
+    // then drift apart (the bar tracks the next poll, this card is frozen at
+    // the crossing) read as two different figures for one number.
+    // The body says what is true of the allowance rather than of this turn.
+    // The router resolves per turn and can land on a paid model, so "this
+    // task is running on free tokens" is a claim the crossing does not prove.
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Free monthly tokens running low"
+        body={`${formatTokensShort(remaining)} left of this month's free tokens. When they are used up, MindsHub Air moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+      />
+    );
+  }
   if (kind === 'auto_top_up_failed') {
     return (
       <ActionCard
@@ -1803,7 +1828,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2006,9 +2031,9 @@ export default function ChatView({
         <div
           ref={scrollRef}
           data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
@@ -2041,6 +2066,7 @@ export default function ChatView({
                   agentLabel={agentLabel}
                   kind={n.kind}
                   resetsAt={n.resetsAt}
+                  remaining={n.remaining}
                   isBillingOwner={isBillingOwner}
                 />
               ));
@@ -2585,7 +2611,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}

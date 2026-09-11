@@ -632,3 +632,126 @@ describe('ContextCard — memory read ordering', () => {
     expect(screen.getByText('Updated rules.')).toBeInTheDocument();
   });
 });
+
+// Regression coverage: a truncated listing is up to 2000 rows and the list
+// becomes a 220px scroll box above ten of them, so the notice has to sit
+// outside it to be read at all. It also must not outlive its listing.
+describe('ContextCard — truncated project file listings', () => {
+  const TRUNCATION = /more files than the list can show/;
+  // The endpoint always emits this row, real or synthetic, so every fixture
+  // here carries it: a listing without it is a response the server cannot
+  // send, and it is what keeps the files section rendered at all.
+  const INSTRUCTIONS = { path: '.anton/anton.md', name: 'anton.md' };
+
+  it('keeps the truncation notice outside the scrolling list', async () => {
+    apiMock.listProjectFiles.mockResolvedValue({
+      truncated: true,
+      files: [
+        INSTRUCTIONS,
+        ...Array.from({ length: 12 }, (_, i) => ({
+          path: `file-${i}.md`,
+          name: `file-${i}.md`,
+        })),
+      ],
+    });
+
+    await act(async () => {
+      render(
+        <ContextCard
+          project={{ name: 'adopted', path: '/Users/me/repo' }}
+          conversationId={null}
+        />,
+      );
+    });
+
+    const notice = screen.getByText(TRUNCATION);
+    // Thirteen rows, so the list is scrolling. Nested, the notice would be
+    // reachable only by scrolling past every row it is describing.
+    expect(document.querySelector('.overflow-y-auto')).not.toBeNull();
+    expect(notice.closest('.overflow-y-auto')).toBeNull();
+  });
+
+  // The notice belongs to one project's listing. Two transitions can outlive
+  // it: the no-project effect returns before reloadFiles runs, and a switch
+  // leaves the flag set for the whole of the next project's load.
+  it('drops the notice on the way through no project to the next one', async () => {
+    const pending = [];
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
+      .mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+
+    const { rerender } = render(
+      <ContextCard project={{ name: 'adopted', path: '/Users/me/repo' }} conversationId={null} />,
+    );
+    await act(async () => {});
+    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
+
+    rerender(<ContextCard project={null} conversationId={null} />);
+    await act(async () => {});
+    rerender(
+      <ContextCard project={{ name: 'other', path: '/projects/other' }} conversationId={null} />,
+    );
+    await act(async () => {});
+
+    // The second project's listing has not landed, so nothing here has
+    // reported truncation.
+    expect(pending).not.toHaveLength(0);
+    expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+
+  it('drops the notice while the next project is still loading', async () => {
+    const pending = [];
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
+      .mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
+
+    const { rerender } = render(
+      <ContextCard project={{ name: 'adopted', path: '/Users/me/repo' }} conversationId={null} />,
+    );
+    await act(async () => {});
+    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
+
+    rerender(
+      <ContextCard project={{ name: 'other', path: '/projects/other' }} conversationId={null} />,
+    );
+    await act(async () => {});
+
+    expect(pending).not.toHaveLength(0);
+    expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+
+  it('drops the notice when a later listing fails', async () => {
+    apiMock.uploadProjectFiles.mockResolvedValue({});
+    apiMock.listProjectFiles
+      .mockResolvedValueOnce({
+        truncated: true,
+        files: [INSTRUCTIONS, { path: 'notes.md', name: 'notes.md' }],
+      })
+      .mockRejectedValueOnce(new Error('offline'));
+
+    await act(async () => {
+      render(
+        <ContextCard
+          project={{ name: 'adopted', path: '/Users/me/repo' }}
+          conversationId={null}
+        />,
+      );
+    });
+    expect(screen.getByText(TRUNCATION)).toBeInTheDocument();
+
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [new File(['x'], 'x.md')] } });
+    });
+    await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
+
+    // The listing that reported truncation is gone; nothing describes one now.
+    expect(screen.queryByText(TRUNCATION)).not.toBeInTheDocument();
+  });
+});
