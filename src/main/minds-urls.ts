@@ -88,6 +88,16 @@ export const MINDS_LLM_BASE_URL = `${API_HOST}/v1`;
 export const MINDS_PROBE_MODEL = 'mindshub_air';
 
 /*
+ * Marks a request as a connectivity/health-check probe so the Traces list can
+ * hide it by default. Read by mindshub_inference on the
+ * /chat/completions path; it is our own header and means nothing to a non-Minds
+ * endpoint, so it is only ever sent to a Minds host. Mirrors cowork-server's
+ * MINDS_REQUEST_KIND_* constants (cowork/services/providers.py).
+ */
+export const MINDS_REQUEST_KIND_HEADER = 'X-Minds-Request-Kind';
+export const MINDS_REQUEST_KIND_PROBE = 'probe';
+
+/*
  * True when `url` points at a MindsHub inference host. Mirrors is_minds_host in
  * cowork-server's providers.py, including the deliberate choice to compare the
  * parsed hostname rather than test a substring of the URL: a substring test also

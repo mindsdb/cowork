@@ -115,6 +115,7 @@ interface AntonTronAPI {
   mindshubSetUserKey: (key: string) => Promise<{ ok: boolean; reason?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;
+  onMindsHubCredentialChanged?: (cb: () => void) => () => void;
   getAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;

@@ -83,16 +83,47 @@ describe('WorkspaceSelector — the trigger', () => {
     expect(container.textContent).toContain('K');
   });
 
-  it('renders for a single workspace, where there is nothing to switch to', () => {
-    // Deliberate: "which workspace am I in" is worth answering on its own. An
-    // earlier revision hid the control below two workspaces and that is exactly
-    // the invisibility this component exists to fix.
+  it('appears as soon as there are two workspaces', () => {
+    // The boundary the threshold turns on. Below it the control is a switch
+    // that switches nothing; at two, "which workspace am I in" finally has more
+    // than one answer.
     hookMock.useHubWorkspaces.mockReturnValue(
-      state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS], activeWorkspaceId: 'ws-default' }),
+      state({
+        enabled: true,
+        reachable: true,
+        workspaces: [DEFAULT_WS, CLIENT_A],
+        activeWorkspaceId: 'ws-default',
+      }),
     );
     render(<WorkspaceSelector user={user} />);
 
     expect(screen.getByRole('button', { name: 'Workspace: Default' })).toBeTruthy();
+  });
+
+  it('still draws when the second row is the archived workspace you are in', () => {
+    // The one case where an organization with a single live workspace should
+    // see the control. cowork-server's `selectable()` drops archived rows but
+    // keeps one while it is the active row, so the payload carries two. Hiding
+    // here would strand the reader inside a workspace that was archived under
+    // them, with nothing on screen to move them out of it.
+    const ARCHIVED_ACTIVE = {
+      id: 'ws-old',
+      displayName: 'Old client',
+      isDefault: false,
+      archivedAt: '2026-08-01T00:00:00Z',
+      role: 'manager',
+    };
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({
+        enabled: true,
+        reachable: true,
+        workspaces: [ARCHIVED_ACTIVE, DEFAULT_WS],
+        activeWorkspaceId: 'ws-old',
+      }),
+    );
+    render(<WorkspaceSelector user={user} />);
+
+    expect(screen.getByRole('button', { name: 'Workspace: Old client' })).toBeTruthy();
   });
 
   it('falls back to the first workspace when the stored active one is not in the list', () => {
@@ -260,6 +291,19 @@ describe('WorkspaceSelector — when it must not render at all', () => {
 
   it('while the read is still in flight', () => {
     hookMock.useHubWorkspaces.mockReturnValue(state());
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+
+  it('with one workspace, where there is nowhere to move to', () => {
+    // The fresh-user case, and the reason the threshold exists. Everyone starts
+    // in `Default` alone, and a switch offering only the place you already are
+    // asks a first-time reader to work out what a workspace is for no benefit.
+    // An earlier revision rendered here deliberately; this reverses that.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS], activeWorkspaceId: 'ws-default' }),
+    );
     const { container } = render(<WorkspaceSelector user={user} />);
 
     expect(container.querySelector('[data-workspace-selector]')).toBeNull();

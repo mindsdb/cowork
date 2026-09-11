@@ -185,43 +185,31 @@ function useOrbCenterOffset(orbRef, containerRef) {
 function ActiveList({ tasks, onSelect, onClear }) {
   if (!tasks.length) return null;
   return (
-    <div style={{ width: '100%', maxWidth: 640, marginTop: 36 }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--frost-700)', letterSpacing: '0.02em' }}>Active</div>
-        <div style={{ flex: 1 }} />
+    <div className="w-full max-w-[640px] mt-9">
+      <div className="flex items-center mb-2 py-0 px-1">
+        <div className="text-[12px] font-semibold text-[var(--frost-700)] tracking-[0.02em]">Active</div>
+        <div className="flex-1" />
         <Button variant="subtle" onClick={onClear}>Clear active</Button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div className="flex flex-col gap-[2px]">
         {tasks.map((t) => (
           <button
             key={t.id}
             type="button"
-            className="task-row"
+            // <button> (not <div>) so the global `button { -webkit-app-region:
+            // no-drag }` rule fires — otherwise the window-shell drag region
+            // swallows mousedown. The utilities below reset the button chrome so
+            // it matches the prior <div> layout; `.task-row` owns the rest.
+            className="task-row border-0 bg-transparent text-left font-[inherit] text-inherit w-full"
             onClick={() => onSelect(t.id)}
             aria-label={t.title}
-            style={{
-              // Reset default <button> chrome so the row visually matches
-              // the prior <div> layout. Using <button> is required so the
-              // global `button { -webkit-app-region: no-drag }` rule takes
-              // effect — without it, the window-shell's outer drag region
-              // swallows mousedown and the onClick never fires.
-              border: 0,
-              background: 'transparent',
-              textAlign: 'left',
-              font: 'inherit',
-              color: 'inherit',
-              width: '100%',
-            }}
           >
-            <span
-              className="pulse-dot"
-              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--accent)', marginTop: 7 }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>{t.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--frost-600)', marginTop: 2 }}>{t.subtitle}</div>
+            <span className="pulse-dot w-2 h-2 rounded-full shrink-0 bg-accent mt-[7px]" />
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-medium text-strong">{t.title}</div>
+              <div className="text-[12px] text-[var(--frost-600)] mt-[2px]">{t.subtitle}</div>
             </div>
-            <span style={{ display: 'inline-flex', color: 'var(--frost-500)', marginTop: 4 }}>{Ico.chevRight(14)}</span>
+            <span className="inline-flex text-[var(--frost-500)] mt-1">{Ico.chevRight(14)}</span>
           </button>
         ))}
       </div>
@@ -270,15 +258,17 @@ export default function HomeView({
 
   // Sending the habit-tracker prompt completes onboarding step 1 no
   // matter which surface filled the composer (suggestion chip, sidebar
-  // checklist, or the user typing it by hand). A selected task mode
-  // appends its instruction line after the user text (titles and search
-  // derive from the message head) and clears itself after a successful
-  // send. `meta` (harness/model, ENG-1656) passes through untouched.
+  // checklist, or the user typing it by hand) — but only once the send
+  // has gone out: onSend answers false when the provider preflight fails
+  // (ENG-2307). A selected task mode appends its instruction line after
+  // the user text (titles and search derive from the message head) and
+  // clears itself after a successful send. `meta` (harness/model,
+  // ENG-1656) passes through untouched.
   const sendTracked = async (text, meta) => {
-    if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
+    const result = await onSend(composeModeMessage(taskMode, text), meta);
+    if (result && typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
-    const result = await onSend(composeModeMessage(taskMode, text), meta);
     setTaskMode(null);
     return result;
   };
@@ -377,61 +367,31 @@ export default function HomeView({
   return (
     <div
       ref={homeRef}
-      style={{
-        flex: 1, overflow: 'auto',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '0 40px 60px',
-        background: 'transparent',
-      }}
+      className="flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
     >
-      <h1 className="home-greeting-row" style={{
-        // Deliberate exception to the .s-* ladder. This is the home hero,
-        // and the ladder has no rung between s-h1 (28px) and s-display
-        // (44px): 28px is dwarfed by the 42px orb, and 44px wraps the
-        // greeting to two lines in the 640px column. So it sits at a
-        // bespoke 36px, balanced against the orb. Tracking is nearly
-        // neutral (-0.004em): relaxed alongside the .s-* ladder (which
-        // eased off its old Josefin-era values) — a long Inter sentence
-        // at this size reads airier and less cramped near 0.
-        fontFamily: 'var(--font-display)',
-        fontSize: 36, fontWeight: 600, letterSpacing: '-0.004em',
-        color: 'var(--text-strong)',
-        margin: '0 0 28px',
-        width: '100%', maxWidth: 'var(--composer-max-width, 640px)',
-        // Always flex-start. The orb stays at its REST flow position
-        // (marginLeft: -58) and is moved visually via translateX
-        // during the boot phases — same DOM element throughout, no
-        // justifyContent snap to cover with a fade.
-        display: 'flex', alignItems: 'center', gap: 16,
-        justifyContent: 'flex-start',
-      }}>
+      {/* Deliberate exception to the .s-* ladder. This is the home hero, and
+          the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
+          is dwarfed by the 42px orb, 44px wraps to two lines in the 640px
+          column. So it sits at a bespoke 36px (text-3xl), balanced against the
+          orb. Always flex-start — the orb stays at its REST flow position
+          (ml -58) and moves via translateX during boot. */}
+      <h1 className="home-greeting-row font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong mt-0 mx-0 mb-7 w-full max-w-[var(--composer-max-width,640px)] flex items-center gap-4 justify-start">
         <span
           ref={orbRef}
-          className="home-orb"
+          // inline-flex (not inline-block) keeps the container out of the inline
+          // baseline system — under a transform, inline-block can shift a couple
+          // px relative to the text. The visual layers inside are absolutely
+          // positioned, so this align/justify only sets the OUTER vertical
+          // alignment with the greeting.
+          className="home-orb relative w-[42px] h-[42px] shrink-0 ml-[-58px] inline-flex items-center justify-center"
           style={{
-            position: 'relative',
-            width: 42, height: 42,
-            flexShrink: 0, marginLeft: -58,
-            // inline-flex (rather than inline-block) keeps the
-            // element out of the inline baseline-alignment system
-            // — under a transform, inline-block can shift a couple
-            // pixels relative to the surrounding text. The actual
-            // visual layers below are absolutely-positioned, so the
-            // alignItems/justifyContent on this container don't
-            // affect them; they're here for the OUTER vertical
-            // alignment with the greeting text.
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            // Container only translates (left → centre during boot,
-            // back to rest during travel). All scale-up / scale-down
-            // visual work happens on the layers inside. Identity
-            // transform → 'none' so we don't create a stacking
-            // context when it isn't needed.
+            // Dynamic: the container only translates (centre during boot, rest
+            // during travel), fades in once the centre-offset lands, and swaps
+            // its per-phase transition + will-change. Identity → 'none' so it
+            // doesn't create a stacking context when idle.
             transform: (orbTranslateX === 0)
               ? 'none'
               : `translateX(${orbTranslateX}px)`,
-            // Orb is hidden (opacity 0) until the centre-offset
-            // measurement lands — without this the very first paint
-            // shows the rest-position orb before snapping to centre.
             opacity: orbReady ? 1 : 0,
             transition: `${orbTransition}, opacity 200ms ease-out`,
             willChange: isEarlyBoot ? 'transform' : 'auto',
@@ -440,14 +400,14 @@ export default function HomeView({
           {/* 1) Big thinking orb — booted-into state. Fades + shrinks
                  during 'collapsing' so the visual reads as "the orb
                  collapsed into the dot below." */}
-          <span style={{
-            position: 'absolute', top: '50%', left: '50%',
-            width: 64, height: 64,
-            pointerEvents: 'none',
-            transform: `translate(-50%, -50%) scale(${bigThinkingScale})`,
-            opacity: bigThinkingOpacity,
-            transition: `opacity ${COLLAPSE_MS}ms ease-out, transform ${COLLAPSE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-          }}>
+          <span
+            className="absolute top-1/2 left-1/2 w-16 h-16 pointer-events-none"
+            style={{
+              transform: `translate(-50%, -50%) scale(${bigThinkingScale})`,
+              opacity: bigThinkingOpacity,
+              transition: `opacity ${COLLAPSE_MS}ms ease-out, transform ${COLLAPSE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            }}
+          >
             <OrbitMorph size={64} state="thinking" />
           </span>
 
@@ -456,30 +416,25 @@ export default function HomeView({
                  traveling (the eye follows it from centre to rest),
                  and the start of morphing (fades out as the idle
                  orb scales up over it). */}
-          <span aria-hidden style={{
-            position: 'absolute', top: '50%', left: '50%',
-            width: 10, height: 10, borderRadius: '50%',
-            background: 'var(--accent)',
-            boxShadow: '0 0 12px color-mix(in srgb, var(--accent) 55%, transparent)',
-            transform: 'translate(-50%, -50%)',
-            opacity: dotOpacity,
-            transition: 'opacity 320ms ease-in-out',
-            pointerEvents: 'none',
-          }} />
+          <span
+            aria-hidden
+            className="absolute top-1/2 left-1/2 w-[10px] h-[10px] rounded-full bg-accent shadow-[0_0_12px_color-mix(in_srgb,var(--accent)_55%,transparent)] -translate-x-1/2 -translate-y-1/2 [transition:opacity_320ms_ease-in-out] pointer-events-none"
+            style={{ opacity: dotOpacity }}
+          />
 
           {/* 3) Idle/thinking orb stack — the resting visual. Scales
                  up from the dot during 'morphing' (so the dot
                  visibly evolves into the orb), then stays at full
                  size for typing → idle, with the existing
                  idle/thinking activity crossfade. */}
-          <span style={{
-            position: 'absolute', top: '50%', left: '50%',
-            width: 42, height: 42,
-            pointerEvents: 'none',
-            transform: `translate(-50%, -50%) scale(${idleLayerScale})`,
-            opacity: idleLayerOpacity,
-            transition: `opacity ${MORPH_MS}ms ease-out, transform ${MORPH_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1)`,
-          }}>
+          <span
+            className="absolute top-1/2 left-1/2 w-[42px] h-[42px] pointer-events-none"
+            style={{
+              transform: `translate(-50%, -50%) scale(${idleLayerScale})`,
+              opacity: idleLayerOpacity,
+              transition: `opacity ${MORPH_MS}ms ease-out, transform ${MORPH_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1)`,
+            }}
+          >
             <OrbitMorph
               size={42}
               state="idle"
@@ -519,21 +474,13 @@ export default function HomeView({
           flips from morphing to settling). On 'idle' they're already
           present at full opacity. */}
       {showInteractiveSurface && (
-        <div style={{
-          width: '100%',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          animation: 'boot-fadein 500ms ease-out both',
-        }}>
+        <div className="w-full flex flex-col items-center [animation:boot-fadein_500ms_ease-out_both]">
           {blocked ? (
             <div className="home-connect-card">
-              <span style={{
-                width: 36, height: 36, borderRadius: 9,
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--primary-50)', color: 'var(--primary-700)', flexShrink: 0,
-              }}>{Ico.key(18)}</span>
+              <span className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center bg-[var(--primary-50)] text-[var(--primary-700)] shrink-0">{Ico.key(18)}</span>
               <div className="home-connect-card__body">
-                <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Connect a provider to start chatting</div>
-                <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
+                <div className="text-base font-[650] text-strong">Connect a provider to start chatting</div>
+                <div className="text-sm text-[var(--frost-700)] mt-[3px]">Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
               <div className="home-connect-card__actions">
                 <Button
@@ -593,10 +540,7 @@ export default function HomeView({
               (taller) sample list or when active tasks appear. The content
               overflows downward; the scroll container still reaches it
               because descendant overflow extends the scrollable area. */}
-          <div style={{
-            width: '100%', height: 0, overflow: 'visible',
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-          }}>
+          <div className="w-full h-0 overflow-visible flex flex-col items-center">
             {/* Samples only render when onPrefill exists — a sample click's
                 whole job is prefilling the composer, so without the callback
                 it would be a silent dead click (same gate the old

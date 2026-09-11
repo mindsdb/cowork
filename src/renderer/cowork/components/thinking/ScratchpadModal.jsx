@@ -135,14 +135,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             etc. didn't have dark-mode partners and rendered as too-
             saturated stripes against the navy surface. */}
         {tabs.length > 1 && (
-          <div style={{
-            display: 'flex', flex: '0 0 auto',
-            gap: 2,
-            padding: '0 8px',
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--line)',
-            overflowX: 'auto',
-          }}>
+          <div className="flex flex-none gap-[2px] px-2 bg-surface border-b border-t-0 border-x-0 border-solid border-line overflow-x-auto">
             {tabs.map((t) => {
               const active = t.id === activeTabId;
               return (
@@ -150,21 +143,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTabId(t.id)}
-                  style={{
-                    position: 'relative',
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    flexShrink: 0,
-                    padding: '10px 12px',
-                    background: 'transparent',
-                    border: 0,
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    letterSpacing: '0',
-                    color: active ? 'var(--ink)' : 'var(--ink-3)',
-                    transition: 'color 120ms ease',
-                  }}
+                  className="relative inline-flex items-center gap-2 shrink-0 py-[10px] px-3 bg-transparent border-0 cursor-pointer font-[family-name:var(--font-display)] text-sm font-medium tracking-[0] [transition:color_120ms_ease]"
+                  // Colour is active-state driven; the hover tint only applies to
+                  // inactive tabs, so it stays a conditional JS handler rather
+                  // than a CSS :hover (which can't see `active`).
+                  style={{ color: active ? 'var(--ink)' : 'var(--ink-3)' }}
                   onMouseOver={(e) => {
                     if (!active) e.currentTarget.style.color = 'var(--ink-2)';
                   }}
@@ -172,24 +155,14 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     if (!active) e.currentTarget.style.color = 'var(--ink-3)';
                   }}
                 >
-                  <span style={{
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    maxWidth: 180,
-                  }} title={t.name}>{t.name}</span>
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px]" title={t.name}>{t.name}</span>
                   <Badge
                     variant={active ? 'accent' : 'muted'}
                     size="xs"
                     className="min-w-[18px] justify-center font-mono tabular-nums"
                   >{t.cells.length}</Badge>
                   {active && (
-                    <span aria-hidden style={{
-                      position: 'absolute',
-                      left: 8, right: 8,
-                      bottom: -1,
-                      height: 2,
-                      borderRadius: 1,
-                      background: 'var(--accent)',
-                    }} />
+                    <span aria-hidden className="absolute left-2 right-2 bottom-[-1px] h-[2px] rounded-[1px] bg-accent" />
                   )}
                 </button>
               );
@@ -198,7 +171,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
         )}
 
         {/* Cells — vertical stack inside the active pad */}
-        <div className="flex-1 overflow-y-auto" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex-1 overflow-y-auto [-webkit-app-region:no-drag]">
           {activeTab?.cells.map((cell, i) => (
             <CellView
               key={cell.id}
@@ -310,10 +283,7 @@ function CellView({ cell, index, total, focused = false }) {
           the first row of the description. On mobile we collapse to
           a single column (see globals.css) so output/code fill the
           full width. */}
-      <div
-        className="scratchpad-cell-grid grid items-start"
-        style={{ gridTemplateColumns: 'auto 1fr', columnGap: 12 }}
-      >
+      <div className="scratchpad-cell-grid grid items-start grid-cols-[auto_1fr] gap-x-3">
         <span className="font-mono text-[10.5px] tracking-wider text-ink-4 pt-[2px]">
           step {index}/{total}
         </span>
@@ -324,7 +294,7 @@ function CellView({ cell, index, total, focused = false }) {
               hitting "Code" lands at eye level, not floated above
               the badge. */}
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate font-display text-[14px] font-semibold text-ink">
+            <span className="truncate font-display text-base font-semibold text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
             {code && (
@@ -422,44 +392,22 @@ function CodeToggle({ checked, onChange, label = 'Code' }) {
       aria-checked={!!checked}
       aria-label={checked ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
       onClick={() => onChange?.(!checked)}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 8,
-        flexShrink: 0,
-        padding: '4px 6px',
-        background: 'transparent',
-        border: 0,
-        borderRadius: 6,
-        cursor: 'pointer',
-        fontFamily: 'var(--font-body)',
-        fontSize: 11.5,
-        fontWeight: 500,
-        color: 'var(--ink-3)',
-        transition: 'color 120ms ease',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; }}
-      onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+      className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_120ms_ease]"
     >
       <span>{label}</span>
-      <span aria-hidden style={{
-        position: 'relative',
-        display: 'inline-block',
-        width: 32, height: 18,
-        borderRadius: 999,
-        background: checked
-          ? 'var(--accent)'
-          : 'color-mix(in srgb, var(--ink) 18%, transparent)',
-        transition: 'background 180ms ease',
-      }}>
-        <span style={{
-          position: 'absolute',
-          top: 2,
-          left: checked ? 16 : 2,
-          width: 14, height: 14,
-          borderRadius: '50%',
-          background: '#fff',
-          boxShadow: '0 1px 2px rgba(15,16,17,0.18)',
-          transition: 'left 180ms cubic-bezier(0.4, 0, 0.2, 1)',
-        }} />
+      <span
+        aria-hidden
+        className="relative inline-block w-8 h-[18px] rounded-full [transition:background_180ms_ease]"
+        style={{
+          background: checked
+            ? 'var(--accent)'
+            : 'color-mix(in srgb, var(--ink) 18%, transparent)',
+        }}
+      >
+        <span
+          className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(15,16,17,0.18)] [transition:left_180ms_cubic-bezier(0.4,0,0.2,1)]"
+          style={{ left: checked ? 16 : 2 }}
+        />
       </span>
     </button>
   );

@@ -759,14 +759,22 @@ export function shellManualNoticeIsFallback(
   return phase === 'disabled' || (phase === 'failed' && recoverable === false);
 }
 
-/** Return the installer URL for a supported platform and release channel. */
+/** Return the installer URL for a supported platform and release channel.
+ *  linux publishes one .deb per architecture, so an unrecognized arch yields
+ *  null rather than a package dpkg would refuse to install. */
 export function shellDownloadUrl(
   platform: string,
   buildKind: string | null | undefined,
+  arch: string,
 ): string | null {
   const slot = buildKind === 'prod' ? 'latest' : buildKind === 'stable' ? 'staging' : null;
   if (!slot) return null;
   if (platform === 'darwin') return `${SHELL_DOWNLOADS_BASE}/mac/mindshub-cowork-${slot}.pkg`;
   if (platform === 'win32') return `${SHELL_DOWNLOADS_BASE}/windows/mindshub-cowork-${slot}.exe`;
+  if (platform === 'linux') {
+    const debArch = arch === 'x64' ? 'amd64' : arch === 'arm64' ? 'arm64' : null;
+    if (!debArch) return null;
+    return `${SHELL_DOWNLOADS_BASE}/linux-${debArch}/mindshub-cowork-${slot}.deb`;
+  }
   return null;
 }

@@ -78,8 +78,21 @@ const EVENTS = {
   // release squash-merges staging into main, so a branch compare reports
   // content main already has as diverged and will tell you prod is missing a
   // condition it has been emitting for weeks.
+  //
+  // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` now ride
+  // EVERY event this module emits, not only this one: they are stamped in
+  // capture(), beside is_internal. Noted here because this is the event they
+  // were added for and this is where a reader looks. Additive, so no existing
+  // query changes meaning, and both are absent on pre-login events and on any
+  // event from a build older than this one.
+  // They are the signed-in session's org and tier. **They are not the subject a
+  // limit bound to** — a user-supplied `mdb_` key overrides the session token,
+  // and limits are org-scoped with per-org overrides rather than tier-scoped.
+  // Segment on them; do not count organisations-per-limit with them. The `sso_`
+  // prefix exists to stop the unprefixed name reading as authoritative, and
+  // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent (ENG-1533, ENG-1782). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
@@ -311,6 +324,21 @@ export function setAntonInstallId(id) {
   antonInstallId = AID_SHAPE.test(next) ? next : null;
 }
 
+// Drop every cached per-identity value back to unknown.
+//
+// Three call sites in getDistinctId reach this: no token, a token with no sub,
+// and a throw while resolving. All three mean "the identity we cached is no
+// longer established", and every value derived from it has to go — not just the
+// one somebody remembered. `isInternal` was cleared alone until ENG-2206 put
+// `organization_id` and `plan_tier` on the event, at which point a stale
+// personProps replayed a prior session's org onto an anonymous event, which is
+// ENG-672's bug in a new field. One function so the next value added to
+// personProps is cleared by construction rather than by memory.
+function forgetIdentity() {
+  identity.isInternal = null;
+  identity.personProps = {};
+}
+
 async function getDistinctId() {
   if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
@@ -320,12 +348,12 @@ async function getDistinctId() {
     // cached flag back to unknown so a later anonymous-keyed event omits it
     // rather than replaying a prior session's value (ENG-672).
     if (!token) {
-      identity.isInternal = null;
+      forgetIdentity();
       return null;
     }
     const payload = decodeJwtPayload(token);
     if (!payload?.sub) {
-      identity.isInternal = null;
+      forgetIdentity();
       return null;
     }
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
@@ -355,8 +383,8 @@ async function getDistinctId() {
     return identity.distinctId;
   } catch {
     // Any failure resolving identity leaves it unknown (see the token guards
-    // above for why the flag must not linger as a stale boolean).
-    identity.isInternal = null;
+    // above for why a stale value must not linger).
+    forgetIdentity();
     return null;
   }
 }
@@ -477,6 +505,47 @@ function capture(event, properties = {}) {
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
       if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
+      // The signed-in SESSION's organisation and tier on a limit-rejection event,
+      // as well as in the person `$set` (ENG-2206). Keep these specific to the
+      // event the ticket measures; adding them to every product event would widen
+      // this instrumentation change beyond the rejection boundary.
+      //
+      // The `sso_` prefix is load-bearing and is why these are not called
+      // `organization_id` and `plan_tier`. Neither is the subject a limit bound
+      // to, which is what ENG-2206 actually asks for, and an unprefixed name
+      // would read as though it were. Two reasons, both found in review:
+      //
+      //   1. A user-supplied `mdb_` key takes precedence over the session token
+      //      (`src/main/minds-credential.ts:48`). A request denied against that
+      //      key's organisation is reported here as the SSO organisation, or with
+      //      none at all. The authoritative subject can only come from the denied
+      //      request or the gateway response.
+      //   2. Limits are organisation-scoped with per-org Statsig overrides
+      //      (`auth/entitlements/services/usage_limits.py`), not tier-scoped. Two
+      //      accounts both on `free` can hit different ceilings, so tier does NOT
+      //      identify which limit applied.
+      //
+      // So these are segments. Segment on them freely; do not answer "how many
+      // organisations hit this limit" with them. ENG-2206 stays open for that.
+      //
+      // The person `$set` keeps the unprefixed `organization_id` / `plan_tier`,
+      // which are correct there: a person property IS the current session's org.
+      //
+      // Omitted rather than nulled when unresolved. Present-and-null is worse
+      // than absent: a filter on the property counts the row and the column looks
+      // populated. `app_version` and `is_internal` follow the same rule.
+      //
+      // Still stale for up to five minutes after an in-place org switch, because
+      // getDistinctId returns early on its own cache and never re-resolves inside
+      // the window. forgetIdentity fixes the post-expiry case only.
+      if (event === EVENTS.TOKEN_CAP_HIT) {
+        if (identity.personProps.organization_id) {
+          eventProps.sso_organization_id = identity.personProps.organization_id;
+        }
+        if (identity.personProps.plan_tier) {
+          eventProps.sso_plan_tier = identity.personProps.plan_tier;
+        }
+      }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
@@ -737,8 +806,7 @@ export async function trackBootScreenResolved(target) {
 // cleared: the machine is still installed, so app_installed must not re-fire
 // (installs are counted per device, once).
 export function resetDeviceIdentity() {
-  identity.isInternal = null;
-  identity.personProps = {};
+  forgetIdentity();
   identity.deviceId = null;
   identity.distinctId = null;
   identity.cacheExpiry = 0;

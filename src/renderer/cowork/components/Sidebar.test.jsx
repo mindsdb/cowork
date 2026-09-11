@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui/Toast';
 
 // Mutable host mock so each test can flip isWeb. getAccessToken resolves the
@@ -253,6 +254,34 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
     expect(onDismissUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it('names apt in the manual notice hint on linux, narrowed to the offered version', async () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', debInstaller: true } })}
+        onUpdateAction={vi.fn()}
+        onDismissUpdate={vi.fn()}
+      />
+    );
+    await userEvent.hover(screen.getByRole('button', { name: /New version available/ }));
+    expect(await screen.findByText(/run sudo apt install \.\/mindshub-cowork-2\.0\.0\*\.deb from the directory you downloaded it to/)).toBeInTheDocument();
+  });
+
+  it('keeps the "open it" hint off linux', async () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0', debInstaller: false } })}
+        onUpdateAction={vi.fn()}
+        onDismissUpdate={vi.fn()}
+      />
+    );
+    await userEvent.hover(screen.getByRole('button', { name: /New version available/ }));
+    expect(await screen.findByText(/open it to update/)).toBeInTheDocument();
+  });
+
   it('shows exactly one banner (shell-first) when OTA and a shell update both pend', () => {
     render(
       <Sidebar
@@ -379,6 +408,94 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+  });
+});
+
+describe('Sidebar — where the MindsHub workspace control sits', () => {
+  // Two things are pinned here that the component's own tests cannot see: that
+  // the control is drawn from the bottom of the rail rather than the top, and
+  // that a one-workspace organization gets nothing in either shell.
+  //
+  // The signed-in token matters. The render site sits behind the resolved
+  // account user, so a signed-out sidebar draws no control whatever the
+  // threshold does, and every assertion below would pass for the wrong reason.
+  const withWorkspaces = (workspaces) =>
+    hubWorkspacesMock.useHubWorkspaces.mockReturnValue({
+      enabled: true,
+      reachable: true,
+      workspaces,
+      activeWorkspaceId: 'ws-default',
+      switching: false,
+      switchWorkspace: vi.fn(),
+      refresh: vi.fn(),
+    });
+
+  const DEFAULT_WS = { id: 'ws-default', displayName: 'Default', isDefault: true, archivedAt: null, role: 'member' };
+  const CLIENT_A = { id: 'ws-client-a', displayName: 'Client A', isDefault: false, archivedAt: null, role: 'manager' };
+
+  beforeEach(() => {
+    getAccessTokenMock.mockResolvedValue(
+      jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
+    );
+  });
+
+  afterEach(() => {
+    getAccessTokenMock.mockResolvedValue(null);
+    // Back to the file's resting answer. Nothing below this block mentions
+    // workspaces, so a leaked `mockReturnValue` would quietly hand them a
+    // rendered control and they would never say why they changed.
+    hubWorkspacesMock.useHubWorkspaces.mockReturnValue({
+      enabled: false,
+      reachable: false,
+      workspaces: [],
+      activeWorkspaceId: null,
+      switching: false,
+      switchWorkspace: vi.fn(),
+      refresh: vi.fn(),
+    });
+  });
+
+  it('draws it below the New task CTA, against the footer', async () => {
+    hostMock.isWeb = false;
+    withWorkspaces([DEFAULT_WS, CLIENT_A]);
+    const { container } = render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+
+    const cta = container.querySelector('.anton-sidebar__cta-wrap');
+    const wrap = container.querySelector('.anton-sidebar__workspace-wrap');
+    expect(wrap).toBeTruthy();
+    expect(cta.compareDocumentPosition(wrap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(wrap.nextElementSibling.className).toContain('anton-sidebar__footer');
+  });
+
+  it.each([
+    ['desktop', false],
+    ['web', true],
+  ])('keeps keyboard focus in the footer when the workspace control disappears on %s', async (_shell, isWeb) => {
+    hostMock.isWeb = isWeb;
+    withWorkspaces([DEFAULT_WS, CLIENT_A]);
+    const { rerender } = render(<Sidebar {...baseProps} serverOnline />);
+    const trigger = await screen.findByRole('button', { name: 'Workspace: Default' });
+    trigger.focus();
+
+    withWorkspaces([DEFAULT_WS]);
+    rerender(<Sidebar {...baseProps} serverOnline />);
+
+    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toHaveFocus();
+  });
+
+  it.each([
+    ['desktop', false],
+    ['web', true],
+  ])('draws nothing for a one-workspace organization on %s', async (_shell, isWeb) => {
+    hostMock.isWeb = isWeb;
+    withWorkspaces([DEFAULT_WS]);
+    const { container } = render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+    expect(screen.queryByText('Default')).toBeNull();
   });
 });
 

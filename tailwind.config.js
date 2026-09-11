@@ -8,7 +8,7 @@
 // can use their utility classes verbatim, and so future migration of
 // existing surfaces to Tailwind can happen incrementally.
 //
-// Two important calls:
+// Three important calls:
 //
 //   1. corePlugins.preflight = false — Tailwind's "preflight" CSS reset
 //      would aggressively reset buttons / lists / etc. That'd clobber
@@ -21,6 +21,15 @@
 //      The body[data-theme="dark"] selector in globals.css already
 //      flips the var values; Tailwind utilities just read them.
 //
+//   3. theme.extend.screens.sm — bound to PHONE_MAX from
+//      lib/breakpoints.js, the app's single source of truth for layout-mode
+//      switches. Without it `sm:`/`max-sm:` sit on Tailwind's own 640px and
+//      would silently stay behind if that boundary ever moved. Only `sm` is
+//      bound; md and up keep Tailwind's defaults, since nothing in the
+//      layout-mode scale corresponds to them.
+//
+import { PHONE_MAX } from './src/renderer/cowork/lib/breakpoints.js';
+
 export default {
   content: [
     './src/renderer/index.html',
@@ -34,6 +43,9 @@ export default {
   },
   theme: {
     extend: {
+      screens: {
+        sm: `${PHONE_MAX}px`,
+      },
       colors: {
         // Surfaces
         bg:         'var(--bg)',
@@ -77,10 +89,11 @@ export default {
 
         // Semantic aliases (ENG-1381). Key `surface-glass` → `bg-surface-glass`,
         // key `sage-500` → `text-sage-500` — resolved values in globals.css.
-        // (`muted` dropped — unused; `strong` added by ENG-1481 when its inline
-        // styles convert and give it a className usage to verify against.)
+        // (`muted` dropped — unused.) `strong` → `text-strong` (ENG-1481): the
+        // emphasis-text alias, resolves to var(--ink) in both themes.
         'surface-glass':'var(--surface-glass)',
         'sage-500':     'var(--sage-500)',
+        strong:         'var(--text-strong)',
 
         // Aliases for mdb-ai's class names so a verbatim port works.
         // mdb-ai uses text-text-primary, bg-surface-01, border-border-02.

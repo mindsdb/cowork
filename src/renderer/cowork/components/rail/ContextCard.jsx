@@ -333,6 +333,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
 }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
+  // The server caps the listing. Without surfacing it, a project with more
+  // files than the cap looks like a project with exactly that many.
+  const [filesTruncated, setFilesTruncated] = useState(false);
   // Google Drive files the user picked via "Attach Google Drive files"
   // below — reference-only (name + link), never downloaded. They live
   // on the connection's _picked_files grant, not in the project folder,
@@ -444,12 +447,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   // are filtered out, with the canonical `.anton/anton.md`
   // instructions row pinned to the top so it's always reachable.
   const reloadFiles = useCallback(({ forceFresh = false } = {}) => {
-    if (!project?.name) { setProjectFiles([]); return; }
+    if (!project?.name) { setProjectFiles([]); setFilesTruncated(false); return; }
     const ticket = filesTicket.claim();
     listProjectFiles(project.name, { forceFresh })
       .then((data) => {
         if (!filesTicket.isCurrent(ticket)) return;
         const all = Array.isArray(data?.files) ? data.files : [];
+        setFilesTruncated(data?.truncated === true);
         // Filter: keep the canonical instructions file from `.anton/`
         // but otherwise hide hidden trees (anything starting with `.`
         // at any path segment) so the rail isn't drowned in
@@ -485,7 +489,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           return fresh ? mergeFileResource(current, fresh) : current;
         });
       })
-      .catch(() => { if (filesTicket.isCurrent(ticket)) setProjectFiles([]); });
+      .catch(() => {
+        if (!filesTicket.isCurrent(ticket)) return;
+        setProjectFiles([]);
+        // Cleared with the list it described. A flag left set here
+        // outlives its listing and reports truncation for a load that
+        // never landed.
+        setFilesTruncated(false);
+      });
   }, [project?.name, filesTicket]);
 
   const refreshOpenFileResource = useCallback((resource) => {
@@ -503,6 +514,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   }, []);
 
   useEffect(() => {
+    // The notice describes one project's listing: the branch below never
+    // reaches reloadFiles, and a switch would show it through the next load.
+    setFilesTruncated(false);
     if (!project?.name) {
       setProjectFiles([]);
       // Bump the ticket so any in-flight load from a prior project
@@ -770,6 +784,22 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   onRequestDelete={(file) => setPendingDeleteDriveFile(file)}
                 />
               ))}
+            </div>
+          )}
+          {/* Outside the list on purpose. Above ten rows the list becomes a
+              220px scroll box and a truncated listing carries up to 2000
+              rows, so nested here the sentence explaining the list was cut
+              sat a couple of thousand rows below the visible area. */}
+          {filesTruncated && (
+            <div
+              style={{
+                padding: '6px 2px',
+                fontSize: 11.5,
+                color: 'var(--ink-4)',
+              }}
+            >
+              This folder holds more files than the list can show, so some
+              are missing here.
             </div>
           )}
         </div>

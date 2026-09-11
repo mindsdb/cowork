@@ -61,7 +61,7 @@ export interface UpdateBannerInput {
   } | null;
   /** Prod-only manual installer notice, already filtered for per-version
    *  dismissal by the caller (a dismissed notice must arrive here as null). */
-  shellManual?: { version?: string } | null;
+  shellManual?: { version?: string; debInstaller?: boolean } | null;
 }
 
 export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error';
@@ -83,6 +83,9 @@ export interface UpdateBanner {
   /** Only the manual installer notice can be dismissed (per-version). */
   dismissible: boolean;
   version?: string;
+  /** Manual notice only: the installer is a Debian package, so the copy names
+   *  the install command instead of telling the user to open it. */
+  debInstaller?: boolean;
 }
 
 function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): UpdateBanner {
@@ -108,6 +111,14 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
   }
 }
 
+/** The install step for a Debian package. Shared so the sidebar hint and the
+ *  Settings card cannot drift. Narrowed by version because the alias URL saves
+ *  under a versioned Content-Disposition name, so an unbounded glob would hand
+ *  apt every release still sitting in the download directory. */
+export function debInstallStep(version?: string): string {
+  return `run sudo apt install ./mindshub-cowork-${version ?? ''}*.deb from the directory you downloaded it to`;
+}
+
 /** The one banner to show, or null when nothing is pending. Shell-first: a
  *  pending shell update (auto or manual) always owns the slot over OTA. */
 export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | null {
@@ -127,6 +138,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       disabled: false,
       dismissible: true,
       version: shellManual.version,
+      debInstaller: !!shellManual.debInstaller,
     };
   }
 

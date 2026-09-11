@@ -16,7 +16,12 @@ function TextDots() {
     const id = setInterval(() => setIdx((i) => (i + 1) % DOT_FRAMES.length), 400);
     return () => clearInterval(id);
   }, []);
-  return <span className="inline-block w-5 text-ink-4">{DOT_FRAMES[idx]}</span>;
+  // Match the step label's 12.5px. Without an explicit size the dots
+  // inherit the 16px body font-size, which makes an in-progress row's line
+  // box ~5px taller than the same row once it settles (label 12.5px) — so
+  // the block visibly jumps every time a step starts or finishes. Sizing
+  // the dots to the label keeps the row height constant across states.
+  return <span className="inline-block w-5 text-ink-4 text-[12.5px] leading-[1.5]">{DOT_FRAMES[idx]}</span>;
 }
 
 function formatStepDuration(startedAt, completedAt) {

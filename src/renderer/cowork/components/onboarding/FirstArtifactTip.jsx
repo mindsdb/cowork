@@ -46,13 +46,13 @@ export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe })
             {/* Rotated-square arrow; per-side offsets live in globals.css
                 (`.first-artifact-tip-arrow`) keyed off data-side. */}
             <Popover.Arrow className="first-artifact-tip-arrow" />
-            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            <div className="text-sm leading-[1.5]">
               Your first Live Artifact is ready. It lives here. Open it anytime, or publish it to share a live URL.
             </div>
             {/* Shared Button primitives; the tip sits on an inverted ink
                 surface, so their variant colors are reskinned in
                 globals.css under `.first-artifact-tip .btn`. */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+            <div className="flex justify-end gap-2 mt-[10px]">
               <Button size="sm" onClick={onGotIt}>Got it</Button>
               <Button size="sm" variant="primary" onClick={onShowMe}>Show me</Button>
             </div>

@@ -40,12 +40,12 @@ const ids = (items) => items.map((i) => i.id);
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives an opted-in desktop every applicable section', () => {
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
-  it('gives web exactly Agent, Appearance, Channels', () => {
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels']);
+  it('gives web exactly Agent, Appearance, Channels, Usage', () => {
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
   });
 
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
@@ -73,9 +73,27 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     expect(navItemsForHost(true, true, true).some((i) => i.id === 'backend')).toBe(false);
   });
 
+  it('web renders the group headers its sections belong to, Usage under System', () => {
+    // The nav prints a heading whenever the group changes, so unhiding Usage
+    // gives the hosted build a SYSTEM heading it never had. Kept rather than
+    // regrouped, because Usage sits under System on desktop and one grouping
+    // for both hosts beats a web-only exception. Pinned so the next nav
+    // change sees it.
+    expect(navItemsForHost(true, true, true).map((i) => i.group))
+      .toEqual(['General', 'App', 'App', 'System']);
+  });
+
+  it('offers Usage on web: it reads a route both hosts call and only links out', () => {
+    // The web filter exists for surfaces that would be misleading without a
+    // tenant-aware counterpart. Usage has none: the figure comes from the same
+    // sidecar route and every control opens the console in a browser. A hosted
+    // free user with no Usage tab has nowhere to see the allowance at all.
+    expect(navItemsForHost(true, true, true).some((i) => i.id === 'usage')).toBe(true);
+  });
+
   it('preserves each section\'s label and icon, and the desktop ordering', () => {
     const web = navItemsForHost(true, true, true);
-    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels']);
+    expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels', 'Usage']);
     expect(web.every((i) => typeof i.icon === 'string' && i.icon.length > 0)).toBe(true);
     // Filtered, not reordered — web order must be a subsequence of desktop's.
     const desktop = ids(navItemsForHost(false, true, true));
@@ -85,14 +103,14 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
   it('does not hand out the shared array for callers to mutate', () => {
     const a = navItemsForHost(true, true, true);
     a.pop();
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels']);
+    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
     // Desktop returns a copy too — without the spread it would hand back the
     // module-level NAV_ITEMS itself, and this pop() would corrupt every
     // later call on both platforms.
     const b = navItemsForHost(false, true, true);
     b.pop();
     expect(ids(navItemsForHost(false, true, true))).toEqual([
-      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingAgent', 'computers', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 });
@@ -100,7 +118,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 describe('navItemsForHost — Code Mode availability and opt-in', () => {
   it('offers only the opt-in page while Code is available but disabled', () => {
     expect(ids(navItemsForHost(false, true, false))).toEqual([
-      'agent', 'codingAgent', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingAgent', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
@@ -111,7 +129,9 @@ describe('navItemsForHost — Code Mode availability and opt-in', () => {
   });
 
   it('never exposes Code settings on web, even if arguments claim it is enabled', () => {
-    expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels']);
+    const web = ids(navItemsForHost(true, true, true));
+    expect(web).not.toContain('codingAgent');
+    expect(web).not.toContain('computers');
   });
 
   it('treats missing or falsy availability as unavailable', () => {

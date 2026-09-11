@@ -35,3 +35,31 @@ describe('mergeTasksFromServer keeps the local model pin', () => {
     expect(merged[0].model).toBe('sonnet');
   });
 });
+
+describe('mergeTasksFromServer keeps the client-only usage alerts (ENG-1782)', () => {
+  const notice = { kind: 'free_used', resetsAt: '2099-09-11T00:00:00Z', createdAt: '2099-08-28T10:00:00Z' };
+
+  it('when the local task has no live messages', () => {
+    const local = [serverTask({ usageNotices: [notice] })];
+    expect(mergeTasksFromServer([serverTask()], local)[0].usageNotices).toEqual([notice]);
+  });
+
+  it('when the server has more assistant messages than the client', () => {
+    const local = [serverTask({ usageNotices: [notice], messages: [{ role: 'user', content: 'x' }] })];
+    const server = [serverTask({ messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }] })];
+    expect(mergeTasksFromServer(server, local)[0].usageNotices).toEqual([notice]);
+  });
+
+  it('when local wins the conversation surface', () => {
+    const local = [serverTask({
+      usageNotices: [notice],
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    })];
+    const server = [serverTask({ messages: [{ role: 'user', content: 'x' }] })];
+    expect(mergeTasksFromServer(server, local)[0].usageNotices).toEqual([notice]);
+  });
+
+  it('adds nothing when the local task has none', () => {
+    expect(mergeTasksFromServer([serverTask()], [serverTask()])[0]).not.toHaveProperty('usageNotices', expect.anything());
+  });
+});

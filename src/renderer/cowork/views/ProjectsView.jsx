@@ -182,6 +182,7 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 
 function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
   const canRename = !isReserved && canUseSharedResource(project, 'canRename');
+  const directoryIsExternal = project?.capabilities?.directoryIsExternal === true;
   const canDelete = !isReserved && canUseSharedResource(project, 'canDelete');
   const items = [
     !hideOpen && {
@@ -201,8 +202,17 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       label: 'Rename…',
       icon: Ico.edit(13),
       disabled: !canRename,
-      hint: !canRename ? 'Admin or creator' : undefined,
-      title: !canRename ? 'You do not have permission to rename this project.' : undefined,
+      // A project pointed at a folder the user chose cannot be renamed
+      // because renaming moves the directory, and that folder is theirs.
+      // Saying "Admin or creator" there blames the wrong thing.
+      hint: !canRename
+        ? (directoryIsExternal ? 'Chosen folder' : 'Admin or creator')
+        : undefined,
+      title: !canRename
+        ? (directoryIsExternal
+            ? 'This project points at a folder you chose. Rename the folder itself instead.'
+            : 'You do not have permission to rename this project.')
+        : undefined,
       onClick: () => onRename?.(project),
     },
     onReveal && {

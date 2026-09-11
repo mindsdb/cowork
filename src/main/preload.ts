@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.MINDSHUB_AUTH_CHANGED, listener);
     return () => ipcRenderer.removeListener(IPC.MINDSHUB_AUTH_CHANGED, listener);
   },
+  onMindsHubCredentialChanged: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.MINDSHUB_CREDENTIAL_CHANGED, listener);
+    return () => ipcRenderer.removeListener(IPC.MINDSHUB_CREDENTIAL_CHANGED, listener);
+  },
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),

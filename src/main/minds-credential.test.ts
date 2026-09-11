@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { IPC } from '../shared/ipc-channels';
+
+const getAllWindows = vi.hoisted(() => vi.fn(() => [] as Array<{
+  isDestroyed: () => boolean;
+  webContents: { send: ReturnType<typeof vi.fn> };
+}>));
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', getVersion: () => '0.0.0-test', isPackaged: false },
   shell: { openExternal: vi.fn() },
-  BrowserWindow: class {},
+  BrowserWindow: { getAllWindows },
 }));
 
 vi.mock('./token-store', () => ({
@@ -64,9 +70,10 @@ function installFetch(status = 200): Call[] {
   return calls;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   settleMindsResumeCredentialGate(true);
   vi.clearAllMocks();
+  getAllWindows.mockReturnValue([]);
   (getAccessToken as Mock).mockReturnValue('session-token');
   (getMindsApiKey as Mock).mockResolvedValue(null);
   (isServerRunning as Mock).mockReturnValue(true);
@@ -74,6 +81,10 @@ beforeEach(() => {
   (getServerPort as Mock).mockReturnValue(8765);
   (getRefreshToken as Mock).mockReturnValue('a-refresh-token');
   (isAccessTokenExpired as Mock).mockReturnValue(false);
+  // Drain a pending invalidation left by a deliberately refused prior test.
+  installFetch();
+  await pushMindsCredential(null);
+  vi.clearAllMocks();
 });
 
 describe('isMindsCredentialSidecarReachable', () => {
@@ -127,6 +138,43 @@ describe('resolveMindsCredential', () => {
 });
 
 describe('pushMindsCredential', () => {
+  it('notifies live renderers only after the sidecar accepts the credential, without sending secrets', async () => {
+    const send = vi.fn();
+    const closedSend = vi.fn();
+    const closingSend = vi.fn(() => { throw new Error('Window closed'); });
+    getAllWindows.mockReturnValue([
+      { isDestroyed: () => true, webContents: { send: closedSend } },
+      { isDestroyed: () => false, webContents: { send: closingSend } },
+      { isDestroyed: () => false, webContents: { send } },
+    ]);
+    let accept!: (response: Response) => void;
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { accept = resolve; }));
+    const pending = pushMindsCredential('private-credential', { invalidateCatalog: true });
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    accept(new Response(null, { status: 204 }));
+    await expect(pending).resolves.toBe(true);
+    expect(send.mock.calls).toEqual([[IPC.MINDSHUB_CREDENTIAL_CHANGED]]);
+    expect(closedSend).not.toHaveBeenCalled();
+    expect(closingSend).toHaveBeenCalledOnce();
+  });
+
+  it('also invalidates availability after credentials are cleared', async () => {
+    const send = vi.fn();
+    getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
+    installFetch();
+    await expect(pushMindsCredential(null, { invalidateCatalog: true })).resolves.toBe(true);
+    expect(send.mock.calls).toEqual([[IPC.MINDSHUB_CREDENTIAL_CHANGED]]);
+  });
+
+  it('does not announce a credential the server refused', async () => {
+    const send = vi.fn();
+    getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
+    installFetch(503);
+    await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('PUTs the value to the sidecar carrying the server bearer token', async () => {
     // authHeader() matters: a main-process fetch never passes through the
     // renderer's webRequest injection hook, so without it the PUT 401s under

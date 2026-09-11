@@ -40,6 +40,7 @@ vi.mock('../../../platform/host', () => ({
     get isWeb() { return deployment.isWeb; },
     codeModeAvailable: true,
     isMac: () => false,
+    getPlatform: () => 'win32',
     openExternal: vi.fn(),
     serverDiagnostics: spies.serverDiagnostics,
     checkForUpdates: spies.checkForUpdates,
@@ -192,6 +193,27 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     render(<Harness section="account" />);
     expect(await screen.findByText(/Sign in \/ Sign up to MindsHub/i)).toBeInTheDocument();
     expect(spies.getAccessToken).toHaveBeenCalled();
+  });
+
+  it('renders the Usage section (ENG-1782)', async () => {
+    // Signed out in this harness (getAccessToken → ''), so the section asks
+    // the person to sign in rather than showing numbers it cannot have.
+    render(<Harness section="usage" />);
+    expect(await screen.findByText('Sign in to see your usage')).toBeInTheDocument();
+    // Desktop has an Account section to send them to.
+    expect(screen.getByRole('button', { name: 'Go to Account' })).toBeInTheDocument();
+  });
+
+  it('offers no Go to Account on web, where there is no Account section to reach', async () => {
+    // `account` is not in WEB_NAV_IDS, so the deep link would resolve to the
+    // first visible section (Agent) on desktop widths and pop back to the
+    // section list on mobile. A button that silently goes somewhere else is
+    // worse than no button, and this section only became reachable on web
+    // when Usage joined the nav.
+    deployment.isWeb = true;
+    render(<Harness section="usage" />);
+    expect(await screen.findByText('Sign in to see your usage')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to Account' })).not.toBeInTheDocument();
   });
 });
 

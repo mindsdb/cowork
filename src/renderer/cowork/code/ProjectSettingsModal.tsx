@@ -215,7 +215,7 @@ export function ProjectSettingsModal({
     if (!open || !projectEngineId) return undefined;
     void codingCatalog.loadModels(projectEngineId);
     return undefined;
-  }, [codingCatalog.loadModels, open, projectEngineId]);
+  }, [codingCatalog.loadModels, codingCatalog.revision, open, projectEngineId]);
 
   const engines = codingCatalog.engines;
   const engineModelIds = codingCatalog.modelIds(projectEngineId) || [];

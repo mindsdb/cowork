@@ -12,39 +12,25 @@ import Ico from './Icons';
 import { Tooltip } from './ui';
 import { relativeAge } from '../lib/formatTime';
 
-const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
-
 function Row({ task, onSelect, onDelete }) {
   const [hover, setHover] = useState(false);
-  const [trashHover, setTrashHover] = useState(false);
   // The right edge holds either the time-ago OR the trash glyph —
   // never both. Same Y, same X, swapped on hover. We reserve no
   // dedicated trash column so the time stretches all the way to
-  // the end of the row when idle.
+  // the end of the row when idle. `hover` also gates which child
+  // renders, so it stays JS state (the row tint/colour ride it too).
   return (
     <div
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => { setHover(false); setTrashHover(false); }}
+      onMouseLeave={() => setHover(false)}
       onClick={onSelect}
+      className="flex items-center justify-between gap-2 py-[6px] px-[10px] rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] [transition:background_.1s_ease,color_.12s_ease]"
       style={{
-        display: 'flex',
-        alignItems: 'center', justifyContent: 'space-between',
-        gap: 8,
-        padding: '6px 10px',
-        borderRadius: 6,
         background: hover ? 'color-mix(in srgb, var(--ink) 4%, transparent)' : 'transparent',
-        cursor: 'pointer',
-        fontFamily: 'var(--font-body)',
         color: hover ? 'var(--ink)' : 'var(--ink-2)',
-        transition: 'background .1s ease, color .12s ease',
       }}
     >
-      <span style={{
-        fontSize: 13,
-        minWidth: 0, flex: 1,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
+      <span className="text-[13px] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {task.title || 'Untitled'}
       </span>
       {hover ? (
@@ -52,26 +38,14 @@ function Row({ task, onSelect, onDelete }) {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            onMouseEnter={() => setTrashHover(true)}
-            onMouseLeave={() => setTrashHover(false)}
             aria-label="Delete this task"
-            style={{
-              background: 'transparent', border: 0, padding: 0,
-              display: 'inline-flex', alignItems: 'center',
-              cursor: 'pointer',
-              color: trashHover ? 'var(--danger)' : 'var(--ink-3)',
-              transition: 'color 120ms ease',
-            }}
+            className="bg-transparent border-0 p-0 inline-flex items-center cursor-pointer text-ink-3 hover:text-danger [transition:color_120ms_ease]"
           >
             {Ico.trash(13)}
           </button>
         </Tooltip>
       ) : (
-        <span style={{
-          fontFamily: 'var(--font-mono)', fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.02em',
-          whiteSpace: 'nowrap',
-        }}>
+        <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.02em] whitespace-nowrap">
           {relativeAge(task.updatedAt || task.subtitle) || task.subtitle || ''}
         </span>
       )}
@@ -142,38 +116,17 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
     // were inset, which it isn't.
     <div
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 95,
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'stretch',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+      className="fixed inset-0 z-[95] flex items-start justify-stretch bg-[rgba(0,0,0,0.45)] [backdrop-filter:blur(2px)] [-webkit-backdrop-filter:blur(2px)] [-webkit-app-region:no-drag]"
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          // Hangs from the top, full window width, capped height.
-          // No radius (the panel runs edge-to-edge so corners don't
-          // exist visually). Border + shadow only on the bottom — top
-          // sits flush against the window chrome.
-          width: '100%',
-          maxHeight: 'min(560px, 86vh)',
-          background: 'var(--surface)',
-          borderBottom: '1px solid var(--line)',
-          borderRadius: 0,
-          boxShadow: 'var(--sh-popup)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
+        // Hangs from the top, full window width, capped height. No radius (runs
+        // edge-to-edge). Border + shadow on the bottom only — top sits flush
+        // against the window chrome.
+        className="w-full max-h-[min(560px,86vh)] bg-surface border-b border-t-0 border-x-0 border-solid border-line rounded-none shadow-sh-popup flex flex-col overflow-hidden font-[family-name:var(--font-body)]"
       >
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 14px',
-          borderBottom: '1px solid var(--line)',
-        }}>
-          <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.search(14)}</span>
+        <div className="flex items-center gap-[10px] py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line">
+          <span className="inline-flex text-ink-3">{Ico.search(14)}</span>
           <input
             ref={inputRef}
             type="search"
@@ -181,17 +134,9 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search recent tasks…"
             aria-label="Search recent tasks"
-            style={{
-              flex: 1, minWidth: 0,
-              background: 'transparent', border: 0, outline: 'none',
-              fontFamily: FONT_BODY, fontSize: 13.5,
-              color: 'var(--ink)',
-            }}
+            className="flex-1 min-w-0 bg-transparent border-0 [outline:none] font-[family-name:var(--font-body)] text-[13.5px] text-ink"
           />
-          <span style={{
-            fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-            letterSpacing: '0.04em',
-          }}>
+          <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]">
             {filtered.length} of {tasks.length}
           </span>
           <Tooltip content="Close">
@@ -199,54 +144,27 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
               type="button"
               onClick={onClose}
               aria-label="Close"
-              style={{
-                width: 26, height: 26, borderRadius: 6,
-                background: 'transparent', border: 0,
-                color: 'var(--ink-3)', cursor: 'pointer',
-                display: 'inline-grid', placeItems: 'center',
-                fontSize: 18, lineHeight: 1,
-              }}
+              className="w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 text-ink-3 cursor-pointer inline-grid place-items-center text-[18px] leading-none"
             >×</button>
           </Tooltip>
         </div>
 
-        <div style={{
-          flex: 1, overflowY: 'auto',
-          padding: '8px 6px',
-          display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
+        <div className="flex-1 overflow-y-auto py-2 px-[6px] flex flex-col gap-1">
           {filtered.length === 0 ? (
-            <div style={{
-              padding: '32px 20px', textAlign: 'center',
-              color: 'var(--ink-4)', fontSize: 13,
-            }}>
+            <div className="py-8 px-5 text-center text-ink-4 text-[13px]">
               {q ? 'No tasks match.' : 'No recent tasks yet.'}
             </div>
           ) : (
             groupByProject(filtered).map((group) => (
-              <div key={group.projectName} style={{
-                display: 'flex', flexDirection: 'column', gap: 1,
-                marginBottom: 6,
-              }}>
+              <div key={group.projectName} className="flex flex-col gap-px mb-[6px]">
                 {/* Project header — small uppercase mono label with a
                     count chip. Reads as a section divider, not as a
                     clickable row, so each task underneath stays the
                     primary affordance. */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 12px 4px',
-                  fontFamily: FONT_MONO, fontSize: 10.5,
-                  letterSpacing: '0.12em', textTransform: 'uppercase',
-                  color: 'var(--ink-4)',
-                }}>
-                  <span style={{
-                    minWidth: 0,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{projectLabelByName(projects, group.projectName)}</span>
-                  <span style={{
-                    flex: 1, height: 1, background: 'var(--line)',
-                  }} />
-                  <span style={{ color: 'var(--ink-4)' }}>{group.items.length}</span>
+                <div className="flex items-center gap-2 pt-2 px-3 pb-1 font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.12em] uppercase text-ink-4">
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabelByName(projects, group.projectName)}</span>
+                  <span className="flex-1 h-px bg-line" />
+                  <span className="text-ink-4">{group.items.length}</span>
                 </div>
                 {group.items.map((t) => (
                   <Row

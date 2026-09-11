@@ -5,6 +5,7 @@ import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
+import { debInstallStep } from '../../../shared/update-banner';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
@@ -292,6 +293,7 @@ export default function Sidebar({
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
+  const workspaceReturnFocusRef = useRef(null);
 
   // Footer states. The status pill wins over everything (Electron-only, the
   // server needs attention); otherwise a signed-in user gets the account row.
@@ -585,12 +587,6 @@ export default function Sidebar({
           />
         )}
 
-        {/* The MindsHub workspace this session is scoped to. Above the CTA
-            rather than inside the account menu: the current workspace has to be
-            readable without opening anything, and the account menu is where the
-             organization selector lands. Renders nothing until the gate is on. */}
-        {accountUser && <WorkspaceSelector user={accountUser} />}
-
         {/* The primary action follows the active workspace. Code tasks stay
             distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
@@ -863,7 +859,7 @@ export default function Sidebar({
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
-                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and open it to update`}>
+                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and ${updateBanner.debInstaller ? debInstallStep(updateBanner.version) : 'open it to update'}`}>
                   <button
                     type="button"
                     onClick={() => onUpdateAction?.(updateBanner.action)}
@@ -898,6 +894,13 @@ export default function Sidebar({
             </button>
           );
         })()}
+
+        {/* The MindsHub workspace this session is scoped to, docked with the
+            account row rather than at the top of the rail. A workspace is a
+            container inside the organization, not the thing a reader starts a
+            task from, and the top of the rail is where the first task begins.
+            Renders nothing until the org has a second workspace to move to. */}
+        {accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so
@@ -946,6 +949,7 @@ export default function Sidebar({
                 </Tooltip>
                 <Tooltip content="Settings">
                   <button
+                    ref={workspaceReturnFocusRef}
                     className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                     onClick={() => onNavigate('settings:backend')}
                     aria-label="Settings"
@@ -972,6 +976,7 @@ export default function Sidebar({
                     floating corner button — see App.jsx. */}
                 <Tooltip content="Settings">
                   <button
+                    ref={workspaceReturnFocusRef}
                     className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
                     onClick={() => onNavigate('settings')}
                     aria-label="Open Settings"
@@ -982,6 +987,7 @@ export default function Sidebar({
               </>
             ) : (
               <button
+                ref={workspaceReturnFocusRef}
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings')}
                 aria-label="Settings"
