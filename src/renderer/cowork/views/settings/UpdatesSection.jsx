@@ -5,6 +5,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
+import { versionRows } from '../../lib/versionRows';
 import { shellAutoOwnsBanner, debInstallStep } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
@@ -12,15 +13,6 @@ const UPDATE_CARD_CLASS =
   'flex items-center gap-3 flex-wrap py-2.5 px-3 border border-solid ' +
   'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
-
-// Naming the ring makes an rc Server version self-explanatory in bug reports:
-// staging-ring builds (preview/stable) follow the pre-release server stream.
-const BUILD_KIND_LABELS = {
-  dev: 'dev (local source)',
-  preview: 'preview (staging update ring)',
-  stable: 'stable (staging update ring)',
-  prod: 'prod',
-};
 
 // The Updates settings section: current-version readout plus the on-demand
 // update check/apply flow. Self-contained — it owns every piece of state its
@@ -112,29 +104,18 @@ export default function UpdatesSection({
         >
           {(() => {
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
-            // App shell = installed Electron shell (changes only on reinstall).
             const shellVer = versionInfo.app || baked;
-            // The running renderer's own baked version is authoritative for the
-            // UI version — it's compiled into whichever bundle actually loaded
-            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
-            // can lag the loaded renderer (OTA off, missing cache, post-
-            // rollback), so it only informs the source label, never the version.
+            // Derived the same way versionRows does it, and for the same
+            // reason — see lib/versionRows.js.
             const uiVer = baked || versionInfo.ui || '';
-            const uiSource = versionInfo.source === 'ota' ? 'OTA'
-              : versionInfo.source === 'web' ? 'web' : 'bundled';
             // Unified "content" headline = release week of the newest of the
             // hot-updated components (UI + server + agent). App shell is
             // excluded — it updates via reinstall and is shown on its own line.
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
-            const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
-            const rows = [
-              ['App shell', shellVer || '—'],
-              ...(buildLabel ? [['Build', buildLabel]] : []),
-              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
-              ['Server', serverVersion || '—'],
-              ['Agent', antonVersion || '—'],
-            ];
+            const rows = versionRows({
+              versionInfo, bakedVersion: baked, serverVersion, antonVersion,
+            });
             const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
             return (
               <div className="flex flex-col gap-2 text-sm text-ink">
