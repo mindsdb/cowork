@@ -4,7 +4,7 @@
 // start time, log tail). Exit code + offline-specific causes / hints
 // only surface when the backend isn't currently up.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ico from './Icons';
 import { Alert, Button, Tooltip } from './ui';
 import { Modal } from './ui/Modal';
@@ -55,7 +55,8 @@ export default function ServerOfflineHelpModal({
 
   const error = diag?.lastError;
   // Scrubbed: this is raw sidecar output and it is about to be on screen.
-  const log = scrubLog(diag?.recentLog).trim();
+  // Memoised because the scrub walks the whole 32KB tail on every render.
+  const log = useMemo(() => scrubLog(diag?.recentLog).trim(), [diag?.recentLog]);
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt

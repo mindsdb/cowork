@@ -51,6 +51,54 @@ describe('scrubLog', () => {
     expect(out).toMatch(/localhost:6379/);
   });
 
+  it('redacts the credential in an Authorization header, not the scheme word', () => {
+    // Stamping [redacted] on the scheme and leaving the credential is worse
+    // than doing nothing: the line reads as handled.
+    for (const line of [
+      'Authorization: Token 9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b',
+      'Authorization: Basic dXNlcjpodW50ZXIyc2VjcmV0',
+      'authorization: bearer abcdef0123456789abcdef',
+    ]) {
+      const out = scrubLog(line);
+      expect(out).not.toMatch(/9944b09199c62bcf|dXNlcjpodW50ZXIyc2VjcmV0|abcdef0123456789/);
+      expect(out).toMatch(/^[Aa]uthorization: /);
+    }
+  });
+
+  it('redacts a quoted value that contains spaces', () => {
+    expect(scrubLog('password="hunter two three"')).not.toMatch(/hunter two three/);
+    expect(scrubLog("password='hunter two three'")).not.toMatch(/hunter two three/);
+    expect(scrubLog('{"api_key": "AIza abc def"}')).not.toMatch(/AIza abc def/);
+  });
+
+  it('leaves the identifiers a diagnostics log exists to carry', () => {
+    // The reason to keep the whole tail is that these lines explain failures.
+    // Blanking every *_key would take the explanation with the secret.
+    for (const line of [
+      'POST /api/v1/messages idempotency_key=9f86d081 202 in 31ms',
+      'index scan on sort_key=ts partition_key=org rows=412',
+      'IntegrityError: FOREIGN KEY constraint failed; foreign_key=tasks.id',
+      'Column(id, String(), primary_key=True, nullable=False)',
+    ]) {
+      expect(scrubLog(line)).toBe(line);
+    }
+  });
+
+  it('still redacts the secret-bearing *_key names', () => {
+    const out = scrubLog([
+      'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI',
+      'privateKey=MIIEvQIBADANBgkqhkiG9w0B',
+      'signingKey=s3cr3tsigningmaterial',
+    ].join('\n'));
+    expect(out).not.toMatch(/wJalrXUtnFEMI|MIIEvQIBADAN|s3cr3tsigningmaterial/);
+  });
+
+  it('never reaches across a line break for its value', () => {
+    const out = scrubLog('ERROR missing password:\nINFO listening on 127.0.0.1:26866');
+    expect(out).toContain('INFO listening on 127.0.0.1:26866');
+    expect(scrubLog('GET /api/v1/secret: 200 OK in 13ms')).toContain('200 OK');
+  });
+
   it('does not redact a counter that merely contains a secret word', () => {
     const line = 'token_count=512 and auth_mode=local';
     expect(scrubLog(line)).toBe(line);

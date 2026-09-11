@@ -13,27 +13,47 @@ const DASH = '—';
 
 // Ordered most specific first. Each keeps enough shape for the line to stay
 // readable — a reader still sees that a key was present and where.
+//
+// `[^\S\n]` rather than `\s` throughout: `\s` matches a newline, so a line
+// ending in a bare keyword would swallow the next line's first token.
+
+// Names whose value is a secret. A bare `key` is deliberately NOT here: a
+// sidecar built on SQLModel and Alembic logs idempotency_key, primary_key,
+// sort_key and foreign_key constantly, and blanking those takes the
+// explanation out of the log along with nothing of value. The prefixes below
+// cover the real credential names, AWS_SECRET_ACCESS_KEY included.
+const SECRET_NAME =
+  '(?:api|secret|private|signing|encryption|access|auth)[_-]?key'
+  + '|secret|password|passwd|pwd|token|credential|cookie|session|signature';
+
 const SECRET_PATTERNS = [
   // DSN credentials: scheme://user:secret@host — keep user and host. The
   // username is optional because `redis://:pass@host` is the normal form.
   [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]*:)([^\s@/]+)(@)/gi, `$1${REDACTED}$3`],
-  // Bearer / token headers.
-  [/\b(bearer\s+)[\w.\-~+/]{8,}={0,2}/gi, `$1${REDACTED}`],
+  // Authorization headers, before the generic rule. The generic one would
+  // consume the scheme word and stamp [redacted] beside an intact credential,
+  // which reads as handled and is worse than leaving the line alone.
+  [/\b(authorization[^\S\n]*[=:][^\S\n]*)(?:(bearer|basic|token|digest)[^\S\n]+)?\S+/gi,
+    (_m, head, scheme) => `${head}${scheme ? `${scheme} ` : ''}${REDACTED}`],
+  // Bearer tokens anywhere else.
+  [/\b(bearer[^\S\n]+)[\w.\-~+/]{8,}={0,2}/gi, `$1${REDACTED}`],
   // Provider key shapes that are recognisable on their own.
   [/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, REDACTED],
   [/\b(gh[pousr]_[A-Za-z0-9]{16,})/g, REDACTED],
-  // key=value / key: value pairs whose NAME says the value is a secret.
-  //
-  // The name is matched with its prefix and an optional quote, not on a word
-  // boundary: `_` is a word character, so `\b` would never match
-  // GITHUB_CLIENT_SECRET or AWS_SECRET_ACCESS_KEY, which is exactly how these
-  // arrive — every name in main/credential-provisioning.ts is spread into the
-  // sidecar's environment. Both quote styles are admitted because the sidecar
-  // is Python, whose dict and repr output is single-quoted.
-  // Over-redaction is the safe direction here: a name ending in `_key` is
-  // taken as a secret even though a few are not.
-  [/((?:^|[^\w-])["']?[\w-]*(?:api[_-]?key|[_-]key|secret|password|passwd|pwd|token|authorization))(["']?\s*[=:]\s*)(["']?)([^\s"',;]+)\3/gim,
-    `$1$2$3${REDACTED}$3`],
+  // Quoted values, which may contain spaces. Python's dict and repr output is
+  // single-quoted, so both styles are admitted.
+  [new RegExp(
+    `((?:^|[^\\w\\-/])["']?[\\w-]*(?:${SECRET_NAME}))(["']?[^\\S\n]*[=:][^\\S\n]*)(["'])([^"'\n]*)\\3`,
+    'gim'), `$1$2$3${REDACTED}$3`],
+  // Bare values. A name preceded by `/` is skipped: `/api/v1/secret: 200` is a
+  // request path and a status code, not a key and a secret.
+  // The name is matched with its prefix, not on a word boundary:
+  // `_` is a word character, so `\b` would never match GITHUB_CLIENT_SECRET,
+  // and main/credential-provisioning.ts spreads exactly those names into the
+  // sidecar's environment.
+  [new RegExp(
+    `((?:^|[^\\w\\-/])[\\w-]*(?:${SECRET_NAME}))([^\\S\n]*[=:][^\\S\n]*)([^\\s"',;]+)`,
+    'gim'), `$1$2${REDACTED}`],
 ];
 
 /**

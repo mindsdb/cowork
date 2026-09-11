@@ -45,9 +45,18 @@ Assembled by `src/renderer/cowork/lib/diagnostics.js`:
 
 ## The scrub
 
-`scrubLog()` redacts secret-shaped values — DSN credentials, bearer tokens,
-recognisable provider key formats, and `key=value` pairs whose name says the
-value is a secret — before the text is shown or copied.
+`scrubLog()` redacts secret-shaped values — DSN credentials, `Authorization`
+headers, recognisable provider key formats, and `key=value` pairs whose name
+says the value is a secret — before the text is shown or copied. Quoted values
+are covered in both quote styles, since the sidecar is Python.
+
+The name list is a suffix match with a prefix allowed, because `_` is a word
+character and every real credential name arrives prefixed
+(`GITHUB_CLIENT_SECRET`, `AWS_SECRET_ACCESS_KEY`). A bare `key` is deliberately
+**not** on the list: a SQLModel and Alembic sidecar logs `idempotency_key`,
+`primary_key`, `sort_key` and `foreign_key` constantly, and blanking those
+takes the explanation out of the log without removing a secret. Names ending
+in `_key` are covered through an explicit prefix set instead.
 
 It runs at every renderer consumer of the tail, not just the clipboard: the
 backend settings panel and the offline help modal render the same text. If you

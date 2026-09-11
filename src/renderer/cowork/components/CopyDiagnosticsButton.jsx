@@ -28,6 +28,16 @@ export default function CopyDiagnosticsButton({ requestId, code, health }) {
     // The gather is two awaits; without this a double click runs both twice.
     if (busy.current) return;
     busy.current = true;
+    try {
+      await gather();
+    } finally {
+      // Without the finally a throw anywhere above would leave the guard set
+      // and the button inert for good, with no label to say so.
+      busy.current = false;
+    }
+  };
+
+  const gather = async () => {
     const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
     // Degrading is right — a missing version must not cost the user the id and
     // the log — but the cause is named so a support paste reading "—" can be
@@ -48,7 +58,6 @@ export default function CopyDiagnosticsButton({ requestId, code, health }) {
       log: diag?.recentLog,
     });
     setState(await copyText(text) ? 'copied' : 'failed');
-    busy.current = false;
   };
 
   // Settles back to the idle label on its own, like the version copy control

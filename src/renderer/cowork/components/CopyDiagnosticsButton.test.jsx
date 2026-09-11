@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const serverDiagnostics = vi.fn();
@@ -66,6 +66,34 @@ describe('CopyDiagnosticsButton', () => {
     expect(text).toContain('Reference: r');
     expect(text).toContain('Server: 4.5.6');
     expect(text).not.toContain('Recent server log:');
+  });
+
+  it('gathers once for a double click', async () => {
+    let release;
+    serverDiagnostics.mockReturnValue(new Promise((r) => { release = () => r({ recentLog: 'x' }); }));
+    render(<CopyDiagnosticsButton requestId="r" code="anton_error" health={health} />);
+    const button = screen.getByRole('button', { name: 'Copy diagnostics' });
+
+    await userEvent.click(button);
+    await userEvent.click(button);
+    release();
+
+    await screen.findByRole('button', { name: 'Copied' });
+    expect(copyText).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles back to the idle label rather than sitting on Copied', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<CopyDiagnosticsButton requestId="r" code="anton_error" health={health} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      await screen.findByRole('button', { name: 'Copied' });
+
+      await act(async () => { vi.advanceTimersByTime(1600); });
+      expect(screen.getByRole('button', { name: 'Copy diagnostics' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says so when the clipboard write fails rather than looking inert', async () => {

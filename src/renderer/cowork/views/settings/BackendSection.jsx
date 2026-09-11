@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Ico from '../../components/Icons';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
@@ -99,7 +99,8 @@ export default function BackendSection({
 
   const error = diag?.lastError;
   // Scrubbed: this is raw sidecar output and it is about to be on screen.
-  const log = scrubLog(diag?.recentLog).trim();
+  // Memoised because the scrub walks the whole 32KB tail on every render.
+  const log = useMemo(() => scrubLog(diag?.recentLog).trim(), [diag?.recentLog]);
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
