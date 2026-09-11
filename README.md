@@ -355,7 +355,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 ### Provider validation is answered in main, not proxied to the sidecar
 
 `settings:validate` is handled entirely in the main process. The IPC handler is in
-`src/main/index.ts` and the validators it calls (`validateMinds`,
+`src/main/app.ts` and the validators it calls (`validateMinds`,
 `validateOpenAICompatible`, `validateAnthropic`) live in
 `src/main/provider-validation.ts`. It never reaches the Python sidecar. The same
 logic also lives in the sidecar (`cowork-server/cowork/services/providers.py`), and
@@ -438,7 +438,7 @@ Four consequences worth knowing:
   over-the-air update and its rollback, the sidebar's stop/start, and the
   installer's first start on a fresh machine. Wiring the push into each of those
   is how one gets missed, so it hangs off the single function they all call.
-  `src/main/index.ts` registers `handOffMindsCredentialToStartedSidecar` with
+  `src/main/app.ts` registers `handOffMindsCredentialToStartedSidecar` with
   `setServerStartedHook`, and `startServer` awaits it after every successful
   start (`src/main/server-process.ts`). That hook also releases the wake barrier
   below, because a sidecar restarting mid-hand-over is exactly when a turn is

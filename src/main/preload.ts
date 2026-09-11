@@ -61,7 +61,7 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
   oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 
-  // MindsHub onboarding — see main/index.ts for the rationale on
+  // MindsHub onboarding — see main/app.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),

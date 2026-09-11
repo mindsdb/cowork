@@ -1,5 +1,5 @@
 // Per-channel Electron app identity, IMPORTED FOR ITS SIDE EFFECT. Must be the
-// FIRST local import in src/main/index.ts: it calls app.setName() to pick the
+// FIRST local import in src/main/app.ts: it calls app.setName() to pick the
 // userData dir, and modules like token-store.ts read app.getPath('userData') at
 // load time, so the name has to be set before any of them import.
 //
