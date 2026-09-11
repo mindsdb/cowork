@@ -178,17 +178,11 @@ function ConnectorSection({ title, count, connectors, onPick, className = 'mb-[1
   );
 }
 
-// Cloud only. These connectors come back flagged `cloud_available: false`;
-// they're listed rather than hidden so the directory shows the real catalogue,
-// and picking one opens the download-the-desktop-app modal instead of a form.
-const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
-
-// Its counterpart: what this deployment can actually connect right now. Named
-// for the deployment rather than "Featured" because on cloud it isn't a curated
-// subset — it is the whole of what works here.
+// Named for the deployment rather than "Featured" because on cloud it isn't
+// a curated subset — it is the whole of what works here.
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
-export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
+export default function ConnectorPicker({ open, onPick, onClose }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
@@ -210,13 +204,11 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
     setQuery('');
     setCategory('all');
     setSortBy('default');
-    // Cloud: also pull what only the desktop app can run, so the directory
-    // can list it under DESKTOP_ONLY_TITLE. Desktop already gets everything.
-    fetchConnectors({ includeUnavailable: orgMode })
+    fetchConnectors()
       .then((list) => setConnectors(Array.isArray(list) ? list : []))
       .catch((e) => setError(e?.message || 'Failed to load connectors'))
       .finally(() => setLoading(false));
-  }, [open, orgMode]);
+  }, [open]);
 
   // Auto-focus the search input when the picker opens.
   useEffect(() => {
@@ -257,17 +249,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
       return matchesQuery && matchesCategory;
     });
   }, [connectors, query, category]);
-
-  // Desktop-only connectors are flagged by the server (cloud mode only).
-  // A server that doesn't send the flag leaves `available` as the whole list,
-  // so desktop and older cloud deployments render exactly as before.
-  const { available, desktopOnly } = useMemo(() => {
-    const a = [];
-    const d = [];
-    for (const c of filtered) (c.cloud_available === false ? d : a).push(c);
-    d.sort((x, y) => (x.label || x.id).localeCompare(y.label || y.id));
-    return { available: a, desktopOnly: d };
-  }, [filtered]);
 
   return (
     <Modal
@@ -351,9 +332,9 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
         </div>
 
         {/* This deployment's server already scopes the /connectors/specs/
-            response to what auth's catalogue authorizes (currently Google
-            Drive + Gmail) — this note just explains the short list rather
-            than doing any filtering of its own. */}
+            response to what auth's catalogue authorizes (gmail, google_drive,
+            linear, github, posthog, supabase) — this note just explains the
+            short list rather than doing any filtering of its own. */}
         {orgMode && (
           <div className="px-4 pb-3 bg-surface shrink-0">
             <Alert variant="info">
@@ -407,7 +388,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               both modes operate on the same already-narrowed list. */}
           {sortBy === 'name' ? (
             <div className={GRID}>
-              {[...available]
+              {[...filtered]
                 .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id))
                 .map((c) => (
                   <ConnectorTile key={c.id} connector={c} onPick={onPick} />
@@ -417,11 +398,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
             // Cloud runs only a handful of connectors — too few to be worth
             // splitting across category sections, where each section would
             // hold one tile and the same connector would also appear under
-            // Featured. Show all of them as one block instead; the desktop
-            // catalogue below is what gives the directory its body.
+            // Featured. Show all of them as one block instead.
             <ConnectorSection
               title={CLOUD_AVAILABLE_TITLE}
-              connectors={available}
+              connectors={filtered}
               onPick={onPick}
               className="mb-6"
             />
@@ -433,12 +413,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               {category === 'all' && !query.trim() && (
                 <ConnectorSection
                   title="Featured"
-                  connectors={available.filter((c) => c.featured)}
+                  connectors={filtered.filter((c) => c.featured)}
                   onPick={onPick}
                   className="mb-6"
                 />
               )}
-              {groupByCategory(available).map(([cat, list]) => (
+              {groupByCategory(filtered).map(([cat, list]) => (
                 <ConnectorSection
                   key={cat}
                   title={categoryLabel(cat)}
@@ -449,12 +429,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
               ))}
             </>
           )}
-          <ConnectorSection
-            title={DESKTOP_ONLY_TITLE}
-            count={desktopOnly.length}
-            connectors={desktopOnly}
-            onPick={onDesktopOnly}
-          />
         </div>
     </Modal>
   );

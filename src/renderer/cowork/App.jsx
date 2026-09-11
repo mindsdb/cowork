@@ -34,7 +34,6 @@ import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -1306,8 +1305,6 @@ function AppCore() {
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
   } = useThemeSkin();
-  // Non-null = show the "coming soon to Cloud" popup for this feature name.
-  const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
@@ -5099,13 +5096,6 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
-        // Cloud: the directory also lists connectors only the desktop app can
-        // run. Picking one closes the directory and offers the download rather
-        // than opening a connect form that couldn't work here.
-        onDesktopOnly={(c) => {
-          setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || 'This connector');
-        }}
       />
 
       <ThemeModal
@@ -5115,11 +5105,6 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
-      />
-
-      <ComingSoonModal
-        feature={comingSoonFeature}
-        onClose={() => setComingSoonFeature(null)}
       />
 
       {!host.isWeb && (

@@ -2,11 +2,11 @@
 //   • desktop — Featured on top, then every category; a featured connector
 //     appears in both, which reads as a shortcut across ~213 connectors
 //   • cloud — too few connectors to bother with category sections, so the
-//     available ones are one "Available here" block, followed by the
-//     desktop-only catalogue whose tiles hand the pick to the download path
+//     available ones are one "Available here" block. The server already
+//     scopes the response to the cloud allow-list, so nothing else is listed.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { setOrgMode } from '../../../lib/orgMode';
 
 const fetchConnectors = vi.fn();
@@ -27,7 +27,6 @@ const DRIVE = {
 };
 const SLACK = { id: 'slack', label: 'Slack', category: 'communication' };
 
-const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
 // The section heading and its grid are siblings, so scope tile lookups to the
@@ -78,53 +77,34 @@ describe('ConnectorPicker grouping', () => {
     expect(screen.queryByText('Files')).toBeNull();
   });
 
-  it('asks the server for desktop-only connectors in cloud mode only', async () => {
+  it('asks the server for the plain connector list regardless of mode', async () => {
     fetchConnectors.mockResolvedValue([GMAIL]);
 
     setOrgMode(true);
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText('Gmail');
-    expect(fetchConnectors).toHaveBeenCalledWith({ includeUnavailable: true });
+    expect(fetchConnectors).toHaveBeenCalledWith();
 
     fetchConnectors.mockClear();
     setOrgMode(false);
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
     await screen.findAllByText('Gmail');
-    expect(fetchConnectors).toHaveBeenCalledWith({ includeUnavailable: false });
+    expect(fetchConnectors).toHaveBeenCalledWith();
   });
 
-  it('groups cloud-unavailable connectors and routes their pick to onDesktopOnly', async () => {
-    const onPick = vi.fn();
-    const onDesktopOnly = vi.fn();
+  it('never lists a desktop-only catalogue on cloud, even if the server sent one', async () => {
     fetchConnectors.mockResolvedValue([
       GMAIL,
       { ...SLACK, cloud_available: false },
     ]);
     setOrgMode(true);
 
-    render(
-      <ConnectorPicker open onPick={onPick} onDesktopOnly={onDesktopOnly} onClose={vi.fn()} />,
-    );
-
-    await screen.findByText('Gmail');
-    const desktop = section(DESKTOP_ONLY_TITLE);
-    expect(within(desktop).getByText('Slack')).toBeInTheDocument();
-    // Gmail is available on cloud, so it must not be in the desktop-only group.
-    expect(within(desktop).queryByText('Gmail')).toBeNull();
-
-    fireEvent.click(within(desktop).getByText('Slack'));
-    expect(onDesktopOnly).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'slack' }),
-    );
-    expect(onPick).not.toHaveBeenCalled();
-  });
-
-  it('shows no desktop-only group when every connector is available', async () => {
-    fetchConnectors.mockResolvedValue([GMAIL, SLACK]);
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
-    // Featured + category on desktop, so Gmail matches more than once.
-    await screen.findAllByText('Gmail');
-    expect(screen.queryByText(DESKTOP_ONLY_TITLE)).toBeNull();
+    await screen.findByText('Gmail');
+    // Cloud's server-side allow-list already excludes anything it doesn't
+    // support; the picker doesn't re-split or surface a desktop-only group.
+    expect(within(section(CLOUD_AVAILABLE_TITLE)).getByText('Slack')).toBeInTheDocument();
+    expect(screen.queryByText('Connectors available in Cowork Desktop App')).toBeNull();
   });
 });
