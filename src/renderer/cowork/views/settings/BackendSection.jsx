@@ -3,6 +3,7 @@ import Ico from '../../components/Icons';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
+import { scrubLog } from '../../lib/diagnostics';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // Port / Exit / Started chips in the status card.
@@ -97,7 +98,8 @@ export default function BackendSection({
   }
 
   const error = diag?.lastError;
-  const log = (diag?.recentLog || '').trim();
+  // Scrubbed: this is raw sidecar output and it is about to be on screen.
+  const log = scrubLog(diag?.recentLog).trim();
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt

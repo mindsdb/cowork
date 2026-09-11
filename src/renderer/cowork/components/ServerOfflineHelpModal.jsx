@@ -10,6 +10,7 @@ import { Alert, Button, Tooltip } from './ui';
 import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
+import { scrubLog } from '../lib/diagnostics';
 
 export default function ServerOfflineHelpModal({
   open,
@@ -53,7 +54,8 @@ export default function ServerOfflineHelpModal({
   // Esc + backdrop dismissal are handled by <Modal>.
 
   const error = diag?.lastError;
-  const log = (diag?.recentLog || '').trim();
+  // Scrubbed: this is raw sidecar output and it is about to be on screen.
+  const log = scrubLog(diag?.recentLog).trim();
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
