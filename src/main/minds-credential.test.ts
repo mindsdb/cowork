@@ -70,7 +70,7 @@ function installFetch(status = 200): Call[] {
   return calls;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   settleMindsResumeCredentialGate(true);
   vi.clearAllMocks();
   getAllWindows.mockReturnValue([]);
@@ -81,6 +81,10 @@ beforeEach(() => {
   (getServerPort as Mock).mockReturnValue(8765);
   (getRefreshToken as Mock).mockReturnValue('a-refresh-token');
   (isAccessTokenExpired as Mock).mockReturnValue(false);
+  // Drain a pending invalidation left by a deliberately refused prior test.
+  installFetch();
+  await pushMindsCredential(null);
+  vi.clearAllMocks();
 });
 
 describe('isMindsCredentialSidecarReachable', () => {
@@ -145,7 +149,7 @@ describe('pushMindsCredential', () => {
     ]);
     let accept!: (response: Response) => void;
     globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { accept = resolve; }));
-    const pending = pushMindsCredential('private-credential');
+    const pending = pushMindsCredential('private-credential', { invalidateCatalog: true });
     await Promise.resolve();
     expect(send).not.toHaveBeenCalled();
     accept(new Response(null, { status: 204 }));
@@ -159,7 +163,7 @@ describe('pushMindsCredential', () => {
     const send = vi.fn();
     getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
     installFetch();
-    await expect(pushMindsCredential(null)).resolves.toBe(true);
+    await expect(pushMindsCredential(null, { invalidateCatalog: true })).resolves.toBe(true);
     expect(send.mock.calls).toEqual([[IPC.MINDSHUB_CREDENTIAL_CHANGED]]);
   });
 
@@ -167,7 +171,7 @@ describe('pushMindsCredential', () => {
     const send = vi.fn();
     getAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
     installFetch(503);
-    await expect(pushMindsCredential('private-credential')).resolves.toBe(false);
+    await expect(pushMindsCredential('private-credential', { invalidateCatalog: true })).resolves.toBe(false);
     expect(send).not.toHaveBeenCalled();
   });
 

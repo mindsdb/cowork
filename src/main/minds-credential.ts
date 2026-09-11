@@ -83,6 +83,12 @@ export async function hasUserSuppliedMindsCredential(): Promise<boolean> {
 // older, slower request can never finish after a newer refresh/logout handoff
 // and restore the credential the newer operation just replaced.
 let _credentialPushTail: Promise<void> = Promise.resolve();
+let _catalogInvalidationPending = false;
+
+export interface MindsCredentialSyncOptions {
+  /** Account/key/organization changes and sidecar starts, never token rotation. */
+  invalidateCatalog?: boolean;
+}
 
 function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
   const queued = _credentialPushTail.then(operation);
@@ -97,8 +103,8 @@ function enqueueCredentialPush<T>(operation: () => Promise<T>): Promise<T> {
  * report success and schedules a handoff-only retry on failure; boot and sign-in
  * use the same signal to avoid claiming the sidecar is configured prematurely.
  */
-export function pushMindsCredential(value: string | null): Promise<boolean> {
-  return enqueueCredentialPush(() => pushMindsCredentialNow(value));
+export function pushMindsCredential(value: string | null, options?: MindsCredentialSyncOptions): Promise<boolean> {
+  return enqueueCredentialPush(() => pushMindsCredentialNow(value, options));
 }
 
 /**
@@ -113,7 +119,14 @@ export function isMindsCredentialSidecarReachable(): boolean {
   return isServerRunning() || isServerStarting();
 }
 
-async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
+async function pushMindsCredentialNow(
+  value: string | null,
+  { invalidateCatalog = false }: MindsCredentialSyncOptions = {},
+): Promise<boolean> {
+  // Keep a real change pending across a refused/offline handoff. The next
+  // successful retry must notify, even when it arrives on a refresh tick.
+  // This state is owned by the PUT queue, not by rotating JWT values.
+  if (invalidateCatalog) _catalogInvalidationPending = true;
   if (!isServerRunning() && !isServerStarting()) return false;
   const port = getServerPort();
   if (!port) return false;
@@ -141,14 +154,16 @@ async function pushMindsCredentialNow(value: string | null): Promise<boolean> {
       }
       return false;
     }
-    // Auth notifications happen before this PUT. Catalogue readers must wait
-    // until the server can actually use the new credential. Never send its value.
-    for (const window of BrowserWindow.getAllWindows()) {
-      try {
-        if (!window.isDestroyed()) window.webContents.send(IPC.MINDSHUB_CREDENTIAL_CHANGED);
-      } catch {
-        // A window closing during delivery must not turn a successful
-        // credential handover into an authentication failure.
+    // Routine refreshes still deliver credentials but must not wipe a loaded
+    // catalogue. Publish actual changes only after acceptance, without secrets.
+    if (_catalogInvalidationPending) {
+      _catalogInvalidationPending = false;
+      for (const window of BrowserWindow.getAllWindows()) {
+        try {
+          if (!window.isDestroyed()) window.webContents.send(IPC.MINDSHUB_CREDENTIAL_CHANGED);
+        } catch {
+          // A closing window must not turn handover into an auth failure.
+        }
       }
     }
     return true;
@@ -173,20 +188,20 @@ export interface MindsCredentialSyncResult {
 }
 
 /** Resolve and synchronize once, retaining whether the selected value exists. */
-export function syncMindsCredentialSelection(): Promise<MindsCredentialSyncResult> {
+export function syncMindsCredentialSelection(options?: MindsCredentialSyncOptions): Promise<MindsCredentialSyncResult> {
   // Resolve inside the queue. Otherwise an older sync stalled on an async
   // keychain read could enqueue its stale selection after a newer refresh.
   return enqueueCredentialPush(async () => {
     const credential = await resolveMindsCredentialSelection();
     return {
-      landed: await pushMindsCredentialNow(credential.value),
+      landed: await pushMindsCredentialNow(credential.value, options),
       usable: credential.usable,
     };
   });
 }
 
-export async function syncMindsCredential(): Promise<boolean> {
-  return (await syncMindsCredentialSelection()).landed;
+export async function syncMindsCredential(options?: MindsCredentialSyncOptions): Promise<boolean> {
+  return (await syncMindsCredentialSelection(options)).landed;
 }
 
 /**
@@ -194,8 +209,8 @@ export async function syncMindsCredential(): Promise<boolean> {
  * Unlike `syncMindsCredential`, clearing the sidecar successfully returns false:
  * a resumed turn cannot proceed merely because an empty hand-over succeeded.
  */
-export async function syncUsableMindsCredential(): Promise<boolean> {
-  const result = await syncMindsCredentialSelection();
+export async function syncUsableMindsCredential(options?: MindsCredentialSyncOptions): Promise<boolean> {
+  const result = await syncMindsCredentialSelection(options);
   return result.usable && result.landed;
 }
 
@@ -233,7 +248,7 @@ export async function establishMindsCredential(
 /** Store a user-supplied MindsHub key and hand it to the sidecar immediately. */
 export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
   await setMindsApiKey(key);
-  const landed = await pushMindsCredential(key);
+  const landed = await pushMindsCredential(key, { invalidateCatalog: true });
   if (landed) settleMindsResumeCredentialGate(true);
   return landed;
 }
@@ -247,7 +262,7 @@ export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
  */
 export async function clearUserSuppliedMindsKey(): Promise<boolean> {
   await forgetStoredKey();
-  const result = await syncMindsCredentialSelection();
+  const result = await syncMindsCredentialSelection({ invalidateCatalog: true });
   if (result.usable && result.landed) settleMindsResumeCredentialGate(true);
   return result.landed;
 }
@@ -280,5 +295,5 @@ async function forgetStoredKey(): Promise<void> {
  */
 export async function forgetMindsCredential(): Promise<void> {
   await forgetStoredKey();
-  await pushMindsCredential(null);
+  await pushMindsCredential(null, { invalidateCatalog: true });
 }
