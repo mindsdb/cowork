@@ -71,14 +71,15 @@ export function freeDismissStep(fractionLeft) {
   return dismissStep(fractionLeft, FREE_DISMISS_STEPS_FRACTION);
 }
 
-/** 620000 → "620K", 1200000 → "1.2M", 5000000 → "5M", 900 → "900". */
-export function formatTokensShort(value) {
-  const n = Number(value) || 0;
-  const trim = (x) => String(Math.round(x * 10) / 10);
-  // From 999,950 the K form rounds to "1000K"; that is "1M".
-  if (n >= 999_950) return `${trim(n / 1_000_000)}M`;
-  if (n >= 1_000) return `${trim(n / 1_000)}K`;
-  return String(Math.round(n));
+/** 0.124 → "12%", 0.004 → "0.4%", 1 → "100%".
+ *
+ *  Keeps one decimal below 1% because 0.4% of the allowance is still a usable
+ *  turn for a caller who caches well, and rounding it to "0%" reads as used up.
+ */
+export function formatPercentShort(fraction) {
+  const pct = Math.max(0, Math.min(100, (Number(fraction) || 0) * 100));
+  if (pct > 0 && pct < 1) return `${Math.round(pct * 10) / 10}%`;
+  return `${Math.round(pct)}%`;
 }
 
 /** "$8.42", "$0.00", "-$0.25". Always two decimals so amounts line up. */
@@ -159,7 +160,7 @@ function restingFigure(free, f, { balanceEmpty = false } = {}) {
     kind: 'free_at_rest',
     tone: 'resting',
     resting: true,
-    title: `${formatTokensShort(f.remaining)} of ${formatTokensShort(free.limit)} free tokens left`,
+    title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
     body,
     actions,
   };
@@ -212,7 +213,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
 
   if (balanceEmptyStopsNextTask) {
     const body = freeInUse && f.out
-      ? `Free tokens are used up too. Add funds, or wait for them to ${resetClause(free, 'reset')}.`
+      ? `Your free allowance is used up too. Add funds, or wait for it to ${resetClause(free, 'refill')}.`
       : 'Add funds to start another task.';
     return {
       kind: 'balance_empty',
@@ -272,14 +273,14 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     return {
       kind: 'free_used',
       tone: 'info',
-      title: 'Free monthly tokens used',
-      body: `MindsHub Air is on your balance${left} until your free tokens ${resetClause(free, 'reset')}.`,
+      title: 'Free allowance used up',
+      body: `MindsHub Air is on your balance${left} until your allowance ${resetClause(free, 'refills')}.`,
       actions: [USAGE_ACTIONS.viewUsage],
     };
   }
 
   if (freeInUse && f.low) {
-    let body = `After that, MindsHub Air uses your balance ${resetClause(free, 'until your free tokens reset')}.`;
+    let body = `After that, MindsHub Air uses your balance ${resetClause(free, 'until your allowance refills')}.`;
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
       body += ' Your balance is empty.';
@@ -291,14 +292,14 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     return {
       kind: 'free_low',
       tone: 'warning',
-      // Stepped like the balance: closing this at 900K of 5M asks again at
-      // 500K, which is also where the console escalates from 80% to 90% used.
+      // Stepped like the balance: closing this at 20% left asks again at 10%,
+      // which is also where the console escalates its own usage alert.
       dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
       // Closing a warning steps down to the standing figure, never to nothing.
       // Hiding the only place the allowance is visible is what this bar exists
-      // to stop, and 20% left is where the number matters most.
+      // to stop, and 20% left is where the figure matters most.
       whenDismissed: restingFigure(free, f, { balanceEmpty }),
-      title: `${formatTokensShort(f.remaining)} free tokens left`,
+      title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
       body,
       actions,
     };
@@ -342,13 +343,13 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   }
   // A long task can cross the low band and empty it without the composer bar
   // ever being looked at, so the crossing is this task's news too. Stepped on
-  // the same scale as the bar's dismissal, so a task that runs from 2M to 400K
-  // reports on each step rather than on each poll. Both reads have to be a
+  // the same scale as the bar's dismissal, so a task that runs from 40% left to
+  // 8% left reports on each step rather than on each poll. Both reads have to be a
   // capped grant, or a grant arriving mid-task would read as one draining, and
-  // `free_used` above owns the last step so reaching zero says the tokens are
-  // gone rather than that they are low.
+  // `free_used` above owns the last step so reaching zero says the allowance is
+  // gone rather than that it is low.
   // The first four terms are belt and braces, not load-bearing: `after.low`
-  // already implies a capped grant with tokens left, and `freeDismissStep`
+  // already implies a capped grant with allowance left, and `freeDismissStep`
   // reads a null fraction as the deepest step, which no later step can exceed.
   // They stay because the step comparison carrying all of that alone does not
   // read as the rule it enforces.
@@ -357,7 +358,7 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
       && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
     out.push({
       kind: 'free_low',
-      remaining: after.remaining,
+      fractionLeft: after.fractionLeft,
       resetsAt: next.freeTokens?.resetsAt || null,
     });
   }
