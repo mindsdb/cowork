@@ -82,7 +82,7 @@
     "js-yaml": "^4.3.0"
   },
   "dependencies": {
-    "@base-ui/react": "^1.5.0",
+    "@base-ui/react": "^1.7.0",
     "@react-keycloak/web": "^3.4.0",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",
