@@ -41,19 +41,19 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
   });
 
-  it('renders the low-allowance alert with the count, before the tokens are gone', () => {
-    render(<ChatView task={task([{ kind: 'free_low', remaining: 620_000, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
+  it('renders the low-allowance alert with the proportion, before the allowance is gone', () => {
+    render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
     // The headline names the crossing, not the count. The composer bar a few
     // pixels above carries the live count, and the two drift apart on the
     // next poll, so one number must not appear twice under two headlines.
-    const card = screen.getByText('Free monthly tokens running low');
+    const card = screen.getByText('Free Air allowance running low');
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Anchored to the end of the sentence, so dropping resetsAt (which would
     // degrade the date to "next month") fails here rather than passing on a
     // prefix match. Says what is true of the allowance, not of this turn: the
     // router resolves per turn and can land on a paid model.
-    expect(screen.getByText(/^620K left of this month's free tokens\. When they are used up, MindsHub Air moves onto your balance, and they reset on Sep 1[12]\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^12% of your allowance is left\. When it is used up, MindsHub Air moves onto your balance, and it refills on Sep 1[12]\.$/)).toBeInTheDocument();
     // Not the exhaustion card: the tokens are low, not spent.
     expect(screen.queryByText('Free monthly tokens used')).toBeNull();
     expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();

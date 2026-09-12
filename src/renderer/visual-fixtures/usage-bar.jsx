@@ -24,7 +24,7 @@ const RESET = '2026-10-01T12:00:00Z';
 const usage = (over = {}) => ({
   reachable: true,
   isBillingOwner: true,
-  freeTokens: { limit: 5_000_000, used: 1_000_000, remaining: 4_000_000, resetsAt: RESET },
+  freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: RESET },
   balance: { usd: 42.1, canConsume: true, hasToppedUp: true, alert: '' },
   autoTopUp: { enabled: false, thresholdUsd: null, rechargeToUsd: null, status: 'ok' },
   ...over,
@@ -48,26 +48,26 @@ const CASES = [
   { label: 'Low, auto top up hit its monthly cap.', usage: lowBalance(8.42, withAuto('cap_reached')), opts: PAID },
   { label: 'Auto top up failed. Outranks every balance state.', usage: lowBalance(8.42, withAuto('payment_failed')), opts: PAID },
   {
-    label: 'Balance empty on an explicit paid pick, free tokens still available.',
+    label: 'Balance empty on an explicit paid pick, allowance still available.',
     usage: usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
     opts: PAID,
   },
   {
-    label: 'Balance empty and the free tokens are gone too, on no explicit pick.',
+    label: 'Balance empty and the allowance is gone too, on no explicit pick.',
     usage: usage({
-      freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET },
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
     }),
     opts: { model: null },
   },
   {
-    label: 'Free monthly tokens running low, balance healthy.',
-    usage: usage({ freeTokens: { limit: 5_000_000, used: 4_400_000, remaining: 600_000, resetsAt: RESET } }),
+    label: 'Free Air allowance running low, balance healthy.',
+    usage: usage({ freeTokens: { percentRemaining: 12, limit: 100, used: 88, remaining: 12, resetsAt: RESET } }),
     opts: AIR,
   },
   {
-    label: 'Free monthly tokens used up, paid balance carrying Air.',
-    usage: usage({ freeTokens: { limit: 5_000_000, used: 5_000_000, remaining: 0, resetsAt: RESET } }),
+    label: 'Free Air allowance used up, paid balance carrying Air.',
+    usage: usage({ freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     opts: AIR,
   },
   {
@@ -82,7 +82,7 @@ const CASES = [
   },
   {
     label: 'The standing figure with no reset date to quote.',
-    usage: usage({ freeTokens: { limit: 5_000_000, used: 1_000_000, remaining: 4_000_000, resetsAt: null } }),
+    usage: usage({ freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: null } }),
     opts: AIR,
   },
   {
