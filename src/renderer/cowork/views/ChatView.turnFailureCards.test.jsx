@@ -113,7 +113,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
   it('says the task stopped and names both resources, never a bare "out of tokens"', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
     expect(screen.getByText('Task stopped')).toBeInTheDocument();
-    expect(screen.getByText(/free monthly tokens are used up and your balance is empty/)).toBeInTheDocument();
+    expect(screen.getByText(/free Air allowance is used up and your balance is empty/)).toBeInTheDocument();
     expect(screen.queryByText(/out of tokens/i)).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
@@ -131,17 +131,21 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
       resetAt: inMarch.toISOString(),
     }))} />);
     const expected = inMarch.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    expect(screen.getByText(new RegExp(`wait until ${expected} when your free tokens reset`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`wait for it to refill on ${expected}`))).toBeInTheDocument();
   });
 
   it.each([
     ['absent', undefined],
     ['malformed', 'not-a-date'],
     ['already past', new Date(Date.now() - 86_400_000).toISOString()],
-  ])('falls back to "next month" when the date is %s', (_label, resetAt) => {
-    // Never "Invalid Date", and never a stale month on a reloaded conversation.
+  ])('drops the date clause rather than naming a schedule when the date is %s', (_label, resetAt) => {
+    // Never "Invalid Date", and never a stale date on a reloaded conversation.
+    // The clause goes entirely rather than falling back to "next month": the
+    // allowance refills on a fixed-duration window, so a monthly promise is
+    // one the response never made.
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
-    expect(screen.getByText(/wait until next month when your free tokens reset/)).toBeInTheDocument();
+    expect(screen.getByText(/Add funds to keep working, or wait for it to refill\./)).toBeInTheDocument();
+    expect(screen.queryByText(/next month/)).toBeNull();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
 });

@@ -39,6 +39,12 @@ describe('formatting', () => {
     expect(formatPercentShort(0.004)).toBe('0.4%');
     expect(formatPercentShort(0.0004)).toBe('0%');
   });
+  it('keeps a decimal above ninety-nine, so "used" and "left" cannot contradict', () => {
+    // Settings prints the used share beside the remaining one. Rounding 99.6%
+    // used to "100%" puts it next to "0.4% left" on the same row.
+    expect(formatPercentShort(0.996)).toBe('99.6%');
+    expect(formatPercentShort(1)).toBe('100%');
+  });
   it('clamps a value outside the range rather than trusting it', () => {
     expect(formatPercentShort(1.5)).toBe('100%');
     expect(formatPercentShort(-1)).toBe('0%');

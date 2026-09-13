@@ -71,14 +71,18 @@ export function freeDismissStep(fractionLeft) {
   return dismissStep(fractionLeft, FREE_DISMISS_STEPS_FRACTION);
 }
 
-/** 0.124 → "12%", 0.004 → "0.4%", 1 → "100%".
+/** 0.124 → "12%", 0.004 → "0.4%", 0.996 → "99.6%", 1 → "100%".
  *
- *  Keeps one decimal below 1% because 0.4% of the allowance is still a usable
- *  turn for a caller who caches well, and rounding it to "0%" reads as used up.
+ *  Keeps one decimal at both ends of the range, and for the same reason: 0.4%
+ *  of the allowance is still a usable turn for a caller who caches well, so
+ *  rounding it to "0%" reads as used up, and rounding the 99.6% used alongside
+ *  it to "100%" puts "100% used" and "0.4% left" on the same row of Settings.
+ *  Only a genuinely empty or genuinely untouched allowance reads 0% or 100%.
  */
 export function formatPercentShort(fraction) {
   const pct = Math.max(0, Math.min(100, (Number(fraction) || 0) * 100));
   if (pct > 0 && pct < 1) return `${Math.round(pct * 10) / 10}%`;
+  if (pct > 99 && pct < 100) return `${Math.round(pct * 10) / 10}%`;
   return `${Math.round(pct)}%`;
 }
 
