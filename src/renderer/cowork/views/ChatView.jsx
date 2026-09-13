@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatTokensShort } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatPercentShort } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1093,14 +1093,24 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
 // The date is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users. Anything unusable — absent, malformed, or already past on a reloaded
-// conversation — degrades to "next month" rather than rendering "Invalid Date"
-// or a stale month.
+// conversation — returns null rather than rendering "Invalid Date" or a stale
+// date, and the caller drops its whole clause. Null rather than a stand-in
+// phrase: the allowance refills on a fixed-duration window, so naming a month
+// would promise a schedule that does not exist. Same shape as `resetClause` in
+// usageWarnings.js, which the composer already uses.
 function formatAllowanceReset(resetAt) {
-  if (!resetAt) return 'next month';
+  if (!resetAt) return null;
   const d = new Date(resetAt);
-  if (Number.isNaN(d.getTime())) return 'next month';
-  if (d.getTime() <= Date.now()) return 'next month';
-  return formatResetDate(resetAt) || 'next month';
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getTime() <= Date.now()) return null;
+  return formatResetDate(resetAt) || null;
+}
+
+/* " on Sep 11" when the gate gave a usable date, and nothing at all when it
+   did not, so no sentence promises a schedule the response never named. */
+function refillClause(resetAt, lead) {
+  const date = formatAllowanceReset(resetAt);
+  return date ? `${lead} on ${date}` : lead;
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
@@ -1108,7 +1118,7 @@ function formatAllowanceReset(resetAt) {
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
@@ -1125,8 +1135,8 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBilling
       <ActionCard
         time={time}
         agentLabel={agentLabel}
-        title="Free monthly tokens running low"
-        body={`${formatTokensShort(remaining)} left of this month's free tokens. When they are used up, MindsHub Air moves onto your balance, and they reset on ${formatAllowanceReset(resetsAt)}.`}
+        title="Free Air allowance running low"
+        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
       />
     );
@@ -1149,8 +1159,8 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, remaining, isBilling
     <ActionCard
       time={time}
       agentLabel={agentLabel}
-      title="Free monthly tokens used"
-      body={`This task is now using your balance. Your free tokens reset on ${formatAllowanceReset(resetsAt)}.`}
+      title="Free Air allowance used up"
+      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
     />
   );
@@ -2066,7 +2076,7 @@ export default function ChatView({
                   agentLabel={agentLabel}
                   kind={n.kind}
                   resetsAt={n.resetsAt}
-                  remaining={n.remaining}
+                  fractionLeft={n.fractionLeft}
                   isBillingOwner={isBillingOwner}
                 />
               ));
@@ -2384,7 +2394,7 @@ export default function ChatView({
                       // The gate only issues this code when the org has no
                       // balance to fall onto, so the turn ended (ENG-1782).
                       title="Task stopped"
-                      body={`Your free monthly tokens are used up and your balance is empty. Add funds to keep working, or wait until ${formatAllowanceReset(m.resetAt)} when your free tokens reset.`}
+                      body={`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${refillClause(m.resetAt, '')}.`}
                       buttons={[
                         {
                           label: 'Add funds',
