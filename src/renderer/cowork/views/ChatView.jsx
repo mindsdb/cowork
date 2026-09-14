@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatPercentShort } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort } from '../lib/usageWarnings';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -1092,27 +1092,18 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
 // and "unlock" is literally true, because non-free models need a wallet this
 // org doesn't have.
 //
-// The date is formatted here, not server-side: only the client knows the
+// The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
-// users. Anything unusable — absent, malformed, or already past on a reloaded
-// conversation — returns null rather than rendering "Invalid Date" or a stale
-// date, and the caller drops its whole clause. Null rather than a stand-in
-// phrase: the allowance refills on a fixed-duration window, so naming a month
-// would promise a schedule that does not exist. Same shape as `resetClause` in
-// usageWarnings.js, which the composer already uses.
-function formatAllowanceReset(resetAt) {
-  if (!resetAt) return null;
-  const d = new Date(resetAt);
-  if (Number.isNaN(d.getTime())) return null;
-  if (d.getTime() <= Date.now()) return null;
-  return formatResetDate(resetAt) || null;
-}
+// users.
 
-/* " on Sep 11" when the gate gave a usable date, and nothing at all when it
-   did not, so no sentence promises a schedule the response never named. */
+/* " at 2:15 PM" when the gate gave a usable instant, and nothing at all when it
+   did not, so no sentence promises a schedule the response never named. The
+   guards that used to live here — absent, malformed, or already past on a
+   reloaded conversation — are `formatResetTime`'s own, so this card and the
+   composer bar cannot disagree about one refill. */
 function refillClause(resetAt, lead) {
-  const date = formatAllowanceReset(resetAt);
-  return date ? `${lead} on ${date}` : lead;
+  const time = formatResetTime(resetAt);
+  return time ? `${lead} at ${time}` : lead;
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────

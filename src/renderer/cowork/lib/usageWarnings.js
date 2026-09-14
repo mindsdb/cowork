@@ -92,12 +92,47 @@ export function formatUsd(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
-/** "Sep 11" in the viewer's timezone, or null when the date is unusable. */
+/** "Sep 11" in the viewer's timezone, or null when the date is unusable.
+ *
+ *  For spans that genuinely are calendar dates — a billing period, an auto top
+ *  up cap resetting next month. The Air allowance refills on a clock, not on a
+ *  calendar; it uses `formatResetTime` below. */
 export function formatResetDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** When the allowance next refills, on the viewer's own clock: "2:15 PM", or
+ *  "Sep 15, 2:15 PM" when it lands on a different local day. Null when there is
+ *  nothing usable to quote.
+ *
+ *  The allowance refills every few hours (ENG-2593), so the refill is almost
+ *  always later today and a date cannot express it — "refills on Sep 14", read
+ *  on Sep 14, names a day the reader is already in and reads as a whole day
+ *  away when it may be twenty minutes. The date is added only when the refill
+ *  falls on another local day, so a window crossing midnight does not read as
+ *  a time already past. Matches `formatResetTime` in the console
+ *  (mindshub_frontend/src/utils/billing/creditAlert.js), so the two products
+ *  quote one refill the same way.
+ *
+ *  An instant already past returns null and the caller drops its whole clause,
+ *  rather than printing a stale time that reads as imminent. Null rather than a
+ *  stand-in phrase: the window is fixed-duration, so naming a month would
+ *  promise a schedule that does not exist.
+ */
+export function formatResetTime(iso, now = new Date()) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getTime() <= now.getTime()) return null;
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const sameLocalDay = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameLocalDay) return time;
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 // `available`: Air can run on the free tokens right now. -1 is auth's uncapped
@@ -140,8 +175,8 @@ function isExplicitPaidModel(model) {
 }
 
 function resetClause(free, lead) {
-  const date = formatResetDate(free?.resetsAt);
-  return date ? `${lead} on ${date}` : lead;
+  const time = formatResetTime(free?.resetsAt);
+  return time ? `${lead} at ${time}` : lead;
 }
 
 /* The standing allowance figure: what the bar says when nothing is wrong.
@@ -149,8 +184,8 @@ function resetClause(free, lead) {
    below returns it, and `free_low` carries it as the state a dismissal falls
    back to, so closing the warning drops to the number rather than to nothing. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
-  const resets = formatResetDate(free.resetsAt);
-  let body = resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.';
+  const resets = formatResetTime(free.resetsAt);
+  let body = resets ? `Resets at ${resets}.` : 'Air runs on these until they are used up.';
   const actions = [USAGE_ACTIONS.viewUsage];
   // An empty wallet is true and actionable from the moment it empties, so it
   // is said here rather than appearing as a surprise clause on the warning

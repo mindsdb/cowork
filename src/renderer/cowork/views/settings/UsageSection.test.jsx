@@ -42,7 +42,9 @@ describe('UsageSection', () => {
     expect(screen.getByText('13%')).toBeInTheDocument();
     expect(screen.getByText(/of your allowance used/)).toBeInTheDocument();
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
-    expect(screen.getByText(/Resets Sep 1[12]/)).toBeInTheDocument();
+    // The Air refill is a clock time, not a calendar day (ENG-2748). The period
+    // spend below it still reads as dates, because a billing period is one.
+    expect(screen.getByText(/Resets at Sep 1[12], 12:00 PM/)).toBeInTheDocument();
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();

@@ -10,6 +10,7 @@ import {
   formatPercentShort,
   formatUsd,
   formatResetDate,
+  formatResetTime,
   FREE_TOKENS_LOW_FRACTION,
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
@@ -50,7 +51,10 @@ function FreeTokensCard({ free, isBillingOwner }) {
   // Same line as the composer bar, read from the one constant, so the meter's
   // warning tint and the bar cannot drift apart.
   const low = !unlimited && !exhausted && fractionLeft <= FREE_TOKENS_LOW_FRACTION;
-  const reset = formatResetDate(free.resetsAt);
+  // The same refill the composer bar and the in-task card quote, in the same
+  // words: it is a clock time, not a calendar day. `periodLabel` below still
+  // takes a date, because a billing period genuinely is one.
+  const reset = formatResetTime(free.resetsAt);
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -58,7 +62,7 @@ function FreeTokensCard({ free, isBillingOwner }) {
           <div className="text-base font-semibold text-ink">Free Air allowance</div>
           <Badge variant="muted" size="xs">MindsHub Air only</Badge>
         </div>
-        {reset && <div className="text-[12px] text-ink-3">Resets {reset}</div>}
+        {reset && <div className="text-[12px] text-ink-3">Resets at {reset}</div>}
       </div>
       {unlimited ? (
         <div className="text-[13px] text-ink-2">Unlimited on this account.</div>
@@ -74,8 +78,8 @@ function FreeTokensCard({ free, isBillingOwner }) {
           <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label="Free Air allowance used" />
           <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
-              ? `Used up. MindsHub Air is billing your balance${reset ? ` until ${reset}` : ' until it refills'}.`
-              : `After that, MindsHub Air uses your balance${reset ? ` until ${reset}` : ''}.`}
+              ? `Used up. MindsHub Air is billing your balance${reset ? ` until it refills at ${reset}` : ' until it refills'}.`
+              : `After that, MindsHub Air uses your balance${reset ? ` until it refills at ${reset}` : ''}.`}
           </div>
         </>
       )}

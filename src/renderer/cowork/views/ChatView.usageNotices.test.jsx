@@ -33,12 +33,12 @@ const task = (usageNotices, extraMessages = []) => ({
 });
 
 describe('ChatView usage notices', () => {
-  it('renders the free-tokens alert after the reply, with the reset date', () => {
+  it('renders the free-tokens alert after the reply, with the refill time', () => {
     render(<ChatView task={task([{ kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
     const card = screen.getByText('Free Air allowance used up');
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(/This task is now using your balance until your allowance refills on Sep 1[12]\./)).toBeInTheDocument();
+    expect(screen.getByText(/This task is now using your balance until your allowance refills at Sep 1[12], 12:00 PM\./)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
   });
 
@@ -51,10 +51,10 @@ describe('ChatView usage notices', () => {
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Anchored to the end of the sentence, so dropping resetsAt (which would
-    // degrade the date to "next month") fails here rather than passing on a
+    // degrade the clause to nothing) fails here rather than passing on a
     // prefix match. Says what is true of the allowance, not of this turn: the
     // router resolves per turn and can land on a paid model.
-    expect(screen.getByText(/^12% of your allowance is left\. When it is used up, MindsHub Air moves onto your balance until it refills on Sep 1[12]\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^12% of your allowance is left\. When it is used up, MindsHub Air moves onto your balance until it refills at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
     // Not the exhaustion card: the tokens are low, not spent.
     expect(screen.queryByText('Free monthly tokens used')).toBeNull();
     expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
