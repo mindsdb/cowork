@@ -2,8 +2,10 @@ import { createLogger, defineConfig } from 'vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import babel from '@rolldown/plugin-babel';
 import path from 'path';
+import os from 'os';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { CHANNELS, normalizeBuildKind } from '../main/channels';
 import { isSpaNavigation } from './web-spa-fallback';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
@@ -48,6 +50,35 @@ try {
 const IS_WEB = process.env.BUILD_TARGET === 'web';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
+
+// The Electron main process's own onBeforeSendHeaders hook (index.ts) injects
+// the bearer token for requests the RENDERER'S webContents session makes
+// directly — but in `npm run dev` the renderer loads from this Vite server,
+// so /api/* actually round-trips through the proxy below, a separate Node
+// process main never sees. Without this, enabling Settings > Backend's local
+// auth checkbox 401s every request except /health while testing via `npm run
+// dev` (the app still works fine in a packaged/file:// build, where requests
+// really do go through webContents). Mirrors resolveBuildKind() in
+// cowork-home.ts — that module can't be imported here (it pulls in
+// `electron`, which isn't a real module outside an Electron process) — but
+// Vite's dev server only ever runs unpackaged, so the same "no override ->
+// dev" resolution applies without needing app.isPackaged.
+const envBuildKindRaw = (process.env.COWORK_BUILD_KIND || '').trim();
+const buildKind = envBuildKindRaw ? normalizeBuildKind(envBuildKindRaw, 'COWORK_BUILD_KIND') : 'dev';
+const localAuthEnvPath = path.join(os.homedir(), CHANNELS[buildKind].homeDirName, '.env');
+
+// Re-read on every proxied request (not cached) so toggling the checkbox —
+// which only restarts the sidecar, not Vite — takes effect immediately.
+function readLocalAuthToken(): string | null {
+  try {
+    const content = readFileSync(localAuthEnvPath, 'utf-8');
+    if (!/^COWORK_REQUIRE_AUTH\s*=\s*true\s*$/mi.test(content)) return null;
+    const match = content.match(/^COWORK_AUTH_TOKEN\s*=\s*(.+)$/m);
+    return match ? match[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch {
+    return null;
+  }
+}
 
 // `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
 const logger = createLogger();
@@ -115,7 +146,15 @@ export default defineConfig({
     port: Number(process.env.VITE_RENDERER_PORT || 5173),
     strictPort: true,
     proxy: {
-      '/api': `http://127.0.0.1:${SERVER_PORT}`,
+      '/api': {
+        target: `http://127.0.0.1:${SERVER_PORT}`,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            const token = readLocalAuthToken();
+            if (token) proxyReq.setHeader('Authorization', `Bearer ${token}`);
+          });
+        },
+      },
     },
   },
   resolve: {

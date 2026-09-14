@@ -37,10 +37,20 @@ vi.mock('./server-process', () => ({
 vi.mock('./server-updater', () => ({
   resolvePypiInstallTarget: vi.fn(async () => ({ version: '0.26.8.2.1', withArgs: [] })),
 }));
+// backend-install-pref pulls in minds-auth -> token-store, which calls
+// electron's app.getPath at module top-level — not needed for these
+// dependency-install tests, and not worth adding to the electron mock above
+// just to satisfy an unrelated transitive import. Its own behavior (reading/
+// writing the skip flag) is covered by backend-install-pref.test.ts.
+const backendInstallPref = vi.hoisted(() => ({
+  skipBackendInstallRequested: vi.fn(() => false),
+  persistSkipBackendInstall: vi.fn(async () => {}),
+}));
+vi.mock('./backend-install-pref', () => backendInstallPref);
 
 import { IPC } from '../shared/ipc-channels';
 import { resolvePypiInstallTarget } from './server-updater';
-import { runInstaller, inspectCoworkServerInstall } from './installer';
+import { runInstaller, inspectCoworkServerInstall, checkInstallStatus } from './installer';
 
 const EXT = process.platform === 'win32' ? '.exe' : '';
 // Where the astral bootstrap script / findUv probe expects uv, and where
@@ -354,5 +364,33 @@ describe('inspectCoworkServerInstall — binary candidate resolution', () => {
     }) as never);
 
     await expect(inspectCoworkServerInstall()).resolves.toEqual({ installed: true, binary: legacyBin });
+  });
+});
+
+describe('setup wizard: "Install backend server" unchecked', () => {
+  afterEach(() => {
+    backendInstallPref.skipBackendInstallRequested.mockReturnValue(false);
+  });
+
+  it('checkInstallStatus reports installed (for routing) once the skip flag is set, without probing the binary', async () => {
+    backendInstallPref.skipBackendInstallRequested.mockReturnValue(true);
+
+    await expect(checkInstallStatus()).resolves.toEqual({ antonInstalled: true, serverDepsReady: true });
+    // The point of the early return: never falls through to a real
+    // filesystem/uv probe for a binary that was deliberately never installed.
+    expect(fs.existsSync).not.toHaveBeenCalled();
+  });
+
+  it('runInstaller(installBackend: false) persists the choice and reports done without touching uv/cowork-server at all', async () => {
+    const { win, events } = fakeWindow();
+
+    const result = await runInstaller(win, { installBackend: false });
+
+    expect(result).toBe(true);
+    expect(backendInstallPref.persistSkipBackendInstall).toHaveBeenCalledOnce();
+    expect(events).toContain(IPC.INSTALL_DONE);
+    // No dependency-install machinery ran at all.
+    expect(cp.execFile).not.toHaveBeenCalled();
+    expect(cp.spawn).not.toHaveBeenCalled();
   });
 });
