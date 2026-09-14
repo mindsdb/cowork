@@ -64,12 +64,12 @@ function readEvidence(): DownloadedTargetEvidence | null {
 
 let lastEvidenceVersion: string | null = null;
 
-function writeEvidence(snapshot: ShellUpdateSnapshot): void {
+/** Exported for tests; only `onSnapshot` calls it in production. */
+export function writeEvidence(snapshot: ShellUpdateSnapshot): void {
   if (snapshot.phase !== 'ready-to-install' || !snapshot.targetVersion) return;
   // Background refreshes republish the snapshot twice per poll with the same
   // pending target; only a changed target is worth rewriting to disk.
   if (snapshot.targetVersion === lastEvidenceVersion) return;
-  lastEvidenceVersion = snapshot.targetVersion;
   const evidence: DownloadedTargetEvidence = {
     targetVersion: snapshot.targetVersion,
     channel: snapshot.channel,
@@ -77,6 +77,10 @@ function writeEvidence(snapshot: ShellUpdateSnapshot): void {
   };
   try {
     fs.writeFileSync(evidencePath(), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+    // Only a target actually on disk may be skipped next time. Caching before
+    // the write would let one transient failure suppress every later attempt,
+    // and the relaunch check would then have no evidence to reconcile.
+    lastEvidenceVersion = snapshot.targetVersion;
   } catch (error) {
     console.warn('[shell-updater] could not persist downloaded target:', error);
   }

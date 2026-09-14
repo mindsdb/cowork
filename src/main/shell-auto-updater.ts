@@ -127,6 +127,14 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   let snapshot = options.initialSnapshot;
   let checkFlight: Promise<void> | null = null;
   let downloadFlight: Promise<void> | null = null;
+  /** One in-flight updater operation, used to settle its failure exactly once.
+   *  electron-updater reports a single fault TWICE — it emits `error` and then
+   *  rejects the promise it returned — and both land in fail(). `refresh` marks
+   *  a background re-check behind a pending install: however that flight ends,
+   *  it must never move the phase. */
+  type UpdateFlight = { settled: boolean; refresh: boolean };
+  let checkToken: UpdateFlight | null = null;
+  let downloadToken: UpdateFlight | null = null;
   // The failure code currently being reported, or null when there is no open
   // failure episode. Latches telemetry to one event per episode across retries —
   // see fail() and clearFailureLatch().
@@ -150,7 +158,15 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     return true;
   };
 
-  const fail = (error: unknown) => {
+  const fail = (error: unknown, flight?: UpdateFlight | null) => {
+    // Duplicate delivery of one fault: the first report settles the flight, the
+    // rest are dropped. Without this, a failed refresh reported twice would
+    // clear `refreshing` on the first pass and then — no longer recognisable as
+    // a refresh — tear the pending install down to `failed` on the second.
+    if (flight) {
+      if (flight.settled) return;
+      flight.settled = true;
+    }
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
     // Capture where we were BEFORE the transition — that's the phase that failed,
@@ -166,12 +182,21 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     // or a completed download (clearFailureLatch), so a genuinely new outage or a
     // materially different failure code still reports.
     const isNewEpisode = classified.code !== failureEpisode;
-    dispatch({
-      type: 'FAILED',
-      code: classified.code,
-      recoverable: classified.recoverable,
-      message: normalized.message,
-    });
+    if (flight?.refresh) {
+      // A background refresh owns nothing the user can lose: whatever went
+      // wrong on the feed, the artifact downloaded earlier is still on disk and
+      // still installable. End the refresh and leave the phase exactly where it
+      // is — including when the user has meanwhile hit Restart, where
+      // REFRESH_SETTLED is a no-op and the install proceeds untouched.
+      dispatch({ type: 'REFRESH_SETTLED' });
+    } else {
+      dispatch({
+        type: 'FAILED',
+        code: classified.code,
+        recoverable: classified.recoverable,
+        message: normalized.message,
+      });
+    }
     if (isNewEpisode) {
       failureEpisode = classified.code;
       options.onFailure?.({
@@ -196,10 +221,15 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     if (snapshot.phase === 'available') dispatch({ type: 'DOWNLOAD_REQUESTED' });
     if (snapshot.phase !== 'downloading') return;
 
+    const flight: UpdateFlight = { settled: false, refresh: false };
+    downloadToken = flight;
     downloadFlight = options.adapter.downloadUpdate()
       .then(() => undefined)
-      .catch(fail)
-      .finally(() => { downloadFlight = null; });
+      .catch(error => fail(error, flight))
+      .finally(() => {
+        downloadFlight = null;
+        if (downloadToken === flight) downloadToken = null;
+      });
     return downloadFlight;
   };
 
@@ -246,7 +276,13 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     clearFailureLatch();
     dispatch({ type: 'DOWNLOAD_COMPLETE', targetVersion });
   });
-  options.adapter.onError(fail);
+  // An untyped `error` event is attributed to the most recently started open
+  // flight — the check, when one is out on the network, since a download that
+  // has already resolved can still be moments from clearing its own token. A
+  // download fault the check swallows this way is not lost: downloadUpdate()
+  // rejects too, and that rejection carries the download's own flight. An error
+  // with no flight open (an internal retry, say) still fails normally.
+  options.adapter.onError(error => fail(error, checkToken ?? downloadToken));
 
   return {
     getSnapshot: () => snapshot,
@@ -260,10 +296,18 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     async check(trigger) {
       if (checkFlight) return checkFlight;
       if (!dispatch({ type: 'CHECK_REQUESTED', trigger })) return;
+      const flight: UpdateFlight = {
+        settled: false,
+        refresh: snapshot.phase === 'ready-to-install' && Boolean(snapshot.refreshing),
+      };
+      checkToken = flight;
       checkFlight = options.adapter.checkForUpdates()
         .then(() => undefined)
-        .catch(fail)
-        .finally(() => { checkFlight = null; });
+        .catch(error => fail(error, flight))
+        .finally(() => {
+          checkFlight = null;
+          if (checkToken === flight) checkToken = null;
+        });
       return checkFlight;
     },
 
