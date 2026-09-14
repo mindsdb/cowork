@@ -14,10 +14,9 @@ describe('currentTurnIndex', () => {
     expect(currentTurnIndex([user('a'), assistant('b'), user('c')])).toBe(1);
   });
 
-  // A preflight that found no provider appends the typed message and its card
-  // locally and never sends them. Counting that row put every later stamp one
-  // turn ahead of the server's numbering, so hydration — which drops the row —
-  // left the notice anchored past its turn, and it fell to the bottom.
+  // A preflight with no provider appends the typed message locally and never
+  // sends it. Counting that row put every later stamp a turn ahead, so
+  // hydration dropped the row and the notice fell to the bottom.
   it('does not count a row the server will never see', () => {
     const msgs = [
       user('a'), assistant('b'),
@@ -43,8 +42,7 @@ describe('usageNoticeBuckets', () => {
   const convo = [user('a'), assistant('b'), user('c'), assistant('d')];
 
   it('renders a notice after its own turn, before the next question', () => {
-    // Turn 0 is a→b, so the card sits between the first reply and the
-    // second question — where it happened, not at the bottom.
+    // Turn 0 is a→b, so the card sits between that reply and the next question.
     expect(rowOf(convo, notice(0))).toBe(2);
   });
 
@@ -91,11 +89,8 @@ describe('usageNoticeBuckets', () => {
   });
 });
 
-// The anchor is an ordinal, so deleting a turn moves the ground under it. A
-// stale stamp points at a later turn, or at nothing — and a notice with no turn
-// to sit at falls back to the bottom, the original defect.
-//
-// Both repairs read the cut that happened, never the turn that was asked for.
+// The anchor is an ordinal, so deleting a turn moves the ground under it. Both
+// repairs read the cut that happened, never the turn that was asked for.
 describe('re-anchoring when a turn is deleted', () => {
   const at = (turnIndex) => ({ kind: 'free_low', turnIndex });
 
@@ -124,11 +119,9 @@ describe('re-anchoring when a turn is deleted', () => {
       expect(removeNoticeTurns([at(0), at(1), at(2)], 1, 1)).toEqual([at(0), at(1)]);
     });
 
-    // The case that motivated reading the cut instead of the request. The local
-    // walk finds its row by an assistant ordinal while the caller passes a user
-    // one, so an `error` row makes it take two turns for a one-turn request.
-    // Shifting by one left turn C's notice stranded, and a stranded notice
-    // anchors to nothing and falls back to the bottom — the original defect.
+    // The local walk counts assistant rows while the caller counts user ones,
+    // so an `error` row makes it take two turns for a one-turn request.
+    // Shifting by one stranded turn C's notice, which then fell to the bottom.
     it('accounts for every turn a wider-than-requested cut took', () => {
       // user A, assistant a, user B, error, user C, assistant c — delete B.
       // The cut runs from turn 1 and takes both B and C.

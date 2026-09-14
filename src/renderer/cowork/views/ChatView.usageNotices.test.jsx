@@ -67,9 +67,8 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
   });
 
-  // The cards used to be appended after every turn, so they followed the bottom
-  // of the conversation. After a top-up a "running low" card sat below the
-  // newer messages and read as a claim about now.
+  // The cards used to be appended after every turn, so after a top-up a
+  // "running low" card sat below the newer messages.
   it('leaves a notice at the turn it happened in when the conversation continues', () => {
     const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
     const later = [

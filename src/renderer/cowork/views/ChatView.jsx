@@ -426,10 +426,9 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
-          {/* Agent always named; timestamp joins it when the caller resolved
-              one. No message row carries `createdAt` — the server sends
-              `created_at` and nothing maps it — so a caller with no other
-              source renders the name alone. */}
+          {/* Agent always named; the timestamp joins it when the caller
+              resolved one. No message row carries `createdAt` — the server
+              sends `created_at` and nothing maps it. */}
           <span className="turn-meta">
             {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
           </span>
@@ -1661,11 +1660,9 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
-  // Usage alerts sit at the turn they happened in, so a card keeps reading as
-  // "while this ran, this changed" as the conversation continues below it. See
-  // lib/usageNoticePlacement. Computed out here because the last bucket renders
-  // below the streaming turn, which is a sibling of these rows. Cards are keyed
-  // by identity, since a positional key would collide between buckets.
+  // Usage alerts sit at the turn they happened in (lib/usageNoticePlacement).
+  // Computed out here because the last bucket renders below the streaming turn,
+  // a sibling of these rows. Keyed by identity: a positional key would collide.
   const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
   const usageCard = (n) => (
     <UsageAlertCard
@@ -2513,9 +2510,8 @@ export default function ChatView({
                   key={i}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
-                  // start time is what actually supplies this. Kept as a
-                  // fallback rather than replaced: a turn whose replay produced
-                  // no steps has no startedAt either, and renders no time.
+                  // start time supplies this — and a replay with no steps has
+                  // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
@@ -2556,8 +2552,7 @@ export default function ChatView({
               );
               });
               // The trailing bucket renders after the streaming turn below, so
-              // a live turn's notice cannot land between the question and the
-              // reply still arriving.
+              // a live turn's notice cannot split the question from its reply.
               const rendered = [];
               turns.forEach((node, i) => {
                 usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));

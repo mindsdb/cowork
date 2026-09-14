@@ -2551,8 +2551,7 @@ function AppCore() {
   // ran out (the task went on, now on the balance) or an auto top up failed.
   // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
   // and they are client-side only (gone on reload, by design). The turn is
-  // stamped here because only this moment knows it; ChatView places the card
-  // after that turn (see lib/usageNoticePlacement).
+  // stamped here because only this moment knows it (lib/usageNoticePlacement).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
     const before = prevHubUsage.current;
@@ -2841,8 +2840,7 @@ function AppCore() {
         subtitle: 'just now',
         status: 'idle',
         messages: [
-          // `_unsent`: this never reached the server, so it is not a turn the
-          // transcript will have after a reload (see lib/usageNoticePlacement).
+          // `_unsent`: never reached the server, so hydration drops it.
           { role: 'user', content: text, attachments: [], _unsent: true },
           { role: 'provider_required' },
         ],
@@ -4067,9 +4065,8 @@ function AppCore() {
           }
         }
         if (dropFromUserAt === -1) return t;
-        // Read off the cut, not off `turnIndex`: the walk above finds its row by
-        // an assistant ordinal while the caller passes a user one, so an `error`
-        // row in between makes it take more turns than were asked for.
+        // Read off the cut, not off `turnIndex`: the walk above counts assistant
+        // rows while the caller counts user ones, so it can take extra turns.
         const cut = t.messages.slice(dropFromUserAt, dropEnd);
         return {
           ...t,
@@ -4104,10 +4101,8 @@ function AppCore() {
             ? {
               ...t,
               messages: applySessionMessages(taskId, fresh.messages),
-              // The server cut this turn and everything after it. What survived
-              // says how many turns are left; anything anchored past that has
-              // no moment to sit at. Counted from the refetch rather than from
-              // `turnIndex`, which the server does not resolve the same way.
+              // What survived says how many turns are left. Counted from the
+              // refetch, since the server resolves `turnIndex` its own way.
               usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
             }
             : t,
