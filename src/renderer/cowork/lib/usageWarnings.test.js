@@ -6,6 +6,7 @@ import {
   balanceDismissStep,
   freeDismissStep,
   countsAsWarning,
+  FREE_FIGURE_FRACTION,
   formatPercentShort,
   formatUsd,
   formatResetDate,
@@ -25,10 +26,12 @@ const usage = (over = {}) => ({
   ...over,
 });
 
-// Someone the allowance can actually stop: no wallet to fall through to. The
-// standing figure is theirs alone (ENG-2749); `usage()` above, with $42.10 in
-// the wallet, keeps working when the allowance runs out and gets no figure.
-const unpaid = (over = {}) => usage({ balance: null, ...over });
+// Someone the allowance can actually stop: no wallet to fall through to, and
+// far enough in (28% left) for the number to matter. The standing figure is
+// theirs alone (ENG-2749); `usage()` above, with $42.10 in the wallet, keeps
+// working when the allowance runs out and gets no figure at any number.
+const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
+const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
 
 const labels = (w) => w.actions.map((a) => a.label);
 
@@ -71,7 +74,7 @@ describe('deriveComposerWarning', () => {
     const w = deriveComposerWarning(unpaid());
     expect(w.kind).toBe('free_at_rest');
     expect(w.resting).toBe(true);
-    expect(w.title).toBe('80% of your free allowance left');
+    expect(w.title).toBe('28% of your free allowance left');
     expect(w.body).toMatch(/^Resets on Sep 1[12]\.$/);
     expect(labels(w)).toEqual(['View usage']);
     // No stepped key: the figure closes by kind, and that close holds across
@@ -79,16 +82,31 @@ describe('deriveComposerWarning', () => {
     expect(w.dismissKey).toBeUndefined();
   });
 
+  it('shows no figure above 30% left: at 80% the number is furniture, not a plan', () => {
+    expect(FREE_FIGURE_FRACTION).toBe(0.3);
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(80) }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(30.0001) }))).toBeNull();
+    // The band's own edge is in, like the warning's.
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(30) }))?.kind).toBe('free_at_rest');
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(21) }))?.kind).toBe('free_at_rest');
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(20) }))?.kind).toBe('free_low');
+  });
+
   it('shows no figure to someone with a balance to fall through to', () => {
     // Air running out does not stop them, so the number is not a budget to
     // watch; it would just sit above the composer with nothing to inform.
     for (const model of ['mindshub_air', 'model-router', null]) {
-      expect(deriveComposerWarning(usage(), { model })).toBeNull();
+      expect(deriveComposerWarning(usage({ freeTokens: at(28) }), { model })).toBeNull();
     }
+    // A wallet auth has not flagged but that holds nothing cannot carry them,
+    // so it rounds toward showing the figure.
+    expect(deriveComposerWarning(usage({
+      freeTokens: at(28), balance: { usd: 0, canConsume: true, hasToppedUp: false, alert: '' },
+    }))?.kind).toBe('free_at_rest');
     // A low balance still carries them past the allowance, so no figure
     // either. The low balance itself is a warning on picks that can spend it,
     // covered below.
-    const low = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
+    const low = usage({ freeTokens: at(28), balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
     expect(deriveComposerWarning(low, { model: 'mindshub_air' })).toBeNull();
     // The WARNINGS still reach them: falling through to paid changes what they
     // spend. Only the standing figure goes, so a closed warning steps down to
@@ -101,9 +119,7 @@ describe('deriveComposerWarning', () => {
   });
 
   it('names the allowance even with no reset date to quote', () => {
-    const w = deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: null },
-    }));
+    const w = deriveComposerWarning(unpaid({ freeTokens: { ...at(28), resetsAt: null } }));
     expect(w.kind).toBe('free_at_rest');
     expect(w.body).toBe('Air runs on these until they are used up.');
   });
@@ -206,6 +222,7 @@ describe('deriveComposerWarning', () => {
     // The low balance is not this pick's problem, and a wallet that can still
     // pay means the allowance cannot stop them, so there is no figure either.
     expect(deriveComposerWarning(usage({
+      freeTokens: at(28),
       balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
     }), { model: 'mindshub_air' })).toBeNull();
   });
@@ -242,12 +259,13 @@ describe('deriveComposerWarning', () => {
   it('balance empty but free tokens remain: the router and Air still run, so no stop sign', () => {
     // cowork-server swaps a wallet-locked model for Air while the grant lasts,
     // so the next task starts. Only an explicit paid pick is stuck.
-    const depleted = usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
+    const depleted = usage({ freeTokens: at(28), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
     // A resting figure is a figure, not a stop sign: no danger tone and
     // nothing that reads as the next task being refused. It does still name
     // the empty wallet, in the warning's own words, because that is true and
-    // actionable now rather than at 20% left — the same fact must not appear
-    // to arrive with the threshold that has nothing to do with it.
+    // actionable from the moment the figure shows rather than at 20% left —
+    // the same fact must not appear to arrive with the threshold that has
+    // nothing to do with it.
     for (const model of ['model-router', null, 'mindshub_air']) {
       const w = deriveComposerWarning(depleted, { model });
       expect(w.kind).toBe('free_at_rest');

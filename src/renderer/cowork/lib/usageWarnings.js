@@ -15,6 +15,12 @@ import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '.
 // console alerts at 80% used; this is the same line from the other side.
 export const FREE_TOKENS_LOW_FRACTION = 0.2;
 
+// The standing figure appears once this fraction or less remains: a neutral
+// heads-up ahead of the 20% warning, for someone the allowance can stop. Above
+// it the number is not yet a budget anyone plans around, so the bar stays
+// empty rather than sitting above the composer all window (ENG-2749).
+export const FREE_FIGURE_FRACTION = 0.3;
+
 /* Fractions left that the allowance steps down through: the band's own edge,
    then 90% used (where the console escalates too), then 95%.
    Two jobs, one scale. A dismissal is keyed to the step the allowance was in
@@ -203,7 +209,9 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   // running out never stops someone who has one, so the standing figure has
   // nothing to tell them (ENG-2749). The warnings still do: falling through to
   // paid changes what they spend, and that is worth hearing.
-  const balanceUsable = !!balance && !balanceEmpty;
+  // Rounds toward showing the figure: a wallet auth has not flagged but that
+  // holds nothing is not one the next task can fall through to.
+  const balanceUsable = !!balance && !balanceEmpty && Number(balance.usd) > 0;
   const freeInUse = !isPaidModel;
   const paidInUse = !isAir || f.out || !free;
   // An empty balance only stops the next task when nothing else can pay for
@@ -319,14 +327,16 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   }
 
   // Nothing is wrong, so say where the allowance stands rather than nothing at
-  // all, but only to someone it can stop. A free user with no wallet meets the
-  // 20% warning with nothing to plan around unless the number was already in
-  // view, and Settings is somewhere they have to think to go. Someone with a
-  // balance keeps working when the allowance runs out, so for them the figure
-  // is furniture, not information, and the bar stays empty. `resting` marks
-  // this as a figure and not a warning: it does not count as something to warn
-  // about (see `countsAsWarning`), and closing it holds across refills.
-  if (freeInUse && f.available && f.fractionLeft !== null && !balanceUsable) {
+  // all, but only to someone it can stop, and only once the number is close
+  // enough to matter. A free user with no wallet meets the 20% warning with
+  // nothing to plan around unless the number was already in view, and Settings
+  // is somewhere they have to think to go; at 80% left it is not a plan, it is
+  // furniture. Someone with a balance keeps working when the allowance runs
+  // out, so for them it is furniture at any number and the bar stays empty.
+  // `resting` marks this as a figure and not a warning: it does not count as
+  // something to warn about (see `countsAsWarning`), and closing it holds.
+  if (freeInUse && f.available && f.fractionLeft !== null && !balanceUsable
+      && f.fractionLeft <= FREE_FIGURE_FRACTION) {
     return restingFigure(free, f, { balanceEmpty });
   }
 

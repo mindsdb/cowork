@@ -36,9 +36,11 @@ const lowBalance = (usd, autoTopUp = {}) => usage({
 });
 
 const withAuto = (status) => ({ enabled: true, thresholdUsd: 10, rechargeToUsd: 50, status });
-// No wallet to fall through to: the allowance can stop this person, so the
-// standing figure is theirs (ENG-2749). `usage()` has $42.10 and gets none.
-const unpaid = (over = {}) => usage({ balance: null, ...over });
+// No wallet to fall through to, and 28% left: the allowance can stop this
+// person and the number is close enough to matter, so the standing figure is
+// theirs (ENG-2749). `usage()` has $42.10 and gets none at any number.
+const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
+const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
 const PAID = { model: 'claude-sonnet-4' };
 const AIR = { model: MINDSHUB_AIR_MODEL_ID };
 
@@ -79,12 +81,17 @@ const CASES = [
     opts: AIR,
   },
   {
-    label: 'Healthy allowance, healthy balance: nothing. Air running out would not stop this person, so the figure has nothing to tell them (ENG-2749).',
-    usage: usage(),
+    label: 'Paid wallet, 28% left: nothing. Air running out would not stop this person, so the figure has nothing to tell them (ENG-2749).',
+    usage: usage({ freeTokens: at(28) }),
     opts: AIR,
   },
   {
-    label: 'The standing figure: healthy allowance, no wallet, closable. The only place the number is visible before the 20% warning.',
+    label: 'No wallet, 80% left: nothing yet. The figure starts at 30%; above that the number is not a plan.',
+    usage: unpaid({ freeTokens: at(80) }),
+    opts: AIR,
+  },
+  {
+    label: 'The standing figure: no wallet, 28% left, closable. The only place the number is visible before the 20% warning.',
     usage: unpaid(),
     opts: AIR,
   },
@@ -95,12 +102,12 @@ const CASES = [
   },
   {
     label: 'The standing figure with no reset date to quote.',
-    usage: unpaid({ freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: null } }),
+    usage: unpaid({ freeTokens: { ...at(28), resetsAt: null } }),
     opts: AIR,
   },
   {
     label: 'The standing figure naming an empty balance, which is said at rest rather than waiting for 20%.',
-    usage: usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
+    usage: usage({ freeTokens: at(28), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
     opts: AIR,
   },
   {

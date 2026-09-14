@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 
-/* Closing the usage bar. A dismissal is per KEY, and the key is the descriptor's
-   kind unless it narrows one: closing "620K free tokens left" keeps it closed
-   while the tokens drain, and the bar comes back the moment the state changes
-   to something else (free tokens used, balance low, ...).
+/* Closing the usage bar. A dismissal is per KEY, and the key is the warning's
+   kind unless the warning narrows it: closing "620K free tokens left" keeps it
+   closed while the tokens drain, and the bar comes back the moment the state
+   changes to something else (free tokens used, balance low, ...).
    A balance running low is the case a bare kind gets wrong. "Low" is a band the
    balance sits in the whole way down, so one close would hide the only offer to
    top up until the balance emptied. Those warnings carry a stepped dismissKey
    instead (see balanceDismissStep in usageWarnings.js), so a close holds for the
    step it was made in and the next step down asks again.
-   Once usage is healthy again, every closed WARNING is forgotten, so the next
-   time a limit approaches the bar shows up as new. The standing figure is the
-   healthy state itself (ENG-2749), so closing it is the one dismissal that
-   survives that reset: someone who closed the number at 96% is not shown it
-   again at 100% five hours later. It is forgotten only once the bar has
-   nothing to show at all, which is what a top-up turns the figure into, so a
-   wallet that empties again later gets the figure back. */
+   Everything is forgotten once usage is healthy again, so the next time a limit
+   approaches the bar shows up as new.
+
+   The standing figure is NOT in this list (ENG-2749). It is the healthy state
+   itself, so "healthy again" cannot be what forgets it, and the bar going
+   empty for an unrelated reason (a BYOK provider, an uncapped grant, a top-up)
+   must not bring it back either. It has its own flag with its own lifetime,
+   useStandingFigureHidden below: closed once, closed until the store is
+   cleared. The warnings keep re-showing on their own steps regardless. */
 
 const KEY = 'anton.usageBar.dismissed';
+const FIGURE_KEY = 'anton.usageBar.figureHidden';
 
 function read() {
   try {
@@ -36,32 +39,39 @@ function write(kinds) {
   } catch { /* storage unavailable: dismissals just don't persist */ }
 }
 
+function readFigureHidden() {
+  try {
+    return window.localStorage.getItem(FIGURE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFigureHidden(hidden) {
+  try {
+    if (hidden) window.localStorage.setItem(FIGURE_KEY, '1');
+    else window.localStorage.removeItem(FIGURE_KEY);
+  } catch { /* storage unavailable: the close just doesn't persist */ }
+}
+
 /**
- * @param keys the dismissal keys of what the bar could show right now,
- *        outermost first: the warning, then what it steps down to when
- *        closed. Empty when there is nothing to show.
  * @param opts.resetWhenClear true only when usage is KNOWN and the bar is at
- *        rest (the standing figure, or nothing). "Not loaded yet" and
- *        "unreachable" also yield no keys, and neither may wipe a dismissal
- *        (that was how a closed bar came back on every launch).
+ *        rest: the standing figure or nothing, for every pick. "Not loaded
+ *        yet" and "unreachable" must not count (that was how a closed bar came
+ *        back on every launch), and neither may a warning the person merely
+ *        closed, or "healthy" would just mean "closed".
  * @returns [dismissed keys, dismiss(key)]
  */
-export function useUsageBarDismiss(keys, { resetWhenClear = false } = {}) {
+export function useUsageBarDismiss({ resetWhenClear = false } = {}) {
   const [dismissed, setDismissed] = useState(read);
-  // Joined so the effect keys on the VALUES; the caller builds a new array
-  // every render.
-  const live = keys.filter(Boolean).join('\n');
 
-  // Healthy again: forget every dismissal except what is on screen now.
+  // Healthy again: forget every dismissal.
   useEffect(() => {
-    if (!resetWhenClear) return;
-    const keep = live ? live.split('\n') : [];
-    const next = dismissed.filter((k) => keep.includes(k));
-    if (next.length !== dismissed.length) {
-      setDismissed(next);
-      write(next);
+    if (resetWhenClear && dismissed.length) {
+      setDismissed([]);
+      write([]);
     }
-  }, [live, resetWhenClear, dismissed]);
+  }, [resetWhenClear, dismissed.length]);
 
   const dismiss = useCallback((key) => {
     if (!key) return;
@@ -75,6 +85,18 @@ export function useUsageBarDismiss(keys, { resetWhenClear = false } = {}) {
   return [dismissed, dismiss];
 }
 
+/** Whether the standing figure has been closed. See the header for why this is
+ *  not an entry in the warning list. @returns [hidden, hide()] */
+export function useStandingFigureHidden() {
+  const [hidden, setHidden] = useState(readFigureHidden);
+  const hide = useCallback(() => {
+    setHidden(true);
+    writeFigureHidden(true);
+  }, []);
+  return [hidden, hide];
+}
+
 export function resetUsageBarDismissForTests() {
   write([]);
+  writeFigureHidden(false);
 }

@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
-import { useUsageBarDismiss } from '../lib/usageBarDismiss';
+import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -32,20 +32,22 @@ const keyOf = (d) => d.dismissKey ?? d.kind;
 // warning about. Only then does an at-rest bar mean "healthy", which is when
 // closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
-  // What the bar can show, outermost first: the warning, then what it steps
-  // down to when closed (a free warning steps down to the standing figure for
-  // someone with no balance to fall through to; see usageWarnings.js). Each
-  // has its own dismissal, and the first one still open is what shows. Nothing
-  // is exempt from closing (ENG-2749): the standing figure has a key like the
-  // rest, and useUsageBarDismiss owns how long each one holds.
-  const chain = [warning, warning?.whenDismissed].filter(Boolean);
-  const [dismissed, dismiss] = useUsageBarDismiss(chain.map(keyOf), {
+  const [dismissed, dismiss] = useUsageBarDismiss({
     // Closed warnings are forgotten once the bar is back at rest: the standing
     // figure or nothing at all. Not while a warning is up, even one the person
     // has closed, or "healthy" would just mean "closed".
     resetWhenClear: usageKnown && (!warning || !!warning.resting),
   });
-  const shown = chain.find((d) => !dismissed.includes(keyOf(d))) || null;
+  // The standing figure closes too (ENG-2749), on its own flag: the reset
+  // above must never bring it back, and neither may the bar emptying for some
+  // other reason (a BYOK provider, an uncapped grant, a top-up).
+  const [figureHidden, hideFigure] = useStandingFigureHidden();
+  // What the bar can show, outermost first: the warning, then what it steps
+  // down to when closed (a free warning steps down to the standing figure for
+  // someone with no balance to fall through to; see usageWarnings.js). The
+  // first one still open is what shows.
+  const closed = (d) => (d.resting ? figureHidden : dismissed.includes(keyOf(d)));
+  const shown = [warning, warning?.whenDismissed].filter(Boolean).find((d) => !closed(d)) || null;
 
   // Announcing happens in a permanently mounted region, not through a role on
   // the bar. The standing figure can sit on screen for a whole window, so a
@@ -92,9 +94,11 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
         )}
         <button
           type="button"
-          onClick={() => dismiss(keyOf(shown))}
-          aria-label="Dismiss"
-          title="Dismiss"
+          onClick={() => (shown.resting ? hideFigure() : dismiss(keyOf(shown)))}
+          // The label names what goes, since for a free user the figure's
+          // button is a permanent fixture rather than a passing warning's.
+          aria-label={shown.resting ? 'Hide allowance' : 'Dismiss'}
+          title={shown.resting ? 'Hide' : 'Dismiss'}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
           <X size={14} strokeWidth={1.5} aria-hidden="true" />
