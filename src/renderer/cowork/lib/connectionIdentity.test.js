@@ -185,6 +185,19 @@ describe('connectionIdentity — subtitle', () => {
     })).toEqual({ title: 'GitHub', subtitle: 'Team 2 · octocat' });
   });
 
+  it('does not repeat the title when a bare-engine-id label picked up a global-uniqueness counter', () => {
+    // Same mechanism as the identity-again cases above, but for the
+    // title-again path: a connection with no identity at all (the account
+    // lookup returned nothing) whose user_label is the bare engine id plus
+    // a counter — e.g. a second Google Drive connection whose account_name
+    // AND account_email both failed to resolve — must still read as "the
+    // title, again," not a meaningful second value.
+    expect(connectionIdentity({
+      engine: 'google_drive', name: 'google_drive-abc123', label: 'Google Drive',
+      user_label: 'google_drive 2',
+    })).toEqual({ title: 'Google Drive', subtitle: 'google_drive-abc123' });
+  });
+
   it('does not throw when user_label or display_name is a non-string truthy value', () => {
     expect(() => connectionIdentity({
       engine: 'github', name: 'github-46461b', label: 'GitHub', user_label: 42, display_name: true,

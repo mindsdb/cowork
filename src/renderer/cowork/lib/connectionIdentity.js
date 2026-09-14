@@ -41,7 +41,7 @@ export function connectionIdentity(connection) {
   // has no account name to use instead (persist.py's default_user_label()),
   // and that raw id should read as "the title, again" just as much as an
   // exact-cased repeat does.
-  const isTitleAgain = (value) => normalize(value) === normalize(title);
+  const isTitleAgain = (value) => normalize(stripDisambiguationCounter(value)) === normalize(title);
   const isIdentityAgain = (value) => (
     typeof identity === 'string' && !!identity
     && normalize(stripDisambiguationCounter(value)) === normalize(identity)
