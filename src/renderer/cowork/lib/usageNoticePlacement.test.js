@@ -61,9 +61,9 @@ describe('usageNoticeBuckets', () => {
   });
 });
 
-// PR #978 review. The anchor is an ordinal, so deleting a turn moves the ground
-// under it. A stale stamp points at a later turn, or at nothing — and a notice
-// with no turn to sit at falls back to the bottom, the original defect.
+// The anchor is an ordinal, so deleting a turn moves the ground under it. A
+// stale stamp points at a later turn, or at nothing — and a notice with no turn
+// to sit at falls back to the bottom, the original defect.
 describe('re-anchoring when a turn is deleted', () => {
   const at = (turnIndex) => ({ kind: 'free_low', turnIndex });
 

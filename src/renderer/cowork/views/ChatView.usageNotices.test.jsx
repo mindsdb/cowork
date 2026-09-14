@@ -94,9 +94,8 @@ describe('ChatView usage notices', () => {
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  // PR #978 review. The streaming answer is a sibling of the transcript rows,
-  // so a trailing card used to render above it, then move once the turn
-  // committed.
+  // The streaming answer is a sibling of the transcript rows, so a trailing
+  // card used to render above it, then move once the turn committed.
   it('keeps a live turn\'s notice below the answer still streaming', () => {
     const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 1 }];
     const streaming = [
