@@ -4,8 +4,9 @@ import { render } from '@testing-library/react';
 // MarkdownContent pulls in the platform host bridge, the skills store, and
 // the code/table renderers. None are relevant to math rendering, so stub
 // them to keep the test focused on the remark-math + rehype-katex pipeline.
-// The host bridge is stubbed once, below, together with the `isWeb` gate —
-// a second `vi.mock()` of the same path does not merge with it, it races it.
+// The host bridge is stubbed once, below, together with the `isWeb` gate.
+// Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
+// and the loser taking `isWeb` with it fails every web case in this file.
 vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
@@ -22,12 +23,7 @@ vi.mock('./MarkdownTable', () => ({
 // Flippable surface: the plugin passes `host.isWeb` into isArtifactLocalPath,
 // and the two ENG-2421 end-to-end cases below need to prove BOTH sides of that
 // gate — with a hard-coded value, dropping the flag pass would stay green.
-//
-// This is the ONLY mock of the host bridge. It used to be the second of two
-// registered for this path, and which factory won was not deterministic: when
-// the other one did, `host.isWeb` was undefined, the guard never fired, and
-// every case below that renders on web failed. Keep the `openExternal` stub
-// here — folding it in is what let the duplicate go away.
+// The `openExternal` stub lives here too, so this stays the only host mock.
 const hostState = vi.hoisted(() => ({ isWeb: false }));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const mod = await importOriginal();

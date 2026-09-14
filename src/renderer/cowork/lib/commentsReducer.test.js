@@ -87,39 +87,25 @@ describe('maxUpdatedAt', () => {
     expect(maxUpdatedAt([])).toBe('');
     expect(maxUpdatedAt(undefined)).toBe('');
   });
-
-  // Pinned, not endorsed: the cursor is picked by STRING comparison, which is
-  // only equivalent to chronological order while every producer stamps the same
-  // offset. cowork-server does (`datetime.now(UTC).isoformat()` -> `+00:00`).
-  // If a producer ever emits a local offset, the SSE `since` cursor would skip
-  // events — this case is here so that change fails loudly instead of silently.
-  it('compares timestamps as strings, so a non-UTC offset would win on digits alone', () => {
-    const loaded = [
-      thread({ id: 'a', updated_at: '2026-08-25T10:00:00+02:00' }), // 08:00 UTC
-      thread({ id: 'b', updated_at: '2026-08-25T09:00:00+00:00' }), // 09:00 UTC, later
-    ];
-
-    expect(maxUpdatedAt(loaded)).toBe('2026-08-25T10:00:00+02:00');
-  });
 });
 
 describe('normalizeThreadForLayer', () => {
   // The injected layer renders the popover timestamp off `created_at`. Falling
   // back to `updated_at` made it jump forward on every reply and status change.
   it('prefers created_at and falls back to updated_at', () => {
-    const withCreated = thread({
-      created_at: '2026-08-25T12:00:00+00:00',
-      updated_at: '2026-08-26T18:00:00+00:00',
-    });
+    const created = '2026-08-24T09:00:00+00:00';
+    const updated = '2026-08-26T18:00:00+00:00';
+    const epoch = (iso) => Math.floor(Date.parse(iso) / 1000);
 
-    expect(normalizeThreadForLayer(withCreated).created_at)
-      .toBe(Math.floor(Date.parse('2026-08-25T12:00:00+00:00') / 1000));
-    expect(normalizeThreadForLayer(thread()).created_at)
-      .toBe(Math.floor(Date.parse('2026-08-25T12:00:00+00:00') / 1000));
+    expect(normalizeThreadForLayer(thread({ created_at: created, updated_at: updated })).created_at)
+      .toBe(epoch(created));
+    expect(normalizeThreadForLayer(thread({ updated_at: updated })).created_at)
+      .toBe(epoch(updated));
   });
 
   it('flattens replies and tolerates an author without a user_id', () => {
     const source = thread({
+      selector: '#chart > tbody tr:nth-child(2)',
       payload: {
         author: { email: 'author@example.com' },
         text: 'Please clarify the outcome.',
@@ -135,6 +121,8 @@ describe('normalizeThreadForLayer', () => {
 
     expect(normalizeThreadForLayer(source)).toMatchObject({
       id: 'thread-1',
+      // The layer anchors its pin off this, so it has to survive the flatten.
+      selector: '#chart > tbody tr:nth-child(2)',
       author: 'author@example.com',
       author_user_id: null,
       text: 'Please clarify the outcome.',

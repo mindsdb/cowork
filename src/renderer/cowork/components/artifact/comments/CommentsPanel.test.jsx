@@ -10,14 +10,8 @@ const VIEWER = { user_id: 'owner-user', email: 'owner@example.com', role: 'owner
 const thread = (id, status, text) => ({
   id,
   status,
-  selector: null,
   created_at: '2026-08-25T12:00:00+00:00',
-  updated_at: '2026-08-25T12:00:00+00:00',
-  payload: {
-    author: { user_id: 'owner-user', email: 'owner@example.com' },
-    text,
-    replies: [],
-  },
+  payload: { author: { user_id: 'owner-user', email: 'owner@example.com' }, text },
 });
 
 const THREADS = [
@@ -58,10 +52,12 @@ describe('CommentsPanel', () => {
 
   // Deleting a thread is irreversible and has no undo, so the menu item must
   // only ever arm the confirmation — never dispatch the delete itself.
+  // One thread on purpose: which card the kebab belongs to is then fixed by the
+  // fixture, not by the panel's sort order, which this case says nothing about.
   it('deletes only after the confirmation is accepted', async () => {
-    const { onDeleteThread, user } = open();
+    const { onDeleteThread, user } = open({ threads: [THREADS[0]] });
 
-    await user.click(screen.getAllByRole('button', { name: 'More' })[0]);
+    await user.click(screen.getByRole('button', { name: 'More' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
     expect(await screen.findByRole('dialog')).toBeVisible();

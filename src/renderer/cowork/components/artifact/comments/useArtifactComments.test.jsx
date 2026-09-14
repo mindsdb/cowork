@@ -68,14 +68,8 @@ describe('useArtifactComments on switching artifact', () => {
   });
 
   it('drops the previous artifact\'s threads before the next set arrives', async () => {
-    const THREAD = {
-      id: 'thread-1',
-      status: 'open',
-      updated_at: '2026-08-25T16:00:00+00:00',
-      payload: { author: { user_id: 'reviewer-user' }, text: 'Please fix this.' },
-    };
     listCommentThreads
-      .mockResolvedValueOnce({ threads: [THREAD], viewer: VIEWER, unreadCount: 3 })
+      .mockResolvedValueOnce({ threads: [{ id: 'thread-1' }], viewer: VIEWER, unreadCount: 3 })
       // The next artifact's load is still in flight — the window in which stale
       // state would be on screen.
       .mockReturnValue(new Promise(() => {}));
