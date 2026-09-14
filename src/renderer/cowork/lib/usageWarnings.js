@@ -94,9 +94,8 @@ export function formatUsd(value) {
 
 /** "Sep 11" in the viewer's timezone, or null when the date is unusable.
  *
- *  For spans that genuinely are calendar dates — a billing period, an auto top
- *  up cap resetting next month. The Air allowance refills on a clock, not on a
- *  calendar; it uses `formatResetTime` below. */
+ *  For spans that genuinely are calendar dates: a billing period, an auto top
+ *  up cap resetting next month. The Air allowance uses `formatResetTime`. */
 export function formatResetDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -104,23 +103,18 @@ export function formatResetDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** When the allowance next refills, on the viewer's own clock: "2:15 PM", or
- *  "Sep 15, 2:15 PM" when it lands on a different local day. Null when there is
- *  nothing usable to quote.
+/** When the allowance next refills, on the viewer's clock: "2:15 PM", or
+ *  "Sep 15, 2:15 PM" on a different local day. Null when nothing is quotable.
  *
- *  The allowance refills every few hours (ENG-2593), so the refill is almost
- *  always later today and a date cannot express it — "refills on Sep 14", read
- *  on Sep 14, names a day the reader is already in and reads as a whole day
- *  away when it may be twenty minutes. The date is added only when the refill
- *  falls on another local day, so a window crossing midnight does not read as
- *  a time already past. Matches `formatResetTime` in the console
- *  (mindshub_frontend/src/utils/billing/creditAlert.js), so the two products
- *  quote one refill the same way.
+ *  The allowance refills every few hours, so a date names a day the reader is
+ *  already in. The date is added only when the refill falls on another local
+ *  day, so a window crossing midnight does not read as a time already past.
+ *  Mirrors the console's formatter (mindshub_frontend creditAlert.js) so the
+ *  two products quote one refill the same way.
  *
- *  An instant already past returns null and the caller drops its whole clause,
- *  rather than printing a stale time that reads as imminent. Null rather than a
- *  stand-in phrase: the window is fixed-duration, so naming a month would
- *  promise a schedule that does not exist.
+ *  An instant already past returns null and the caller drops its whole clause.
+ *  A stale time reads as imminent, and a stand-in like "next month" would
+ *  promise a schedule the fixed-duration window does not have.
  */
 export function formatResetTime(iso, now = new Date()) {
   if (!iso) return null;

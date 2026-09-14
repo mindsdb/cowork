@@ -61,8 +61,8 @@ describe('formatting', () => {
     expect(formatResetDate(null)).toBeNull();
   });
 
-  // ENG-2748. The allowance refills every few hours, so a date names a day the
-  // reader is already in and reads as a whole day away when it may be minutes.
+  // The allowance refills every few hours, so a date names a day the reader is
+  // already in, and reads as a day away when it may be minutes.
   describe('formatResetTime', () => {
     const NOW = new Date('2026-09-14T09:00:00Z');
 
@@ -76,8 +76,7 @@ describe('formatting', () => {
     });
 
     it('says nothing at all about a refill already past', () => {
-      // The clause is dropped rather than printing a stale time, which on a
-      // clock reads as imminent in a way a stale date never did.
+      // A stale time reads as imminent in a way a stale date never did.
       expect(formatResetTime('2026-09-14T08:59:00Z', NOW)).toBeNull();
       expect(formatResetTime(NOW.toISOString(), NOW)).toBeNull();
     });

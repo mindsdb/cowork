@@ -130,8 +130,8 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
       resetAt: inMarch.toISOString(),
     }))} />);
-    // Far enough out to carry its date. A refill later today names the clock
-    // time alone — see lib/usageWarnings formatResetTime (ENG-2748).
+    // Far enough out to carry its date. A refill later today names the time
+    // alone — see formatResetTime in lib/usageWarnings.
     const day = inMarch.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const time = inMarch.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     expect(screen.getByText(new RegExp(`wait for it to refill at ${day}, ${time}`))).toBeInTheDocument();
@@ -139,8 +139,8 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
 
   it('names the clock time alone for a refill later today', () => {
     const inTwoHours = new Date(Date.now() + 2 * 3600 * 1000);
-    // Only meaningful while the refill stays inside today; after 10pm local it
-    // rolls over and the dated form is correct, so assert that instead.
+    // After 10pm local the refill rolls into tomorrow, where the dated form is
+    // correct, so assert whichever applies.
     const sameDay = inTwoHours.getDate() === new Date().getDate();
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
       resetAt: inTwoHours.toISOString(),
