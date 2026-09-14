@@ -59,6 +59,7 @@ import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
+import { turnsAfter, deleteTurnTitle, deleteTurnMessage } from './lib/deleteTurnWarning';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -4032,7 +4033,10 @@ function AppCore() {
 
   const handleDeleteTurnRequest = (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
-    setPendingDeleteTurn({ taskId, turnIndex });
+    // How much goes with it, captured at click: the delete truncates, and the
+    // dialog has to say so before the user confirms (lib/deleteTurnWarning).
+    const task = tasks.find((t) => t.id === taskId);
+    setPendingDeleteTurn({ taskId, turnIndex, trailing: turnsAfter(task?.messages, turnIndex) });
   };
 
   const performDeleteTurn = async (taskId, turnIndex) => {
@@ -5176,8 +5180,8 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteTurn != null}
-        title="Delete this exchange?"
-        message={`This removes both your question and ${agentLabel}'s response from the conversation. Any scratchpad cells, artifacts, or memory writes produced as part of this turn stay on disk. This can't be undone.`}
+        title={deleteTurnTitle(pendingDeleteTurn?.trailing || 0)}
+        message={deleteTurnMessage(pendingDeleteTurn?.trailing || 0, agentLabel)}
         confirmLabel="Delete"
         cancelLabel="Keep"
         destructive
