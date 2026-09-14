@@ -58,7 +58,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnIndex, dropNoticesFromTurn, shiftNoticesAfterTurn } from './lib/usageNoticePlacement';
+import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -4064,11 +4064,17 @@ function AppCore() {
           }
         }
         if (dropFromUserAt === -1) return t;
+        // Read off the cut, not off `turnIndex`: the walk above finds its row by
+        // an assistant ordinal while the caller passes a user one, so an `error`
+        // row in between makes it take more turns than were asked for.
+        const cut = t.messages.slice(dropFromUserAt, dropEnd);
         return {
           ...t,
-          // The conversation closes over the gap, so later notices are now one
-          // turn further up than their stamp says.
-          usageNotices: shiftNoticesAfterTurn(t.usageNotices, turnIndex),
+          usageNotices: removeNoticeTurns(
+            t.usageNotices,
+            userTurnCount(t.messages.slice(0, dropFromUserAt)),
+            userTurnCount(cut),
+          ),
           messages: [
             ...t.messages.slice(0, dropFromUserAt),
             ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
@@ -4095,9 +4101,11 @@ function AppCore() {
             ? {
               ...t,
               messages: applySessionMessages(taskId, fresh.messages),
-              // The server cut this turn and everything after it, so notices
-              // anchored there have no moment left to sit at.
-              usageNotices: dropNoticesFromTurn(t.usageNotices, turnIndex),
+              // The server cut this turn and everything after it. What survived
+              // says how many turns are left; anything anchored past that has
+              // no moment to sit at. Counted from the refetch rather than from
+              // `turnIndex`, which the server does not resolve the same way.
+              usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
             }
             : t,
         ));

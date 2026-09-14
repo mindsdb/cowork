@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { currentTurnIndex, usageNoticeBuckets, dropNoticesFromTurn, shiftNoticesAfterTurn } from './usageNoticePlacement';
+import { currentTurnIndex, userTurnCount, usageNoticeBuckets, dropNoticesFromTurn, removeNoticeTurns } from './usageNoticePlacement';
 
 const user = (content) => ({ role: 'user', content });
 const assistant = (content) => ({ role: 'assistant', content });
@@ -64,15 +64,17 @@ describe('usageNoticeBuckets', () => {
 // The anchor is an ordinal, so deleting a turn moves the ground under it. A
 // stale stamp points at a later turn, or at nothing — and a notice with no turn
 // to sit at falls back to the bottom, the original defect.
+//
+// Both repairs read the cut that happened, never the turn that was asked for.
 describe('re-anchoring when a turn is deleted', () => {
   const at = (turnIndex) => ({ kind: 'free_low', turnIndex });
 
-  describe('dropNoticesFromTurn (server: the turn AND everything after it)', () => {
-    it('drops the deleted turn and everything anchored after it', () => {
+  describe('dropNoticesFromTurn (truncation: how many turns survived)', () => {
+    it('drops every notice anchored past the surviving turns', () => {
       expect(dropNoticesFromTurn([at(0), at(1), at(2)], 1)).toEqual([at(0)]);
     });
 
-    it('keeps notices anchored before the cut', () => {
+    it('keeps notices anchored inside what survived', () => {
       expect(dropNoticesFromTurn([at(0), at(1)], 2)).toEqual([at(0), at(1)]);
     });
 
@@ -81,15 +83,27 @@ describe('re-anchoring when a turn is deleted', () => {
       expect(dropNoticesFromTurn([unstamped, at(3)], 1)).toEqual([unstamped]);
     });
 
-    it('tolerates a missing list or turn index', () => {
+    it('tolerates a missing list or count', () => {
       expect(dropNoticesFromTurn(undefined, 1)).toBeUndefined();
       expect(dropNoticesFromTurn([at(2)], undefined)).toEqual([at(2)]);
     });
   });
 
-  describe('shiftNoticesAfterTurn (local: one exchange, conversation closes up)', () => {
-    it('drops the deleted turn and moves later anchors down one', () => {
-      expect(shiftNoticesAfterTurn([at(0), at(1), at(2)], 1)).toEqual([at(0), at(1)]);
+  describe('removeNoticeTurns (a cut through the middle)', () => {
+    it('drops the cut turns and moves later anchors down by as many', () => {
+      expect(removeNoticeTurns([at(0), at(1), at(2)], 1, 1)).toEqual([at(0), at(1)]);
+    });
+
+    // The case that motivated reading the cut instead of the request. The local
+    // walk finds its row by an assistant ordinal while the caller passes a user
+    // one, so an `error` row makes it take two turns for a one-turn request.
+    // Shifting by one left turn C's notice stranded, and a stranded notice
+    // anchors to nothing and falls back to the bottom — the original defect.
+    it('accounts for every turn a wider-than-requested cut took', () => {
+      // user A, assistant a, user B, error, user C, assistant c — delete B.
+      // The cut runs from turn 1 and takes both B and C.
+      expect(removeNoticeTurns([at(2)], 1, 2)).toEqual([]);
+      expect(removeNoticeTurns([at(0), at(1), at(2), at(3)], 1, 2)).toEqual([at(0), at(1)]);
     });
 
     it('re-anchors so the notice still renders at the turn it happened in', () => {
@@ -98,22 +112,34 @@ describe('re-anchoring when a turn is deleted', () => {
         { role: 'user', content: 'a' }, { role: 'assistant', content: 'b' },
         { role: 'user', content: 'e' }, { role: 'assistant', content: 'f' },
       ];
-      const shifted = shiftNoticesAfterTurn([at(2)], 1);
-      // Two turns left, the notice anchored to the second: nothing follows it.
-      expect(usageNoticeBuckets(messages, shifted)[messages.length]).toEqual(shifted);
-      // A stale stamp also lands at the bottom, but by falling off the end
-      // rather than by describing the turn above it.
+      const shifted = removeNoticeTurns([at(2)], 1, 1);
       expect(shifted[0].turnIndex).toBe(1);
+      // Two turns left, the notice on the second: nothing follows it.
+      expect(usageNoticeBuckets(messages, shifted)[messages.length]).toEqual(shifted);
     });
 
     it('leaves earlier and unstamped notices untouched', () => {
       const unstamped = { kind: 'free_low' };
-      expect(shiftNoticesAfterTurn([at(0), unstamped], 2)).toEqual([at(0), unstamped]);
+      expect(removeNoticeTurns([at(0), unstamped], 2, 1)).toEqual([at(0), unstamped]);
     });
 
-    it('tolerates a missing list or turn index', () => {
-      expect(shiftNoticesAfterTurn(undefined, 1)).toBeUndefined();
-      expect(shiftNoticesAfterTurn([at(2)], undefined)).toEqual([at(2)]);
+    it('does nothing when the cut took no turn at all', () => {
+      expect(removeNoticeTurns([at(2)], 1, 0)).toEqual([at(2)]);
+    });
+
+    it('tolerates a missing list or range', () => {
+      expect(removeNoticeTurns(undefined, 1, 1)).toBeUndefined();
+      expect(removeNoticeTurns([at(2)], undefined, 1)).toEqual([at(2)]);
+      expect(removeNoticeTurns([at(2)], 1, undefined)).toEqual([at(2)]);
+    });
+  });
+
+  describe('userTurnCount', () => {
+    it('counts user messages and nothing else', () => {
+      expect(userTurnCount([
+        { role: 'user' }, { role: 'assistant' }, { role: 'error' }, { role: 'user' },
+      ])).toBe(2);
+      expect(userTurnCount(undefined)).toBe(0);
     });
   });
 });

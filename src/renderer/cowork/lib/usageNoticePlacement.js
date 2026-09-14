@@ -13,10 +13,14 @@
 // message. It therefore never splits a question from its reply, and a crossing
 // that is genuinely the latest event still comes last.
 
+// How many turns a transcript holds. One per user message.
+export function userTurnCount(messages) {
+  return (Array.isArray(messages) ? messages : []).filter((m) => m?.role === 'user').length;
+}
+
 // 0-based index of the turn being answered. Stamped onto the notice at creation.
 export function currentTurnIndex(messages) {
-  const count = (Array.isArray(messages) ? messages : []).filter((m) => m?.role === 'user').length;
-  return count - 1;
+  return userTurnCount(messages) - 1;
 }
 
 // Notices bucketed by the row they render before: `buckets[i]` precedes
@@ -48,23 +52,32 @@ function _anchorRow(rows, turnIndex) {
 //
 // The anchor is an ordinal, so a deleted turn moves the ground under it.
 // `performDeleteTurn` rehydrates `messages` but carries `usageNotices` over
-// untouched. The two delete paths cut differently and each needs its own repair.
+// untouched.
+//
+// Both repairs read the cut that HAPPENED, never the turn that was asked for.
+// The two differ: the local walk finds its row by an assistant ordinal while
+// the caller passes a user one, and the server counts visible assistant rows
+// its own way. An `error` row between them makes either cut wider than the
+// request, and a repair trusting the request then leaves a notice stranded —
+// pinned to the bottom, which is the defect this placement exists to fix.
 
-// The server cut takes the turn and everything after it. Those notices describe
-// moments the conversation no longer contains, so they go with them.
-export function dropNoticesFromTurn(notices, turnIndex) {
-  if (!Array.isArray(notices) || !Number.isFinite(turnIndex)) return notices;
+// Truncation: nothing from `survivingTurns` on is left to anchor to.
+export function dropNoticesFromTurn(notices, survivingTurns) {
+  if (!Array.isArray(notices) || !Number.isFinite(survivingTurns)) return notices;
   // An unstamped notice already anchors to the bottom. Left alone, not guessed at.
-  return notices.filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex < turnIndex);
+  return notices.filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex < survivingTurns);
 }
 
-// The local (`tmp-`) cut takes one exchange and the conversation closes up. The
-// deleted turn's notices go; later ones shift down to stay on their own turn.
-export function shiftNoticesAfterTurn(notices, turnIndex) {
-  if (!Array.isArray(notices) || !Number.isFinite(turnIndex)) return notices;
+// A cut through the middle: `count` turns from `fromTurn` are gone and the
+// conversation closes over the gap. Their notices go, and later ones shift down
+// by as many turns as actually went.
+export function removeNoticeTurns(notices, fromTurn, count) {
+  if (!Array.isArray(notices) || !Number.isFinite(fromTurn) || !Number.isFinite(count)) return notices;
+  if (count <= 0) return notices;
+  const end = fromTurn + count;
   return notices
-    .filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex !== turnIndex)
-    .map((n) => (Number.isFinite(n?.turnIndex) && n.turnIndex > turnIndex
-      ? { ...n, turnIndex: n.turnIndex - 1 }
+    .filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex < fromTurn || n.turnIndex >= end)
+    .map((n) => (Number.isFinite(n?.turnIndex) && n.turnIndex >= end
+      ? { ...n, turnIndex: n.turnIndex - count }
       : n));
 }
