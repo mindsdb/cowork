@@ -54,6 +54,7 @@ import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatPercentShort } from '../lib/usageWarnings';
+import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -2066,12 +2067,18 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              // Usage alerts that happened during this task (ENG-1782) sit after
-              // the turns, so the reply stays next to its question and the
-              // card reads as "while this ran, this changed".
-              const usageAlertCards = (task.usageNotices || []).map((n, i) => (
+              // Usage alerts that happened during this task (ENG-1782) sit at
+              // the turn they happened in, so the card keeps reading as "while
+              // this ran, this changed" once the conversation continues below
+              // it. Anchoring is by turn, not by row, so the reply still stays
+              // next to its question. See lib/usageNoticePlacement.
+              const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
+              // Keyed by what the notice IS, not by its position: cards no
+              // longer all live in one trailing list, so a positional key
+              // would collide between buckets.
+              const usageCard = (n) => (
                 <UsageAlertCard
-                  key={`usage-${i}`}
+                  key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
                   time={formatMetaTime(n.createdAt)}
                   agentLabel={agentLabel}
                   kind={n.kind}
@@ -2079,7 +2086,7 @@ export default function ChatView({
                   fractionLeft={n.fractionLeft}
                   isBillingOwner={isBillingOwner}
                 />
-              ));
+              );
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -2547,7 +2554,13 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
-              return [...turns, ...usageAlertCards];
+              const rendered = [];
+              turns.forEach((node, i) => {
+                usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));
+                rendered.push(node);
+              });
+              usageBuckets[visibleMessages.length].forEach((n) => rendered.push(usageCard(n)));
+              return rendered;
             })()}
 
             {streamingMsg ? (

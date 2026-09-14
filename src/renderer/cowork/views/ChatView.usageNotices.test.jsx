@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-// In-chat usage alerts (ENG-1782) live on `task.usageNotices` and render after
-// the transcript, so the reply stays next to its question.
+// In-chat usage alerts (ENG-1782) live on `task.usageNotices`. They render at
+// the turn they happened in (ENG-2747), which for a one-turn task is after the
+// reply — so the reply stays next to its question.
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -20,13 +21,14 @@ vi.mock('../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackKeyProvis
 
 import ChatView from './ChatView';
 
-const task = (usageNotices) => ({
+const task = (usageNotices, extraMessages = []) => ({
   id: 'conv-a',
   title: 'Weekly digest',
   status: 'idle',
   messages: [
     { role: 'user', content: 'Pull last week into a digest.' },
     { role: 'assistant', content: 'Done. Here is the digest.' },
+    ...extraMessages,
   ],
   usageNotices,
 });
@@ -64,6 +66,34 @@ describe('ChatView usage notices', () => {
     expect(screen.getByText('Auto top up failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add funds' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
+  });
+
+  // ENG-2747: the cards used to be appended after every turn, so they followed
+  // the bottom of the conversation. Once credits were added and the user kept
+  // working, a "running low" card sat below the newer messages and read as a
+  // claim about now rather than a record of a moment.
+  it('leaves a notice at the turn it happened in when the conversation continues', () => {
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
+    const later = [
+      { role: 'user', content: 'Added credits — carry on.' },
+      { role: 'assistant', content: 'Picking it back up.' },
+    ];
+    render(<ChatView task={task(notices, later)} />);
+    const card = screen.getByText('Free Air allowance running low');
+    const nextQuestion = screen.getByText('Added credits — carry on.');
+    expect(card.compareDocumentPosition(nextQuestion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // The anchor is the turn, not the row: a card never splits a question from
+  // its answer, even though the crossing happens mid-turn.
+  it('keeps the reply next to its question', () => {
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
+    render(<ChatView task={task(notices, [{ role: 'user', content: 'Added credits — carry on.' }])} />);
+    const question = screen.getByText('Pull last week into a digest.');
+    const reply = screen.getByText('Done. Here is the digest.');
+    const card = screen.getByText('Free Air allowance running low');
+    expect(question.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders nothing extra when there are no notices', () => {

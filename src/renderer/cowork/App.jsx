@@ -58,6 +58,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { currentTurnIndex } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -2549,8 +2550,11 @@ function AppCore() {
   // A usage change DURING a task lands in that task's timeline: free tokens
   // ran out (the task went on, now on the balance) or an auto top up failed.
   // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
-  // ChatView renders them after the transcript so the reply stays next to its
-  // question, and they are client-side only (gone on reload, by design).
+  // and they are client-side only (gone on reload, by design). The turn the
+  // crossing happened in is stamped here, because only this moment knows it —
+  // ChatView places the card after that turn so it stays where it happened
+  // instead of following the bottom of the conversation (see
+  // lib/usageNoticePlacement).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
     const before = prevHubUsage.current;
@@ -2565,7 +2569,8 @@ function AppCore() {
       // composer: a task on an explicit paid model never hears about free tokens.
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
+      const turnIndex = currentTurnIndex(t.messages);
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, turnIndex }))] };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
