@@ -58,6 +58,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -2549,8 +2550,8 @@ function AppCore() {
   // A usage change DURING a task lands in that task's timeline: free tokens
   // ran out (the task went on, now on the balance) or an auto top up failed.
   // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
-  // ChatView renders them after the transcript so the reply stays next to its
-  // question, and they are client-side only (gone on reload, by design).
+  // and they are client-side only (gone on reload, by design). The turn is
+  // stamped here because only this moment knows it (lib/usageNoticePlacement).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
     const before = prevHubUsage.current;
@@ -2565,7 +2566,8 @@ function AppCore() {
       // composer: a task on an explicit paid model never hears about free tokens.
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] };
+      const turnIndex = currentTurnIndex(t.messages);
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, turnIndex }))] };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -2838,7 +2840,8 @@ function AppCore() {
         subtitle: 'just now',
         status: 'idle',
         messages: [
-          { role: 'user', content: text, attachments: [] },
+          // `_unsent`: never reached the server, so hydration drops it.
+          { role: 'user', content: text, attachments: [], _unsent: true },
           { role: 'provider_required' },
         ],
         projectPath: effectiveProjectPath,
@@ -3152,7 +3155,8 @@ function AppCore() {
               updatedAt: new Date().toISOString(),
               messages: [
                 ...t.messages,
-                { role: 'user', content: text, attachments: [] },
+                // `_unsent`: never reached the server, so hydration drops it.
+                { role: 'user', content: text, attachments: [], _unsent: true },
                 { role: 'provider_required' },
               ],
             }
@@ -4061,8 +4065,16 @@ function AppCore() {
           }
         }
         if (dropFromUserAt === -1) return t;
+        // Read off the cut, not off `turnIndex`: the walk above counts assistant
+        // rows while the caller counts user ones, so it can take extra turns.
+        const cut = t.messages.slice(dropFromUserAt, dropEnd);
         return {
           ...t,
+          usageNotices: removeNoticeTurns(
+            t.usageNotices,
+            userTurnCount(t.messages.slice(0, dropFromUserAt)),
+            userTurnCount(cut),
+          ),
           messages: [
             ...t.messages.slice(0, dropFromUserAt),
             ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
@@ -4086,7 +4098,13 @@ function AppCore() {
       if (fresh && Array.isArray(fresh.messages)) {
         setTasks((prev) => prev.map((t) =>
           t.id === taskId
-            ? { ...t, messages: applySessionMessages(taskId, fresh.messages) }
+            ? {
+              ...t,
+              messages: applySessionMessages(taskId, fresh.messages),
+              // What survived says how many turns are left. Counted from the
+              // refetch, since the server resolves `turnIndex` its own way.
+              usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
+            }
             : t,
         ));
       }

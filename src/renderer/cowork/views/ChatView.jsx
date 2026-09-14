@@ -54,6 +54,7 @@ import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatPercentShort } from '../lib/usageWarnings';
+import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -425,8 +426,9 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
-          {/* Agent always named; timestamp joins it when the message has
-              one (streamed turns often don't carry createdAt). */}
+          {/* Agent always named; the timestamp joins it when the caller
+              resolved one. No message row carries `createdAt` — the server
+              sends `created_at` and nothing maps it. */}
           <span className="turn-meta">
             {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
           </span>
@@ -1658,6 +1660,21 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
+  // Usage alerts sit at the turn they happened in (lib/usageNoticePlacement).
+  // Computed out here because the last bucket renders below the streaming turn,
+  // a sibling of these rows. Keyed by identity: a positional key would collide.
+  const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
+  const usageCard = (n) => (
+    <UsageAlertCard
+      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
+      time={formatMetaTime(n.createdAt)}
+      agentLabel={agentLabel}
+      kind={n.kind}
+      resetsAt={n.resetsAt}
+      fractionLeft={n.fractionLeft}
+      isBillingOwner={isBillingOwner}
+    />
+  );
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
@@ -2066,20 +2083,6 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              // Usage alerts that happened during this task (ENG-1782) sit after
-              // the turns, so the reply stays next to its question and the
-              // card reads as "while this ran, this changed".
-              const usageAlertCards = (task.usageNotices || []).map((n, i) => (
-                <UsageAlertCard
-                  key={`usage-${i}`}
-                  time={formatMetaTime(n.createdAt)}
-                  agentLabel={agentLabel}
-                  kind={n.kind}
-                  resetsAt={n.resetsAt}
-                  fractionLeft={n.fractionLeft}
-                  isBillingOwner={isBillingOwner}
-                />
-              ));
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -2506,8 +2509,9 @@ export default function ChatView({
                 <AnswerTurn
                   key={i}
                   state="done"
-                  // Streamed turns rarely carry createdAt — fall back to the
-                  // turn's own start time so the hover meta still has a date.
+                  // `createdAt` is never set on a message row, so the replayed
+                  // start time supplies this — and a replay with no steps has
+                  // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
@@ -2547,7 +2551,14 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
-              return [...turns, ...usageAlertCards];
+              // The trailing bucket renders after the streaming turn below, so
+              // a live turn's notice cannot split the question from its reply.
+              const rendered = [];
+              turns.forEach((node, i) => {
+                usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));
+                rendered.push(node);
+              });
+              return rendered;
             })()}
 
             {streamingMsg ? (
@@ -2612,6 +2623,11 @@ export default function ChatView({
                 <WorkingIndicator label="Streaming…" />
               </AnswerTurn>
             )}
+
+            {/* Notices from the turn still running, below the answer rather
+                than above it: the crossing happened during this turn. With
+                nothing streaming this is just the end of the conversation. */}
+            {usageBuckets[visibleMessages.length].map(usageCard)}
           </div>
         </div>
 
