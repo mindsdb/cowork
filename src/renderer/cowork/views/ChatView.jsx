@@ -1659,16 +1659,11 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
-  // Usage alerts that happened during this task (ENG-1782) sit at the turn
-  // they happened in, so the card keeps reading as "while this ran, this
-  // changed" once the conversation continues below it. Anchoring is by turn,
-  // not by row, so the reply still stays next to its question. See
-  // lib/usageNoticePlacement.
-  //
-  // Computed out here because the LAST bucket renders below the streaming
-  // turn, which is a sibling of the transcript rows rather than one of them.
-  // Keyed by what the notice IS, not by its position: the cards no longer live
-  // in one trailing list, so a positional key would collide between buckets.
+  // Usage alerts sit at the turn they happened in, so a card keeps reading as
+  // "while this ran, this changed" as the conversation continues below it. See
+  // lib/usageNoticePlacement. Computed out here because the last bucket renders
+  // below the streaming turn, which is a sibling of these rows. Cards are keyed
+  // by identity, since a positional key would collide between buckets.
   const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
   const usageCard = (n) => (
     <UsageAlertCard
@@ -2556,9 +2551,9 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
-              // The trailing bucket is NOT emitted here — it renders after the
-              // streaming turn below, so a notice from the live turn cannot
-              // land between the question and the reply still arriving.
+              // The trailing bucket renders after the streaming turn below, so
+              // a live turn's notice cannot land between the question and the
+              // reply still arriving.
               const rendered = [];
               turns.forEach((node, i) => {
                 usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));
@@ -2630,12 +2625,9 @@ export default function ChatView({
               </AnswerTurn>
             )}
 
-            {/* Notices from the turn still running. Below the streaming answer
-                rather than above it: the crossing happened DURING this turn,
-                so placing it before the reply would split the question from
-                the answer and then move once the turn commits. With nothing
-                streaming this is simply the end of the conversation, which is
-                where a crossing that just happened belongs. */}
+            {/* Notices from the turn still running, below the answer rather
+                than above it: the crossing happened during this turn. With
+                nothing streaming this is just the end of the conversation. */}
             {usageBuckets[visibleMessages.length].map(usageCard)}
           </div>
         </div>

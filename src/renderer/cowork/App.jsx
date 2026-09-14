@@ -2550,11 +2550,9 @@ function AppCore() {
   // A usage change DURING a task lands in that task's timeline: free tokens
   // ran out (the task went on, now on the balance) or an auto top up failed.
   // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
-  // and they are client-side only (gone on reload, by design). The turn the
-  // crossing happened in is stamped here, because only this moment knows it —
-  // ChatView places the card after that turn so it stays where it happened
-  // instead of following the bottom of the conversation (see
-  // lib/usageNoticePlacement).
+  // and they are client-side only (gone on reload, by design). The turn is
+  // stamped here because only this moment knows it; ChatView places the card
+  // after that turn (see lib/usageNoticePlacement).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
     const before = prevHubUsage.current;
@@ -4068,8 +4066,8 @@ function AppCore() {
         if (dropFromUserAt === -1) return t;
         return {
           ...t,
-          // The conversation closes over the gap, so every later usage notice
-          // is now one turn further up than its stamp says.
+          // The conversation closes over the gap, so later notices are now one
+          // turn further up than their stamp says.
           usageNotices: shiftNoticesAfterTurn(t.usageNotices, turnIndex),
           messages: [
             ...t.messages.slice(0, dropFromUserAt),
@@ -4097,8 +4095,8 @@ function AppCore() {
             ? {
               ...t,
               messages: applySessionMessages(taskId, fresh.messages),
-              // The server cut this turn and everything after it, so the
-              // usage notices anchored there have no moment left to sit at.
+              // The server cut this turn and everything after it, so notices
+              // anchored there have no moment left to sit at.
               usageNotices: dropNoticesFromTurn(t.usageNotices, turnIndex),
             }
             : t,

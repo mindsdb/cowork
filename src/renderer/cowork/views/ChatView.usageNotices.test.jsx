@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-// In-chat usage alerts (ENG-1782) live on `task.usageNotices`. They render at
-// the turn they happened in (ENG-2747), which for a one-turn task is after the
-// reply — so the reply stays next to its question.
+// In-chat usage alerts live on `task.usageNotices` and render at the turn they
+// happened in, which for a one-turn task is after the reply.
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -68,10 +67,9 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
   });
 
-  // ENG-2747: the cards used to be appended after every turn, so they followed
-  // the bottom of the conversation. Once credits were added and the user kept
-  // working, a "running low" card sat below the newer messages and read as a
-  // claim about now rather than a record of a moment.
+  // The cards used to be appended after every turn, so they followed the bottom
+  // of the conversation. After a top-up a "running low" card sat below the
+  // newer messages and read as a claim about now.
   it('leaves a notice at the turn it happened in when the conversation continues', () => {
     const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
     const later = [
@@ -84,8 +82,8 @@ describe('ChatView usage notices', () => {
     expect(card.compareDocumentPosition(nextQuestion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  // The anchor is the turn, not the row: a card never splits a question from
-  // its answer, even though the crossing happens mid-turn.
+  // The anchor is the turn, not the row, so a card never splits a question from
+  // its answer.
   it('keeps the reply next to its question', () => {
     const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
     render(<ChatView task={task(notices, [{ role: 'user', content: 'Added credits — carry on.' }])} />);
@@ -97,8 +95,8 @@ describe('ChatView usage notices', () => {
   });
 
   // PR #978 review. The streaming answer is a sibling of the transcript rows,
-  // so a trailing card used to render above it — splitting the live question
-  // from its reply, then moving once the turn committed.
+  // so a trailing card used to render above it, then move once the turn
+  // committed.
   it('keeps a live turn\'s notice below the answer still streaming', () => {
     const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 1 }];
     const streaming = [

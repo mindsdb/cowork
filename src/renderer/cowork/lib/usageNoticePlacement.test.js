@@ -61,10 +61,9 @@ describe('usageNoticeBuckets', () => {
   });
 });
 
-// PR #978 review. The anchor is an ordinal, so deleting a turn moves the
-// ground under it: a stale stamp points at a later turn, or at nothing — and
-// a notice with no turn to sit at falls back to the bottom, which is the
-// defect this placement exists to fix.
+// PR #978 review. The anchor is an ordinal, so deleting a turn moves the ground
+// under it. A stale stamp points at a later turn, or at nothing — and a notice
+// with no turn to sit at falls back to the bottom, the original defect.
 describe('re-anchoring when a turn is deleted', () => {
   const at = (turnIndex) => ({ kind: 'free_low', turnIndex });
 
@@ -94,8 +93,7 @@ describe('re-anchoring when a turn is deleted', () => {
     });
 
     it('re-anchors so the notice still renders at the turn it happened in', () => {
-      // The whole point: turn 2's notice must follow turn 2's messages, which
-      // are now turn 1's. Without the shift it would attach to a later turn.
+      // Turn 2's notice must follow turn 2's messages, which are now turn 1's.
       const messages = [
         { role: 'user', content: 'a' }, { role: 'assistant', content: 'b' },
         { role: 'user', content: 'e' }, { role: 'assistant', content: 'f' },
@@ -103,8 +101,8 @@ describe('re-anchoring when a turn is deleted', () => {
       const shifted = shiftNoticesAfterTurn([at(2)], 1);
       // Two turns left, the notice anchored to the second: nothing follows it.
       expect(usageNoticeBuckets(messages, shifted)[messages.length]).toEqual(shifted);
-      // With the stale stamp it would also land at the bottom, but by falling
-      // off the end rather than by describing the turn above it.
+      // A stale stamp also lands at the bottom, but by falling off the end
+      // rather than by describing the turn above it.
       expect(shifted[0].turnIndex).toBe(1);
     });
 
