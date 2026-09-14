@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
   usageTransitions,
@@ -84,6 +84,25 @@ describe('formatting', () => {
     it('says nothing when there is nothing usable to quote', () => {
       expect(formatResetTime('nope', NOW)).toBeNull();
       expect(formatResetTime(null, NOW)).toBeNull();
+    });
+
+    // The suite runs at TZ=UTC, where a same-UTC-day test and a same-local-day
+    // test agree. West of UTC they part company, and only the local one is
+    // right — so the boundary is asserted somewhere the two disagree.
+    describe('west of UTC', () => {
+      const realTz = process.env.TZ;
+      beforeEach(() => { process.env.TZ = 'America/Los_Angeles'; });
+      afterEach(() => { process.env.TZ = realTz; });
+
+      it('keeps the time bare when the refill is a different UTC day but the same local one', () => {
+        // 23:00Z is 4pm in LA; 01:15Z the next day is 6:15pm the same evening.
+        // Comparing UTC dates would wrongly prepend "Sep 15" to tonight.
+        expect(formatResetTime('2026-09-15T01:15:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('6:15 PM');
+      });
+
+      it('names the LOCAL date when the refill really is another day', () => {
+        expect(formatResetTime('2026-09-15T08:30:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('Sep 15, 1:30 AM');
+      });
     });
   });
 });
