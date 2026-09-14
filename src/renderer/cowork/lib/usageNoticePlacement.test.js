@@ -14,6 +14,20 @@ describe('currentTurnIndex', () => {
     expect(currentTurnIndex([user('a'), assistant('b'), user('c')])).toBe(1);
   });
 
+  // A preflight that found no provider appends the typed message and its card
+  // locally and never sends them. Counting that row put every later stamp one
+  // turn ahead of the server's numbering, so hydration — which drops the row —
+  // left the notice anchored past its turn, and it fell to the bottom.
+  it('does not count a row the server will never see', () => {
+    const msgs = [
+      user('a'), assistant('b'),
+      { role: 'user', content: 'unsent', _unsent: true }, { role: 'provider_required' },
+      user('c'),
+    ];
+    expect(currentTurnIndex(msgs)).toBe(1);
+    expect(userTurnCount(msgs)).toBe(2);
+  });
+
   it('ignores non-user rows, including the thinking placeholder', () => {
     const msgs = [user('a'), { role: 'activity', placeholder: true }, { role: 'error' }];
     expect(currentTurnIndex(msgs)).toBe(0);
@@ -42,6 +56,22 @@ describe('usageNoticeBuckets', () => {
 
   it('puts a notice from the current turn last, because nothing follows it yet', () => {
     expect(rowOf(convo, notice(1))).toBe(convo.length);
+  });
+
+  it('places a notice the same before and after an unsent row is dropped', () => {
+    // The ordinal counts server-visible turns, so hydration cannot move it.
+    const beforeHydration = [
+      user('a'), assistant('b'),
+      { role: 'user', content: 'unsent', _unsent: true }, { role: 'provider_required' },
+      user('c'), assistant('d'), user('e'),
+    ];
+    const afterHydration = [user('a'), assistant('b'), user('c'), assistant('d'), user('e')];
+    // Stamped during turn c, which is turn 1 either way.
+    expect(rowOf(beforeHydration, notice(1))).toBe(6);
+    expect(rowOf(afterHydration, notice(1))).toBe(4);
+    // Both indices are the row holding 'e', so the card sits in the same place.
+    expect(beforeHydration[6].content).toBe('e');
+    expect(afterHydration[4].content).toBe('e');
   });
 
   it('falls back to the end when the notice carries no turn stamp', () => {

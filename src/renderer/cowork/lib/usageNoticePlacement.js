@@ -13,9 +13,16 @@
 // message. It therefore never splits a question from its reply, and a crossing
 // that is genuinely the latest event still comes last.
 
-// How many turns a transcript holds. One per user message.
+// A turn the ordinal counts. Every user message except one the server will
+// never see: a preflight that found no provider appends the typed message and
+// its card locally and stops there. Counting it would put every later stamp one
+// turn ahead of the server's numbering, and hydration — which rebuilds the
+// transcript from the server and drops the unsent row — would stale them all.
+const isAnchorTurn = (m) => m?.role === 'user' && !m?._unsent;
+
+// How many turns a transcript holds.
 export function userTurnCount(messages) {
-  return (Array.isArray(messages) ? messages : []).filter((m) => m?.role === 'user').length;
+  return (Array.isArray(messages) ? messages : []).filter(isAnchorTurn).length;
 }
 
 // 0-based index of the turn being answered. Stamped onto the notice at creation.
@@ -41,7 +48,7 @@ function _anchorRow(rows, turnIndex) {
   if (!Number.isFinite(turnIndex)) return rows.length;
   let userOrdinal = -1;
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i]?.role !== 'user') continue;
+    if (!isAnchorTurn(rows[i])) continue;
     userOrdinal += 1;
     if (userOrdinal > turnIndex) return i;
   }

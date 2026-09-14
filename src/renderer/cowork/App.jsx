@@ -2841,7 +2841,9 @@ function AppCore() {
         subtitle: 'just now',
         status: 'idle',
         messages: [
-          { role: 'user', content: text, attachments: [] },
+          // `_unsent`: this never reached the server, so it is not a turn the
+          // transcript will have after a reload (see lib/usageNoticePlacement).
+          { role: 'user', content: text, attachments: [], _unsent: true },
           { role: 'provider_required' },
         ],
         projectPath: effectiveProjectPath,
@@ -3155,7 +3157,8 @@ function AppCore() {
               updatedAt: new Date().toISOString(),
               messages: [
                 ...t.messages,
-                { role: 'user', content: text, attachments: [] },
+                // `_unsent`: never reached the server, so hydration drops it.
+                { role: 'user', content: text, attachments: [], _unsent: true },
                 { role: 'provider_required' },
               ],
             }
