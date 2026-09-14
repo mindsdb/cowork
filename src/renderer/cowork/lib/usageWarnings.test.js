@@ -77,8 +77,8 @@ describe('deriveComposerWarning', () => {
     expect(w.title).toBe('28% of your free allowance left');
     expect(w.body).toMatch(/^Resets on Sep 1[12]\.$/);
     expect(labels(w)).toEqual(['View usage']);
-    // No stepped key: the figure closes by kind, and that close holds across
-    // refills (see useUsageBarDismiss), so there is no step to ask again at.
+    // No dismissal key at all: the figure's close is its own flag (see
+    // useStandingFigureHidden), so there is no step to ask again at.
     expect(w.dismissKey).toBeUndefined();
   });
 

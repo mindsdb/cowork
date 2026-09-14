@@ -154,9 +154,9 @@ function resetClause(free, lead) {
    someone the allowance running out would actually stop. Built here because
    two branches need the same object. The terminal branch below returns it, and
    `free_low` carries it as the state a dismissal falls back to, so closing the
-   warning drops to the number rather than to nothing. It closes like anything
-   else, keyed by its kind (ENG-2749); useUsageBarDismiss says how long that
-   holds. */
+   warning drops to the number rather than to nothing. It closes too
+   (ENG-2749), on its own flag rather than a dismissal key: see
+   useStandingFigureHidden for how long that holds. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
   const resets = formatResetDate(free.resetsAt);
   let body = resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.';
