@@ -15,6 +15,12 @@ import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '.
 // console alerts at 80% used; this is the same line from the other side.
 export const FREE_TOKENS_LOW_FRACTION = 0.2;
 
+// The standing figure appears once this fraction or less remains: a neutral
+// heads-up ahead of the 20% warning, for someone the allowance can stop. Above
+// it the number is not yet a budget anyone plans around, so the bar stays
+// empty rather than sitting above the composer all window (ENG-2749).
+export const FREE_FIGURE_FRACTION = 0.3;
+
 /* Fractions left that the allowance steps down through: the band's own edge,
    then 90% used (where the console escalates too), then 95%.
    Two jobs, one scale. A dismissal is keyed to the step the allowance was in
@@ -121,10 +127,10 @@ function freeState(free) {
 }
 
 /** Whether a bar descriptor is something to WARN about, as opposed to the
- *  standing figure. The one place that rule is written: a resting figure
- *  shows for every free user all month, so counting it as a warning would
- *  mean a dismissal is never forgotten again and a bar closed in one month
- *  would still be closed in the next. */
+ *  standing figure. The one place that rule is written: a resting figure can
+ *  sit on screen for a whole window, so counting it as a warning would mean a
+ *  dismissal is never forgotten again and a bar closed in one window would
+ *  still be closed in the next. */
 export function countsAsWarning(descriptor) {
   return !!descriptor && !descriptor.resting;
 }
@@ -144,10 +150,13 @@ function resetClause(free, lead) {
   return date ? `${lead} on ${date}` : lead;
 }
 
-/* The standing allowance figure: what the bar says when nothing is wrong.
-   Built here because two branches need the same object. The terminal branch
-   below returns it, and `free_low` carries it as the state a dismissal falls
-   back to, so closing the warning drops to the number rather than to nothing. */
+/* The standing allowance figure: what the bar says when nothing is wrong, to
+   someone the allowance running out would actually stop. Built here because
+   two branches need the same object. The terminal branch below returns it, and
+   `free_low` carries it as the state a dismissal falls back to, so closing the
+   warning drops to the number rather than to nothing. It closes too
+   (ENG-2749), on its own flag rather than a dismissal key: see
+   useStandingFigureHidden for how long that holds. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
   const resets = formatResetDate(free.resetsAt);
   let body = resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.';
@@ -196,6 +205,13 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   const f = freeState(free);
   const balanceEmpty = !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
   const balanceLow = !!balance && !balanceEmpty && balance.alert === 'low';
+  // A wallet the next task falls through to once the allowance is gone. Air
+  // running out never stops someone who has one, so the standing figure has
+  // nothing to tell them (ENG-2749). The warnings still do: falling through to
+  // paid changes what they spend, and that is worth hearing.
+  // Rounds toward showing the figure: a wallet auth has not flagged but that
+  // holds nothing is not one the next task can fall through to.
+  const balanceUsable = !!balance && !balanceEmpty && Number(balance.usd) > 0;
   const freeInUse = !isPaidModel;
   const paidInUse = !isAir || f.out || !free;
   // An empty balance only stops the next task when nothing else can pay for
@@ -299,10 +315,11 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       // Stepped like the balance: closing this at 20% left asks again at 10%,
       // which is also where the console escalates its own usage alert.
       dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
-      // Closing a warning steps down to the standing figure, never to nothing.
-      // Hiding the only place the allowance is visible is what this bar exists
-      // to stop, and 20% left is where the figure matters most.
-      whenDismissed: restingFigure(free, f, { balanceEmpty }),
+      // For someone the allowance can stop, closing this steps down to the
+      // standing figure, never to nothing: 20% left is where the figure matters
+      // most. With a balance to fall through to there is no figure to step
+      // down to, so the close hides the bar until the next step asks again.
+      ...(balanceUsable ? {} : { whenDismissed: restingFigure(free, f, { balanceEmpty }) }),
       title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
       body,
       actions,
@@ -310,11 +327,16 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   }
 
   // Nothing is wrong, so say where the allowance stands rather than nothing at
-  // all. A warning the person only meets at 20% left is a warning they cannot
-  // plan around, and Settings is somewhere they have to think to go. `resting`
-  // marks this as a figure and not a warning: it carries no close button, and
-  // it does not count as something to warn about (see `countsAsWarning`).
-  if (freeInUse && f.available && f.fractionLeft !== null) {
+  // all, but only to someone it can stop, and only once the number is close
+  // enough to matter. A free user with no wallet meets the 20% warning with
+  // nothing to plan around unless the number was already in view, and Settings
+  // is somewhere they have to think to go; at 80% left it is not a plan, it is
+  // furniture. Someone with a balance keeps working when the allowance runs
+  // out, so for them it is furniture at any number and the bar stays empty.
+  // `resting` marks this as a figure and not a warning: it does not count as
+  // something to warn about (see `countsAsWarning`), and closing it holds.
+  if (freeInUse && f.available && f.fractionLeft !== null && !balanceUsable
+      && f.fractionLeft <= FREE_FIGURE_FRACTION) {
     return restingFigure(free, f, { balanceEmpty });
   }
 
