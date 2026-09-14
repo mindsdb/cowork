@@ -25,6 +25,11 @@ const usage = (over = {}) => ({
   ...over,
 });
 
+// Someone the allowance can actually stop: no wallet to fall through to. The
+// standing figure is theirs alone (ENG-2749); `usage()` above, with $42.10 in
+// the wallet, keeps working when the allowance runs out and gets no figure.
+const unpaid = (over = {}) => usage({ balance: null, ...over });
+
 const labels = (w) => w.actions.map((a) => a.label);
 
 describe('formatting', () => {
@@ -62,28 +67,49 @@ describe('formatting', () => {
 });
 
 describe('deriveComposerWarning', () => {
-  it('says where a healthy allowance stands rather than nothing at all', () => {
-    const w = deriveComposerWarning(usage());
+  it('says where a healthy allowance stands to someone it can stop, rather than nothing at all', () => {
+    const w = deriveComposerWarning(unpaid());
     expect(w.kind).toBe('free_at_rest');
     expect(w.resting).toBe(true);
     expect(w.title).toBe('80% of your free allowance left');
     expect(w.body).toMatch(/^Resets on Sep 1[12]\.$/);
     expect(labels(w)).toEqual(['View usage']);
-    // No dismissal key: the standing figure is not closable, so nothing can
-    // key a dismissal to it.
+    // No stepped key: the figure closes by kind, and that close holds across
+    // refills (see useUsageBarDismiss), so there is no step to ask again at.
     expect(w.dismissKey).toBeUndefined();
   });
 
-  it('names the allowance even with no reset date to quote', () => {
+  it('shows no figure to someone with a balance to fall through to', () => {
+    // Air running out does not stop them, so the number is not a budget to
+    // watch; it would just sit above the composer with nothing to inform.
+    for (const model of ['mindshub_air', 'model-router', null]) {
+      expect(deriveComposerWarning(usage(), { model })).toBeNull();
+    }
+    // A low balance still carries them past the allowance, so no figure
+    // either. The low balance itself is a warning on picks that can spend it,
+    // covered below.
+    const low = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
+    expect(deriveComposerWarning(low, { model: 'mindshub_air' })).toBeNull();
+    // The WARNINGS still reach them: falling through to paid changes what they
+    // spend. Only the standing figure goes, so a closed warning steps down to
+    // nothing rather than to a figure they were never shown.
     const w = deriveComposerWarning(usage({
+      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
+    }));
+    expect(w.kind).toBe('free_low');
+    expect(w.whenDismissed).toBeUndefined();
+  });
+
+  it('names the allowance even with no reset date to quote', () => {
+    const w = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: null },
     }));
     expect(w.kind).toBe('free_at_rest');
     expect(w.body).toBe('Air runs on these until they are used up.');
   });
 
-  it('a free warning carries the figure a dismissal steps down to', () => {
-    const w = deriveComposerWarning(usage({
+  it('a free warning carries the figure a dismissal steps down to, for someone the allowance can stop', () => {
+    const w = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
@@ -101,20 +127,20 @@ describe('deriveComposerWarning', () => {
     expect(deriveComposerWarning(usage({ freeTokens: { limit: 100, used: 95, remaining: 5 } }), { providerType: 'openai' })).toBeNull();
     // The standing figure obeys the same three silences: a healthy allowance is
     // still nothing to a signed-out, unreachable, or BYOK caller.
-    expect(deriveComposerWarning(usage({ reachable: false }), { model: null })).toBeNull();
-    expect(deriveComposerWarning(usage(), { providerType: 'openai' })).toBeNull();
+    expect(deriveComposerWarning(unpaid({ reachable: false }), { model: null })).toBeNull();
+    expect(deriveComposerWarning(unpaid(), { providerType: 'openai' })).toBeNull();
   });
 
   it('shows no figure for an allowance there is nothing to count', () => {
     // Uncapped is auth's -1 sentinel, and 0 or a missing limit means no grant.
     // Neither has a number to count down, so neither gets a standing figure.
-    expect(deriveComposerWarning(usage({ freeTokens: { limit: -1, used: 30 } }))).toBeNull();
-    expect(deriveComposerWarning(usage({ freeTokens: null }))).toBeNull();
-    expect(deriveComposerWarning(usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: { limit: -1, used: 30 } }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: null }))).toBeNull();
+    expect(deriveComposerWarning(unpaid({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
   });
 
   it('shows no figure to a pick that cannot spend the allowance', () => {
-    expect(deriveComposerWarning(usage(), { model: 'claude-sonnet-4' })).toBeNull();
+    expect(deriveComposerWarning(unpaid(), { model: 'claude-sonnet-4' })).toBeNull();
   });
 
   it('free tokens running low: names the count and what happens next, no top-up CTA', () => {
@@ -176,14 +202,12 @@ describe('deriveComposerWarning', () => {
     expect(labels(w)).toEqual(['Add funds', 'Manage auto top up']);
   });
 
-  it('balance low while free Air tokens remain: no warning, just the standing figure', () => {
-    const w = deriveComposerWarning(usage({
+  it('balance low while free Air tokens remain: nothing at all', () => {
+    // The low balance is not this pick's problem, and a wallet that can still
+    // pay means the allowance cannot stop them, so there is no figure either.
+    expect(deriveComposerWarning(usage({
       balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
-    }), { model: 'mindshub_air' });
-    expect(w.kind).toBe('free_at_rest');
-    expect(w.resting).toBe(true);
-    // The low balance is not this pick's problem, so it stays out of the copy.
-    expect(w.body).not.toContain('balance');
+    }), { model: 'mindshub_air' })).toBeNull();
   });
 
   it('the router (the default pick) can spend either resource, so it hears about both', () => {
@@ -470,7 +494,7 @@ describe('countsAsWarning', () => {
     // warning, `usageHealthy` would be false for every free user all month,
     // the dismissal store would never be wiped, and a bar closed at 900K in
     // September would still be closed at 900K in October.
-    const resting = deriveComposerWarning(usage());
+    const resting = deriveComposerWarning(unpaid());
     expect(resting.kind).toBe('free_at_rest');
     expect(countsAsWarning(resting)).toBe(false);
     // Nothing at all is likewise nothing to warn about.
@@ -478,7 +502,7 @@ describe('countsAsWarning', () => {
   });
 
   it('every non-resting descriptor does count, including the one it steps down to', () => {
-    const low = deriveComposerWarning(usage({
+    const low = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
     }));
     expect(countsAsWarning(low)).toBe(true);

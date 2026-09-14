@@ -57,10 +57,40 @@ describe('UsageBar', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 
-  it('the standing figure cannot be closed: no dismiss button at all', () => {
+  it('the standing figure can be closed, and stays closed as the number moves', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<UsageBar warning={atRest} usageKnown />);
+    expect(screen.getByText('68% of your free allowance left.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // Still the figure, fresh numbers: not asked again.
+    rerender(<UsageBar warning={{ ...atRest, title: '41% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed standing figure stays closed across a refill (ENG-2749)', async () => {
+    const user = userEvent.setup();
+    // Close the number at 68%...
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    first.unmount();
+    // ...the window refills five hours later. The figure is the healthy state,
+    // so "healthy again" must not be what brings it back: that would make the
+    // close last five hours at most, for someone who asked for it to go.
+    render(<UsageBar warning={{ ...atRest, title: '100% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed standing figure is forgotten once there is nothing to show at all', async () => {
+    const user = userEvent.setup();
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    first.unmount();
+    // A top-up drops the figure entirely (see usageWarnings). If the wallet
+    // empties again later, the figure is news again and comes back.
+    render(<UsageBar warning={null} usageKnown />).unmount();
     render(<UsageBar warning={atRest} usageKnown />);
     expect(screen.getByText('68% of your free allowance left.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
   it('the standing figure announces nothing, so a poll does not interrupt', () => {
@@ -95,8 +125,33 @@ describe('UsageBar', () => {
     // The number survives the close; only the warning does not.
     expect(screen.getByText('68% of your free allowance left.')).toBeTruthy();
     expect(screen.queryByText('12% of your free allowance left.')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
     expect(liveText()).toBe('');
+    // And the figure it stepped down to closes in turn.
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a warning does not step down to a figure that was already closed', async () => {
+    const user = userEvent.setup();
+    const first = render(<UsageBar warning={atRest} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    first.unmount();
+    // The allowance drains into the warning band: the warning shows...
+    render(<UsageBar warning={freeLowWithFallback} usageKnown />);
+    expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
+    // ...and closing it lands on nothing, not on the number closed earlier.
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('.usage-bar')).toBeNull();
+  });
+
+  it('a closed warning does not count as "healthy", so its dismissal is kept', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<UsageBar warning={freeLow} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // Composer passes usageKnown for "nothing to warn about for ANY pick"; a
+    // warning that is merely closed is still a warning.
+    rerender(<UsageBar warning={{ ...freeLow, title: '9% of your free allowance left' }} usageKnown />);
+    expect(screen.queryByText(/of your free allowance left/)).toBeNull();
   });
 
   it('a standing figure forgets an earlier dismissal, so next month warns again', async () => {
