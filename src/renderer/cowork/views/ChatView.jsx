@@ -426,8 +426,10 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
-          {/* Agent always named; timestamp joins it when the message has
-              one (streamed turns often don't carry createdAt). */}
+          {/* Agent always named; timestamp joins it when the caller resolved
+              one. No message row carries `createdAt` — the server sends
+              `created_at` and nothing maps it — so a caller with no other
+              source renders the name alone. */}
           <span className="turn-meta">
             {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
           </span>
@@ -2510,8 +2512,10 @@ export default function ChatView({
                 <AnswerTurn
                   key={i}
                   state="done"
-                  // Streamed turns rarely carry createdAt — fall back to the
-                  // turn's own start time so the hover meta still has a date.
+                  // `createdAt` is never set on a message row, so the replayed
+                  // start time is what actually supplies this. Kept as a
+                  // fallback rather than replaced: a turn whose replay produced
+                  // no steps has no startedAt either, and renders no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
