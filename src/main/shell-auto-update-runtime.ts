@@ -21,6 +21,10 @@ import { withUpdateMaintenance } from './update-maintenance';
 import { withServerMaintenance } from './server-process';
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+/** While an update is downloaded and waiting for a restart, re-check more often:
+ *  the pending artifact is what the user will actually install, so the fresher
+ *  it is, the less chance of a restart landing on an already-superseded build. */
+const PENDING_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const EVIDENCE_FILE = 'shell-update-target.json';
 
 interface DownloadedTargetEvidence {
@@ -58,8 +62,14 @@ function readEvidence(): DownloadedTargetEvidence | null {
   }
 }
 
+let lastEvidenceVersion: string | null = null;
+
 function writeEvidence(snapshot: ShellUpdateSnapshot): void {
   if (snapshot.phase !== 'ready-to-install' || !snapshot.targetVersion) return;
+  // Background refreshes republish the snapshot twice per poll with the same
+  // pending target; only a changed target is worth rewriting to disk.
+  if (snapshot.targetVersion === lastEvidenceVersion) return;
+  lastEvidenceVersion = snapshot.targetVersion;
   const evidence: DownloadedTargetEvidence = {
     targetVersion: snapshot.targetVersion,
     channel: snapshot.channel,
@@ -73,6 +83,7 @@ function writeEvidence(snapshot: ShellUpdateSnapshot): void {
 }
 
 function clearEvidence(): void {
+  lastEvidenceVersion = null;
   try { fs.unlinkSync(evidencePath()); } catch (error: any) {
     if (error?.code !== 'ENOENT') console.warn('[shell-updater] could not clear target evidence:', error);
   }
@@ -212,11 +223,18 @@ export function startShellAutoUpdatePolling(rendererReady: Promise<void>): void 
     await checkShellAutoUpdate('boot').catch(error => {
       console.error('[shell-updater] boot check failed:', error);
     });
+    let lastCheckAt = Date.now();
+    // One timer at the shorter cadence, gated on when a check is actually due:
+    // every 30 minutes with an install pending, every 4 hours otherwise.
     const timer = setInterval(() => {
+      const pending = getShellAutoUpdateSnapshot().phase === 'ready-to-install';
+      const due = pending ? PENDING_REFRESH_INTERVAL_MS : CHECK_INTERVAL_MS;
+      if (Date.now() - lastCheckAt < due) return;
+      lastCheckAt = Date.now();
       void checkShellAutoUpdate('periodic').catch(error => {
         console.error('[shell-updater] periodic check failed:', error);
       });
-    }, CHECK_INTERVAL_MS);
+    }, PENDING_REFRESH_INTERVAL_MS);
     timer.unref?.();
     app.once('before-quit', () => clearInterval(timer));
   });

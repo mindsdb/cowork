@@ -12,6 +12,7 @@ import {
   type ShellUpdateSnapshot,
   type ShellUpdateTrigger,
 } from './shell-update-state';
+import { compareUpdaterSemVer } from '../shared/version';
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -206,12 +207,30 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
     // CHECK_REQUESTED is dispatched by check(), before invoking the adapter.
   });
   options.adapter.onUpdateAvailable((targetVersion) => {
+    clearFailureLatch();
+    // Background refresh of an already-downloaded update: only a strictly newer
+    // build supersedes it. The same build (the common case — the feed hasn't
+    // moved) or an unorderable pair leaves the armed download alone.
+    if (snapshot.phase === 'ready-to-install') {
+      const pending = snapshot.targetVersion;
+      const isNewer = pending === undefined
+        || (compareUpdaterSemVer(targetVersion, pending) ?? 0) > 0;
+      if (!isNewer) {
+        dispatch({ type: 'REFRESH_SETTLED' });
+        return;
+      }
+      if (dispatch({ type: 'SUPERSEDED', targetVersion })) void download();
+      return;
+    }
     const changed = dispatch({ type: 'UPDATE_FOUND', targetVersion });
-    if (changed) clearFailureLatch();
     if (changed && snapshot.phase === 'downloading') void download();
   });
   options.adapter.onUpdateNotAvailable(() => {
     clearFailureLatch();
+    if (snapshot.phase === 'ready-to-install') {
+      dispatch({ type: 'REFRESH_SETTLED' });
+      return;
+    }
     dispatch({ type: 'NO_UPDATE' });
   });
   options.adapter.onDownloadProgress(progress => dispatch({
