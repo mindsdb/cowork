@@ -92,12 +92,34 @@ export function formatUsd(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
-/** "Sep 11" in the viewer's timezone, or null when the date is unusable. */
+/** "Sep 11" in the viewer's timezone, or null when the date is unusable. For
+ *  spans that really are calendar dates; the allowance uses `formatResetTime`. */
 export function formatResetDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** When the allowance next refills, on the viewer's clock: "2:15 PM", or
+ *  "Sep 15, 2:15 PM" on another local day. Null when nothing is quotable.
+ *
+ *  It refills every few hours, so a date names a day the reader is already in.
+ *  An instant already past returns null and the caller drops the clause, since
+ *  a stale time reads as imminent. Mirrors the console's formatter
+ *  (mindshub_frontend creditAlert.js).
+ */
+export function formatResetTime(iso, now = new Date()) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getTime() <= now.getTime()) return null;
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const sameLocalDay = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameLocalDay) return time;
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 // `available`: Air can run on the free tokens right now. -1 is auth's uncapped
@@ -140,8 +162,8 @@ function isExplicitPaidModel(model) {
 }
 
 function resetClause(free, lead) {
-  const date = formatResetDate(free?.resetsAt);
-  return date ? `${lead} on ${date}` : lead;
+  const time = formatResetTime(free?.resetsAt);
+  return time ? `${lead} at ${time}` : lead;
 }
 
 /* The standing allowance figure: what the bar says when nothing is wrong.
@@ -149,8 +171,8 @@ function resetClause(free, lead) {
    below returns it, and `free_low` carries it as the state a dismissal falls
    back to, so closing the warning drops to the number rather than to nothing. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
-  const resets = formatResetDate(free.resetsAt);
-  let body = resets ? `Resets on ${resets}.` : 'Air runs on these until they are used up.';
+  const resets = formatResetTime(free.resetsAt);
+  let body = resets ? `Resets at ${resets}.` : 'Air runs on these until they are used up.';
   const actions = [USAGE_ACTIONS.viewUsage];
   // An empty wallet is true and actionable from the moment it empties, so it
   // is said here rather than appearing as a surprise clause on the warning
