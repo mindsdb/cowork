@@ -1659,6 +1659,28 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
+  // Usage alerts that happened during this task (ENG-1782) sit at the turn
+  // they happened in, so the card keeps reading as "while this ran, this
+  // changed" once the conversation continues below it. Anchoring is by turn,
+  // not by row, so the reply still stays next to its question. See
+  // lib/usageNoticePlacement.
+  //
+  // Computed out here because the LAST bucket renders below the streaming
+  // turn, which is a sibling of the transcript rows rather than one of them.
+  // Keyed by what the notice IS, not by its position: the cards no longer live
+  // in one trailing list, so a positional key would collide between buckets.
+  const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
+  const usageCard = (n) => (
+    <UsageAlertCard
+      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
+      time={formatMetaTime(n.createdAt)}
+      agentLabel={agentLabel}
+      kind={n.kind}
+      resetsAt={n.resetsAt}
+      fractionLeft={n.fractionLeft}
+      isBillingOwner={isBillingOwner}
+    />
+  );
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
@@ -2067,26 +2089,6 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              // Usage alerts that happened during this task (ENG-1782) sit at
-              // the turn they happened in, so the card keeps reading as "while
-              // this ran, this changed" once the conversation continues below
-              // it. Anchoring is by turn, not by row, so the reply still stays
-              // next to its question. See lib/usageNoticePlacement.
-              const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
-              // Keyed by what the notice IS, not by its position: cards no
-              // longer all live in one trailing list, so a positional key
-              // would collide between buckets.
-              const usageCard = (n) => (
-                <UsageAlertCard
-                  key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
-                  time={formatMetaTime(n.createdAt)}
-                  agentLabel={agentLabel}
-                  kind={n.kind}
-                  resetsAt={n.resetsAt}
-                  fractionLeft={n.fractionLeft}
-                  isBillingOwner={isBillingOwner}
-                />
-              );
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -2554,12 +2556,14 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
+              // The trailing bucket is NOT emitted here — it renders after the
+              // streaming turn below, so a notice from the live turn cannot
+              // land between the question and the reply still arriving.
               const rendered = [];
               turns.forEach((node, i) => {
                 usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));
                 rendered.push(node);
               });
-              usageBuckets[visibleMessages.length].forEach((n) => rendered.push(usageCard(n)));
               return rendered;
             })()}
 
@@ -2625,6 +2629,14 @@ export default function ChatView({
                 <WorkingIndicator label="Streaming…" />
               </AnswerTurn>
             )}
+
+            {/* Notices from the turn still running. Below the streaming answer
+                rather than above it: the crossing happened DURING this turn,
+                so placing it before the reply would split the question from
+                the answer and then move once the turn commits. With nothing
+                streaming this is simply the end of the conversation, which is
+                where a crossing that just happened belongs. */}
+            {usageBuckets[visibleMessages.length].map(usageCard)}
           </div>
         </div>
 

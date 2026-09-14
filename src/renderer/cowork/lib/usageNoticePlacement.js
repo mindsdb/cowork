@@ -49,3 +49,34 @@ function _anchorRow(rows, turnIndex) {
   }
   return rows.length;
 }
+
+// ── Keeping anchors true when turns are deleted ──────────────────────────
+//
+// The anchor is an ordinal, so deleting a turn moves the ground under it.
+// `performDeleteTurn` rehydrates `messages` but carries `usageNotices` over
+// untouched, which would leave a notice pointing at a turn that is now a
+// different turn, or at nothing (and so back at the bottom, which is the
+// defect this placement exists to fix). The two delete paths cut differently,
+// so each gets the repair its own cut implies.
+
+// Server delete: the turn AND everything after it (`delete_turn`,
+// cowork-server conversations.py). Every notice from that turn on describes a
+// moment the conversation no longer contains, so it goes with them.
+export function dropNoticesFromTurn(notices, turnIndex) {
+  if (!Array.isArray(notices) || !Number.isFinite(turnIndex)) return notices;
+  // A notice with no stamp cannot be reasoned about — it predates the stamp
+  // and already anchors to the bottom. Left alone rather than guessed at.
+  return notices.filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex < turnIndex);
+}
+
+// Local (`tmp-`) delete: one user→assistant pair, with the conversation
+// closing over the gap. The deleted turn's notices go; everything after it
+// shifts down one to stay on the turn it actually happened in.
+export function shiftNoticesAfterTurn(notices, turnIndex) {
+  if (!Array.isArray(notices) || !Number.isFinite(turnIndex)) return notices;
+  return notices
+    .filter((n) => !Number.isFinite(n?.turnIndex) || n.turnIndex !== turnIndex)
+    .map((n) => (Number.isFinite(n?.turnIndex) && n.turnIndex > turnIndex
+      ? { ...n, turnIndex: n.turnIndex - 1 }
+      : n));
+}

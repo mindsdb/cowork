@@ -96,6 +96,25 @@ describe('ChatView usage notices', () => {
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // PR #978 review. The streaming answer is a sibling of the transcript rows,
+  // so a trailing card used to render above it — splitting the live question
+  // from its reply, then moving once the turn committed.
+  it('keeps a live turn\'s notice below the answer still streaming', () => {
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 1 }];
+    const streaming = [
+      { role: 'user', content: 'One more thing.' },
+      { role: '_streaming', content: 'Working on it', streamStatus: 'in_progress' },
+    ];
+    // Streaming text is one <span> per word, so a single node never holds the
+    // whole reply. textContent concatenates in document order regardless.
+    const { container } = render(<ChatView task={task(notices, streaming)} />);
+    const questionIdx = container.textContent.indexOf('One more thing.');
+    const replyIdx = container.textContent.indexOf('Working on it');
+    const cardIdx = container.textContent.indexOf('Free Air allowance running low');
+    expect(replyIdx).toBeGreaterThan(questionIdx);
+    expect(cardIdx).toBeGreaterThan(replyIdx);
+  });
+
   it('renders nothing extra when there are no notices', () => {
     render(<ChatView task={task(undefined)} />);
     expect(screen.queryByText('Free monthly tokens used')).toBeNull();

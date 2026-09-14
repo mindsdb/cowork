@@ -58,7 +58,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnIndex } from './lib/usageNoticePlacement';
+import { currentTurnIndex, dropNoticesFromTurn, shiftNoticesAfterTurn } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -4068,6 +4068,9 @@ function AppCore() {
         if (dropFromUserAt === -1) return t;
         return {
           ...t,
+          // The conversation closes over the gap, so every later usage notice
+          // is now one turn further up than its stamp says.
+          usageNotices: shiftNoticesAfterTurn(t.usageNotices, turnIndex),
           messages: [
             ...t.messages.slice(0, dropFromUserAt),
             ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
@@ -4091,7 +4094,13 @@ function AppCore() {
       if (fresh && Array.isArray(fresh.messages)) {
         setTasks((prev) => prev.map((t) =>
           t.id === taskId
-            ? { ...t, messages: applySessionMessages(taskId, fresh.messages) }
+            ? {
+              ...t,
+              messages: applySessionMessages(taskId, fresh.messages),
+              // The server cut this turn and everything after it, so the
+              // usage notices anchored there have no moment left to sit at.
+              usageNotices: dropNoticesFromTurn(t.usageNotices, turnIndex),
+            }
             : t,
         ));
       }
