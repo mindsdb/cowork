@@ -61,8 +61,7 @@ describe('formatting', () => {
     expect(formatResetDate(null)).toBeNull();
   });
 
-  // The allowance refills every few hours, so a date names a day the reader is
-  // already in, and reads as a day away when it may be minutes.
+  // It refills every few hours, so a date names a day the reader is in already.
   describe('formatResetTime', () => {
     const NOW = new Date('2026-09-14T09:00:00Z');
 
@@ -86,17 +85,16 @@ describe('formatting', () => {
       expect(formatResetTime(null, NOW)).toBeNull();
     });
 
-    // The suite runs at TZ=UTC, where a same-UTC-day test and a same-local-day
-    // test agree. West of UTC they part company, and only the local one is
-    // right — so the boundary is asserted somewhere the two disagree.
+    // At TZ=UTC a same-UTC-day test and a same-local-day test agree. West of
+    // UTC they part company, and only the local one is right.
     describe('west of UTC', () => {
       const realTz = process.env.TZ;
       beforeEach(() => { process.env.TZ = 'America/Los_Angeles'; });
       afterEach(() => { process.env.TZ = realTz; });
 
       it('keeps the time bare when the refill is a different UTC day but the same local one', () => {
-        // 23:00Z is 4pm in LA; 01:15Z the next day is 6:15pm the same evening.
-        // Comparing UTC dates would wrongly prepend "Sep 15" to tonight.
+        // 23:00Z is 4pm in LA and 01:15Z is 6:15pm the same evening. A UTC
+        // comparison would wrongly prepend "Sep 15" to tonight.
         expect(formatResetTime('2026-09-15T01:15:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('6:15 PM');
       });
 

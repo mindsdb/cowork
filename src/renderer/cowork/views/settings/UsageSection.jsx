@@ -51,8 +51,8 @@ function FreeTokensCard({ free, isBillingOwner }) {
   // Same line as the composer bar, read from the one constant, so the meter's
   // warning tint and the bar cannot drift apart.
   const low = !unlimited && !exhausted && fractionLeft <= FREE_TOKENS_LOW_FRACTION;
-  // The refill the composer bar and the in-task card quote, in the same words.
-  // `periodLabel` below keeps a date, because a billing period is one.
+  // A clock time, like the other two surfaces. `periodLabel` below keeps a
+  // date, because a billing period is one.
   const reset = formatResetTime(free.resetsAt);
   return (
     <div className={CARD}>

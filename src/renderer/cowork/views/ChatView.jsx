@@ -1096,11 +1096,9 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users.
 
-/* " at 2:15 PM" when the gate gave a usable instant, and nothing at all when it
-   did not, so no sentence promises a schedule the response never named. The
-   guards that used to live here — absent, malformed, or already past on a
-   reloaded conversation — are `formatResetTime`'s own, so this card and the
-   composer bar cannot disagree about one refill. */
+/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
+   sentence promises a schedule the response never named. The guards are
+   `formatResetTime`'s, shared with the composer bar. */
 function refillClause(resetAt, lead) {
   const time = formatResetTime(resetAt);
   return time ? `${lead} at ${time}` : lead;

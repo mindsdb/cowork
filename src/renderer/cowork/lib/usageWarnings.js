@@ -92,10 +92,8 @@ export function formatUsd(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
-/** "Sep 11" in the viewer's timezone, or null when the date is unusable.
- *
- *  For spans that genuinely are calendar dates: a billing period, an auto top
- *  up cap resetting next month. The Air allowance uses `formatResetTime`. */
+/** "Sep 11" in the viewer's timezone, or null when the date is unusable. For
+ *  spans that really are calendar dates; the allowance uses `formatResetTime`. */
 export function formatResetDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -104,17 +102,12 @@ export function formatResetDate(iso) {
 }
 
 /** When the allowance next refills, on the viewer's clock: "2:15 PM", or
- *  "Sep 15, 2:15 PM" on a different local day. Null when nothing is quotable.
+ *  "Sep 15, 2:15 PM" on another local day. Null when nothing is quotable.
  *
- *  The allowance refills every few hours, so a date names a day the reader is
- *  already in. The date is added only when the refill falls on another local
- *  day, so a window crossing midnight does not read as a time already past.
- *  Mirrors the console's formatter (mindshub_frontend creditAlert.js) so the
- *  two products quote one refill the same way.
- *
- *  An instant already past returns null and the caller drops its whole clause.
- *  A stale time reads as imminent, and a stand-in like "next month" would
- *  promise a schedule the fixed-duration window does not have.
+ *  It refills every few hours, so a date names a day the reader is already in.
+ *  An instant already past returns null and the caller drops the clause, since
+ *  a stale time reads as imminent. Mirrors the console's formatter
+ *  (mindshub_frontend creditAlert.js).
  */
 export function formatResetTime(iso, now = new Date()) {
   if (!iso) return null;
