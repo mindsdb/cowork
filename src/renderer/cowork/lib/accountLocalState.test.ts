@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // localStorage survives the sidecar restart and the renderer reload, so this is
 // the last place the previous account's data can still reach the screen after a
@@ -53,10 +55,10 @@ describe('purgeStaleAccountState', () => {
   });
 
   it('purges every account-scoped key when the account changes', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     seed();
 
-    expect(purgeStaleAccountState(ACCOUNT_B)).toBe(true);
+    expect(purgeStaleAccountState(ACCOUNT_B, 'keep')).toBe(true);
 
     for (const key of Object.keys(ACCOUNT_KEYS)) {
       expect(localStorage.getItem(key)).toBeNull();
@@ -64,9 +66,9 @@ describe('purgeStaleAccountState', () => {
   });
 
   it('leaves unrelated keys alone', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     seed();
-    purgeStaleAccountState(ACCOUNT_B);
+    purgeStaleAccountState(ACCOUNT_B, 'keep');
 
     for (const [key, value] of Object.entries(UNRELATED_KEYS)) {
       expect(localStorage.getItem(key)).toBe(value);
@@ -74,36 +76,36 @@ describe('purgeStaleAccountState', () => {
   });
 
   it('does nothing when the same account boots again', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     seed();
-    expect(purgeStaleAccountState(ACCOUNT_A)).toBe(false);
+    expect(purgeStaleAccountState(ACCOUNT_A, 'keep')).toBe(false);
     expect(localStorage.getItem('anton:conv-turns:conv-1')).not.toBeNull();
   });
 
   it('leaves a signed-out boot untouched', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     seed();
     // The same account usually signs back in, and sign-out already removed the
     // credentials this state is useless without.
-    expect(purgeStaleAccountState(null)).toBe(false);
+    expect(purgeStaleAccountState(null, 'keep')).toBe(false);
     expect(localStorage.getItem('anton:conv-turns:conv-1')).not.toBeNull();
   });
 
   it('purges after a sign-out followed by a different account signing in', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     seed();
-    purgeStaleAccountState(null);
+    purgeStaleAccountState(null, 'keep');
 
-    expect(purgeStaleAccountState(ACCOUNT_B)).toBe(true);
+    expect(purgeStaleAccountState(ACCOUNT_B, 'keep')).toBe(true);
     expect(localStorage.getItem('anton:conv-turns:conv-1')).toBeNull();
   });
 
   it('removes every conversation entry, not just the first', () => {
-    purgeStaleAccountState(ACCOUNT_A);
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
     for (let i = 0; i < 12; i += 1) {
       localStorage.setItem(`anton:conv-turns:conv-${i}`, '[]');
     }
-    purgeStaleAccountState(ACCOUNT_B);
+    purgeStaleAccountState(ACCOUNT_B, 'keep');
     const left = Object.keys(localStorage).filter((k) => k.startsWith('anton:conv-turns:'));
     expect(left).toEqual([]);
   });
@@ -181,5 +183,21 @@ describe('an unmarked legacy cache', () => {
     for (const key of Object.keys(ACCOUNT_KEYS)) {
       expect(localStorage.getItem(key)).toBeNull();
     }
+  });
+});
+
+// The chat app purges again once it knows the account, for a switch that
+// happens without a document reload. Which verdict that call carries is not
+// observable from a unit test of this module and not worth rendering the whole
+// chat app for, so it is pinned mechanically, like the dialog's mount point in
+// renderer/account-ownership-mount.test.ts.
+describe('the chat app purge call', () => {
+  it('carries the shell verdict rather than implying "keep"', () => {
+    // A bare call defaults to 'keep', which stamps an unmarked cache with this
+    // account's name. Stamped while the ownership question is open, the cache
+    // reads as this account's own on the reload after the answer, so "start
+    // fresh" can never remove the previous person's drafts.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'App.jsx'), 'utf-8');
+    expect(source).toMatch(/purgeStaleAccountState\([^;]*accountSessionSync\(\)\.legacyState\)/);
   });
 });

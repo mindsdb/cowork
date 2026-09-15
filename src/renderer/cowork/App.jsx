@@ -2537,12 +2537,13 @@ function AppCore() {
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
   // has its own epoch, and only a change of ACCOUNT invalidates this state.
   //
-  // This handles a MARKED cache naming another account. An unmarked one needs
-  // to know who owns the default data root, which only the main process can
-  // answer, so that verdict is applied by the pre-mount purge in main.tsx and
-  // left at its 'keep' default here.
+  // This handles a MARKED cache naming another account. For an unmarked one the
+  // shell's verdict is carried through rather than assumed: while the ownership
+  // question is open it is 'undecided', and stamping this account's name on the
+  // cache then would leave the previous person's drafts un-purgeable by the
+  // answer. It is resolved in preload, so it is the same verdict main.tsx used.
   useEffect(() => {
-    purgeStaleAccountState(codeAccountUser?.sub ?? null);
+    purgeStaleAccountState(codeAccountUser?.sub ?? null, host.accountSessionSync().legacyState);
   }, [codeAccountUser?.sub]);
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice

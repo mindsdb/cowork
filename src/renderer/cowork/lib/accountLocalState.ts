@@ -54,13 +54,18 @@ export type LegacyStateVerdict = 'keep' | 'purge' | 'undecided';
  * Drop this origin's account-scoped state when it belongs to another account,
  * and record the account. Returns true only when something was removed.
  *
+ * The verdict is required, and every caller passes the one the shell resolved:
+ * defaulting it to `keep` made a caller that could not know stamp its own name
+ * on an unmarked cache, which is the one thing that makes the ownership answer
+ * unenforceable.
+ *
  * Signed out (`null`) is left alone on purpose: the same account usually signs
  * back in, and sign-out has already taken away the credentials this state is
  * useless without.
  */
 export function purgeStaleAccountState(
   accountId: string | null,
-  legacyState: LegacyStateVerdict = 'keep',
+  legacyState: LegacyStateVerdict,
 ): boolean {
   if (!accountId) return false;
 
