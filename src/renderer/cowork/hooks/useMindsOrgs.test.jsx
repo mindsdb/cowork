@@ -11,6 +11,7 @@ const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn()
 vi.mock('../lib/organizationTransition', () => transitionMock);
 
 import { useMindsOrgs } from './useMindsOrgs';
+import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 
 const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
 const PERSONAL = {
@@ -21,6 +22,8 @@ const PERSONAL = {
 };
 
 const account = (sub) => ({ sub, name: 'Hazem Ahmed' });
+const organizationChanged = vi.fn();
+let unsubscribeOrganizationChanges;
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -28,9 +31,12 @@ beforeEach(() => {
   hostMock.mindshubSwitchOrg.mockReset();
   transitionMock.prepareForOrganizationReload.mockReset();
   hostMock.mindshubListOrgs.mockResolvedValue({ orgs: [ACME, PERSONAL], activeOrgId: ACME.id });
+  organizationChanged.mockReset();
+  unsubscribeOrganizationChanges = subscribeOrganizationChanges(organizationChanged);
 });
 
 afterEach(() => {
+  unsubscribeOrganizationChanges();
   vi.useRealTimers();
 });
 
@@ -110,6 +116,7 @@ describe('useMindsOrgs', () => {
     await act(async () => { await result.current.switchOrg(PERSONAL.id); });
     expect(result.current.activeOrg).toEqual(PERSONAL);
     expect(transitionMock.prepareForOrganizationReload).not.toHaveBeenCalled();
+    expect(organizationChanged).toHaveBeenCalledExactlyOnceWith('user-1');
   });
 
   it('clears org-scoped caches and reloads after a successful web switch', async () => {
@@ -133,6 +140,7 @@ describe('useMindsOrgs', () => {
      * the new tenant before the real page is torn down.
      */
     expect(result.current.activeOrg).toEqual(ACME);
+    expect(organizationChanged).not.toHaveBeenCalled();
   });
 
   it('clears org-scoped caches and reloads when the web switch needs recovery', async () => {
@@ -154,6 +162,7 @@ describe('useMindsOrgs', () => {
     await act(async () => { outcome = await result.current.switchOrg(PERSONAL.id); });
 
     expect(outcome.ok).toBe(false);
+    expect(organizationChanged).not.toHaveBeenCalled();
     expect(transitionMock.prepareForOrganizationReload).toHaveBeenCalledWith({
       clearTenantState: true,
     });
@@ -295,6 +304,7 @@ describe('useMindsOrgs', () => {
     let outcome;
     await act(async () => { outcome = await result.current.switchOrg(PERSONAL.id); });
     expect(outcome.error).toBe('Nothing changed.');
+    expect(organizationChanged).not.toHaveBeenCalled();
     expect(result.current.activeOrg).toEqual(ACME);
     expect(transitionMock.prepareForOrganizationReload).not.toHaveBeenCalled();
   });

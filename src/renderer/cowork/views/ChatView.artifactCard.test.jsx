@@ -328,7 +328,11 @@ describe('inline artifact banner in org mode', () => {
     }))} />);
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
-    expect(await screen.findByText('This artifact has no downloadable file yet.')).toBeInTheDocument();
+    // Scoped to the visible message: the same text also sits in the card's
+    // screen-reader live region, which the announcement test covers.
+    expect(await screen.findByText('This artifact has no downloadable file yet.', {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 
   it('does not offer Download for an unshared fullstack app — its draft is only a shell', () => {
@@ -607,5 +611,76 @@ describe('inline artifact banner on web', () => {
 
     expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+  });
+});
+
+describe('inline artifact card layout hooks', () => {
+  it('groups every action in the element the container query targets', () => {
+    /*
+     * The card's grid and its narrow-column fallback live in globals.css and
+     * key off these two class names. Layout itself is not observable here —
+     * jsdom computes none — so this only guards the seam: if the actions stop
+     * being one grouped child of the card, the rule that moves them onto
+     * their own row below 560px silently stops applying and the filename
+     * collapses to zero width again.
+     */
+    setOrgMode(true);
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    const card = container.querySelector('.chat-artifact-card');
+    const actions = card?.querySelector(':scope > .chat-artifact-card__actions');
+    expect(actions).not.toBeNull();
+    // The query container is the other half of the seam: without this
+    // ancestor the @container rule can never match, and the card silently
+    // keeps its three-track desktop layout at every width.
+    expect(card.closest('.chat-transcript-col')).not.toBeNull();
+
+    for (const label of ['Shared link', 'Download', 'Preview']) {
+      expect(actions).toContainElement(screen.getByRole('button', { name: label }));
+    }
+  });
+
+  it('keeps the action status out of the button row', async () => {
+    /*
+     * A status message long enough to matter used to sit inside the button
+     * row and squeeze the filename track next to it down to nothing. It now
+     * takes a row of its own, which only works while it is a child of the
+     * card rather than of the actions element.
+     */
+    setOrgMode(true);
+    downloadArtifactFile.mockResolvedValueOnce(false);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    const card = container.querySelector('.chat-artifact-card');
+    const status = card.querySelector(':scope > .chat-artifact-card__status');
+    expect(status).not.toBeNull();
+    expect(card.querySelector('.chat-artifact-card__actions')).not.toContainElement(status);
+  });
+
+  it('announces an action result through a region that was already mounted', async () => {
+    // Holding the node across the click is the point: aria-live reacts to a
+    // content change, so the region has to pre-date the message.
+    setOrgMode(true);
+    downloadArtifactFile.mockResolvedValueOnce(false);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    const live = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live.textContent).toBe('');
+    // ARIA treats a button's non-focusable descendants as presentational, and
+    // the card itself is role="button", so nesting the region would hide it.
+    const card = container.querySelector('.chat-artifact-card');
+    expect(card).not.toContainElement(live);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    expect(live).toHaveTextContent('This artifact has no downloadable file yet.');
+    const visible = card.querySelector('.chat-artifact-card__status');
+    expect(visible).not.toBeNull();
+    expect(visible).not.toHaveAttribute('aria-live');
   });
 });

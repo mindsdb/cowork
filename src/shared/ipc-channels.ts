@@ -98,6 +98,8 @@ export const IPC = {
   // to initiate the flow (ENG-761: that promise can be lost — reload,
   // hung exchange — leaving the UI stuck on "Sign in" forever).
   MINDSHUB_AUTH_CHANGED: 'mindshub:auth-changed',
+  // The local server has accepted a new (or cleared) inference credential.
+  MINDSHUB_CREDENTIAL_CHANGED: 'mindshub:credential-changed',
 
   // App
   APP_READY: 'app:ready',

@@ -24,12 +24,12 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-/** Full-screen CRT shell: P1 · centered title · ©2026 MINDSDB. */
+/** Full-screen CRT shell: P1 · centered title · ©2026 MINDSDB, INC. */
 export function ArcadeShell({
   title,
   subtitle,
   children,
-  hudRight = `©${new Date().getFullYear()} MINDSDB`,
+  hudRight = `©${new Date().getFullYear()} MINDSDB, INC.`,
 }: {
   title?: string;
   subtitle?: string;

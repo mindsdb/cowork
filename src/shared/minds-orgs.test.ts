@@ -159,16 +159,16 @@ describe('the stored pick', () => {
 /*
  * ENG-2109. Two readers name an organization: the token claim, which already
  * substituted PERSONAL_ORG_LABEL, and the membership listing, whose
- * `displayName` for a personal organization is auth's generated
- * `<email>'s organization`. Every call site read `displayName` inline and the
- * listing won, so the label changed under the user a beat after first paint.
+ * `displayName` for a personal organization is auth's generated label. Every
+ * call site read `displayName` inline and the listing won, so the label changed
+ * under the user a beat after first paint.
  * This function is what makes the two agree.
  */
 describe('organizationLabel', () => {
   it('calls a personal organization Personal, not auth\'s generated label', () => {
     const generated: MindsOrg = {
       ...PERSONAL,
-      displayName: "someone@example.com's organization",
+      displayName: 'Personal Organization',
     };
     expect(organizationLabel(generated)).toBe(PERSONAL_ORG_LABEL);
   });
@@ -176,7 +176,7 @@ describe('organizationLabel', () => {
   it('agrees with the label the token claim already used, so nothing changes on resolve', () => {
     // The claim path produces PERSONAL_ORG_LABEL for a personal organization
     // (accountUser.js). Same value from the listing path means no flash.
-    expect(organizationLabel({ ...PERSONAL, displayName: "a@b.com's organization" }))
+    expect(organizationLabel({ ...PERSONAL, displayName: 'Personal Organization' }))
       .toBe(PERSONAL_ORG_LABEL);
   });
 
@@ -193,7 +193,8 @@ describe('organizationLabel', () => {
   });
 
   it.each([
-    ['the full-email rule (current)', "someone@example.com's organization"],
+    ["auth's current generated label", 'Personal Organization'],
+    ['the full-email rule (legacy)', "someone@example.com's organization"],
     ['the local-part rule (legacy)', "someone's organization"],
     ['the first-name rule (legacy)', "Alejandro's organization"],
     ["auth's own fallback", 'Personal'],

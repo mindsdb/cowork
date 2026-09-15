@@ -243,29 +243,9 @@ export function isModelLocked(modelEnabled, id) {
   return (modelEnabled || {})[id] === false;
 }
 
-/** True when `id` is a moving alias according to `families`. */
-export function isMovingAlias(id, families = {}) {
-  return !!families && families[id] === id;
-}
-
 /** True when `id` is a frozen version of some other alias. */
 export function isFrozenAlias(id, families = {}) {
   return !!families && !!families[id] && families[id] !== id;
-}
-
-/**
- * True when at least one id in `ids` is a frozen version of a head that is ALSO in
- * `ids`.
- *
- * The head has to be listed, so this agrees with the rule the callers use to decide
- * a pin sits under its head. An orphaned pin — a typo'd `family`, or a head filtered
- * out upstream — renders with no marker of its own, so counting it here turned the
- * moving-alias marker on for every other row while the pin that triggered it showed
- * nothing.
- */
-export function hasFrozenVersions(ids, families = {}) {
-  const list = ids || [];
-  return list.some((id) => isFrozenAlias(id, families) && list.includes(families[id]));
 }
 
 /**

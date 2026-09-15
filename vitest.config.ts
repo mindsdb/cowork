@@ -1,7 +1,10 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
 
-// Two projects: main (node env) and renderer (happy-dom).
+const compilerPreset = reactCompilerPreset();
+
+// Main (node), renderer (happy-dom), and compiled credential-refresh regressions.
 // setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
   plugins: [react()],
@@ -84,6 +87,28 @@ export default defineConfig({
           name: 'renderer',
           environment: 'happy-dom',
           include: ['src/renderer/**/*.test.{js,jsx,ts,tsx}'],
+          setupFiles: ['tests/setup-env.ts', 'tests/setup-renderer.ts'],
+        },
+      },
+      {
+        extends: true,
+        plugins: [babel({ presets: [{
+          ...compilerPreset,
+          rolldown: {
+            ...compilerPreset.rolldown,
+            // Match the renderer build, including in Vitest's SSR environment.
+            // The preset otherwise skips it and silently tests uncompiled code.
+            applyToEnvironmentHook: () => true,
+          },
+        }] })],
+        test: {
+          name: 'renderer-compiled',
+          environment: 'happy-dom',
+          include: [
+            'src/renderer/cowork/code/useCodingCatalog.test.tsx',
+            'src/renderer/cowork/code/NewTaskPanel.test.tsx',
+            'src/renderer/cowork/code/ProjectSettingsModal.test.tsx',
+          ],
           setupFiles: ['tests/setup-env.ts', 'tests/setup-renderer.ts'],
         },
       },

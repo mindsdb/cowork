@@ -101,6 +101,8 @@ on:
         required: false
       SUPABASE_CLIENT_SECRET:
         required: false
+      POSTHOG_CLIENT_ID:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -182,6 +184,7 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
           SUPABASE_CLIENT_ID: ${{ secrets.SUPABASE_CLIENT_ID }}
           SUPABASE_CLIENT_SECRET: ${{ secrets.SUPABASE_CLIENT_SECRET }}
+          POSTHOG_CLIENT_ID: ${{ secrets.POSTHOG_CLIENT_ID }}
 
         run: |
           python3 -c "
@@ -196,6 +199,7 @@ jobs:
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
             'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
             'SUPABASE_CLIENT_ID', 'SUPABASE_CLIENT_SECRET',
+            'POSTHOG_CLIENT_ID',
           ]}
           with open('build/pkg-scripts/server-credentials.json', 'w') as f:
               json.dump(creds, f)

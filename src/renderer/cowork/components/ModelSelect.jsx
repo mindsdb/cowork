@@ -21,7 +21,8 @@
 //
 // Reasoning-effort footer (ENG-1940) — modeled on Claude Desktop's own model
 // picker: the effort control lives INSIDE this popup as a footer row below
-// the model list, not as a sibling control next to ModelSelect. Opt in by
+// the model list, not as a sibling control next to ModelSelect. Settings
+// opts in; the composer renders its own effort pill instead (ENG-2591). Opt in by
 // passing `modelEfforts` (the `{modelId: {efforts, default}}` map — pass the
 // object even if callers don't yet care about the row's close interaction);
 // omitting it entirely (`undefined`, the default) keeps every call site that

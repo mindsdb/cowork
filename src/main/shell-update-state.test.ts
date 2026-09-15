@@ -93,6 +93,99 @@ describe('transitionShellUpdate', () => {
     })).toBe(terminal);
   });
 
+  it('keeps checking in the background while an install is pending', () => {
+    // The bug this guards: a pending install used to swallow every check, so
+    // the downloaded artifact froze at whatever build was current when it was
+    // fetched, and the user installed it, relaunched, and was immediately
+    // offered the real latest — two updates back to back.
+    const pending: ShellUpdateSnapshot = {
+      ...idle(),
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+    };
+    const refreshing = transitionShellUpdate(pending, {
+      type: 'CHECK_REQUESTED',
+      trigger: 'periodic',
+    });
+    expect(refreshing).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: true,
+    });
+
+    // Concurrent refreshes coalesce.
+    expect(transitionShellUpdate(refreshing, {
+      type: 'CHECK_REQUESTED',
+      trigger: 'manual',
+    })).toBe(refreshing);
+
+    // Nothing newer on the feed: the banner stays exactly as it was.
+    expect(transitionShellUpdate(refreshing, { type: 'REFRESH_SETTLED' })).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: undefined,
+    });
+  });
+
+  it('supersedes a pending install with a newer build', () => {
+    const refreshing: ShellUpdateSnapshot = {
+      ...idle(),
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: true,
+    };
+    const superseded = transitionShellUpdate(refreshing, {
+      type: 'SUPERSEDED',
+      targetVersion: '2.2.0',
+    });
+    expect(superseded).toMatchObject({
+      phase: 'downloading',
+      targetVersion: '2.2.0',
+      refreshing: undefined,
+    });
+    expect(transitionShellUpdate(superseded, {
+      type: 'DOWNLOAD_COMPLETE',
+      targetVersion: '2.2.0',
+    })).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.2.0' });
+  });
+
+  it('never supersedes outside a pending install', () => {
+    const installing: ShellUpdateSnapshot = {
+      ...idle(),
+      phase: 'installing',
+      targetVersion: '2.1.0',
+    };
+    // A refresh result landing after the user hit Restart must not rewind the
+    // install into another download.
+    expect(transitionShellUpdate(installing, {
+      type: 'SUPERSEDED',
+      targetVersion: '2.2.0',
+    })).toBe(installing);
+  });
+
+  it('keeps the pending install armed when a background refresh fails', () => {
+    const refreshing: ShellUpdateSnapshot = {
+      ...idle(),
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: true,
+    };
+    // The downloaded artifact is untouched by a failed check, so one flaky poll
+    // must not replace a working Restart button with an error.
+    const settled = transitionShellUpdate(refreshing, {
+      type: 'FAILED',
+      code: 'update-request-failed',
+      recoverable: true,
+    });
+    expect(settled).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: undefined,
+    });
+    expect(settled).not.toHaveProperty('errorCode');
+    expect(transitionShellUpdate(settled, { type: 'INSTALL_REQUESTED' }).phase).toBe('installing');
+  });
+
   it('reconciles installation across the relaunch boundary', () => {
     const installing: ShellUpdateSnapshot = {
       ...idle(),
