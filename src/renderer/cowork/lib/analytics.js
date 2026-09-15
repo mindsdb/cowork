@@ -94,7 +94,6 @@ const EVENTS = {
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent (ENG-1533, ENG-1782). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
-  HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
   // Every failed turn, not just the first (first_response is once-per-user).
@@ -662,11 +661,6 @@ export function trackBillingOpened(trigger) {
 // path (first run) no paywall is shown at all; the fork is the measurement.
 export function trackKeyProvisioningRefused(outcome) {
   capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
-}
-
-// User switched the active agent/harness in Settings (e.g. anton -> hermes).
-export function trackHarnessSwapped(from, to) {
-  capture(EVENTS.HARNESS_SWAPPED, { from: from || 'unknown', to: to || 'unknown' });
 }
 
 // Once per user (ENG-501). Mark the localStorage flag only after the event is
