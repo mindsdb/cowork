@@ -26,7 +26,6 @@ const hostMock = vi.hoisted(() => ({
 vi.mock('../../../platform/host', () => hostMock);
 
 const analyticsMock = vi.hoisted(() => ({
-  trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
   trackBillingOpened: vi.fn(),
 }));
