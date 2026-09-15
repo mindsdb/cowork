@@ -73,7 +73,16 @@ vi.mock('./cowork-home', async () => {
     },
     coworkEnvPath: () => path.join(root(), '.env'),
     coworkStatePath: () => path.join(root(), 'state.json'),
-    readEnvFile: () => ({}),
+    readEnvFile: () => {
+      const vars: Record<string, string> = {};
+      const envPath = path.join(root(), '.env');
+      if (!fs.existsSync(envPath)) return vars;
+      for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+        const match = line.trim().match(/^([A-Z0-9_]+)=(.*)$/);
+        if (match) vars[match[1]] = match[2];
+      }
+      return vars;
+    },
     // Other consumers (server-process, minds-urls) read the build kind at load.
     buildKind: () => 'prod',
     buildKindStrict: () => 'prod',
@@ -94,10 +103,24 @@ const serverState = vi.hoisted(() => ({
   onCurrentRoot: true,
   stops: 0,
   starts: 0,
+  // The token a started sidecar generates into the root it was started on.
+  tokenOnStart: null as string | null,
 }));
 vi.mock('./server-process', () => ({
-  stopServer: async () => { serverState.stops += 1; },
-  startServer: async () => { serverState.starts += 1; },
+  stopServer: async () => {
+    serverState.stops += 1;
+    // The real stop checkpoints coding tasks on its way out, and that request
+    // is authenticated, so leaving it out would hide a cache latched too early.
+    (await import('./server-auth')).authHeader();
+  },
+  startServer: async () => {
+    serverState.starts += 1;
+    if (!serverState.tokenOnStart) return;
+    const fs = await import('fs');
+    const path = await import('path');
+    const dir = homeHolder.accountRoot || homeHolder.home;
+    fs.appendFileSync(path.join(dir, '.env'), `COWORK_AUTH_TOKEN=${serverState.tokenOnStart}\n`);
+  },
   isServerRunning: () => serverState.running,
   isServerStarting: () => false,
   getServerPort: () => 26866,
@@ -110,6 +133,7 @@ vi.mock('./server-process', () => ({
 import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
 import { saveTokens, clearTokens } from './token-store';
 import { observePreExistingData } from './account-data';
+import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
 let dir: string;
 let target: string;
@@ -308,6 +332,8 @@ describe('commitMindsSignIn — the account-switch restart', () => {
 
   afterEach(() => {
     clearTokens();
+    serverState.tokenOnStart = null;
+    resetServerAuthTokenCache();
   });
 
   it('restarts the sidecar when it is serving a different account root', async () => {
@@ -326,6 +352,23 @@ describe('commitMindsSignIn — the account-switch restart', () => {
     // by reloading, so without it React seeds the composer draft and the
     // settings cache from the previous account during render.
     expect(result.dataRootChanged).toBe(true);
+  });
+
+  it('drops the cached bearer token late enough to read the new sidecar\'s own', async () => {
+    // Ordering, not just the call: stopServer's shutdown checkpoint re-reads the
+    // token, so a reset before it re-latches the cache on a root with none yet.
+    homeHolder.antonInstalled = true;
+    serverState.running = true;
+    serverState.onCurrentRoot = false;
+    serverState.tokenOnStart = 'token-for-the-new-root';
+    resetServerAuthTokenCache();
+    asAccount(ACCOUNT_A);
+
+    await commitMindsSignIn();
+
+    // What every later main-process request carries. Null here is the bug: the
+    // new sidecar refuses an unauthenticated call once COWORK_REQUIRE_AUTH is on.
+    expect(getServerAuthToken()).toBe('token-for-the-new-root');
   });
 
   it('leaves a running sidecar alone when it is already on the right root', async () => {

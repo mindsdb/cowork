@@ -1435,10 +1435,6 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     console.warn('[minds-auth] failed to set provider state', error);
   }
 
-  // Give this account a data root before anything starts the sidecar. The
-  // account itself was already recorded by the token store, which is the choke
-  // point every sign-in passes through; this only settles ownership of the
-  // default root, which is safe to attempt more than once.
   // Whether this sign-in moved the session onto a different data root. The
   // renderer has to be reloaded when it did: a sign-in ends by switching page
   // rather than reloading, so React would seed the composer draft and the
@@ -1448,8 +1444,9 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   const accountId = signedInAccountId();
   if (accountId) {
     try {
-      // The SHARED home, not the account's own root: ownership is of the
-      // default root, and a subtree cannot settle it.
+      // Settles ownership only, and is safe to attempt more than once; the
+      // token store already recorded the account itself. The SHARED home, not
+      // the account's own root, because a subtree cannot settle the default.
       claimDefaultRoot(coworkHome(), accountId);
     } catch (err) {
       console.warn('[minds-auth] could not settle the account data root', err);
@@ -1481,10 +1478,11 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
     console.log('[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
-    // The bearer token lives in the account's own dotenv, so a cached one from
-    // the previous root would be refused by the new sidecar.
-    resetServerAuthTokenCache();
     await stopServer();
+    // The bearer token lives in the account's own dotenv, so a cached one from
+    // the previous root would be refused by the new sidecar. Dropped AFTER the
+    // stop: its shutdown checkpoint authenticates, which re-latches the cache.
+    resetServerAuthTokenCache();
     await startServer();
   } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
