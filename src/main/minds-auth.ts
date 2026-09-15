@@ -1395,7 +1395,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // The account's own root, not the shared home: on a second account's first
   // sign-in nothing has created it yet, and writeEnvFileAtomic puts its temp
   // file beside the target, so writing first would ENOENT and drop the value.
-  const homeDir = ensureAccountDataRoot();
+  ensureAccountDataRoot();
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
