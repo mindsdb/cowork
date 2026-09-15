@@ -99,20 +99,14 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // ENG-749/ENG-2296: progress line under the welcome orb while the loading
-  // screen is held open through a boot-time update, so a download isn't a silent
-  // stall. Derived from the OTA phase, the shell-auto phase, and the manual
-  // shell-reinstall notice (deriveBootStatus) so the overlay never shows the
-  // completion-ish "Almost ready…" while a shell update still needs a relaunch
-  // to take effect.
+  // ENG-749: progress line under the welcome orb while the loading screen is
+  // held open through a boot-time update, so a download isn't a silent stall.
+  // OTA-only by design (ENG-2764): the gate waits on the updater's boot poll and
+  // nothing else, so the shell auto-updater — which downloads on its own timer
+  // and installs on quit — must not appear here. deriveBootStatus keeps the copy
+  // clear of completion claims so a pending shell update isn't contradicted.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const [shellPhase, setShellPhase] = useState<string | null>(null);
-  const [manualShellPending, setManualShellPending] = useState(false);
-  const bootStatus = deriveBootStatus({
-    ota: { phase: otaPhase },
-    shell: { phase: shellPhase },
-    manualShellPending,
-  });
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase } });
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -147,41 +141,14 @@ export default function App() {
 
   // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
   // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` isn't an OTA phase but the manual shell-reinstall notice
-  // (ENG-849), so route it to the pending flag — never claim completion while a
-  // reinstall is outstanding — rather than the OTA phase (ENG-2296).
+  // `shell-available` is the manual shell-reinstall notice (ENG-849), not an OTA
+  // phase, so it's dropped rather than stored: the sidebar banner owns it, and
+  // the boot line must not report an update the gate can't apply (ENG-2764).
   useEffect(() => {
     return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') { setManualShellPending(true); return; }
+      if (status?.phase === 'shell-available') return;
       setOtaPhase(status?.phase ?? null);
     });
-  }, []);
-
-  // Also reflect shell auto-update progress (ENG-2296): the boot line was
-  // previously blind to the shell channel and could claim "Almost ready…" while
-  // a shell relaunch was still pending. Pull once for reload recovery, then
-  // subscribe to the same authoritative main-process snapshot. No-ops in web.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellAutoUpdate()
-      .then((snapshot) => { if (!cancelled) setShellPhase(snapshot?.phase ?? null); })
-      .catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellPhase(snapshot?.phase ?? null);
-    });
-    return () => { cancelled = true; unsubscribe(); };
-  }, []);
-
-  // Recover the manual shell-reinstall notice after an OTA reload drops the
-  // original `shell-available` push, and surface it on old shells that never
-  // push it at all (ENG-1103 manifest fallback in getShellUpdate). Latch-only:
-  // a null result never clears a notice a push already established.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate()
-      .then((update) => { if (!cancelled && update) setManualShellPending(true); })
-      .catch(() => {});
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
