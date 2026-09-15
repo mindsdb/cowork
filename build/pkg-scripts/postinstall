@@ -23,11 +23,6 @@ log() {
   echo "[cowork-postinstall] $*" >&2
 }
 
-if [ ! -f "$SRC_FILE" ]; then
-  log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
-  exit 0
-fi
-
 # Resolves a user's home directory via dscl rather than `eval echo ~user`,
 # which would otherwise inject an unsanitized value into the shell.
 home_dir_for() {
@@ -67,18 +62,85 @@ stage_shared_fallback() {
     && chmod 640 "$dest_file"
 }
 
+# True when $1 belongs to the local admin group. The ownership handoff below is
+# restricted to admins for two reasons that both point the same way: only an
+# admin can write /Applications, so only they get a prompt-free in-place update
+# out of this (Squirrel escalates when the bundle's parent is unwritable, and
+# /Applications is 0775 root:admin); and handing the bundle to a standard user
+# would make the global app code — including Contents/Resources/app.asar —
+# writable by a non-admin account, a cross-user code-tampering path on shared
+# Macs, without even clearing their prompt. So a non-admin console user is left
+# with a root-owned bundle (and a recoverable Retry if they cancel the prompt,
+# not the manual-installer notice); a prompt-free path for them is tracked
+# separately.
+is_admin_user() {
+  dseditgroup -o checkmember -m "$1" admin >/dev/null 2>&1
+}
+
+# Hand the installed .app to the console user so Squirrel.Mac can swap it in
+# place on auto-update without a Touch ID prompt. A pkg installs root-owned; the
+# in-place update needs a user-owned bundle (what a DMG drag-install produces).
+# Ownership doesn't touch the signature or notarization, so Gatekeeper is
+# unchanged.
+#
+# Best-effort and non-fatal: a headless/MDM install with no console user, or a
+# non-admin console user (see is_admin_user), stays root-owned. The bundle name
+# is written alongside this script by release-mac-pkg-notarized.sh.
+chown_app_bundle() {
+  local user="$1"
+  local name_file="$SCRIPT_DIR/installed-app-name"
+  if [ ! -f "$name_file" ]; then
+    log "no installed-app-name packaged — leaving app bundle ownership unchanged"
+    return 1
+  fi
+  # Command substitution strips the trailing newline while preserving the
+  # internal space in names like "MindsHub Cowork.app".
+  local app_name
+  app_name="$(cat "$name_file")"
+  # Expect a bare "Something.app"; reject empty or path-bearing values so a
+  # malformed marker can never redirect the recursive chown outside /Applications.
+  case "$app_name" in
+    "" | */* | ..*)
+      log "unexpected installed-app-name '$app_name' — skipping bundle chown"
+      return 1
+      ;;
+  esac
+  local app_path="/Applications/$app_name"
+  if [ ! -d "$app_path" ]; then
+    log "installed bundle not found at $app_path — skipping bundle chown"
+    return 1
+  fi
+  chown -R "$user:staff" "$app_path"
+}
+
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 CONSOLE_HOME=""
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
   CONSOLE_HOME="$(home_dir_for "$CONSOLE_USER")"
 fi
 
-if [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
+# Credential staging only applies when the OAuth payload was packaged (signed
+# release builds). A dev/unsigned build ships no server-credentials.json — skip
+# staging, but still fall through to the bundle-ownership handoff below, which
+# is independent of it.
+if [ ! -f "$SRC_FILE" ]; then
+  log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
+elif [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
   log "staged credentials for console user $CONSOLE_USER"
 elif stage_shared_fallback; then
   log "no usable console user session — staged credentials at the shared fallback location"
 else
   log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
+fi
+
+# Bundle ownership is independent of credential staging: attempt it whenever an
+# admin console user exists, regardless of whether (or how) staging resolved
+# above. Restricted to admins — see is_admin_user for why a standard user is
+# deliberately left with a root-owned bundle.
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && is_admin_user "$CONSOLE_USER"; then
+  if chown_app_bundle "$CONSOLE_USER"; then
+    log "handed the app bundle to admin console user $CONSOLE_USER for prompt-free auto-update"
+  fi
 fi
 
 exit 0
