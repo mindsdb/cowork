@@ -32,6 +32,11 @@ const CLAIM_FILE = '.account';
 // read as the other.
 const ORG_CLAIM_FILE = '.organization';
 
+// Which organization the session is operating as. At the ACCOUNT root, one
+// level above the store roots it selects between, and written on every auth
+// transition rather than only on a user's explicit pick.
+const ACTIVE_ORG_FILE = 'active-org.json';
+
 // Which account the app is signed in as, and which it last was. Written by the
 // token store, so its lifetime is the session's.
 const ACTIVE_FILE = 'active-account.json';
@@ -495,6 +500,51 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
     );
   }
   return { COWORK_HOME: root };
+}
+
+/** The organization this account root is operating as, or null if none is
+ *  recorded. Null resolves to the account root while nothing has partitioned,
+ *  which is what keeps an upgraded install on its own data. */
+export function readActiveOrg(accountRoot: string): string | null {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(accountRoot, ACTIVE_ORG_FILE), 'utf-8'),
+    ) as { orgId?: unknown };
+    const orgId = typeof parsed?.orgId === 'string' ? parsed.orgId.trim() : '';
+    return orgId && isUsableAsPathSegment(orgId) ? orgId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Record the organization this session is operating as. THROWS on failure, and
+ * that is the point.
+ *
+ * Swallowing it would leave the record naming the PREVIOUS organization, so
+ * `sidecarIsOnCurrentStores()` would compare two stale values, agree, skip the
+ * restart, and report a successful switch while the sidecar still served the
+ * previous organization's database. Callers fail the switch closed instead.
+ */
+export function writeActiveOrgSync(accountRoot: string, orgId: string | null): void {
+  const target = path.join(accountRoot, ACTIVE_ORG_FILE);
+  if (orgId === null) {
+    try {
+      fs.rmSync(target, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    return;
+  }
+  assertUsableAsPathSegment(orgId);
+  fs.mkdirSync(accountRoot, { recursive: true });
+  const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ orgId }) + '\n', { encoding: 'utf-8', mode: 0o600 });
+    fs.renameSync(tmp, target);
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+  }
 }
 
 /** Who owns an account root's stores. Same shape and same reasons as

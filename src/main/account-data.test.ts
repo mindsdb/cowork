@@ -24,6 +24,8 @@ import {
   recordedIncumbent,
   settleOwnership,
   claimOrgRoot,
+  readActiveOrg,
+  writeActiveOrgSync,
   orgStoreEnv,
   orgStoreRoot,
   ORGS_DIR,
@@ -841,5 +843,56 @@ describe('resolving an organization store root', () => {
     const uri = orgStoreEnv(root, ORG_B).DATABASE_URI;
     expect(uri.startsWith('sqlite:///')).toBe(true);
     expect(uri.replace('sqlite:///', '')).toBe(path.join(orgRoot(ORG_B), 'cowork.db'));
+  });
+});
+
+describe('recording which organization a session is operating as', () => {
+  let root: string;
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  it('reads back what it recorded', () => {
+    writeActiveOrgSync(root, 'org-aaaa');
+    expect(readActiveOrg(root)).toBe('org-aaaa');
+  });
+
+  it('reads null before anything was recorded, so an upgrade stays on its root', () => {
+    expect(readActiveOrg(root)).toBeNull();
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+  });
+
+  it('reads null from a corrupt record rather than naming an organization', () => {
+    fs.writeFileSync(path.join(root, 'active-org.json'), '{ not json', 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('reads null from a record that is not a safe path segment', () => {
+    fs.writeFileSync(path.join(root, 'active-org.json'), JSON.stringify({ orgId: '../escape' }), 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('removes the record when told there is no organization', () => {
+    writeActiveOrgSync(root, 'org-aaaa');
+    writeActiveOrgSync(root, null);
+    expect(readActiveOrg(root)).toBeNull();
+    expect(fs.existsSync(path.join(root, 'active-org.json'))).toBe(false);
+  });
+
+  it('THROWS rather than silently losing the record', () => {
+    // Swallowing this is the failure that matters: the record would keep naming
+    // the previous organization, every check downstream would compare against
+    // it and agree, and a switch would report success having moved nothing.
+    fs.chmodSync(root, 0o500);
+    try {
+      expect(() => writeActiveOrgSync(root, 'org-aaaa')).toThrow();
+    } finally {
+      fs.chmodSync(root, 0o700);
+    }
+  });
+
+  it('refuses an organization id that is not a safe path segment', () => {
+    expect(() => writeActiveOrgSync(root, '../escape')).toThrow();
   });
 });

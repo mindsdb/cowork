@@ -37,3 +37,40 @@ export function accountLabelFromToken(token: string | null): string | null {
   }
   return null;
 }
+
+/**
+ * The raw active-organization claim, whichever name the issuer used.
+ *
+ * The three names live here and nowhere else: the data root and the
+ * organization list are both derived from this claim, and if they ever read
+ * different names they would disagree about which organization the session is
+ * in, which is the whole failure this partitioning exists to prevent.
+ */
+export function activeOrgClaim(payload: Record<string, unknown> | null): unknown {
+  return payload?.active_organization ?? payload?.activate_organization ?? payload?.organization;
+}
+
+/** The id inside an organization claim, unwrapping the shapes the issuer uses. */
+export function orgIdFromClaim(value: unknown): string | null {
+  const raw = (value as { organization?: unknown })?.organization ?? value;
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      return orgIdFromClaim(JSON.parse(trimmed));
+    } catch {
+      return trimmed;
+    }
+  }
+  if (typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const id = o.id ?? o.keycloak_id ?? o.organization_id ?? o.org_id ?? o.name;
+  return id ? String(id) : null;
+}
+
+/** The organization a token names as active, or null when it names none. */
+export function activeOrgIdFromToken(token: string | null): string | null {
+  if (!token) return null;
+  return orgIdFromClaim(activeOrgClaim(decodeJwtPayload(token)));
+}

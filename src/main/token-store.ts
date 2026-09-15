@@ -2,9 +2,9 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { clearActiveAccountRecord, writeActiveAccountSync } from './account-data';
-import { accountIdFromToken } from './jwt';
-import { coworkHome } from './cowork-home';
+import { claimOrgRoot, clearActiveAccountRecord, readActiveOrg, readOrgClaim, writeActiveAccountSync, writeActiveOrgSync } from './account-data';
+import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
+import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
 // Persistence for the Keycloak refresh token.
@@ -143,6 +143,7 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
     }
   }
   recordSignedInAccount(accessToken);
+  recordActiveOrganization(accessToken);
   broadcastAuthChanged(true);
 }
 
@@ -177,6 +178,60 @@ function recordSignedInAccount(accessToken: string): void {
   }
 }
 
+// Whether this process has yet seen a token, which is what makes the claim
+// below "the organization the session was already in". A switch re-rolls the
+// token mid-process, so without this the target of a switch could claim a root
+// whose data belongs to the organization being left.
+let _observedOrganization = false;
+
+/**
+ * Which organization the session is operating as, recorded at the same choke
+ * point as the account and for the same reason: every auth transition flows
+ * through here, so a launch that never reaches the finalize step still records.
+ * Recording only where a person picks an organization would miss every install
+ * that is already signed in, which is precisely the population whose data is
+ * unpartitioned.
+ *
+ * The claim is separate and is taken at most once per process, only when this
+ * install has never recorded or claimed one. That makes the owner of existing
+ * data the organization the FIRST token names, not the ranked default a boot
+ * may switch to a moment later, and not the target of a switch.
+ */
+function recordActiveOrganization(accessToken: string): void {
+  // Consumed by ANY token, before the early return below. A token naming no
+  // organization is still this process's first observation, and treating it as
+  // if nothing had been seen would let the next token — a switch target — claim
+  // a root whose data it does not own.
+  const firstThisProcess = !_observedOrganization;
+  _observedOrganization = true;
+
+  const orgId = activeOrgIdFromToken(accessToken);
+  if (!orgId) return;
+  const root = accountDataRoot();
+
+  try {
+    if (firstThisProcess && readActiveOrg(root) === null && readOrgClaim(root).kind === 'unclaimed') {
+      claimOrgRoot(root, orgId);
+    }
+    writeActiveOrgSync(root, orgId);
+  } catch (e) {
+    // NOT best-effort, for the same reason as the account record: a stale
+    // record names the PREVIOUS organization and every check downstream
+    // compares against it and agrees, so the sidecar is never moved. Removing
+    // it resolves to an empty quarantine root instead, which is recoverable.
+    console.warn('[token-store] could not record the active organization', e);
+    try {
+      writeActiveOrgSync(root, null);
+    } catch (removeErr) {
+      console.error(
+        '[token-store] could not record OR clear the active organization — '
+        + 'this session may read another organization\'s data',
+        removeErr,
+      );
+    }
+  }
+}
+
 export function getAccessToken(): string | null { return _accessToken; }
 
 // Lets async refreshes detect that login/logout replaced their starting
@@ -196,6 +251,7 @@ export function getRefreshToken(): string | null {
 }
 
 export function clearTokens(): void {
+  _observedOrganization = false;
   _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;

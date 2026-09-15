@@ -3,7 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot } from './account-data';
-import { accountIdFromToken, decodeJwtPayload } from './jwt';
+import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
 import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
@@ -417,10 +417,10 @@ export function signedInAccountId(): string | null {
 function normalizeOrgRef(value: any, source: string): OrgRef | null {
   const raw = value?.organization ?? value;
   if (!raw || typeof raw !== 'object') return null;
-  const id = raw.id ?? raw.keycloak_id ?? raw.organization_id ?? raw.org_id ?? raw.name;
+  const id = orgIdFromClaim(raw);
   if (!id) return null;
   return {
-    id: String(id),
+    id,
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
     slug: raw.name ? String(raw.name) : undefined,
     source,
@@ -428,10 +428,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
 }
 
 function getActiveOrgFromPayload(payload: Record<string, unknown> | null): OrgRef | null {
-  const raw =
-    payload?.active_organization ??
-    payload?.activate_organization ??
-    payload?.organization;
+  const raw = activeOrgClaim(payload);
 
   if (!raw) return null;
   if (typeof raw === 'string') {
