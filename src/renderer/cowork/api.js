@@ -2218,19 +2218,43 @@ export async function patchConversation(id, body) {
   });
 }
 
+const DELETE_TURN_TIMEOUT_MS = 30000;
+
 // Delete one user→answer cycle (the question + the assistant
 // response, including any internal tool_use/tool_result blocks
 // anton generated during the turn). `turnIndex` is the 0-based
 // displayable bubble index — same value used to look up events
 // in the per-turn sidecar.
 export async function deleteConversationTurn(id, turnIndex) {
-  const res = await authFetch(
-    BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
-    {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    },
-  );
+  // The caller holds the turn in an in-flight state for the life of this
+  // request and refuses further deletes in that conversation while it is out,
+  // so a request that never settles would strand the conversation until a
+  // reload. Multiple seconds is normal here; never answering is not.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
+  let res;
+  try {
+    res = await authFetch(
+      BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+      },
+    );
+  } catch (e) {
+    // Giving up on the wire says nothing about the server, which may well have
+    // finished the delete.
+    if (ctrl.signal.aborted) {
+      throw new Error(
+        `the request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds. `
+        + 'It may still complete on the server; refresh to check.',
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 404) return { status: 'gone', id, turnIndex };
   if (!res.ok) {
     let detail = '';
