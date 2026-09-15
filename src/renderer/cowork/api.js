@@ -2253,7 +2253,9 @@ export async function deleteConversationTurn(id, turnIndex) {
   } catch (e) {
     // Giving up on the wire says nothing about the server, which may well have
     // finished the delete, so this is typed rather than reported as a failure.
-    if (ctrl.signal.aborted) {
+    // Keyed on the error, not on `signal.aborted`: a server error raised after
+    // the timer fired is a refusal the server was explicit about, not a hang.
+    if (e?.name === 'AbortError') {
       const timedOut = new Error(
         `The delete request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds.`,
         { cause: e },
