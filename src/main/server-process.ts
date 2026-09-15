@@ -24,6 +24,8 @@ import {
   orgStoreEnv,
   orgStoreRoot,
   readActiveOrg,
+  ACCOUNTS_DIR,
+  ORGS_DIR,
 } from './account-data';
 import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
@@ -84,9 +86,37 @@ function serverOwnerSecret(): string {
 }
 
 // The owner value a spawned server is stamped with and echoed back at /health,
-// bound to the account whose data root it was started on. See accountOwnerToken.
-function serverOwnerToken(accountId?: string | null): string {
-  return accountOwnerToken(serverOwnerSecret(), accountId ?? null);
+// bound to the account AND the organization whose stores it was started on.
+// `orgSegment` is null for the organization that owns the account root, so that
+// session's token is exactly what it was before organizations were partitioned
+// and an existing sidecar is still adopted across the upgrade.
+function serverOwnerToken(accountId?: string | null, orgSegment?: string | null): string {
+  const base = accountOwnerToken(serverOwnerSecret(), accountId ?? null);
+  if (!orgSegment) return base;
+  return crypto.createHmac('sha256', base).update(orgSegment).digest('hex');
+}
+
+// Which organization subtree the session's stores sit in, or null when they are
+// the account root's own. The path, not the recorded id: a session with no
+// record yet and the organization that owns the root are the same stores, and
+// stamping them alike is what keeps an un-partitioned install adoptable.
+function currentOrgSegment(): string | null {
+  const account = accountDataRoot();
+  const stores = currentOrgStoreRoot();
+  return stores === account ? null : path.basename(stores);
+}
+
+/** Every organization subtree under an account root, quarantine buckets
+ *  INCLUDED: an orphan we stamped for one is still ours to reap. */
+function orgSegmentsUnder(accountRoot: string): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -101,8 +131,12 @@ function serverOwnerToken(accountId?: string | null): string {
  * our own stale ones get reaped by the normal start path.
  */
 function isOwnerTokenOurs(owner: string): boolean {
-  if (owner === serverOwnerToken(null)) return true;
-  return knownAccountRoots(coworkHome()).some((id) => owner === serverOwnerToken(id));
+  const home = coworkHome();
+  const roots: Array<[string | null, string]> = [[null, home]];
+  for (const id of knownAccountRoots(home)) roots.push([id, path.join(home, ACCOUNTS_DIR, id)]);
+  return roots.some(([id, root]) =>
+    owner === serverOwnerToken(id)
+    || orgSegmentsUnder(root).some((seg) => owner === serverOwnerToken(id, seg)));
 }
 
 // Which account's stores this session uses, or null for the default root. Read
@@ -651,7 +685,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // recovery attempt as a no-op.
     if (!_adoptedExternal) return { ok: true, port: serverPort };
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot())) {
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
       return { ok: true, port: serverPort };
     }
     console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -677,7 +711,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // adopting (a foreign server was already routed around in resolveServerPort).
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot())) {
+    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
       serverStarted = true;
       _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
@@ -784,6 +818,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // switch rewrites, so moving it would leave a switched-to organization
     // unconfigured.
     const orgStoreRootAtSpawn = currentOrgStoreRoot();
+    const orgSegmentAtSpawn = currentOrgSegment();
     const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
     console.log(
       `[server] build kind "${kind}" → data home ${dataHome}` +
@@ -840,7 +875,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // OS user's app sees a mismatch and never adopts it. Bound to the account
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
-      COWORK_SERVER_OWNER: serverOwnerToken(account),
+      COWORK_SERVER_OWNER: serverOwnerToken(account, orgSegmentAtSpawn),
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
       // build points at. Only set when the build is baked for a non-prod env

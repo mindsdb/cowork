@@ -899,3 +899,53 @@ describe('the sidecar organization stores', () => {
     expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
   });
 });
+
+// Adoption matches the owner token exactly, so an orphan from another
+// organization must not match — while OUR OWN stale orphan still must, or the
+// documented rule breaks: it would keep the preferred port while we move to a
+// random one and the renderer keeps reading the previous organization's data.
+describe('adopting a sidecar across organizations', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedOwner = (): string =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> })
+      .env.COWORK_SERVER_OWNER;
+
+  it('stamps a different owner for a partitioned organization', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const owningOrg = spawnedOwner();
+    await stopServer();
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedOwner()).not.toBe(owningOrg);
+  });
+
+  it('stamps the owning organization exactly as before it was partitioned', async () => {
+    // An install upgrading into this change must still adopt its own running
+    // sidecar; a changed token there would strand the preferred port.
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const withNoRecord = spawnedOwner();
+    await stopServer();
+
+    accountState.orgStoreRoot = null;   // the organization that owns the root
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedOwner()).toBe(withNoRecord);
+  });
+});

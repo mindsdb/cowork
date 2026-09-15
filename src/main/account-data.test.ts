@@ -896,3 +896,39 @@ describe('recording which organization a session is operating as', () => {
     expect(() => writeActiveOrgSync(root, '../escape')).toThrow();
   });
 });
+
+describe('reaping quarantined organization subtrees', () => {
+  const quarantined = (root: string, name: string) => {
+    fs.mkdirSync(path.join(root, ORGS_DIR, name), { recursive: true });
+    return path.join(root, ORGS_DIR, name);
+  };
+
+  it('reaps one under the default root, which is the single-account case', () => {
+    // The account that owns the default root has no accounts/<id> directory, so
+    // its organization subtrees sit at <home>/orgs and a sweep that only walks
+    // accounts/* would never reach them.
+    const dead = quarantined(home, '_unresolved-dead');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(false);
+  });
+
+  it('reaps one under a named account root', () => {
+    makeAccountRoot(A);
+    const dead = quarantined(accountRoot(A), '_unresolved-dead');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(false);
+  });
+
+  it('keeps one that holds data, and says so', () => {
+    const dead = quarantined(home, '_unresolved-has-data');
+    fs.writeFileSync(path.join(dead, 'cowork.db'), 'x', 'utf-8');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(true);
+  });
+
+  it('leaves a real organization subtree alone', () => {
+    const live = quarantined(home, 'org-aaaa');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(live)).toBe(true);
+  });
+});

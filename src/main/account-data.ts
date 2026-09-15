@@ -728,19 +728,44 @@ export function settleOwnership(home: string): void {
  * accumulate a store tree each; one holding any of somebody's work is left for a
  * support path rather than tidied away. Call at boot.
  */
+function reapQuarantineRoot(root: string, name: string): void {
+  if (!name.startsWith(QUARANTINE_PREFIX) || name === QUARANTINE_ACCOUNT) return;
+  if (rootHoldsUserData(root)) {
+    console.warn('[account-data] a quarantined session left data behind at %s', root);
+    return;
+  }
+  try {
+    fs.rmSync(root, { recursive: true, force: true });
+  } catch (err) {
+    console.warn('[account-data] could not remove a stale quarantine root', err);
+  }
+}
+
+/** Quarantine buckets under every root this install can create: the account
+ *  roots, and the organization subtrees inside each of them. The default root's
+ *  organization subtrees sit at `<home>/orgs`, because the account that owns it
+ *  has no `accounts/<id>` directory of its own, and a single-account install is
+ *  the common case rather than the rare one. */
+function orgQuarantineNames(accountRoot: string): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
 export function sweepStaleQuarantineRoots(home: string): void {
+  const accountRoots = [home, ...knownAccountRoots(home).map((n) => path.join(home, ACCOUNTS_DIR, n))];
+  for (const accountRoot of accountRoots) {
+    for (const name of orgQuarantineNames(accountRoot)) {
+      reapQuarantineRoot(path.join(accountRoot, ORGS_DIR, name), name);
+    }
+  }
   for (const name of knownAccountRoots(home)) {
-    if (!name.startsWith(QUARANTINE_PREFIX) || name === QUARANTINE_ACCOUNT) continue;
-    const root = path.join(home, ACCOUNTS_DIR, name);
-    if (rootHoldsUserData(root)) {
-      console.warn('[account-data] a quarantined session left data behind at %s', root);
-      continue;
-    }
-    try {
-      fs.rmSync(root, { recursive: true, force: true });
-    } catch (err) {
-      console.warn('[account-data] could not remove a stale quarantine root', err);
-    }
+    reapQuarantineRoot(path.join(home, ACCOUNTS_DIR, name), name);
   }
 }
 
