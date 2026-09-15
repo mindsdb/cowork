@@ -48,13 +48,13 @@ describe('preload carries the explicit pick', () => {
 
 describe('the finalize IPC handler forwards the flag', () => {
   /*
-   * Read from source rather than executed: `index.ts` registers every handler
+   * Read from source rather than executed: `app.ts` registers every handler
    * in the app at import and pulls in Electron, the server process and the
    * installer with them. The seam being guarded is one argument crossing one
    * boundary, and `organizationLabelSurfaces.test.js` already establishes
    * source reading as how this repo pins a wiring seam a unit test walks past.
    */
-  const src = readFileSync(resolve(__dirname, 'index.ts'), 'utf-8');
+  const src = readFileSync(resolve(__dirname, 'app.ts'), 'utf-8');
   const start = src.indexOf('ipcMain.handle(IPC.MINDSHUB_FINALIZE');
   const handler = start < 0 ? '' : src.slice(start, src.indexOf('\n  });', start));
 
