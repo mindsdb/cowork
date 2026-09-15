@@ -357,6 +357,68 @@ describe('deleting a turn shows it as in flight', () => {
     expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
   });
 
+  it('refreshes instead of deleting after an unconfirmed timeout, then allows the next delete', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    // We gave up on the wire before the server committed, so this re-sync still
+    // shows the exchange. It says nothing about what the server will do next.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: { id: task.id, messages: exchange },
+    });
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+
+    // The server finished the delete after we stopped listening and reindexed
+    // what survived: index 1 on screen is no longer index 1 on the server.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: { id: task.id, messages: exchange.slice(2) },
+    });
+    alertSpy.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+
+    // The click buys a refresh, not a delete: sending that index would have
+    // removed an exchange the user never pointed at.
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/refreshed/i);
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
+    });
+
+    // The list is the server's again, so deleting works normally from here.
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+  });
+
+  it('keeps refusing while the conversation still cannot be re-synced', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    alertSpy.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/reload/i);
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a local-only turn synchronously without touching the network', async () => {
     const user = userEvent.setup();
     render(<App />);
