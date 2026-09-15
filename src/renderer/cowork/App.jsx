@@ -4030,85 +4030,114 @@ function AppCore() {
   // hit the API and re-hydrate the chat from the truncated history.
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
+  // Turn index currently being deleted, per conversation id. Keyed rather than
+  // a single slot because a delete may be in flight in more than one
+  // conversation at once, and each has to clear only its own.
+  const [deletingTurns, setDeletingTurns] = useState({});
+
   const handleDeleteTurnRequest = (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
+    // A second delete in the same conversation would carry a stale index: the
+    // server reindexes what survives, so it would remove the wrong exchange.
+    // Another conversation is unaffected and stays deletable.
+    if (deletingTurns[taskId] != null) return;
     setPendingDeleteTurn({ taskId, turnIndex });
   };
 
   const performDeleteTurn = async (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
-    // If anton is actively streaming a response to the turn being
-    // deleted, stop the stream first so the SSE connection doesn't
-    // keep producing events for a turn that no longer exists. The
-    // silent flag skips the post-cancel session refetch.
-    if (activeStreamingTaskIdRef.current === taskId) {
-      try { await handleStopStream({ silent: true }); } catch {}
-    }
-    if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
-      // No server-side history yet — drop the local pair only.
-      setTasks((prev) => prev.map((t) => {
-        if (t.id !== taskId) return t;
-        let assistantSeen = -1;
-        let dropFromUserAt = -1;
-        let dropEnd = (t.messages || []).length;
-        for (let i = 0; i < (t.messages || []).length; i++) {
-          const m = t.messages[i];
-          if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
-            dropFromUserAt = i;
-          }
-          if (m.role === 'assistant') {
-            assistantSeen += 1;
-            if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
-              dropEnd = i;
-              break;
-            }
-          }
-        }
-        if (dropFromUserAt === -1) return t;
-        // Read off the cut, not off `turnIndex`: the walk above counts assistant
-        // rows while the caller counts user ones, so it can take extra turns.
-        const cut = t.messages.slice(dropFromUserAt, dropEnd);
-        return {
-          ...t,
-          usageNotices: removeNoticeTurns(
-            t.usageNotices,
-            userTurnCount(t.messages.slice(0, dropFromUserAt)),
-            userTurnCount(cut),
-          ),
-          messages: [
-            ...t.messages.slice(0, dropFromUserAt),
-            ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
-          ],
-        };
-      }));
-      return;
+    const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
+    // Raised before the stop-stream branch, not after it: cancelling a live
+    // stream is itself two network calls, and the turn has to read as in
+    // flight for that wait too. The local-only path never sets it.
+    if (!isLocalOnly) {
+      setDeletingTurns((prev) => ({ ...prev, [taskId]: turnIndex }));
     }
     try {
-      await deleteConversationTurn(taskId, turnIndex);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteTurn] server delete failed', e);
-      alert(`Could not delete this exchange: ${e?.message || e}`);
-      return;
-    }
-    // Re-fetch the conversation so `tasks[].messages` reflects the
-    // truncated server history (and any reindexed events sidecar).
-    try {
-      const fresh = await fetchSession(taskId);
-      if (fresh && Array.isArray(fresh.messages)) {
-        setTasks((prev) => prev.map((t) =>
-          t.id === taskId
-            ? {
-              ...t,
-              messages: applySessionMessages(taskId, fresh.messages),
-              // What survived says how many turns are left. Counted from the
-              // refetch, since the server resolves `turnIndex` its own way.
-              usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
-            }
-            : t,
-        ));
+      // If anton is actively streaming a response to the turn being
+      // deleted, stop the stream first so the SSE connection doesn't
+      // keep producing events for a turn that no longer exists. The
+      // silent flag skips the post-cancel session refetch.
+      if (activeStreamingTaskIdRef.current === taskId) {
+        try { await handleStopStream({ silent: true }); } catch {}
       }
-    } catch {}
+      if (isLocalOnly) {
+        // No server-side history yet — drop the local pair only.
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t;
+          let assistantSeen = -1;
+          let dropFromUserAt = -1;
+          let dropEnd = (t.messages || []).length;
+          for (let i = 0; i < (t.messages || []).length; i++) {
+            const m = t.messages[i];
+            if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
+              dropFromUserAt = i;
+            }
+            if (m.role === 'assistant') {
+              assistantSeen += 1;
+              if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
+                dropEnd = i;
+                break;
+              }
+            }
+          }
+          if (dropFromUserAt === -1) return t;
+          // Read off the cut, not off `turnIndex`: the walk above counts assistant
+          // rows while the caller counts user ones, so it can take extra turns.
+          const cut = t.messages.slice(dropFromUserAt, dropEnd);
+          return {
+            ...t,
+            usageNotices: removeNoticeTurns(
+              t.usageNotices,
+              userTurnCount(t.messages.slice(0, dropFromUserAt)),
+              userTurnCount(cut),
+            ),
+            messages: [
+              ...t.messages.slice(0, dropFromUserAt),
+              ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
+            ],
+          };
+        }));
+        return;
+      }
+      try {
+        await deleteConversationTurn(taskId, turnIndex);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[performDeleteTurn] server delete failed', e);
+        alert(`Could not delete this exchange: ${e?.message || e}`);
+        return;
+      }
+      // Re-fetch the conversation so `tasks[].messages` reflects the
+      // truncated server history (and any reindexed events sidecar).
+      try {
+        const fresh = await fetchSession(taskId);
+        if (fresh && Array.isArray(fresh.messages)) {
+          setTasks((prev) => prev.map((t) =>
+            t.id === taskId
+              ? {
+                ...t,
+                messages: applySessionMessages(taskId, fresh.messages),
+                // What survived says how many turns are left. Counted from the
+                // refetch, since the server resolves `turnIndex` its own way.
+                usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
+              }
+              : t,
+          ));
+        }
+      } catch {}
+    } finally {
+      // Cleared in the same continuation that truncates the list, so the turn
+      // never un-dims back into a list that still shows it.
+      if (!isLocalOnly) {
+        setDeletingTurns((prev) => {
+          if (prev[taskId] == null) return prev;
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      }
+    }
   };
 
   const handleDeleteProject = (project) => {
@@ -4721,6 +4750,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
+            deletingTurnIndex={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
