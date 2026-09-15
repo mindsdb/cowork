@@ -398,8 +398,9 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
         })}
         {deleting ? (
           <span
-            aria-live="polite"
-            className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0 mt-1"
+            // Primary ink, not the usual meta grey: the turn around it is at
+            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
           >
             Deleting…
           </span>
@@ -1188,7 +1189,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
 // from a broken card (ENG-1537 review).
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
-function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
+function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = false }) {
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1227,6 +1228,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title="Too many requests too quickly"
@@ -1242,7 +1244,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
 // Settings instead of dragging them into a MindsHub login. Reconnect is also
 // desktop-only (finalize/login are Electron IPC), so on web we fall back to
 // Settings too.
-function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
+function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel, deleting = false }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -1305,6 +1307,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={title}
@@ -1347,6 +1350,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
+  deleting = false,
 }) {
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
@@ -1379,6 +1383,7 @@ export function ModelUnavailableCard({
   // which under pay as you go misdescribes an empty wallet.
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={title}
@@ -1418,6 +1423,7 @@ export function ModelUnavailableCard({
 //    subscribe are resolved for real.
 function ProviderOverloadedCard({
   time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
+  deleting = false,
 }) {
   const onManaged = Boolean(reconnectable);
   const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
@@ -1429,6 +1435,7 @@ function ProviderOverloadedCard({
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={`${who} is having a temporary issue`}
@@ -1789,6 +1796,8 @@ export default function ChatView({
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
+  const deleteInFlight = deletingTurnIndex != null;
+
   return (
     <div
       ref={chatRef}
@@ -2088,10 +2097,6 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              // While a delete is out, no turn offers one. Every other turn's
-              // index is about to shift when the server reindexes what
-              // survives, so a second delete would take the wrong exchange.
-              const deleteInFlight = deletingTurnIndex != null;
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -2109,6 +2114,9 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
+                    // No turn offers a delete while one is out: every other
+                    // turn's index is about to shift when the server reindexes
+                    // what survives, so it would take the wrong exchange.
                     onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                     deleting={deletingTurnIndex === turnIdxForThisUser}
                     isLast={i === lastTurnIdx}
@@ -2224,6 +2232,7 @@ export default function ChatView({
                   return (
                     <ReconnectCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2242,6 +2251,7 @@ export default function ChatView({
                   return (
                     <ModelUnavailableCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2264,6 +2274,7 @@ export default function ChatView({
                   return (
                     <ProviderOverloadedCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2452,6 +2463,7 @@ export default function ChatView({
                   return (
                     <RateLimitedCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       body={m.content}
@@ -2650,6 +2662,13 @@ export default function ChatView({
                 than above it: the crossing happened during this turn. With
                 nothing streaming this is just the end of the conversation. */}
             {usageBuckets[visibleMessages.length].map(usageCard)}
+            {/* Always mounted, and outside the turn it describes: a region
+                inserted at the moment it should speak is not reliably
+                announced, and the turn is aria-busy, which tells a reader to
+                hold off on that subtree. */}
+            <div className="sr-only" role="status" aria-live="polite">
+              {deleteInFlight ? 'Deleting the selected exchange.' : ''}
+            </div>
           </div>
         </div>
 

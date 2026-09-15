@@ -115,6 +115,57 @@ describe('a turn being deleted', () => {
     expect(screen.getByText('Deleting…')).toBeInTheDocument();
   });
 
+  it('announces the delete outside the busy subtree, where a reader can hear it', () => {
+    const { rerender } = render(
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} />,
+    );
+    // Mounted before the delete starts: a live region inserted at the moment
+    // it should speak is not reliably announced. It also has to sit outside
+    // the aria-busy turn, which tells a reader to hold off on that subtree.
+    const live = document.querySelector('[role="status"][aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live.textContent).toBe('');
+    expect(live.closest('[aria-busy="true"]')).toBeNull();
+
+    rerender(
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+    );
+    const liveAfter = document.querySelector('[role="status"][aria-live="polite"]');
+    expect(liveAfter.textContent).toMatch(/deleting/i);
+    expect(liveAfter.closest('[aria-busy="true"]')).toBeNull();
+  });
+
+  it('marks a carded failure, not only the generic error bubble', () => {
+    const rateLimited = [
+      { role: 'user', content: 'ask me' },
+      { role: 'error', content: 'Too many requests', code: 'rate_limited' },
+    ];
+    render(
+      <ChatView task={taskWith(rateLimited)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+    );
+
+    // A failed exchange is a likely delete target, and its answer half is a
+    // card rather than the generic error bubble.
+    expect(busyAround('ask me')).not.toBeNull();
+    expect(document.querySelectorAll('.answer-turn[aria-busy="true"]')).toHaveLength(1);
+  });
+
+  it('leaves no action toolbar on the turn being deleted', () => {
+    render(
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+    );
+
+    // Copy goes too: the exchange is on its way out, so its toolbar is not
+    // something to offer.
+    const busy = document.querySelectorAll('[aria-busy="true"]');
+    expect(busy.length).toBeGreaterThan(0);
+    busy.forEach((node) => {
+      expect(node.querySelector('button[aria-label="Copy"]')).toBeNull();
+    });
+    // The surviving exchange keeps its own toolbar.
+    expect(screen.getAllByRole('button', { name: 'Copy' }).length).toBeGreaterThan(0);
+  });
+
   it('marks both halves of a failed exchange, not just the question', () => {
     const failed = [
       { role: 'user', content: 'draw me a chart' },
