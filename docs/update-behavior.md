@@ -192,15 +192,28 @@ banner behind; the single derived banner removes both.
 The possible banners, in priority order:
 
 - **Shell** (auto-update) → a pill that walks the phases **"New app version
-  available — Download" → "Downloading update (42%)…" → "App update ready —
-  Restart"** (in auto mode the download happens on its own; a restart installs it).
+  available — Download" → "Downloading update (42%)…" → "Update ready — Restart
+  now"** (in auto mode the download happens on its own; a restart installs it).
+  The pill is an **accelerator, not the only path**: `autoInstallOnAppQuit` lands
+  the update on the next normal quit whether or not it is ever clicked, and its
+  tooltip says so. Likewise the OTA pill shortcuts a reload the next launch would
+  perform anyway.
 - **Shell** (manual fallback) → a dismissible **"New version available —
   Download"** notice linking to the installer.
 - **UI/server found mid-session** (only when no shell update is pending) → a
   sidebar **"Update ready — Restart"** pill and a Settings card ("Server → …" /
   "UI → …"). The Restart reloads the renderer.
 - **UI/server auto-apply** (boot) is not a banner at all → a brief full-screen
-  overlay (spinner + "Updating…" / "Almost there…"), then the window reloads.
+  overlay (spinner + "Downloading the latest update…" / "Finishing up…"), then
+  the window reloads.
+
+The boot overlay describes **OTA only** (ENG-2764). The loading gate waits on the
+updater's boot poll and nothing else, so the shell auto-updater — which downloads
+on its own timer and installs on quit — never appears there. Reporting it made the
+loading screen announce a download it could not finish, hand the user the app, and
+then ask them to click Restart in a banner. The overlay's copy also avoids any
+completion claim ("Finishing up…", never "Almost ready…"), so it cannot contradict
+a shell update still pending behind it.
 
 | Updates pending | What the user sees |
 |---|---|
@@ -211,7 +224,7 @@ The possible banners, in priority order:
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
 | **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
-| **Shell only** (auto-update eligible) | Independent of the overlay. The pill/card walk "available → downloading (%) → ready-to-install". Background download; nothing installs until the user clicks **Restart** (or, in auto mode, on the next normal quit). |
+| **Shell only** (auto-update eligible) | Independent of the overlay, and never named on the boot loading screen. The pill/card walk "available → downloading (%) → ready-to-install". Background download; the update installs on the next normal quit in auto mode, and **Restart now** is the shortcut to it. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
 | **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
 
