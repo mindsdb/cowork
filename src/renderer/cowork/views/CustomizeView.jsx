@@ -116,6 +116,11 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   // be declared before the `if (!connection) return null;` below — every
   // render must call the same hooks (Rules of Hooks).
   const pickerAttemptRef = useRef(0);
+  // Same reasoning as pickerAttemptRef, found in code review: without it, an
+  // in-flight access-mode PATCH that resolves after the user has switched to
+  // a DIFFERENT connection would patch the wrong (now-displayed) connection's
+  // local state via the stale closure over `setSaved`.
+  const accessModeAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!connection) return;
@@ -124,6 +129,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
     setSaved(null);
     setPickerState({ status: 'idle' });
     setAccessModeState({ status: 'idle' });
+    accessModeAttemptRef.current++; // invalidate any in-flight PATCH from the connection we're leaving
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -194,12 +200,17 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   };
 
   const handleChangeAccessMode = async (nextMode) => {
+    const attemptId = ++accessModeAttemptRef.current;
+    const engine = connection.engine;
+    const name = connection.name;
     setAccessModeState({ status: 'saving' });
     try {
-      await patchConnectionAccessMode(connection.engine, connection.name, nextMode);
+      await patchConnectionAccessMode(engine, name, nextMode);
+      if (accessModeAttemptRef.current !== attemptId) return; // superseded — a different connection is now open
       setSaved((prev) => (prev ? { ...prev, fields: { ...prev.fields, _access_mode: nextMode } } : prev));
       setAccessModeState({ status: 'idle' });
     } catch (err) {
+      if (accessModeAttemptRef.current !== attemptId) return;
       setAccessModeState({ status: 'error', reason: err?.message || String(err) });
     }
   };

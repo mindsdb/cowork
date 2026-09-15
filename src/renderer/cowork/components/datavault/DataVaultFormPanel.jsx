@@ -327,9 +327,18 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         return;
       }
 
-      // Web fallback — server-side redirect flow.
+      // Web fallback — server-side redirect flow. HubSpot's 'mcp' method has
+      // no browser_oauth_builtin/service_id entry yet (Stage 3, not built) —
+      // say so plainly instead of a generic "not configured" message that
+      // reads like a setup mistake rather than a genuine platform gap.
       const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
-      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+      if (!serviceId) {
+        setError(authMethod === 'mcp'
+          ? `${providerLabel} isn't available on the web yet — try the desktop app.`
+          : `No OAuth configuration for "${engine}".`);
+        setBusy(false);
+        return;
+      }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
         if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
@@ -884,7 +893,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               userLabel={!spec._is_success ? userLabel : undefined}
               onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
-                if (methodId !== 'browser_oauth_builtin') return;
+                // 'mcp' (HubSpot, ENG-487) drives the identical zero-field
+                // auto-start flow as browser_oauth_builtin — found in code
+                // review: this gate wasn't widened alongside the primary
+                // submit handler's, so selecting HubSpot's recommended hero
+                // silently required an extra Submit click instead of the
+                // one-click flow every other zero-field connector gets.
+                if (methodId !== 'browser_oauth_builtin' && methodId !== 'mcp') return;
                 // Methods with fields wait for Submit — handleAction takes over.
                 const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
                 if (method?.fields?.length) return;
@@ -911,9 +926,15 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   return;
                 }
 
-                // Web fallback
+                // Web fallback — see the matching comment in handleAction above.
                 const serviceId = method?.oauth?.service_id;
-                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+                if (!serviceId) {
+                  setError(methodId === 'mcp'
+                    ? `${providerLabel} isn't available on the web yet — try the desktop app.`
+                    : `No OAuth configuration for "${engine}".`);
+                  setBusy(false);
+                  return;
+                }
                 try {
                   const result = await startConnectorOAuth(serviceId);
                   if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
