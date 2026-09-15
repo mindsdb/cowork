@@ -104,10 +104,9 @@ describe('ContextCard — Google Drive file list invalidation', () => {
   });
 });
 
-// ENG-1656 follow-up: Hermes has no memory system of its own — Project/
-// Global memory is an Anton concept the Context rail shouldn't show (or
-// even fetch) for a Hermes-harnessed task.
-describe('ContextCard — showMemory=false (Hermes tasks)', () => {
+// showMemory=false hides the Project/Global memory sections and skips the
+// fetch entirely.
+describe('ContextCard — showMemory=false', () => {
   it('does not fetch memory when showMemory is false', async () => {
     await act(async () => {
       render(<ContextCard project={{ name: 'general' }} conversationId={null} showMemory={false} />);

@@ -398,16 +398,6 @@ describe('Composer — reasoning effort pill (ENG-2591)', () => {
     expect(queryEffortPill()).toBeNull();
   });
 
-  it('hides the effort pill under the Hermes harness, which has no effort knob', () => {
-    renderComposer({
-      models: MODELS,
-      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS, harness: 'hermes' },
-      model: MODELS[1],
-      effort: 'medium',
-    });
-    expect(queryEffortPill()).toBeNull();
-  });
-
   it('is fixed with the model under modelReadOnly', () => {
     renderComposer({
       models: MODELS,
@@ -646,29 +636,16 @@ describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
 
 // ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
 //
-// The pill's options come from the harnessHermesEnabled / harnessClaudeCodeEnabled
-// props (default true), not a fixed Anton/Claude-Code list — Hermes is now
-// offerable too. Anton has no enable prop: it's the default agent and is
-// always offered, so the pill can never be hidden entirely.
+// The pill's options come from the harnessClaudeCodeEnabled prop (default
+// true), not a fixed list. Anton has no enable prop: it's the default agent
+// and is always offered, so the pill can never be hidden entirely.
 
 describe('Composer — harness picker honors the per-harness enable flags', () => {
-  it('offers all three harnesses by default', async () => {
-    const user = userEvent.setup();
+  it('offers both harnesses by default', async () => {
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true });
 
     expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Hermes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Claude-Code' })).toBeInTheDocument();
-  });
-
-  it('hides Hermes when harnessHermesEnabled is false', async () => {
-    renderComposer({
-      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
-      harnessHermesEnabled: false,
-    });
-
-    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
   });
 
   it('hides Claude-Code when harnessClaudeCodeEnabled is false', async () => {
@@ -681,14 +658,13 @@ describe('Composer — harness picker honors the per-harness enable flags', () =
     expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
   });
 
-  it('still offers Anton when Hermes and Claude-Code are both disabled', async () => {
+  it('still offers Anton when Claude-Code is disabled', async () => {
     renderComposer({
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
-      harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
+      harnessClaudeCodeEnabled: false,
     });
 
     expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
   });
 
@@ -703,12 +679,12 @@ describe('Composer — harness picker honors the per-harness enable flags', () =
     };
     const { rerender } = render(<Composer {...baseProps} />);
 
-    await user.click(await screen.findByRole('button', { name: 'Hermes' }));
-    // Hermes gets disabled from underneath the already-open composer.
-    rerender(<Composer {...baseProps} harnessHermesEnabled={false} />);
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+    // Claude-Code gets disabled from underneath the already-open composer.
+    rerender(<Composer {...baseProps} harnessClaudeCodeEnabled={false} />);
 
     // The reset effect corrects the pill itself...
-    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
     expect(await screen.findByRole('button', { name: 'Anton', pressed: true })).toBeInTheDocument();
 
     // ...and a send reflects the corrected value, never the disabled one.

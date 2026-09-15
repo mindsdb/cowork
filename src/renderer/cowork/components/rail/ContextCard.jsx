@@ -425,9 +425,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   }, [reloadMemory]);
 
   useEffect(() => {
-    // Hermes has no memory system of its own — Project/Global memory is an
-    // Anton concept, so skip the fetch entirely rather than show sections
-    // the harness never reads or writes.
+    // Skip the fetch entirely when the rail is not showing memory.
     if (!showMemory) return undefined;
     reloadMemory();
     return () => { memoryTicket.invalidate(); };

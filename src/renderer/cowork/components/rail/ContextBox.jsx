@@ -15,7 +15,7 @@ export function ContextBox({
   defaultOpen = true,
   maxBodyHeight = 360,
   slim = true,
-  /** false for harnesses (e.g. Hermes) with no memory system of their own — hides the Project/Global memory sections, keeps attachments/files. */
+  /** false hides the Project/Global memory sections, keeps attachments/files. */
   showMemory = true,
   onAddGoogleDriveFiles,
   onFetchGoogleDriveFiles,
