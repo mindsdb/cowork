@@ -4133,10 +4133,15 @@ function AppCore() {
         // eslint-disable-next-line no-console
         console.error('[performDeleteTurn] refetch after delete failed', e);
       }
-      if (failure?.code === 'timeout') {
-        alert(resynced
-          ? 'Could not confirm this delete in time. It may still have gone through, so the conversation was refreshed to match the server.'
-          : 'Could not confirm this delete in time, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.');
+      if (!resynced) {
+        // The quiet version of this is the one that loses data: the exchange
+        // may be gone on the server while the list still shows it, and the
+        // next delete is keyed by position in that list.
+        alert(failure
+          ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
+          : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
+      } else if (failure?.code === 'timeout') {
+        alert('Could not confirm this delete in time. It may still have gone through; check the conversation before trying again.');
       } else if (failure) {
         alert(`Could not delete this exchange: ${failure?.message || failure}`);
       }

@@ -274,6 +274,57 @@ describe('deleting a turn shows it as in flight', () => {
     expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
   });
 
+  it('warns when the delete landed but the list could not be re-synced', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockResolvedValue({ status: 'deleted' });
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSession.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+
+    // The quiet version of this is the one that loses data: the exchange is
+    // gone on the server, the list still shows it, and the next delete is
+    // keyed by position in that list.
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+    expect(alertSpy.mock.calls[0][0]).toMatch(/reload/i);
+  });
+
+  it('words a timeout as unconfirmed rather than failed', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(2) });
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    const said = alertSpy.mock.calls[0][0];
+    // Abandoning the request says nothing about the server, so the copy must
+    // not assert a failure the user can see is untrue a moment later.
+    expect(said).toMatch(/may still have gone through/i);
+    expect(said).not.toMatch(/could not delete this exchange/i);
+  });
+
+  it('warns harder when a timeout could not be re-synced either', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSession.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+  });
+
   it('drops a local-only turn synchronously without touching the network', async () => {
     const user = userEvent.setup();
     render(<App />);
