@@ -27,6 +27,11 @@ import { retryOnTransientLock } from './fs-retry';
 // read-modify-writes that same file, so a lost claim there would leak the root.
 const CLAIM_FILE = '.account';
 
+// Which organization owns an account root's stores. A separate file from
+// CLAIM_FILE so an account root can hold both, and so a corrupt one is never
+// read as the other.
+const ORG_CLAIM_FILE = '.organization';
+
 // Which account the app is signed in as, and which it last was. Written by the
 // token store, so its lifetime is the session's.
 const ACTIVE_FILE = 'active-account.json';
@@ -55,9 +60,24 @@ const USER_DATA_DIRS = ['data-vault', 'projects', 'files', 'memory', 'skills'];
 // Per-account roots live under here, one subdirectory per account.
 export const ACCOUNTS_DIR = 'accounts';
 
+// Per-organization store roots live under here, inside ONE account's root.
+export const ORGS_DIR = 'orgs';
+
 export type ClaimState =
   | { kind: 'unclaimed' }
   | { kind: 'claimed'; accountId: string }
+  | { kind: 'unreadable' };
+
+export type OrgClaimState =
+  | { kind: 'unclaimed' }
+  | { kind: 'claimed'; orgId: string }
+  | { kind: 'unreadable' };
+
+// What the two claims share. They differ only in the file they live in and the
+// key they store, so the exclusive-create machinery below is written once.
+type ClaimRecord =
+  | { kind: 'unclaimed' }
+  | { kind: 'claimed'; id: string }
   | { kind: 'unreadable' };
 
 // Three session states, and the record distinguishes them because the token
@@ -220,35 +240,40 @@ export function knownAccountRoots(home: string): string[] {
  * corrupt claim must never read as free, or the next account to sign in would
  * adopt a root that already holds someone's data.
  */
-export function readAccountClaim(home: string): ClaimState {
+function readClaimRecord(dir: string, file: string, key: string): ClaimRecord {
   let raw: string;
   try {
-    raw = fs.readFileSync(path.join(home, CLAIM_FILE), 'utf-8');
+    raw = fs.readFileSync(path.join(dir, file), 'utf-8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'unclaimed' };
     return { kind: 'unreadable' };
   }
   try {
-    const parsed = JSON.parse(raw) as { accountId?: unknown };
-    const accountId = typeof parsed?.accountId === 'string' ? parsed.accountId.trim() : '';
-    return accountId ? { kind: 'claimed', accountId } : { kind: 'unreadable' };
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const id = typeof parsed?.[key] === 'string' ? (parsed[key] as string).trim() : '';
+    return id ? { kind: 'claimed', id } : { kind: 'unreadable' };
   } catch {
     return { kind: 'unreadable' };
   }
 }
 
-function writeClaim(home: string, accountId: string): ClaimState {
+export function readAccountClaim(home: string): ClaimState {
+  const claim = readClaimRecord(home, CLAIM_FILE, 'accountId');
+  return claim.kind === 'claimed' ? { kind: 'claimed', accountId: claim.id } : claim;
+}
+
+function writeClaimRecord(dir: string, file: string, key: string, id: string): ClaimRecord {
   // Written whole to a temp and then LINKED into place. link() fails with
   // EEXIST if the target is there, so it keeps the exclusive-create semantics
   // that make the claim safe against two launches racing — while never leaving a
   // half-written claim behind. A torn claim reads as `unreadable`, which sends
   // every account to its own root and can never be repaired, so this file is one
   // that must not be writable in a partial state.
-  const target = path.join(home, CLAIM_FILE);
+  const target = path.join(dir, file);
   const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
   try {
-    fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify({ accountId }) + '\n', {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({ [key]: id }) + '\n', {
       encoding: 'utf-8',
       mode: 0o600,
     });
@@ -260,19 +285,24 @@ function writeClaim(home: string, accountId: string): ClaimState {
       // Falling back to an exclusive create keeps the install usable: it is
       // what this did before, and a torn claim there is far less bad than an
       // install that can never claim or adopt its own root at all.
-      fs.writeFileSync(target, JSON.stringify({ accountId }) + '\n', {
+      fs.writeFileSync(target, JSON.stringify({ [key]: id }) + '\n', {
         encoding: 'utf-8',
         mode: 0o600,
         flag: 'wx',
       });
     }
-    return { kind: 'claimed', accountId };
+    return { kind: 'claimed', id };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return { kind: 'unreadable' };
-    return readAccountClaim(home);
+    return readClaimRecord(dir, file, key);
   } finally {
     try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
   }
+}
+
+function writeClaim(home: string, accountId: string): ClaimState {
+  const claim = writeClaimRecord(home, CLAIM_FILE, 'accountId', accountId);
+  return claim.kind === 'claimed' ? { kind: 'claimed', accountId: claim.id } : claim;
 }
 
 /**
@@ -465,6 +495,109 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
     );
   }
   return { COWORK_HOME: root };
+}
+
+/** Who owns an account root's stores. Same shape and same reasons as
+ *  `readAccountClaim`: a corrupt claim must never read as free. */
+export function readOrgClaim(accountRoot: string): OrgClaimState {
+  const claim = readClaimRecord(accountRoot, ORG_CLAIM_FILE, 'orgId');
+  return claim.kind === 'claimed' ? { kind: 'claimed', orgId: claim.id } : claim;
+}
+
+/**
+ * Claim an account root's stores for an organization. Idempotent and it never
+ * steals: an existing claim comes back unchanged.
+ *
+ * Unlike `claimDefaultRoot` this does NOT gate on `hadPreExistingData`. That
+ * marker is only ever written at the shared home and reads true whenever it is
+ * missing, which it always is at an account root, so gating on it here would
+ * mean no organization claim is ever written and every organization would
+ * collapse back onto the account root.
+ */
+export function claimOrgRoot(accountRoot: string, orgId: string): OrgClaimState {
+  const trimmed = orgId.trim();
+  if (!trimmed || !isUsableAsPathSegment(trimmed)) return { kind: 'unreadable' };
+  const existing = readOrgClaim(accountRoot);
+  if (existing.kind === 'claimed') return existing;
+  const claim = writeClaimRecord(accountRoot, ORG_CLAIM_FILE, 'orgId', trimmed);
+  return claim.kind === 'claimed' ? { kind: 'claimed', orgId: claim.id } : claim;
+}
+
+/**
+ * Every organization subtree this account root has created, quarantine buckets
+ * excluded. The exclusion matters: a quarantined subtree the sidecar wrote to is
+ * never reaped, so counting it would make "has this root been partitioned"
+ * permanently true and strand the owning organization in an empty subtree.
+ */
+export function knownOrgRoots(accountRoot: string): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith(QUARANTINE_PREFIX))
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Where an organization's stores live: the account root itself for the
+ * organization that owns it, a subtree beside it otherwise.
+ *
+ * Everything unproven resolves AWAY from the account root, the same rule
+ * `resolveAccountRoot` follows, because the failure being guarded is precisely
+ * "this organization is looking at another organization's data". The one
+ * exception is an install that has never partitioned and holds no claim: there
+ * is no second organization to leak to yet, and this is the behaviour the
+ * install already had, so an upgrade keeps its data where it is.
+ */
+export function orgStoreRoot(accountRoot: string, orgId: string | null): string {
+  const quarantine = () => path.join(accountRoot, ORGS_DIR, QUARANTINE_ACCOUNT);
+  const claim = readOrgClaim(accountRoot);
+  const partitioned = knownOrgRoots(accountRoot).length > 0;
+
+  if (orgId === null) {
+    return claim.kind === 'claimed' || partitioned ? quarantine() : accountRoot;
+  }
+  if (!isUsableAsPathSegment(orgId)) return quarantine();
+  if (claim.kind === 'claimed') {
+    return claim.orgId === orgId ? accountRoot : path.join(accountRoot, ORGS_DIR, orgId);
+  }
+  if (claim.kind === 'unreadable') return path.join(accountRoot, ORGS_DIR, orgId);
+  return partitioned ? path.join(accountRoot, ORGS_DIR, orgId) : accountRoot;
+}
+
+/**
+ * The sidecar's per-organization store overrides. Empty for the organization
+ * that owns the account root, so its environment is exactly what it is today.
+ *
+ * COWORK_HOME deliberately stays at the account root: it carries the .env, the
+ * desktop state.json, the master key and the OAuth state, none of which is
+ * rewritten on an organization switch, so moving it would leave a switched-to
+ * organization with no provider configured. Every entry here corresponds to a
+ * cowork-server setting whose default derives from cowork_home();
+ * tests/test_cowork_home.py fails if one is added there without being added here.
+ */
+export function orgStoreEnv(accountRoot: string, orgId: string | null): Record<string, string> {
+  const root = orgStoreRoot(accountRoot, orgId);
+  if (root === accountRoot) return {};
+  return {
+    // Built exactly as cowork-server builds its own default (app_settings.py),
+    // so the two cannot diverge. A '?' in the path truncates it there and here
+    // alike; percent-encoding does not round-trip through make_url, so it would
+    // point at a different directory rather than fix anything.
+    DATABASE_URI: `sqlite:///${path.join(root, 'cowork.db')}`,
+    COWORK_PROJECTS_DIR: path.join(root, 'projects'),
+    COWORK_FILES_DIR: path.join(root, 'files'),
+    COWORK_SKILLS_DIR: path.join(root, 'skills'),
+    COWORK_VAULT_DIR: path.join(root, 'data-vault'),
+    COWORK_MEMORY_DIR: path.join(root, 'memory'),
+    COWORK_STREAMS_DIR: path.join(root, 'streams'),
+    COWORK_CODING_DIR: path.join(root, 'coding'),
+    ANTON_SKILLS_ROOT_DIR: path.join(root, 'anton', 'skills'),
+    // The directory, not the file: publish.py appends state.json itself.
+    ANTON_COWORK_STATE_DIR: root,
+  };
 }
 
 /**

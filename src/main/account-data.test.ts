@@ -18,12 +18,18 @@ import {
   hadPreExistingData,
   isOwnershipSettled,
   knownAccountRoots,
+  knownOrgRoots,
   needsOwnershipDecision,
   observePreExistingData,
   recordedIncumbent,
   settleOwnership,
+  claimOrgRoot,
+  orgStoreEnv,
+  orgStoreRoot,
+  ORGS_DIR,
   readAccountClaim,
   readActiveAccount,
+  readOrgClaim,
   resolveAccountRoot,
   sidecarEnvForSession,
   sweepStaleQuarantineRoots,
@@ -728,5 +734,112 @@ describe('claiming leaves no temp file behind', () => {
     fresh();
     claimDefaultRoot(home, A);
     expect(fs.readdirSync(home).filter((n) => n.startsWith('.account.tmp-'))).toEqual([]);
+  });
+});
+
+// Which organization's stores a session reads, inside one account's root. The
+// account root itself belongs to the organization that claimed it, so an
+// existing install keeps its data exactly where it is and nothing is moved.
+describe('resolving an organization store root', () => {
+  const ORG_A = 'org-aaaa';
+  const ORG_B = 'org-bbbb';
+  let root: string;
+
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  const orgRoot = (id: string) => path.join(root, ORGS_DIR, id);
+
+  it('keeps an install that never partitioned on its account root', () => {
+    // The upgrade case. No claim, no orgs/ directory, so there is no second
+    // organization to leak to and the data stays where the install left it.
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+    expect(orgStoreEnv(root, ORG_A)).toEqual({});
+  });
+
+  it('keeps the claiming organization on the account root', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+    expect(orgStoreEnv(root, ORG_A)).toEqual({});
+  });
+
+  it('gives every other organization its own subtree', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, ORG_B)).toBe(orgRoot(ORG_B));
+  });
+
+  it('never steals a claim that is already held', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(claimOrgRoot(root, ORG_B)).toEqual({ kind: 'claimed', orgId: ORG_A });
+    expect(readOrgClaim(root)).toEqual({ kind: 'claimed', orgId: ORG_A });
+  });
+
+  it('sends an organization away from a root it cannot read the owner of', () => {
+    fs.writeFileSync(path.join(root, '.organization'), '{ not json', 'utf-8');
+    expect(readOrgClaim(root)).toEqual({ kind: 'unreadable' });
+    expect(orgStoreRoot(root, ORG_A)).toBe(orgRoot(ORG_A));
+  });
+
+  it('sends an organization away once the root has been partitioned', () => {
+    fs.mkdirSync(orgRoot(ORG_B), { recursive: true });
+    expect(orgStoreRoot(root, 'org-cccc')).toBe(orgRoot('org-cccc'));
+  });
+
+  it('ignores a quarantine bucket when asking whether the root was partitioned', () => {
+    // A quarantined subtree the sidecar wrote to is never reaped, so counting it
+    // would strand the owning organization in an empty subtree for good.
+    fs.mkdirSync(path.join(root, ORGS_DIR, '_unresolved-dead'), { recursive: true });
+    expect(knownOrgRoots(root)).toEqual([]);
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+  });
+
+  it('quarantines a session that cannot name its organization once someone owns the root', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, null)).toContain('_unresolved-');
+  });
+
+  it('leaves an unclaimed unpartitioned root to a session that cannot name itself', () => {
+    expect(orgStoreRoot(root, null)).toBe(root);
+  });
+
+  it('refuses an organization id that is not a safe path segment', () => {
+    expect(orgStoreRoot(root, '../escape')).toContain('_unresolved-');
+    expect(claimOrgRoot(root, '../escape')).toEqual({ kind: 'unreadable' });
+  });
+
+  it('points every store at the organization subtree', () => {
+    claimOrgRoot(root, ORG_A);
+    const env = orgStoreEnv(root, ORG_B);
+    // Ten, and all of them: a store left out shares across organizations.
+    expect(Object.keys(env).sort()).toEqual([
+      'ANTON_COWORK_STATE_DIR',
+      'ANTON_SKILLS_ROOT_DIR',
+      'COWORK_CODING_DIR',
+      'COWORK_FILES_DIR',
+      'COWORK_MEMORY_DIR',
+      'COWORK_PROJECTS_DIR',
+      'COWORK_SKILLS_DIR',
+      'COWORK_STREAMS_DIR',
+      'COWORK_VAULT_DIR',
+      'DATABASE_URI',
+    ]);
+    for (const [key, value] of Object.entries(env)) {
+      const bare = key === 'DATABASE_URI' ? value.replace('sqlite:///', '') : value;
+      expect(bare.startsWith(orgRoot(ORG_B))).toBe(true);
+    }
+  });
+
+  it('does not move COWORK_HOME, so the .env and provider config stay shared', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreEnv(root, ORG_B)).not.toHaveProperty('COWORK_HOME');
+  });
+
+  it('builds a database URI cowork-server parses back to the same path', () => {
+    claimOrgRoot(root, ORG_A);
+    const uri = orgStoreEnv(root, ORG_B).DATABASE_URI;
+    expect(uri.startsWith('sqlite:///')).toBe(true);
+    expect(uri.replace('sqlite:///', '')).toBe(path.join(orgRoot(ORG_B), 'cowork.db'));
   });
 });
