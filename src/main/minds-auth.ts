@@ -1,10 +1,10 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
 import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
-import { claimDefaultRoot } from './account-data';
+import { claimDefaultRoot, writeActiveOrgSync } from './account-data';
 import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
-import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
+import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -1754,6 +1754,12 @@ export interface SwitchMindsOrgResult {
   orgs: MindsOrg[];
   /** A sentence to show. Present only when `ok` is false. */
   error?: string;
+  /** The renderer must reload before it can be trusted: its in-memory state
+   *  belongs to the organization being left. Optional, so an older renderer
+   *  reading this payload is unaffected. */
+  reloadRequired?: boolean;
+  /** Drop organization-scoped local state as part of that reload. */
+  clearTenantState?: boolean;
 }
 
 /**
@@ -1804,8 +1810,23 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
   }
   if (target.id === sourceOrgId) {
+    // The action a person takes when they notice the wrong data: re-pick the
+    // organization they are already in. Record and move the sidecar, or the one
+    // thing they try does nothing.
+    try {
+      writeActiveOrgSync(accountDataRoot(), target.id);
+    } catch (err) {
+      console.warn('[minds-auth] could not record the active organization', err);
+      return {
+        ok: false,
+        activeOrgId: sourceOrgId,
+        orgs,
+        error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+      };
+    }
     storeOrgPreference(userId, target.id, true);
-    return { ok: true, activeOrgId: sourceOrgId, orgs };
+    const moved = await ensureSidecarOnCurrentAccountRoot();
+    return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: !moved, clearTenantState: true };
   }
 
   if (!await switchActiveOrg(token, target.id)) {
@@ -1821,12 +1842,59 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   if (!switched) {
     // The switch landed on Keycloak even though this token did not follow it,
     // so the session has genuinely moved and has to be moved back.
-    await restoreActiveOrg(token, sourceOrgId);
+    const restored = await restoreActiveOrg(token, sourceOrgId);
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
-      error: `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: restored
+        ? `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
+    };
+  }
+
+  // The record decides which stores the sidecar is moved onto, so it goes first.
+  // It throws rather than swallowing: a lost write would leave the record naming
+  // the organization being left, the restart below would compare two stale
+  // values and agree, and the switch would report success having moved nothing.
+  try {
+    writeActiveOrgSync(accountDataRoot(), target.id);
+  } catch (err) {
+    console.warn('[minds-auth] could not record the active organization', err);
+    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+    };
+  }
+
+  // Move the sidecar BEFORE handing over the credential. The other way round
+  // leaves it on the previous organization's database holding a token naming
+  // this one, so a turn started in that window bills this organization and
+  // writes into the previous one. The start re-pushes the credential anyway.
+  if (!await ensureSidecarOnCurrentAccountRoot()) {
+    writeActiveOrgSync(accountDataRoot(), sourceOrgId);
+    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    // Not startServer(): two of the four ways the call above returns false
+    // never stopped the sidecar, and a start already in flight would return a
+    // pending start that captured its environment before this rollback. Only
+    // this handles both "down" and "up on the wrong stores".
+    const recovered = await ensureSidecarOnCurrentAccountRoot();
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored || !recovered,
+      clearTenantState: true,
+      error: restored
+        ? `Could not move the local server to ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
     };
   }
 
@@ -1835,15 +1903,22 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // until the next refresh tick, so turns would bill the organization the
   // person just left while the menu said otherwise.
   if (!await syncMindsCredential({ invalidateCatalog: true })) {
-    await restoreActiveOrg(switched, sourceOrgId);
+    writeActiveOrgSync(accountDataRoot(), sourceOrgId);
+    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    await ensureSidecarOnCurrentAccountRoot();
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
+      reloadRequired: !restored,
+      clearTenantState: true,
       error: 'Could not hand the new credential to the local server. Nothing changed.',
     };
   }
 
+  // Last, because it is what survives a relaunch: written earlier, a later
+  // failure would leave the next launch moving to an organization this call
+  // reported as unchanged.
   storeOrgPreference(userId, target.id, true);
-  return { ok: true, activeOrgId: target.id, orgs };
+  return { ok: true, activeOrgId: target.id, orgs, reloadRequired: true, clearTenantState: true };
 }
