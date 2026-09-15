@@ -51,6 +51,7 @@ import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
 import { legacyVerdictForSession, purgeStaleAccountState } from './lib/accountLocalState';
+import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2528,6 +2529,10 @@ function AppCore() {
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
+  // undefined (never a real accountId or the null of "signed out") so the
+  // very first render always runs the check below at least once.
+  const purgedAccountRef = useRef(undefined);
+
   // Drop the previous account's browser-local caches once we know who is signed
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
   // has its own epoch, and only a change of ACCOUNT invalidates this state.
@@ -2536,11 +2541,23 @@ function AppCore() {
   // shell's ruling to make, and its snapshot is resolved in preload, so it
   // applies only while it is about this same account: a sign-in inside this
   // document is a session the snapshot predates (see legacyVerdictForSession).
-  useEffect(() => {
-    const accountId = codeAccountUser?.sub ?? null;
+  //
+  // Adopted during render, not from an effect, for the same reason `useDraft`
+  // adopts a changed key during render rather than an effect: a descendant
+  // (the composer) seeds its state from this same storage on ITS first
+  // render, which happens before an effect registered here would ever run —
+  // on web there is no earlier, pre-mount purge to catch it first the way
+  // Electron's main.tsx has.
+  const accountId = codeAccountUser?.sub ?? null;
+  if (purgedAccountRef.current !== accountId) {
+    purgedAccountRef.current = accountId;
     const shellSession = host.accountSessionSync();
-    purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
-  }, [codeAccountUser?.sub]);
+    const purgedStaleAccount = purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
+    // See main.tsx for why this has to run alongside the purge: onboardingStore
+    // caches its localStorage keys into a module-level variable at import
+    // time, so removing the keys alone leaves that snapshot stale.
+    if (purgedStaleAccount) resetOnboardingProgress();
+  }
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
   // and Settings → Usage read it through HubUsageContext. Re-read when a turn
