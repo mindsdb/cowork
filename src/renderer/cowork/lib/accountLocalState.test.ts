@@ -199,7 +199,9 @@ describe('the chat app purge call', () => {
     // the reload after the ownership answer, so "start fresh" can never remove
     // the previous person's drafts.
     const source = fs.readFileSync(path.join(__dirname, '..', 'App.jsx'), 'utf-8');
-    expect(source).toMatch(/purgeStaleAccountState\([^;]*legacyVerdictForSession\(/);
+    expect(source).toMatch(
+      /purgeStaleAccountState\(\s*(\w+)\s*,\s*legacyVerdictForSession\(\s*\1\s*,/,
+    );
   });
 });
 
@@ -227,7 +229,10 @@ describe('legacyVerdictForSession', () => {
     expect(legacyVerdictForSession(ACCOUNT_B, shell(ACCOUNT_A, 'keep'))).toBe('undecided');
   });
 
-  it('keeps on web, where there is no shell to rule', () => {
+  it('keeps where there is no shell to rule', () => {
+    // Web, and an Electron shell older than the bridge field, which a UI bundle
+    // can be hot-swapped onto. Deferring there would leave every cache unmarked
+    // on the one pairing that has no per-account roots behind it either.
     expect(legacyVerdictForSession(ACCOUNT_A, null)).toBe('keep');
   });
 });

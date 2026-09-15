@@ -2543,7 +2543,7 @@ function AppCore() {
   // document is a session the snapshot predates (see legacyVerdictForSession).
   useEffect(() => {
     const accountId = codeAccountUser?.sub ?? null;
-    const shellSession = host.isWeb ? null : host.accountSessionSync();
+    const shellSession = host.accountSessionSync();
     purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
   }, [codeAccountUser?.sub]);
 

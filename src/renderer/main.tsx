@@ -34,8 +34,8 @@ import { accountSessionSync } from './platform/host';
 // unsent message is already on screen and in component state. The account id is
 // resolved in preload, which re-runs on every reload, so a sign-out reload sees
 // the new value rather than the one the window was created with.
-const accountSession = accountSessionSync();
-purgeStaleAccountState(accountSession.accountId, accountSession.legacyState);
+const shellSession = accountSessionSync();
+purgeStaleAccountState(shellSession?.accountId ?? null, shellSession?.legacyState ?? 'keep');
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real
