@@ -172,3 +172,36 @@ describe('token-store auth-changed broadcast', () => {
     expect(h.sendSpy).not.toHaveBeenCalled();
   });
 });
+
+// ─── The record every account's data root is resolved from ───────────
+// token-store is its only writer, so a value left here by the PREVIOUS session
+// is never corrected elsewhere: it resolves this session onto that account's
+// root and reports that account to the renderer's pre-mount cache purge.
+describe('the signed-in account record', () => {
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const activeFile = () => path.join(h.home, 'active-account.json');
+
+  function jwtNaming(sub: string): string {
+    const segment = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    return `${segment({ alg: 'none', typ: 'JWT' })}.${segment({ sub })}.signature`;
+  }
+
+  it('names the account the access token carries', async () => {
+    const store = await loadStore('win32');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+    expect(JSON.parse(fs.readFileSync(activeFile(), 'utf-8')).accountId).toBe(ACCOUNT_A);
+  });
+
+  it('is removed when a token names no account, rather than left naming the previous one', async () => {
+    const store = await loadStore('win32');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+
+    // An opaque or otherwise sub-less access token. The session is real, so it
+    // authenticates, but nothing on disk may go on claiming it is A: an absent
+    // record resolves to an empty quarantine root, which is recoverable, while
+    // a stale one resolves onto A's data.
+    store.saveTokens('opaque-access-token', 3600, 'rt-b');
+
+    expect(fs.existsSync(activeFile())).toBe(false);
+  });
+});

@@ -154,26 +154,36 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 // one state rather than two.
 function recordSignedInAccount(accessToken: string): void {
   const accountId = accountIdFromToken(accessToken);
-  if (!accountId) return;
+  if (!accountId) {
+    // An opaque or sub-less token still authenticates, so the session is real
+    // and the previous account's record must not be left standing for it.
+    console.warn('[token-store] the signed-in token names no account');
+    forgetSignedInAccount();
+    return;
+  }
   try {
     writeActiveAccountSync(coworkHome(), accountId);
   } catch (e) {
-    // NOT best-effort. A lost write does not repair itself: the record still
-    // names the PREVIOUS account, so this account is resolved onto that
-    // account's data root and every check downstream compares against the same
-    // stale record and agrees. Removing it instead leaves the record absent,
-    // which resolves to an empty quarantine root rather than someone else's
-    // data. An empty app is recoverable; a cross-account read is the bug.
     console.warn('[token-store] could not record the signed-in account', e);
-    try {
-      clearActiveAccountRecord(coworkHome());
-    } catch (removeErr) {
-      console.error(
-        '[token-store] could not record OR clear the signed-in account — '
-        + 'this session may resolve onto another account data root',
-        removeErr,
-      );
-    }
+    forgetSignedInAccount();
+  }
+}
+
+// NOT best-effort, and never a plain return. Whenever the record cannot be made
+// to name THIS session it still names the PREVIOUS account, which resolves this
+// session onto that account's data root, and every check downstream compares
+// against the same stale record and agrees. An absent record resolves to an
+// empty quarantine root instead: an empty app is recoverable, a cross-account
+// read is the bug.
+function forgetSignedInAccount(): void {
+  try {
+    clearActiveAccountRecord(coworkHome());
+  } catch (removeErr) {
+    console.error(
+      '[token-store] could not clear the signed-in account record — '
+      + 'this session may resolve onto another account data root',
+      removeErr,
+    );
   }
 }
 
