@@ -15,8 +15,15 @@ import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 
-function turnsCount(task) {
+export function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;
+  // A partially-loaded task (ENG-2768) only holds its most recent PAGE in
+  // `messages` — that count is not the total, so treat "more messages
+  // exist" the same as the "not loaded yet" case below: hide the count
+  // rather than assert a wrong one. `!== false` (not just falsy) so a task
+  // that has never been fetched at all (the field simply absent) is
+  // treated as unknown too, not as "definitely no more".
+  if (task.hasMoreMessages !== false) return null;
   // Length-checked, not just shape-checked: since ENG-2246 a task can carry an
   // empty `messages` before its transcript is warmed, and an existing
   // conversation never really has zero user turns — so [] means "unknown", and

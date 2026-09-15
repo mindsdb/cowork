@@ -357,6 +357,33 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** Default page size for the paginated /items envelope (ENG-2768). Matches
+ * the server's own default so the two agree without either side needing to
+ * repeat the number. */
+const MESSAGE_PAGE_LIMIT = 50;
+
+function _itemsPath(id, { limit, before } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set('limit', String(limit));
+  if (before) params.set('before', before);
+  const qs = params.toString();
+  return `/conversations/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
+}
+
+/** Normalizes a /items response into one shape regardless of which branch
+ * the server took: the bare (unbounded) list — from a call with no params,
+ * or a version-skewed server during a rolling deploy — or the paginated
+ * envelope. Every caller that requests a page reads this instead of
+ * checking Array.isArray itself, so the envelope is never silently read as
+ * an empty transcript. */
+function _pageFromItemsResponse(raw) {
+  if (Array.isArray(raw)) return { items: raw, hasMore: false, nextBefore: null };
+  if (raw && Array.isArray(raw.items)) {
+    return { items: raw.items, hasMore: !!raw.hasMore, nextBefore: raw.nextBefore ?? null };
+  }
+  return { items: [], hasMore: false, nextBefore: null };
+}
+
 /** Resolves as soon as the conversation LIST lands — one request. Everything
  * the sidebar renders comes from that response (`_conversationToTask` reads
  * `messages` for nothing but `messages`), so waiting on the per-conversation
@@ -425,12 +452,34 @@ export async function fetchSessions({ onItems } = {}) {
 
 export async function fetchSession(id) {
   try {
-    const [meta, msgs] = await Promise.all([
+    const [meta, raw] = await Promise.all([
       req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/items`).catch(() => null),
+      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })).catch(() => null),
     ]);
     if (!meta) return null;
-    return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
+    const page = _pageFromItemsResponse(raw);
+    return {
+      ..._conversationToTask(meta, page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetches the next OLDER page for a conversation already showing its most
+ * recent one — the "load earlier messages" affordance. `cursor` is the
+ * `messagesCursor`/`nextBefore` the previous page returned; the caller
+ * merges the result in ahead of what it already has (see
+ * lib/mergeMessagePage.js). Returns `null` on failure — same "caller
+ * decides how to degrade" convention as fetchSession. */
+export async function fetchOlderMessages(id, cursor) {
+  if (!cursor) return null;
+  try {
+    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }));
+    const page = _pageFromItemsResponse(raw);
+    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -450,7 +499,7 @@ export async function fetchSession(id) {
 export async function fetchSessionResult(id) {
   const [metaRes, msgsRes] = await Promise.allSettled([
     req(`/conversations/${encodeURIComponent(id)}`),
-    req(`/conversations/${encodeURIComponent(id)}/items`),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -467,8 +516,13 @@ export async function fetchSessionResult(id) {
       return { status: 'unavailable', code: (err && err.status) || 0 };
     }
   }
-  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
-  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+  const page = msgsRes.status === 'fulfilled' ? _pageFromItemsResponse(msgsRes.value) : { items: [], hasMore: false, nextBefore: null };
+  const task = {
+    ..._conversationToTask(metaRes.value, page.items),
+    hasMoreMessages: page.hasMore,
+    messagesCursor: page.nextBefore,
+  };
+  return { status: 'ok', task };
 }
 
 /**

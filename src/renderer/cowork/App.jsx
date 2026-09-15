@@ -6,6 +6,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
+import { mergeMessagePage } from './lib/mergeMessagePage';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -478,8 +479,12 @@ async function loadSessionMessagesWithRetry(
     const fresh = await fetchSession(cid);
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
+      // Only the most recent PAGE (ENG-2768) — the caller merges this
+      // against whatever it already has, rather than replacing wholesale.
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
       disabledConnections: fresh.disabledConnections,
+      hasMoreMessages: fresh.hasMoreMessages ?? false,
+      messagesCursor: fresh.messagesCursor ?? null,
     };
   }
   return null;
@@ -790,11 +795,16 @@ function AppCore() {
           finished.forEach((cid) => {
             fetchSession(cid).then((fresh) => {
               if (!fresh || !Array.isArray(fresh.messages)) return;
+              const reconciled = applySessionMessages(cid, fresh.messages);
               setTasks((tasksPrev) => tasksPrev.map((t) => {
                 if (t.id !== cid) return t;
                 return {
                   ...t,
-                  messages: applySessionMessages(cid, fresh.messages),
+                  // Only the most recent PAGE (ENG-2768) — merge against
+                  // what the task already has instead of replacing wholesale.
+                  messages: mergeMessagePage(t.messages, reconciled),
+                  hasMoreMessages: fresh.hasMoreMessages ?? false,
+                  messagesCursor: fresh.messagesCursor ?? null,
                   status: 'idle',
                 };
               }));
@@ -1125,7 +1135,9 @@ function AppCore() {
             ? {
                 ...t,
                 status: 'idle',
-                messages: loaded.messages,
+                messages: mergeMessagePage(t.messages, loaded.messages),
+                hasMoreMessages: loaded.hasMoreMessages,
+                messagesCursor: loaded.messagesCursor,
                 ...(Array.isArray(loaded.disabledConnections)
                   ? { disabledConnections: loaded.disabledConnections }
                   : {}),
@@ -1184,7 +1196,9 @@ function AppCore() {
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
-          messages: loaded.messages,
+          messages: mergeMessagePage(t.messages, loaded.messages),
+          hasMoreMessages: loaded.hasMoreMessages,
+          messagesCursor: loaded.messagesCursor,
           ...(Array.isArray(loaded.disabledConnections)
             ? { disabledConnections: loaded.disabledConnections }
             : {}),
@@ -1603,7 +1617,10 @@ function AppCore() {
       if (t.id !== id) return t;
       const local = Array.isArray(t.messages) ? t.messages : [];
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
-      return { ...t, messages: msgs, messagesStatus: 'loaded' };
+      // Still the full, unbounded /items call (no limit param) — ENG-2246's
+      // eager-warm-up depth stays out of scope for pagination (ENG-2768) —
+      // so a task this seeds already has its complete history.
+      return { ...t, messages: msgs, messagesStatus: 'loaded', hasMoreMessages: false };
     }));
     // Claimed synchronously, not on resolve: refreshData re-enters on the
     // serverOnline false->true flip that its own fetchHealth above causes, and
@@ -2052,7 +2069,12 @@ function AppCore() {
     // don't wipe any locally-restored messages.
     if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
       setTasks((prev) => (prev.some((t) => t.id === id)
-        ? prev.map((t) => (t.id === id ? { ...t, messagesStatus: 'loaded' } : t))
+        ? prev.map((t) => (t.id === id ? {
+          ...t,
+          messagesStatus: 'loaded',
+          hasMoreMessages: fresh.hasMoreMessages ?? false,
+          messagesCursor: fresh.messagesCursor ?? null,
+        } : t))
         : [fresh, ...prev]));
       return;
     }
@@ -2063,7 +2085,17 @@ function AppCore() {
     // conversation if it wasn't in the capped fetch.
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-    const patch = (t) => ({ ...t, messages: reconciled, messagesStatus: 'loaded', ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    // fresh.messages is only the most recent PAGE (ENG-2768) — merge it
+    // against whatever the task already has rather than replacing wholesale,
+    // so an older prefix loaded earlier via "load earlier messages" survives.
+    const patch = (t) => ({
+      ...t,
+      messages: mergeMessagePage(t.messages, reconciled),
+      messagesStatus: 'loaded',
+      hasMoreMessages: fresh.hasMoreMessages ?? false,
+      messagesCursor: fresh.messagesCursor ?? null,
+      ...(dc !== undefined ? { disabledConnections: dc } : {}),
+    });
     setTasks((prev) => (prev.some((t) => t.id === id)
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));

@@ -474,7 +474,8 @@ describe('fetchSession error hydration (ENG-1304)', () => {
   const stubEndpoints = (items) => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const u = String(url);
-      const body = u.endsWith('/items') ? items : conversationMeta;
+      // Not endsWith: fetchSession now appends a query string (?limit=…).
+      const body = u.includes('/items') ? items : conversationMeta;
       return {
         ok: true,
         status: 200,
@@ -750,7 +751,8 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
         }));
     const metaFn = mk(metaSpec);
     const itemsFn = mk(itemsSpec);
-    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).endsWith('/items') ? itemsFn() : metaFn())));
+    // Not endsWith: fetchSessionResult now appends a query string (?limit=…).
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).includes('/items') ? itemsFn() : metaFn())));
   };
 
   afterEach(() => vi.unstubAllGlobals());
@@ -942,5 +944,109 @@ describe('fetchArtifactStatus', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain('/artifacts/status?path=');
     expect(out.publishedUrl).toBe('https://x/a');
+  });
+});
+
+// ─── ENG-2768: /items pagination — fetchSession/fetchSessionResult opt into
+// the cursor-paginated envelope via `limit`, and fetchOlderMessages walks
+// further back. The server response is normalized either way: the paginated
+// envelope ({items, hasMore, nextBefore}), or (a version-skewed server, or
+// any other unparameterized caller's shape) a bare array treated as complete.
+describe('paginated /items (ENG-2768)', () => {
+  const meta = { id: 'c1', title: 'T', project: null };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('fetchSession requests /items with a limit param', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? { items: [], hasMore: false, nextBefore: null } : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    await fetchSession('c1');
+
+    const itemsCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/items'));
+    expect(itemsCall).toBeTruthy();
+    expect(String(itemsCall[0])).toMatch(/\/items\?.*limit=\d+/);
+  });
+
+  it('fetchSession carries hasMoreMessages/messagesCursor from the envelope', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [{ role: 'user', content: 'hi' }], hasMore: true, nextBefore: 'cursor-1' }
+        : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    const task = await fetchSession('c1');
+
+    expect(task.hasMoreMessages).toBe(true);
+    expect(task.messagesCursor).toBe('cursor-1');
+    expect(task.messages).toHaveLength(1);
+  });
+
+  it('fetchSession falls back to a bare array as a complete, non-paginated result', async () => {
+    // Back-compat: a version-skewed server (or the no-params shape) during a
+    // rolling deploy. Must not silently read as an empty transcript.
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? [{ role: 'user', content: 'hi' }] : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    const task = await fetchSession('c1');
+
+    expect(task.messages).toHaveLength(1);
+    expect(task.hasMoreMessages).toBe(false);
+    expect(task.messagesCursor).toBeNull();
+  });
+
+  it('fetchSessionResult carries hasMoreMessages/messagesCursor through too', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [{ role: 'user', content: 'hi' }], hasMore: true, nextBefore: 'cursor-9' }
+        : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSessionResult } = await import('./api');
+
+    const res = await fetchSessionResult('c1');
+
+    expect(res.status).toBe('ok');
+    expect(res.task.hasMoreMessages).toBe(true);
+    expect(res.task.messagesCursor).toBe('cursor-9');
+  });
+
+  it('fetchOlderMessages requests the given cursor and returns the next page', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({
+      items: [{ role: 'user', content: 'older' }], hasMore: false, nextBefore: null,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchOlderMessages } = await import('./api');
+
+    const page = await fetchOlderMessages('c1', 'cursor-1');
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/items\?.*before=cursor-1/);
+    expect(page.messages).toEqual([{ role: 'user', content: 'older' }]);
+    expect(page.hasMoreMessages).toBe(false);
+    expect(page.messagesCursor).toBeNull();
+  });
+
+  it('fetchOlderMessages returns null without a cursor (nothing more to load)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchOlderMessages } = await import('./api');
+
+    expect(await fetchOlderMessages('c1', null)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fetchOlderMessages returns null on a failed request', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const { fetchOlderMessages } = await import('./api');
+
+    expect(await fetchOlderMessages('c1', 'cursor-1')).toBeNull();
   });
 });
