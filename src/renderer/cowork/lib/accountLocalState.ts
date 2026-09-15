@@ -50,6 +50,34 @@ function isAccountScoped(key: string): boolean {
  */
 export type LegacyStateVerdict = 'keep' | 'purge' | 'undecided';
 
+/** What the shell resolved at preload time, for the session it booted with. */
+export interface ShellAccountSession {
+  accountId: string | null;
+  legacyState: LegacyStateVerdict;
+}
+
+/**
+ * The verdict a caller may use for the account it is purging for.
+ *
+ * The shell resolves its verdict once, in preload, so it describes the session
+ * the DOCUMENT booted with. A sign-in inside that document is a different
+ * session, and carrying a stale `keep` into it stamps this account's name on a
+ * cache nobody has ruled on, which is the one thing that makes the ownership
+ * answer unenforceable afterwards. So a snapshot about anyone else defers, and
+ * the reload that follows the sign-in rules on it properly.
+ *
+ * `null` is the web build: no shell, no shared data root to be ambiguous about,
+ * and an unmarked cache there belongs to this origin's first account as it
+ * always has.
+ */
+export function legacyVerdictForSession(
+  accountId: string | null,
+  shell: ShellAccountSession | null,
+): LegacyStateVerdict {
+  if (!shell) return 'keep';
+  return shell.accountId === accountId ? shell.legacyState : 'undecided';
+}
+
 /**
  * Drop this origin's account-scoped state when it belongs to another account,
  * and record the account. Returns true only when something was removed.
@@ -78,6 +106,12 @@ export function purgeStaleAccountState(
     return false;
   }
 
+  // An unrecognised verdict defers rather than keeping: a caller that cannot
+  // name one has not ruled on an unmarked cache, and the typed signature does
+  // not reach the untyped JS call sites.
+  const verdict: LegacyStateVerdict =
+    legacyState === 'keep' || legacyState === 'purge' ? legacyState : 'undecided';
+
   try {
     const last = store.getItem(LAST_ACCOUNT_KEY);
     if (last === accountId) return false;
@@ -86,10 +120,10 @@ export function purgeStaleAccountState(
     // reload after the ownership answer would read `last === accountId` and
     // stop here, and the previous user's drafts would be this account's
     // forever.
-    if (last === null && legacyState === 'undecided') return false;
+    if (last === null && verdict === 'undecided') return false;
 
     let removed = 0;
-    if (last !== null || legacyState === 'purge') {
+    if (last !== null || verdict === 'purge') {
       // Collect first: removeItem during the index walk reshuffles the keys.
       const doomed: string[] = [];
       for (let i = 0; i < store.length; i += 1) {

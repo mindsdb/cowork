@@ -6,7 +6,7 @@ import * as path from 'path';
 // the last place the previous account's data can still reach the screen after a
 // switch. The cases that matter are: a real switch purges, a same-account boot
 // does not, and unrelated keys are never touched.
-import { purgeStaleAccountState } from './accountLocalState';
+import { legacyVerdictForSession, purgeStaleAccountState } from './accountLocalState';
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
@@ -192,12 +192,82 @@ describe('an unmarked legacy cache', () => {
 // chat app for, so it is pinned mechanically, like the dialog's mount point in
 // renderer/account-ownership-mount.test.ts.
 describe('the chat app purge call', () => {
-  it('carries the shell verdict rather than implying "keep"', () => {
-    // A bare call defaults to 'keep', which stamps an unmarked cache with this
-    // account's name. Stamped while the ownership question is open, the cache
-    // reads as this account's own on the reload after the answer, so "start
-    // fresh" can never remove the previous person's drafts.
+  it('resolves its verdict rather than passing one straight through', () => {
+    // Neither a bare call nor the raw preload snapshot will do. Both end up
+    // stamping an unmarked cache with this account's name for a session the
+    // shell never ruled on, and a stamped cache reads as this account's own on
+    // the reload after the ownership answer, so "start fresh" can never remove
+    // the previous person's drafts.
     const source = fs.readFileSync(path.join(__dirname, '..', 'App.jsx'), 'utf-8');
-    expect(source).toMatch(/purgeStaleAccountState\([^;]*accountSessionSync\(\)\.legacyState\)/);
+    expect(source).toMatch(/purgeStaleAccountState\([^;]*legacyVerdictForSession\(/);
+  });
+});
+
+// The shell's snapshot is taken in preload, once per document. Which session it
+// is ABOUT is therefore a separate question from what it says.
+describe('legacyVerdictForSession', () => {
+  const shell = (accountId: string | null, legacyState: 'keep' | 'purge' | 'undecided') =>
+    ({ accountId, legacyState });
+
+  it('uses the shell verdict when the snapshot is about this account', () => {
+    expect(legacyVerdictForSession(ACCOUNT_A, shell(ACCOUNT_A, 'purge'))).toBe('purge');
+    expect(legacyVerdictForSession(ACCOUNT_A, shell(ACCOUNT_A, 'keep'))).toBe('keep');
+    expect(legacyVerdictForSession(ACCOUNT_A, shell(ACCOUNT_A, 'undecided'))).toBe('undecided');
+  });
+
+  it('defers when the document booted signed out and the account arrived after', () => {
+    // The upgrade path the dialog exists for: nothing is marked, the pre-mount
+    // purge was a no-op, and the shell's 'keep' is about the signed-out boot.
+    // Taking it would stamp this account's name on the previous person's cache
+    // before anyone has answered who owns the data.
+    expect(legacyVerdictForSession(ACCOUNT_B, shell(null, 'keep'))).toBe('undecided');
+  });
+
+  it('defers when the snapshot is about the account being switched away from', () => {
+    expect(legacyVerdictForSession(ACCOUNT_B, shell(ACCOUNT_A, 'keep'))).toBe('undecided');
+  });
+
+  it('keeps on web, where there is no shell to rule', () => {
+    expect(legacyVerdictForSession(ACCOUNT_A, null)).toBe('keep');
+  });
+});
+
+describe('an in-document sign-in', () => {
+  it('leaves the unmarked cache for the reload to rule on, so the answer still bites', () => {
+    // Boot signed out: nothing marked, nothing stamped.
+    seed();
+    expect(purgeStaleAccountState(null, 'keep')).toBe(false);
+
+    // B signs in without a reload. The shell snapshot still describes the
+    // signed-out boot, so this must not stamp.
+    const verdict = legacyVerdictForSession(ACCOUNT_B, { accountId: null, legacyState: 'keep' });
+    purgeStaleAccountState(ACCOUNT_B, verdict);
+    expect(localStorage.getItem('anton.lastAccount')).toBeNull();
+
+    // Reload, dialog, "start fresh": the purge lands because nothing claimed
+    // the cache in between.
+    expect(purgeStaleAccountState(ACCOUNT_B, 'purge')).toBe(true);
+    for (const key of Object.keys(ACCOUNT_KEYS)) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+  });
+
+  it('still purges a marked cache from the previous account', () => {
+    purgeStaleAccountState(ACCOUNT_A, 'keep');
+    seed();
+
+    const verdict = legacyVerdictForSession(ACCOUNT_B, { accountId: ACCOUNT_A, legacyState: 'keep' });
+    expect(purgeStaleAccountState(ACCOUNT_B, verdict)).toBe(true);
+    expect(localStorage.getItem('anton.lastAccount')).toBe(ACCOUNT_B);
+  });
+});
+
+describe('an unrecognised verdict', () => {
+  it('defers instead of keeping, so a JS caller cannot stamp by omission', () => {
+    seed();
+    // @ts-expect-error the untyped JS call sites are exactly the risk here
+    expect(purgeStaleAccountState(ACCOUNT_A, undefined)).toBe(false);
+    expect(localStorage.getItem('anton.lastAccount')).toBeNull();
+    expect(localStorage.getItem('anton.composerDrafts')).not.toBeNull();
   });
 });

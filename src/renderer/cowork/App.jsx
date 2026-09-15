@@ -50,7 +50,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
-import { purgeStaleAccountState } from './lib/accountLocalState';
+import { legacyVerdictForSession, purgeStaleAccountState } from './lib/accountLocalState';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2537,13 +2537,14 @@ function AppCore() {
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
   // has its own epoch, and only a change of ACCOUNT invalidates this state.
   //
-  // This handles a MARKED cache naming another account. For an unmarked one the
-  // shell's verdict is carried through rather than assumed: while the ownership
-  // question is open it is 'undecided', and stamping this account's name on the
-  // cache then would leave the previous person's drafts un-purgeable by the
-  // answer. It is resolved in preload, so it is the same verdict main.tsx used.
+  // This handles a MARKED cache naming another account. An unmarked one is the
+  // shell's ruling to make, and its snapshot is resolved in preload, so it
+  // applies only while it is about this same account: a sign-in inside this
+  // document is a session the snapshot predates (see legacyVerdictForSession).
   useEffect(() => {
-    purgeStaleAccountState(codeAccountUser?.sub ?? null, host.accountSessionSync().legacyState);
+    const accountId = codeAccountUser?.sub ?? null;
+    const shellSession = host.isWeb ? null : host.accountSessionSync();
+    purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
   }, [codeAccountUser?.sub]);
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
