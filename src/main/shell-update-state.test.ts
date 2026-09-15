@@ -58,6 +58,47 @@ describe('transitionShellUpdate', () => {
     expect(ready.progress).toBeUndefined();
   });
 
+  // ENG-2764: the discriminator for a stranded update. electron-updater replays
+  // a download cached by an earlier launch without emitting any progress, so no
+  // bytes this session means the update was already on disk — the only case the
+  // boot check installs and relaunches on its own.
+  describe('bytesTransferred', () => {
+    const readyAfter = (events: Parameters<typeof transitionShellUpdate>[1][]) =>
+      events.reduce(transitionShellUpdate, idle());
+
+    it('stays unset when a download completes without a single progress event', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+      ]);
+      expect(ready.phase).toBe('ready-to-install');
+      expect(ready.bytesTransferred).toBeFalsy();
+    });
+
+    it('latches on the first progress event and survives to ready-to-install', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_PROGRESS', progress: { transferred: 1, total: 100, percent: 1 } },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+      ]);
+      expect(ready).toMatchObject({ phase: 'ready-to-install', bytesTransferred: true });
+    });
+
+    it('clears on a new check, so a later cache replay is not misread as a fresh download', () => {
+      const ready = readyAfter([
+        { type: 'CHECK_REQUESTED', trigger: 'boot' },
+        { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+        { type: 'DOWNLOAD_PROGRESS', progress: { transferred: 1, total: 100, percent: 1 } },
+        { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' },
+        { type: 'RECONCILED', currentVersion: '2.1.0', installed: true },
+        { type: 'CHECK_REQUESTED', trigger: 'periodic' },
+      ]);
+      expect(ready.bytesTransferred).toBeUndefined();
+    });
+  });
+
   it('ignores late or illegal events instead of rewinding state', () => {
     const snapshot = idle();
     expect(transitionShellUpdate(snapshot, {
