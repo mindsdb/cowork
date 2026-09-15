@@ -172,3 +172,56 @@ describe('token-store auth-changed broadcast', () => {
     expect(h.sendSpy).not.toHaveBeenCalled();
   });
 });
+
+// ─── The record every account's data root is resolved from ───────────
+// token-store is its only writer, so a value left here by the PREVIOUS session
+// is never corrected elsewhere: it resolves this session onto that account's
+// root and reports that account to the renderer's pre-mount cache purge.
+describe('the signed-in account record', () => {
+  const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const activeFile = () => path.join(h.home, 'active-account.json');
+
+  function jwtNaming(sub: string): string {
+    const segment = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    return `${segment({ alg: 'none', typ: 'JWT' })}.${segment({ sub })}.signature`;
+  }
+
+  it('names the account the access token carries', async () => {
+    const store = await loadStore('win32');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+    expect(JSON.parse(fs.readFileSync(activeFile(), 'utf-8')).accountId).toBe(ACCOUNT_A);
+  });
+
+  it('falls back to the refresh token from the same exchange', async () => {
+    const store = await loadStore('win32');
+    store.saveTokens('opaque-access-token', 3600, jwtNaming(ACCOUNT_A));
+    expect(JSON.parse(fs.readFileSync(activeFile(), 'utf-8')).accountId).toBe(ACCOUNT_A);
+  });
+
+  it('marks the session unresolved when neither token names an account, rather than leaving the previous one', async () => {
+    const store = await loadStore('win32');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+
+    // Both tokens opaque. The session is real, so it authenticates, but nothing
+    // on disk may go on claiming it is A.
+    store.saveTokens('opaque-access-token', 3600, 'opaque-refresh-token');
+
+    const { readActiveAccount, resolveAccountRoot } = await import('./account-data');
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'unresolved' });
+
+    // And it must not merely stop naming A. A record that reads as
+    // never-signed-in resolves back onto the incumbent's root (see
+    // resolveAccountRoot's nameless branch), which is the read this prevents.
+    fs.writeFileSync(
+      path.join(h.home, '.pre-existing-data'),
+      JSON.stringify({ hadData: true, incumbent: ACCOUNT_A }) + '\n',
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(h.home, '.account'),
+      JSON.stringify({ accountId: ACCOUNT_A }) + '\n',
+      'utf-8',
+    );
+    expect(resolveAccountRoot(h.home, readActiveAccount(h.home))).toMatch(/^_unresolved-/);
+  });
+});

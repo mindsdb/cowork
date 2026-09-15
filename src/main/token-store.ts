@@ -2,6 +2,12 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import {
+  clearActiveAccountRecord,
+  markActiveAccountUnresolved,
+  writeActiveAccountSync,
+} from './account-data';
+import { accountIdFromToken } from './jwt';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
@@ -140,7 +146,59 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
+  recordSignedInAccount(accessToken, refreshToken);
   broadcastAuthChanged(true);
+}
+
+// Which account the app is signed in as, recorded HERE because this is the one
+// choke point every MindsHub auth transition flows through: a sign-in that never
+// reaches the finalize step still records, and the account stays nameable at
+// boot with no network. Writing it here and clearing it in clearTokens keeps the
+// record's lifetime equal to the session's, so "no record" and "no session" are
+// one state rather than two.
+function recordSignedInAccount(accessToken: string, refreshToken: string): void {
+  // Both tokens come from the one exchange and name the same account, so an
+  // access token this cannot read is not on its own a reason to give up the
+  // session's identity. Never the STORED refresh token, which may be older
+  // than this exchange and name whoever held the session before it.
+  const accountId = accountIdFromToken(accessToken) ?? accountIdFromToken(refreshToken || null);
+  if (!accountId) {
+    // Both tokens opaque, and the session still authenticates, so the previous
+    // account's record must not be left standing for it.
+    console.warn('[token-store] the signed-in tokens name no account');
+    quarantineSession();
+    return;
+  }
+  try {
+    writeActiveAccountSync(coworkHome(), accountId);
+  } catch (e) {
+    console.warn('[token-store] could not record the signed-in account', e);
+    quarantineSession();
+  }
+}
+
+// NOT best-effort, and never a plain return: a record that cannot be made to
+// name THIS session still names the previous account and resolves onto its
+// data. Marked rather than removed, because an absent record reads as "never
+// signed in", which does not always quarantine — see clearActiveAccountRecord.
+function quarantineSession(): void {
+  try {
+    markActiveAccountUnresolved(coworkHome());
+    return;
+  } catch (markErr) {
+    console.warn('[token-store] could not mark the session unresolved', markErr);
+  }
+  // The same disk just refused a write. Removing the record is weaker, and is
+  // here only because a record naming somebody else is weaker still.
+  try {
+    clearActiveAccountRecord(coworkHome());
+  } catch (removeErr) {
+    console.error(
+      '[token-store] could not clear the signed-in account record — '
+      + 'this session may resolve onto another account data root',
+      removeErr,
+    );
+  }
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
@@ -166,6 +224,14 @@ export function clearTokens(): void {
   _accessToken = null;
   _expiresAt = 0;
   deleteTokenFiles();
+  // Same choke point, same reason: a sign-out recorded here keeps the account
+  // this install was using, so it stays on its own data root rather than
+  // falling back onto whichever account owns the default one.
+  try {
+    writeActiveAccountSync(coworkHome(), null);
+  } catch (e) {
+    console.warn('[token-store] could not record the sign-out', e);
+  }
   broadcastAuthChanged(false);
 }
 
