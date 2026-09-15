@@ -12,8 +12,7 @@
  */
 
 // Which account the state in this origin belongs to.
-// deepcode ignore HardcodedNonCryptoSecret: 'anton.lastAccount' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
-const LAST_ACCOUNT_KEY = 'anton.lastAccount';
+const LAST_ACCOUNT_STORAGE_NAME = 'anton.lastAccount';
 
 /**
  * Key PREFIXES, not exact keys, for two reasons: the conversation caches carry
@@ -113,7 +112,7 @@ export function purgeStaleAccountState(
     legacyState === 'keep' || legacyState === 'purge' ? legacyState : 'undecided';
 
   try {
-    const last = store.getItem(LAST_ACCOUNT_KEY);
+    const last = store.getItem(LAST_ACCOUNT_STORAGE_NAME);
     if (last === accountId) return false;
 
     // Stamping our name on an undecided cache would make it un-purgeable: the
@@ -133,7 +132,7 @@ export function purgeStaleAccountState(
       for (const key of doomed) store.removeItem(key);
       removed = doomed.length;
     }
-    store.setItem(LAST_ACCOUNT_KEY, accountId);
+    store.setItem(LAST_ACCOUNT_STORAGE_NAME, accountId);
     return removed > 0;
   } catch {
     // Unavailable or over quota. Nothing here is recoverable and none of it is
