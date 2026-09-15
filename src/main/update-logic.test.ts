@@ -30,6 +30,7 @@ import {
   shellAutoUpdateIsActive,
   shellManualNoticeIsFallback,
   summarizeUpdateCheck,
+  decideBootShellInstall,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -1074,5 +1075,52 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
       shellUpdateAvailable: true,
       shellVersion: '2.26.7.20.1',
     });
+  });
+});
+
+describe('decideBootShellInstall (ENG-2764)', () => {
+  const stranded = {
+    phase: 'ready-to-install',
+    mode: 'auto',
+    targetVersion: '25.9.2',
+    bytesTransferred: false,
+    priorAttemptTarget: null,
+  };
+
+  it('installs a stranded update: ready, auto, and no bytes moved this launch', () => {
+    expect(decideBootShellInstall(stranded)).toBe(true);
+    // `bytesTransferred` is absent rather than false on a snapshot that never
+    // saw a progress event at all.
+    expect(decideBootShellInstall({ phase: 'ready-to-install', mode: 'auto' })).toBe(true);
+  });
+
+  it('never fires before the download is ready', () => {
+    for (const phase of ['idle', 'checking', 'available', 'downloading', 'installing', 'complete', 'failed', 'disabled']) {
+      expect(decideBootShellInstall({ ...stranded, phase })).toBe(false);
+    }
+  });
+
+  it('leaves an update downloaded during this launch to the banner', () => {
+    // The whole point: a fresh download must not relaunch out from under someone
+    // who has started working. It still installs on the next quit.
+    expect(decideBootShellInstall({ ...stranded, bytesTransferred: true })).toBe(false);
+  });
+
+  it('respects manual mode as an explicit "never act on your own"', () => {
+    expect(decideBootShellInstall({ ...stranded, mode: 'manual' })).toBe(false);
+  });
+
+  it('does not relaunch into the same failed install twice', () => {
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '25.9.2' })).toBe(false);
+  });
+
+  it('does retry once a newer target supersedes the failed one', () => {
+    // The guard is per-target, so a failed attempt on an old build must not
+    // strand every future update behind the banner.
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '25.9.1' })).toBe(true);
+    // An attempt recorded with no target cannot match anything, so it cannot
+    // silently suppress a real one.
+    expect(decideBootShellInstall({ ...stranded, priorAttemptTarget: '' })).toBe(true);
+    expect(decideBootShellInstall({ ...stranded, targetVersion: undefined, priorAttemptTarget: '25.9.2' })).toBe(true);
   });
 });
