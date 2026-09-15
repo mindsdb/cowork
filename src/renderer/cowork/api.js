@@ -506,12 +506,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // (modelCatalog.js). The server already treats a null/absent
           // model as exactly that.
           model: (model && model !== MODEL_ROUTER_ID) ? model : null,
-          // The composer's per-task harness pick (ENG-1656 follow-up) —
-          // overrides the account-wide harness setting for this
-          // conversation only. Omitted (server keeps the account default)
-          // when the caller doesn't pass one, e.g. an in-task reply, where
-          // the harness pill never shows.
-          ...(harness ? { harness } : {}),
+          // Always named. This UI only knows Anton, so every send says so
+          // rather than lean on the account default, which an older server
+          // may still hold at a harness this build has no control left to
+          // change. Callers with a per-task pick (the composer) still win.
+          harness: harness || 'anton',
           // Per-task reasoning-effort override (ENG-1940) — takes precedence
           // over the account-wide per-role effort setting for this turn only.
           // Same conditional-key pattern as `harness` just above: omitted

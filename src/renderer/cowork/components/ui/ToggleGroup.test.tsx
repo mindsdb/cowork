@@ -8,7 +8,7 @@ import { ToggleGroup } from './ToggleGroup';
 
 const OPTIONS = [
   { value: 'anton', label: 'Anton' },
-  { value: 'hermes', label: 'Hermes' },
+  { value: 'other', label: 'Other' },
   { value: 'claude-code', label: 'Claude-Code' },
 ];
 
@@ -28,23 +28,23 @@ describe('ToggleGroup — divider between options', () => {
 
   it('hides the divider on both sides of the selected option, shows the rest', () => {
     const { container } = render(
-      <ToggleGroup value="hermes" onValueChange={vi.fn()} options={OPTIONS} aria-label="Choose harness" />,
+      <ToggleGroup value="other" onValueChange={vi.fn()} options={OPTIONS} aria-label="Choose harness" />,
     );
-    const [antonHermes, hermesClaudeCode] = dividers(container);
-    // hermes is selected — both its neighboring dividers (anton|hermes and
-    // hermes|claude-code) touch it, so both are hidden.
-    expect(antonHermes).toHaveStyle({ opacity: '0' });
-    expect(hermesClaudeCode).toHaveStyle({ opacity: '0' });
+    const [antonOther, otherClaudeCode] = dividers(container);
+    // other is selected — both its neighboring dividers (anton|other and
+    // other|claude-code) touch it, so both are hidden.
+    expect(antonOther).toHaveStyle({ opacity: '0' });
+    expect(otherClaudeCode).toHaveStyle({ opacity: '0' });
   });
 
   it('shows a divider whose neither side is selected', () => {
     const { container } = render(
       <ToggleGroup value="claude-code" onValueChange={vi.fn()} options={OPTIONS} aria-label="Choose harness" />,
     );
-    const [antonHermes, hermesClaudeCode] = dividers(container);
-    // claude-code is selected — anton|hermes touches neither side of it.
-    expect(antonHermes).toHaveStyle({ opacity: '1' });
-    expect(hermesClaudeCode).toHaveStyle({ opacity: '0' });
+    const [antonOther, otherClaudeCode] = dividers(container);
+    // claude-code is selected — anton|other touches neither side of it.
+    expect(antonOther).toHaveStyle({ opacity: '1' });
+    expect(otherClaudeCode).toHaveStyle({ opacity: '0' });
   });
 
   it('moves the hidden divider as selection changes', async () => {
@@ -60,8 +60,8 @@ describe('ToggleGroup — divider between options', () => {
       <ToggleGroup value={value} onValueChange={onValueChange} options={OPTIONS} aria-label="Choose harness" />,
     );
 
-    const [antonHermes, hermesClaudeCode] = dividers(container);
-    expect(antonHermes).toHaveStyle({ opacity: '1' });
-    expect(hermesClaudeCode).toHaveStyle({ opacity: '0' });
+    const [antonOther, otherClaudeCode] = dividers(container);
+    expect(antonOther).toHaveStyle({ opacity: '1' });
+    expect(otherClaudeCode).toHaveStyle({ opacity: '0' });
   });
 });

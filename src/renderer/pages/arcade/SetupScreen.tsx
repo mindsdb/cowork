@@ -145,7 +145,7 @@ function DoneScreen({ onComplete }: { onComplete: () => void }) {
         SETUP COMPLETE!
       </div>
       <div style={{ fontSize: 12, letterSpacing: '0.08em', color: 'var(--arc-muted)' }}>
-        <Typewriter text="Now choose your coworker…" speed={35} />
+        <Typewriter text="Launching your workspace…" speed={35} />
       </div>
     </div>
   );

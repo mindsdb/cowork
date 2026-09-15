@@ -238,7 +238,6 @@ export default function HomeView({
   onPrefill,
   codingModeEnabled = false,
   codingModelDefault,
-  harnessHermesEnabled,
   harnessClaudeCodeEnabled,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
@@ -529,7 +528,6 @@ export default function HomeView({
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
-              harnessHermesEnabled={harnessHermesEnabled}
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
             />

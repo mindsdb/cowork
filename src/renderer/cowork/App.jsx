@@ -1275,13 +1275,8 @@ function AppCore() {
     // the server falls back to this one (providers.build_llm_client), so the
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
-    // Account-wide harness toggle (web-only Settings → Agent Harness) —
-    // EffortSelect needs this outside coding mode, where Composer's own
-    // harness state is hardcoded 'anton' and can't say whether Hermes is
-    // actually configured account-wide.
-    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, settings.harness, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2914,8 +2909,8 @@ function AppCore() {
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       reasoningEffort: selectedEffort ?? null,
-      // The composer's harness pick (ENG-1656 follow-up) — Anton or
-      // Hermes here; 'claude-code' never reaches this function (the top
+      // The composer's harness pick — Anton here;
+      // 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
       harness: meta?.harness || null,
       attachments: sendingAttachments,
@@ -4654,7 +4649,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
@@ -4678,7 +4672,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -4849,7 +4842,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}

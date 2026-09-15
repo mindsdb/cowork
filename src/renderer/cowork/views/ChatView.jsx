@@ -1501,7 +1501,6 @@ export default function ChatView({
   onOpenProjectsList,
   onOpenSettings,
   codingModelDefault,
-  harnessHermesEnabled,
   harnessClaudeCodeEnabled,
   onStop,
   projects = [],
@@ -1603,9 +1602,6 @@ export default function ChatView({
   // through anton's chat pipeline — it embeds a live PTY terminal instead of
   // the message transcript + Composer (see CodingTerminal / coding-terminal.ts).
   const isClaudeCodeTask = task?.harness === 'claude-code';
-  // Hermes has no memory system of its own — the Context rail's Project/
-  // Global memory sections are an Anton concept and don't apply.
-  const isHermesTask = task?.harness === 'hermes';
   const subscribeFormStore = useMemo(
     () => (onChange) => subscribeDataVaultForm(taskId, onChange),
     [taskId],
@@ -2686,7 +2682,6 @@ export default function ChatView({
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
-            harnessHermesEnabled={harnessHermesEnabled}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
         </div>
@@ -2769,7 +2764,6 @@ export default function ChatView({
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
-          showMemory={!isHermesTask}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
