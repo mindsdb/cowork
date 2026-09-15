@@ -5,7 +5,6 @@
 
 const HARNESS_LABELS = {
   anton: 'Anton',
-  hermes: 'Hermes',
 };
 
 /** Return the display name for the active harness. */
