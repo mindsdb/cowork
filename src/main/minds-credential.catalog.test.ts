@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '../shared/ipc-channels';
@@ -33,6 +33,9 @@ vi.mock('./server-process', () => ({
   isServerRunning: () => state.running,
   isServerStarting: () => false,
   startServer: vi.fn(), stopServer: vi.fn(),
+  // These sign-ins never change the account data root, so commitMindsSignIn
+  // takes its no-restart path and the catalog sees one credential hand-over.
+  sidecarIsOnCurrentAccountRoot: () => true,
 }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer synthetic-owner' }) }));
 vi.mock('./installer', () => ({ checkInstallStatus: async () => ({ antonInstalled: true }) }));
@@ -41,6 +44,10 @@ vi.mock('./cowork-home', async (importOriginal) => ({
   coworkHome: () => state.home,
   coworkEnvPath: () => join(state.home, '.env'),
   coworkStatePath: () => join(state.home, 'state.json'),
+  // Overridden too: the real ones resolve through the module's own coworkHome,
+  // which no export-level mock reaches, and would mkdir the developer's home.
+  accountDataRoot: () => state.home,
+  ensureAccountDataRoot: () => { mkdirSync(state.home, { recursive: true }); return state.home; },
 }));
 
 let auth: typeof import('./minds-auth');
