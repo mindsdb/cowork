@@ -778,3 +778,41 @@ export function shellDownloadUrl(
   }
   return null;
 }
+
+/** Should the boot check install a ready shell update and relaunch on its own,
+ *  instead of parking it behind the "Restart now" banner? (ENG-2764)
+ *
+ *  The case this exists for is a *stranded* update: a previous session
+ *  downloaded it, then was force-quit, crashed, or cut off by a reboot, so the
+ *  install-on-quit path never ran. Nothing clears that on its own, and the user
+ *  meets the same banner on every launch until they happen to quit cleanly.
+ *
+ *  It deliberately does NOT fire for an update downloaded during this launch.
+ *  Yanking someone into a relaunch a minute after they started working is the
+ *  same surprise ENG-2764 removes, just later in the session; a fresh download
+ *  stays a banner and rides the next quit. `bytesTransferred` is the
+ *  discriminator — electron-updater replays a cached download without emitting
+ *  any progress, so no bytes means it was already on disk.
+ *
+ *  `priorAttemptTarget` is the loop guard. A stranded update and a failed
+ *  auto-install look identical afterwards (both leave the app running the old
+ *  version with the download still cached), so the previous attempt has to be
+ *  remembered explicitly. Having tried and failed on this exact target, hand it
+ *  to the banner rather than relaunching into the same failure every launch.
+ */
+export function decideBootShellInstall(input: {
+  phase: string;
+  mode: string;
+  bytesTransferred?: boolean;
+  targetVersion?: string;
+  /** Target of a boot auto-install this app already attempted and survived,
+   *  from the durable evidence written before that attempt. */
+  priorAttemptTarget?: string | null;
+}): boolean {
+  if (input.phase !== 'ready-to-install') return false;
+  // Manual mode is an explicit "never act on your own" (UI_UPDATE_MODE=manual).
+  if (input.mode !== 'auto') return false;
+  if (input.bytesTransferred) return false;
+  if (input.priorAttemptTarget && input.priorAttemptTarget === input.targetVersion) return false;
+  return true;
+}

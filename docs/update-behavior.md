@@ -111,6 +111,34 @@ When enabled, main owns one immutable shell-update snapshot:
 - Signature/checksum failures are terminal for automatic update, while the
   existing manual installer URL remains available.
 
+### Stranded updates: installed at the next launch (ENG-2764)
+
+Install-on-quit only runs on a *clean* quit. A session that is force-quit,
+crashes, or is cut off by a reboot leaves the update downloaded and uninstalled,
+and nothing clears it — the user meets the same "Update ready" banner on every
+launch until they happen to quit cleanly.
+
+So the boot check installs a **stranded** update on its own and relaunches,
+before the user engages. It applies only when all of these hold
+(`decideBootShellInstall` in `src/main/update-logic.ts`):
+
+- the snapshot is at `ready-to-install`;
+- the mode is `auto` (manual mode never acts on its own);
+- **no bytes were transferred this launch.** electron-updater replays a download
+  cached by an earlier launch without emitting any `download-progress` event, so
+  this is what separates a stranded update from one downloaded just now. A fresh
+  download is deliberately left to the banner and the next quit — relaunching out
+  from under someone who has started working is the surprise this avoids, not a
+  fix for it;
+- this app has not already tried and failed to boot-install that same target.
+
+The last point needs durable evidence, because a stranded update and a failed
+auto-install look identical afterwards: both leave the app running the old
+version with the download still cached. The attempt is therefore recorded in
+`shell-update-target.json` *before* it is made, and a launch that finds the
+marker for the target it is about to install hands the update to the banner
+instead. The guard is per-target, so a newer release is still tried.
+
 ## Build kinds
 
 Each packaged build carries a build kind, baked into `build-config.json` in
@@ -224,6 +252,7 @@ a shell update still pending behind it.
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
 | **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
+| **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches on its own, before the user engages — no banner, no click. Guarded so a failed attempt falls back to the banner instead of relaunching every launch. |
 | **Shell only** (auto-update eligible) | Independent of the overlay, and never named on the boot loading screen. The pill/card walk "available → downloading (%) → ready-to-install". Background download; the update installs on the next normal quit in auto mode, and **Restart now** is the shortcut to it. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
 | **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
