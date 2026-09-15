@@ -2,7 +2,11 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { clearActiveAccountRecord, writeActiveAccountSync } from './account-data';
+import {
+  clearActiveAccountRecord,
+  markActiveAccountUnresolved,
+  writeActiveAccountSync,
+} from './account-data';
 import { accountIdFromToken } from './jwt';
 import { coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
@@ -158,24 +162,36 @@ function recordSignedInAccount(accessToken: string): void {
     // An opaque or sub-less token still authenticates, so the session is real
     // and the previous account's record must not be left standing for it.
     console.warn('[token-store] the signed-in token names no account');
-    forgetSignedInAccount();
+    quarantineSession();
     return;
   }
   try {
     writeActiveAccountSync(coworkHome(), accountId);
   } catch (e) {
     console.warn('[token-store] could not record the signed-in account', e);
-    forgetSignedInAccount();
+    quarantineSession();
   }
 }
 
 // NOT best-effort, and never a plain return. Whenever the record cannot be made
 // to name THIS session it still names the PREVIOUS account, which resolves this
 // session onto that account's data root, and every check downstream compares
-// against the same stale record and agrees. An absent record resolves to an
-// empty quarantine root instead: an empty app is recoverable, a cross-account
-// read is the bug.
-function forgetSignedInAccount(): void {
+// against the same stale record and agrees.
+//
+// Marked, not removed: an absent record reads as "never signed in", which on an
+// upgraded install resolves to the DEFAULT root — its incumbent's data, and the
+// reconciliation path would then move the sidecar onto it. The marker says
+// "signed in, unnameable", which quarantines. An empty app is recoverable; a
+// cross-account read is the bug.
+function quarantineSession(): void {
+  try {
+    markActiveAccountUnresolved(coworkHome());
+    return;
+  } catch (markErr) {
+    console.warn('[token-store] could not mark the session unresolved', markErr);
+  }
+  // The same disk just refused a write. Removing the record is weaker, and is
+  // here only because a record naming somebody else is weaker still.
   try {
     clearActiveAccountRecord(coworkHome());
   } catch (removeErr) {

@@ -192,16 +192,30 @@ describe('the signed-in account record', () => {
     expect(JSON.parse(fs.readFileSync(activeFile(), 'utf-8')).accountId).toBe(ACCOUNT_A);
   });
 
-  it('is removed when a token names no account, rather than left naming the previous one', async () => {
+  it('marks the session unresolved when a token names no account, rather than leaving the previous one', async () => {
     const store = await loadStore('win32');
     store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
 
     // An opaque or otherwise sub-less access token. The session is real, so it
-    // authenticates, but nothing on disk may go on claiming it is A: an absent
-    // record resolves to an empty quarantine root, which is recoverable, while
-    // a stale one resolves onto A's data.
+    // authenticates, but nothing on disk may go on claiming it is A.
     store.saveTokens('opaque-access-token', 3600, 'rt-b');
 
-    expect(fs.existsSync(activeFile())).toBe(false);
+    const { readActiveAccount, resolveAccountRoot } = await import('./account-data');
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'unresolved' });
+
+    // And it must not merely stop naming A: on an install whose default root is
+    // claimed by its recorded incumbent, a record that reads as never-signed-in
+    // resolves back ONTO that root, which is the read this exists to stop.
+    fs.writeFileSync(
+      path.join(h.home, '.pre-existing-data'),
+      JSON.stringify({ hadData: true, incumbent: ACCOUNT_A }) + '\n',
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(h.home, '.account'),
+      JSON.stringify({ accountId: ACCOUNT_A }) + '\n',
+      'utf-8',
+    );
+    expect(resolveAccountRoot(h.home, readActiveAccount(h.home))).toMatch(/^_unresolved-/);
   });
 });

@@ -60,12 +60,16 @@ export type ClaimState =
   | { kind: 'claimed'; accountId: string }
   | { kind: 'unreadable' };
 
-// Three session states, and the record distinguishes them because the token
-// store writes it on sign-in and rewrites it on sign-out. `unknown` therefore
-// means "this install has never signed in", not "we lost track".
+// Four session states, and the record distinguishes them because the token store
+// writes it on sign-in and rewrites it on sign-out. `unknown` therefore means
+// "this install has never signed in", not "we lost track" — that is
+// `unresolved`, which is a session that IS signed in and cannot be named, and
+// the two must stay apart: `unknown` may fall back to the default root on an
+// install whose incumbent owns it, and a real session doing that is the leak.
 export type ActiveAccount =
   | { kind: 'signed-in'; accountId: string }
   | { kind: 'signed-out'; lastAccountId: string | null }
+  | { kind: 'unresolved' }
   | { kind: 'unknown' };
 
 // A Keycloak `sub` is a UUID; this only has to be a safe single path segment.
@@ -314,7 +318,14 @@ export function readActiveAccount(home: string): ActiveAccount {
     return { kind: 'unknown' };
   }
   try {
-    const parsed = JSON.parse(raw) as { accountId?: unknown; lastAccountId?: unknown };
+    const parsed = JSON.parse(raw) as {
+      accountId?: unknown;
+      lastAccountId?: unknown;
+      unresolved?: unknown;
+    };
+    // Ahead of everything else: the marker is written precisely because no id
+    // can be trusted here, so no id in the file may outvote it.
+    if (parsed?.unresolved === true) return { kind: 'unresolved' };
     const last = typeof parsed?.lastAccountId === 'string' ? parsed.lastAccountId.trim() : '';
     if (parsed?.accountId === null) return { kind: 'signed-out', lastAccountId: last || null };
     const accountId = typeof parsed?.accountId === 'string' ? parsed.accountId.trim() : '';
@@ -377,12 +388,35 @@ export function writeActiveAccountSync(home: string, accountId: string | null): 
 }
 
 /**
+ * Record that a session is signed in and cannot be named, so it resolves to a
+ * quarantine root rather than to whichever account the file still named.
+ *
+ * Atomic like the other writers: a torn record here would read as an id.
+ */
+export function markActiveAccountUnresolved(home: string): void {
+  fs.mkdirSync(home, { recursive: true });
+  const target = path.join(home, ACTIVE_FILE);
+  const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  fs.writeFileSync(tmp, JSON.stringify({ unresolved: true }) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  try {
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
+/**
  * Remove the record entirely, so the session reads as never-signed-in.
  *
- * Only for a caller that failed to WRITE the record: leaving the previous
- * account's name there would resolve this session onto that account's data,
- * while an absent record resolves to an empty quarantine root whenever anyone
- * owns the default one.
+ * Last resort for a caller that could not write the record OR mark it
+ * unresolved, and weaker than either: an absent record resolves to the DEFAULT
+ * root on an install whose claim is held by its recorded incumbent, so a
+ * session landing here can still read that account's data. It beats leaving a
+ * record that names somebody else only because it takes no side.
  */
 export function clearActiveAccountRecord(home: string): void {
   fs.rmSync(path.join(home, ACTIVE_FILE), { force: true });
@@ -403,6 +437,9 @@ export function clearActiveAccountRecord(home: string): void {
  * | unclaimed, old data      | own (and asked)  | own (last's)      | see below       |
  * | unreadable               | own              | own (last's)      | quarantine      |
  *
+ * A signed-in session that cannot be named (`unresolved`) is not in the table:
+ * it quarantines whatever the claim says.
+ *
  * The last cell is the load-bearing one: a session that cannot name itself stays
  * on the default root as long as nobody has been partitioned here, because there
  * is then no second identity to leak to and this is the behaviour the install
@@ -410,6 +447,10 @@ export function clearActiveAccountRecord(home: string): void {
  * quarantines instead.
  */
 export function resolveAccountRoot(home: string, active: ActiveAccount): string | null {
+  // No cell of the table applies: this session is real and unnameable, so every
+  // root that belongs to somebody is the wrong one, the default root included.
+  if (active.kind === 'unresolved') return QUARANTINE_ACCOUNT;
+
   const claim = readAccountClaim(home);
 
   const named =
