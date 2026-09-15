@@ -38,6 +38,7 @@ import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArti
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -1491,6 +1492,12 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
+  // "Load earlier messages" (ENG-2768): present only when the task's most
+  // recent page doesn't cover its whole history. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see the
+  // affordance — task.hasMoreMessages is falsy for them.
+  onLoadEarlierMessages,
+  loadingEarlierMessages,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1742,9 +1749,30 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [task.messages.length, isStreaming]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+      taskId: task.id,
+      messages: visibleMessages,
+      previousAnchor: scrollAnchorRef.current,
+      scrollHeight: el.scrollHeight,
+    });
+    // Loading an older page prepends content above what's on screen —
+    // shifting scrollTop by the same delta keeps the reader's position
+    // steady instead of yanking them to the bottom (ENG-2768).
+    if (isPrepend) {
+      el.scrollTop += scrollHeightDelta;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    scrollAnchorRef.current = anchor;
+    // visibleMessages is a fresh array every render (task.messages.filter(...),
+    // not memoized) — depending on task.messages.length instead keeps this
+    // effect firing only when the count actually changes, same as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.messages.length, isStreaming]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -2046,6 +2074,17 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+            {task.hasMoreMessages && (
+              // Adapted from Sidebar's dashed-pill "Show more" idiom.
+              <button
+                type="button"
+                onClick={() => onLoadEarlierMessages?.()}
+                disabled={loadingEarlierMessages}
+                className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
+              >
+                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+              </button>
+            )}
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
@@ -2075,7 +2114,7 @@ export default function ChatView({
                 const orphan = isOrphanUser(i);
                 return (
                   <UserTurn
-                    key={i}
+                    key={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2111,7 +2150,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                    <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
                       <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
@@ -2135,7 +2174,7 @@ export default function ChatView({
                   : undefined;
                 return (
                   <ConnectIntroBubble
-                    key={i}
+                    key={messageKey(m, i)}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
@@ -2163,7 +2202,7 @@ export default function ChatView({
                 if (m.code === 'token_limit') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       // A billing failure ends the turn; there is no resume,
@@ -2194,7 +2233,7 @@ export default function ChatView({
                 if (m.code === 'provider_auth') {
                   return (
                     <ReconnectCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2212,7 +2251,7 @@ export default function ChatView({
                   const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2234,7 +2273,7 @@ export default function ChatView({
                   const prevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2268,7 +2307,7 @@ export default function ChatView({
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
@@ -2297,7 +2336,7 @@ export default function ChatView({
                 if (m.code === 'image_format') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="That image couldn't be read"
@@ -2317,7 +2356,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="Fixed an issue with this conversation"
@@ -2335,7 +2374,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
@@ -2358,7 +2397,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="The agent didn't start"
@@ -2376,7 +2415,7 @@ export default function ChatView({
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       // The gate only issues this code when the org has no
@@ -2416,7 +2455,7 @@ export default function ChatView({
                   const rlRetryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       body={m.content}
@@ -2440,7 +2479,7 @@ export default function ChatView({
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
@@ -2455,7 +2494,7 @@ export default function ChatView({
               if (m.role === 'provider_required') {
                 return (
                   <ActionCard
-                    key={i}
+                    key={messageKey(m, i)}
                     time={formatMetaTime(m.createdAt)}
                     title="Connect a provider to start chatting"
                     body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
@@ -2492,7 +2531,7 @@ export default function ChatView({
               const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
-                  key={i}
+                  key={messageKey(m, i)}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
                   // start time supplies this — and a replay with no steps has

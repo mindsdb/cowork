@@ -65,7 +65,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -4076,6 +4076,40 @@ function AppCore() {
     setPendingDeleteTurn({ taskId, turnIndex });
   };
 
+  // "Load earlier messages" (ENG-2768): tracks which tasks currently have a
+  // page fetch in flight, so ChatView can disable/relabel the affordance
+  // per task rather than globally.
+  const [loadingOlderMessagesFor, setLoadingOlderMessagesFor] = useState(() => new Set());
+
+  const handleLoadEarlierMessages = async (taskId) => {
+    const current = tasksRef.current.find((t) => t.id === taskId);
+    if (!current?.hasMoreMessages || !current?.messagesCursor) return;
+    if (loadingOlderMessagesFor.has(taskId)) return;
+    setLoadingOlderMessagesFor((prev) => new Set(prev).add(taskId));
+    try {
+      const page = await fetchOlderMessages(taskId, current.messagesCursor);
+      if (!page) return;
+      // Older page: prepend directly, no id-based merge needed — the
+      // cursor guarantees no overlap with what's already loaded, unlike
+      // mergeMessagePage's job of reconciling a re-fetched TAIL.
+      setTasks((prev) => prev.map((t) => (t.id === taskId
+        ? {
+            ...t,
+            messages: [...page.messages, ...t.messages],
+            hasMoreMessages: page.hasMoreMessages,
+            messagesCursor: page.messagesCursor,
+          }
+        : t)));
+    } finally {
+      setLoadingOlderMessagesFor((prev) => {
+        if (!prev.has(taskId)) return prev;
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  };
+
   const performDeleteTurn = async (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
     // If anton is actively streaming a response to the turn being
@@ -4760,6 +4794,8 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
+            onLoadEarlierMessages={() => handleLoadEarlierMessages(currentTask?.id)}
+            loadingEarlierMessages={loadingOlderMessagesFor.has(currentTask?.id)}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
