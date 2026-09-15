@@ -124,7 +124,7 @@ vi.mock('./server-process', () => ({
   isServerRunning: () => serverState.running,
   isServerStarting: () => false,
   getServerPort: () => 26866,
-  sidecarIsOnCurrentAccountRoot: () => serverState.onCurrentRoot,
+  sidecarIsOnCurrentStores: () => serverState.onCurrentRoot,
 }));
 
 // Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):

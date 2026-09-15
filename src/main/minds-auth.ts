@@ -1,5 +1,5 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores } from './server-process';
 import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot } from './account-data';
@@ -1472,7 +1472,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // database any other way, and leaving it would show the new account the
   // previous one's tasks. Safe here specifically because the credential push
   // below runs after it, and `setServerStartedHook` re-pushes on every start.
-  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
+  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentStores()) {
     console.log('[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();

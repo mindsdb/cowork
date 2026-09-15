@@ -25,15 +25,33 @@ vi.mock('electron', () => ({
 const envState = vi.hoisted(() => ({ authToken: null as string | null }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
+  // The organization store root resolves through this. A mock without it fails
+  // every test in this file, not only the organization ones.
+  accountDataRoot: () => accountState.dataRoot,
   buildKind: () => 'prod',
   readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
 }));
 /** Only the root resolution is faked; the rest of account-data stays real so
  *  the owner token every other test in this file depends on is unchanged. */
-const accountState = vi.hoisted(() => ({ root: null as string | null }));
+const accountState = vi.hoisted(() => ({
+  root: null as string | null,
+  /** Where the organization store resolution runs. A real directory, so
+   *  orgStoreRoot/orgStoreEnv stay REAL and the spawn env is what ships. */
+  dataRoot: '/tmp/cowork-test-home',
+  /** Which organization's stores this session resolves to, and what the
+   *  overrides for them are. Driven like `root`, because `fs` is automocked
+   *  here so a real claim file cannot be written. The CONTENT of the overrides
+   *  is covered against a real filesystem in account-data.test.ts; what these
+   *  cover is the restart decision and that the overrides reach the spawn. */
+  orgStoreRoot: null as string | null,
+  orgEnv: {} as Record<string, string>,
+}));
 vi.mock('./account-data', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./account-data')>()),
   resolveAccountRoot: () => accountState.root,
+  readActiveOrg: () => (accountState.orgStoreRoot ? 'org-b' : null),
+  orgStoreRoot: (accountRoot: string) => accountState.orgStoreRoot ?? accountRoot,
+  orgStoreEnv: () => accountState.orgEnv,
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -64,7 +82,7 @@ import {
   stopServer,
   setServerStartedHook,
   ensureSidecarOnCurrentAccountRoot,
-  sidecarIsOnCurrentAccountRoot,
+  sidecarIsOnCurrentStores,
 } from './server-process';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
@@ -117,6 +135,9 @@ let signals: Array<[number, string]> = [];
 beforeEach(() => {
   envState.authToken = null;
   accountState.root = null;
+  accountState.dataRoot = '/tmp/cowork-test-home';
+  accountState.orgStoreRoot = null;
+  accountState.orgEnv = {};
   resetServerAuthTokenCache();
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
@@ -803,7 +824,7 @@ describe('the sidecar account root', () => {
     await ensureSidecarOnCurrentAccountRoot();
 
     expect(getServerAuthToken()).toBe('token-for-the-second-root');
-    expect(sidecarIsOnCurrentAccountRoot()).toBe(true);
+    expect(sidecarIsOnCurrentStores()).toBe(true);
   });
 
   it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
@@ -819,5 +840,62 @@ describe('the sidecar account root', () => {
 
     await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
     expect(getServerAuthToken()).toBe('token-for-the-second-root');
+  });
+});
+
+// An organization switch keeps the same ACCOUNT, so nothing comparing account
+// ids can see it. The store root is what changes, and these cover that the
+// restart decision reads it and that the overrides reach the spawned process.
+describe('the sidecar organization stores', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedEnv = (): Record<string, string> =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+
+  it('hands the organization store overrides to the spawned sidecar', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    accountState.orgEnv = {
+      DATABASE_URI: 'sqlite:////root/orgs/org-b/cowork.db',
+      COWORK_CODING_DIR: '/root/orgs/org-b/coding',
+    };
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
+    expect(spawnedEnv().COWORK_CODING_DIR).toBe('/root/orgs/org-b/coding');
+  });
+
+  it('reads as foreign after an organization switch, so it is restarted', async () => {
+    // The regression that matters: the account never changes across a switch,
+    // so an account-id comparison reads as unchanged and the sidecar is left
+    // serving the previous organization's database.
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(sidecarIsOnCurrentStores()).toBe(true);
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    expect(sidecarIsOnCurrentStores()).toBe(false);
+  });
+
+  it('moves the sidecar when the organization changed', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    accountState.orgEnv = { DATABASE_URI: 'sqlite:////root/orgs/org-b/cowork.db' };
+    spawnHealthy();
+    await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
+
+    expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
   });
 });

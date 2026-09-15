@@ -35,7 +35,7 @@ vi.mock('./server-process', () => ({
   startServer: vi.fn(), stopServer: vi.fn(),
   // These sign-ins never change the account data root, so commitMindsSignIn
   // takes its no-restart path and the catalog sees one credential hand-over.
-  sidecarIsOnCurrentAccountRoot: () => true,
+  sidecarIsOnCurrentStores: () => true,
 }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer synthetic-owner' }) }));
 vi.mock('./installer', () => ({ checkInstallStatus: async () => ({ antonInstalled: true }) }));
