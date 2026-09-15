@@ -618,3 +618,43 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
     expect(reduceStream(thinking, RESET).currentThought).toBeNull();
   });
 });
+
+// ENG-2768: the persisted assistant message id rides response.completed/
+// response.failed at the frame ROOT (not nested under `response`) — same
+// placement as conversation_id/harness on response.created.
+describe('assistantMessageId (ENG-2768)', () => {
+  it('starts null', () => {
+    expect(initialStreamState().assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.completed', () => {
+    const state = reduceAll([
+      { type: 'response.completed', assistant_message_id: 'msg-123' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-123');
+  });
+
+  it('stays null when response.completed omits the field (an empty turn persisted nothing)', () => {
+    const state = reduceAll([{ type: 'response.completed' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('captures the id from response.failed when a partial row was persisted', () => {
+    const state = reduceAll([
+      { type: 'response.failed', error: 'boom', assistant_message_id: 'msg-456' },
+    ]);
+    expect(state.assistantMessageId).toBe('msg-456');
+  });
+
+  it('stays null when response.failed omits the field (nothing persisted)', () => {
+    const state = reduceAll([{ type: 'response.failed', error: 'boom' }]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+
+  it('does not read event.response.id — the field is root-level, not nested', () => {
+    const state = reduceAll([
+      { type: 'response.completed', response: { id: 'resp-not-this-one' } },
+    ]);
+    expect(state.assistantMessageId).toBeNull();
+  });
+});
