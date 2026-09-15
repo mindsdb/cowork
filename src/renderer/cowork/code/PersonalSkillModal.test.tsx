@@ -146,4 +146,50 @@ describe('Personal skills', () => {
     expect(personalSkillsApi.import).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Add skill' })).toBeDisabled();
   });
+
+  it.each([
+    ['too large', new File(['x'.repeat(120_001)], 'replacement.md'), 'smaller than 120 KB'],
+    ['binary', new File([new Uint8Array([0xff, 0xfe])], 'replacement.md'), 'UTF-8'],
+    ['unsupported', new File(['not a skill'], 'payload.exe'), 'SKILL.md or .skill'],
+    ['unreadable', new File(['unreadable'], 'replacement.md'), 'Could not read this file'],
+  ])('keeps the previous preview and can import it after a %s replacement', async (kind, file, expected) => {
+    if (kind === 'unreadable') vi.spyOn(file, 'arrayBuffer').mockRejectedValueOnce(new Error('Read failed'));
+    const user = userEvent.setup({ applyAccept: false });
+    open();
+    await user.click(screen.getByRole('tab', { name: 'Import file' }));
+    const content = '---\nname: original\ndescription: Review code.\n---\nKeep these instructions.';
+    await user.upload(screen.getByLabelText('Skill file'), new File([content], 'original.md'));
+    expect(await screen.findByText('original.md', { exact: true })).toBeInTheDocument();
+    await user.upload(screen.getByLabelText('Skill file'), file);
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+    expect(screen.getByText('original.md', { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(/Keep these instructions\./)).toBeInTheDocument();
+    expect(screen.queryByText(file.name, { exact: true })).not.toBeInTheDocument();
+    expect(personalSkillsApi.import).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Add skill' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Add skill' }));
+    expect(personalSkillsApi.import).toHaveBeenCalledWith(content);
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it('replaces a preview only after the new file has been read successfully', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.click(screen.getByRole('tab', { name: 'Import file' }));
+    await user.upload(screen.getByLabelText('Skill file'), new File(['Original instructions.'], 'original.md'));
+    expect(await screen.findByText('original.md', { exact: true })).toBeInTheDocument();
+    let resolve!: (value: ArrayBuffer) => void;
+    const replacement = new File(['Replacement instructions.'], 'replacement.md');
+    vi.spyOn(replacement, 'arrayBuffer').mockReturnValue(new Promise((done) => { resolve = done; }));
+    await user.upload(screen.getByLabelText('Skill file'), replacement);
+    expect(screen.getByText('original.md', { exact: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    expect(personalSkillsApi.import).not.toHaveBeenCalled();
+    resolve(new TextEncoder().encode('Replacement instructions.').buffer);
+    expect(await screen.findByText('replacement.md', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText('original.md', { exact: true })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add skill' }));
+    expect(personalSkillsApi.import).toHaveBeenCalledWith('Replacement instructions.');
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
 });

@@ -63,7 +63,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
   };
   const readFile = async (file?: File) => {
     if (!file || inFlight.current) return;
-    setError(''); setUpload(null);
+    setError('');
     if (!/\.(md|skill)$/i.test(file.name)) { setError('Choose a SKILL.md or .skill text file.'); return; }
     if (file.size > MAX_BYTES) { setError('Choose a skill smaller than 120 KB.'); return; }
     inFlight.current = true; setBusy(true);
