@@ -43,21 +43,19 @@ import OnboardingScreen from './OnboardingScreen';
 // can make it fail (simulating the server not being up yet during onboarding).
 import { syncSettingsToDb } from '../../lib/syncSettings';
 
-const coworker = { id: 'anton', label: 'ANTON', sprite: 'anton' };
-
 describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   beforeEach(() => {
     hostMock.isWeb = true;
     hostMock.isElectron = false;
     hostMock.checkConfigured = vi.fn(async () => ({ configured: true, provider: 'minds_cloud' }));
     keycloakMock.authenticated = false;
-    // syncModels/syncHarness fetch directly; keep them from throwing so the
+    // syncModels fetches directly; keep it from throwing so the
     // auto-finalize path can reach 'success' rather than the error screen.
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
 
   it('web + config_ready:true → consent-only screen, no MindsHub key prompt', async () => {
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument(),
     );
@@ -69,7 +67,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
 
   it('Continue records consent + enters the app via onComplete', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+    render(<OnboardingScreen onComplete={onComplete} />);
     const btn = await screen.findByRole('button', { name: 'Continue' });
     btn.click();
     expect(onComplete).toHaveBeenCalledTimes(1);
@@ -81,7 +79,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   // offer next to it.
   it('welcome page offers the desktop app and opens the download page externally', async () => {
     hostMock.openExternal = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     const link = await screen.findByRole('button', { name: 'Get the desktop app' });
     fireEvent.click(link);
     expect(hostMock.openExternal).toHaveBeenCalledWith(
@@ -96,7 +94,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   // user who closed the tab and came back.
   it('double-clicking the desktop-app link opens one tab, not two', async () => {
     hostMock.openExternal = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     const link = await screen.findByRole('button', { name: 'Get the desktop app' });
     // Two click events is what a browser dispatches for a double-click
     // (click, click, dblclick); React's onClick never sees the dblclick.
@@ -109,7 +107,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   // after the async find, so testing-library's own waitFor timers are unharmed.
   it('the desktop-app link still works on a later, deliberate second click', async () => {
     hostMock.openExternal = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     const link = await screen.findByRole('button', { name: 'Get the desktop app' });
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     fireEvent.click(link);
@@ -127,7 +125,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   // the string twice (an invisible width mirror plus the visible copy), so both
   // occurrences are asserted.
   it('welcome page HUD credits the copyright to the entity, not a bare product name', async () => {
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument(),
     );
@@ -136,7 +134,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
 
   it('web + config_ready:false → full provider flow (key prompt), no short-circuit', async () => {
     hostMock.checkConfigured = vi.fn(async () => ({ configured: false, provider: '' }));
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
@@ -146,7 +144,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
   // provider key form or the consent screen. Driven by state, not the ref.
   it('web + config_ready:true + keycloak authenticated → auto-finalizes, never shows the key form or consent screen', async () => {
     keycloakMock.authenticated = true;
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     // Auto-finalize completes → success screen.
     await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
     // The provider key form and the manual consent Continue never appeared.
@@ -170,7 +168,7 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     syncSettingsToDb.mockClear();
     hostMock.saveSettings.mockClear();
 
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
 
     // Assert the product name and the new body outright: a regex loose enough to
     // also match the old copy would pass whether or not this screen names itself.
@@ -204,7 +202,7 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
   });
 
   const clickCreateAccount = async () => {
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     (await screen.findByRole('button', { name: /Create a free account/ })).click();
   };
 
@@ -270,7 +268,7 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
 
   it('defers with a failed DB sync + uninstalled server → onComplete receives the chosen model lines', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+    render(<OnboardingScreen onComplete={onComplete} />);
 
     // Electron start screen → drop into BYOK ("continue without an account").
     fireEvent.click(await screen.findByRole('button', { name: /Continue without an account/ }));
@@ -300,7 +298,7 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     // surface the retryable error, not silently proceed.
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     const onComplete = vi.fn();
-    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+    render(<OnboardingScreen onComplete={onComplete} />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Continue without an account/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Custom' }));
@@ -336,7 +334,7 @@ describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-
 
   it('records outcome=byok_offered when MindsHub declines to mint a key', async () => {
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: false, upgradeRequired: true }));
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     (await screen.findByRole('button', { name: /Create a free account/ })).click();
 
     await waitFor(() =>
@@ -349,7 +347,7 @@ describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-
 
   it('records nothing when the key is provisioned normally', async () => {
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true }));
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     (await screen.findByRole('button', { name: /Create a free account/ })).click();
 
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
@@ -376,7 +374,7 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   });
 
   const connectWithMindsKey = async (onComplete = () => {}) => {
-    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+    render(<OnboardingScreen onComplete={onComplete} />);
     await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText('mdb_...'), {
       target: { value: 'mdb_test_key' },
@@ -489,7 +487,7 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
   });
 
   const signIn = async () => {
-    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    render(<OnboardingScreen onComplete={() => {}} />);
     (await screen.findByRole('button', { name: 'Sign in' })).click();
   };
 
