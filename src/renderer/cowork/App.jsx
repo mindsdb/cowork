@@ -4100,16 +4100,19 @@ function AppCore() {
         }));
         return;
       }
+      let failure = null;
       try {
         await deleteConversationTurn(taskId, turnIndex);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[performDeleteTurn] server delete failed', e);
-        alert(`Could not delete this exchange: ${e?.message || e}`);
-        return;
+        failure = e;
       }
-      // Re-fetch the conversation so `tasks[].messages` reflects the
-      // truncated server history (and any reindexed events sidecar).
+      // Re-fetch whatever happened above, not just on success. A delete we did
+      // not see confirmed may still have landed, and the server reindexes what
+      // survives, so handing the delete affordances back against the old list
+      // would aim the next one at a different exchange than the user sees.
+      let resynced = false;
       try {
         const fresh = await fetchSession(taskId);
         if (fresh && Array.isArray(fresh.messages)) {
@@ -4124,12 +4127,18 @@ function AppCore() {
               }
               : t,
           ));
+          resynced = true;
         }
       } catch (e) {
-        // The turn is gone server-side and only the local list is stale, so it
-        // reappears looking undeleted. Keep the cause out of the dark.
         // eslint-disable-next-line no-console
         console.error('[performDeleteTurn] refetch after delete failed', e);
+      }
+      if (failure?.code === 'timeout') {
+        alert(resynced
+          ? 'Could not confirm this delete in time. It may still have gone through, so the conversation was refreshed to match the server.'
+          : 'Could not confirm this delete in time, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.');
+      } else if (failure) {
+        alert(`Could not delete this exchange: ${failure?.message || failure}`);
       }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn

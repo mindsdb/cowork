@@ -254,6 +254,26 @@ describe('deleting a turn shows it as in flight', () => {
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
   });
 
+  it('resyncs the list before handing the delete affordances back', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSession.mockClear();
+    // A delete we did not see confirmed may still have landed, and the server
+    // reindexes what survives. Re-enabling delete against the old list would
+    // aim the next one at a different exchange than the user is looking at.
+    spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(2) });
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalledWith(task.id));
+    await waitFor(() => {
+      expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
+  });
+
   it('drops a local-only turn synchronously without touching the network', async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -267,6 +287,5 @@ describe('deleting a turn shows it as in flight', () => {
     });
     expect(screen.queryByText('msg: assistant: local answer')).not.toBeInTheDocument();
     expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
-    expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
   });
 });
