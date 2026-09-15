@@ -56,7 +56,7 @@ import {
   needsOwnershipDecision,
   observePreExistingData,
   readActiveAccount,
-  resolveAccountRoot,
+  rendererAccountSession,
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
@@ -1216,16 +1216,10 @@ function setupIPC() {
     // The renderer blocks on this reply, and coworkHome() throws by design on a
     // mispackaged build-config, so it must answer even then.
     try {
-      const home = coworkHome();
-      const active = readActiveAccount(home);
-      const accountId = active.kind === 'signed-in' ? active.accountId : null;
-      // The verdict on browser state that carries no account marker. It is
-      // decided here because the claim is here: the renderer cannot see whether
-      // this session resolved onto the default root or its own.
-      const legacyState = needsOwnershipDecision(home, active)
-        ? 'undecided'
-        : resolveAccountRoot(home, active) === null ? 'keep' : 'purge';
-      event.returnValue = { accountId, legacyState };
+      // Both fields are decided in account-data because the claim is there: the
+      // renderer cannot see whether this session resolved onto the default root
+      // or its own, nor that it has no name to resolve with.
+      event.returnValue = rendererAccountSession(coworkHome());
     } catch (err) {
       console.warn('[account] could not resolve the signed-in account', err);
       // No account means the purge is a no-op, so the verdict cannot matter.

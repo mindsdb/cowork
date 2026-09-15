@@ -335,17 +335,32 @@ export function readActiveAccount(home: string): ActiveAccount {
   }
 }
 
+function stageUnresolved(home: string): { tmp: string; target: string } {
+  fs.mkdirSync(home, { recursive: true });
+  const target = path.join(home, ACTIVE_FILE);
+  const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  fs.writeFileSync(tmp, JSON.stringify({ unresolved: true }) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  return { tmp, target };
+}
+
 function stageActiveAccount(
   home: string,
   accountId: string | null,
 ): { tmp: string; target: string } {
-  let record: { accountId: string | null; lastAccountId: string | null };
+  let record: { accountId: string | null; lastAccountId: string | null } | { unresolved: true };
   if (accountId === null) {
     // A sign-out keeps the account it was, read from the record rather than
     // passed in, because the caller has cleared its tokens by the time it gets
     // here. Without it a non-owning account would fall back onto the OWNER's
     // stores, and sign-out would then scrub the owner's credentials.
     const current = readActiveAccount(home);
+    // Signing out does not make an unnameable session nameable, and a record
+    // with no name in it resolves back onto the default root. That is the same
+    // scrub, aimed at the incumbent.
+    if (current.kind === 'unresolved') return stageUnresolved(home);
     const last =
       current.kind === 'signed-in' ? current.accountId
         : current.kind === 'signed-out' ? current.lastAccountId
@@ -394,13 +409,7 @@ export function writeActiveAccountSync(home: string, accountId: string | null): 
  * Atomic like the other writers: a torn record here would read as an id.
  */
 export function markActiveAccountUnresolved(home: string): void {
-  fs.mkdirSync(home, { recursive: true });
-  const target = path.join(home, ACTIVE_FILE);
-  const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
-  fs.writeFileSync(tmp, JSON.stringify({ unresolved: true }) + '\n', {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
+  const { tmp, target } = stageUnresolved(home);
   try {
     fs.renameSync(tmp, target);
   } catch (err) {
@@ -506,6 +515,34 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
     );
   }
   return { COWORK_HOME: root };
+}
+
+/** What the renderer does with browser-local state carrying no account marker.
+ *  The renderer's own copy of this union is in `cowork/lib/accountLocalState`. */
+export type LegacyCacheVerdict = 'keep' | 'purge' | 'undecided';
+
+/**
+ * What the renderer is told about this session, for the one job it has with it:
+ * dropping browser-local state that belongs to another account.
+ *
+ * A session that cannot be named is given the QUARANTINE root's name rather
+ * than no name at all. localStorage is keyed by account, and a session with no
+ * key purges nothing, so the previous account's drafts would stay on screen for
+ * a session the sidecar has already been moved away from that account for.
+ */
+export function rendererAccountSession(
+  home: string,
+): { accountId: string | null; legacyState: LegacyCacheVerdict } {
+  const active = readActiveAccount(home);
+  const root = resolveAccountRoot(home, active);
+  const accountId =
+    active.kind === 'signed-in' ? active.accountId
+      : active.kind === 'unresolved' ? root
+        : null;
+  const legacyState: LegacyCacheVerdict = needsOwnershipDecision(home, active)
+    ? 'undecided'
+    : root === null ? 'keep' : 'purge';
+  return { accountId, legacyState };
 }
 
 /**
