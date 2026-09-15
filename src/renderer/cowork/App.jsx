@@ -4125,7 +4125,12 @@ function AppCore() {
               : t,
           ));
         }
-      } catch {}
+      } catch (e) {
+        // The turn is gone server-side and only the local list is stale, so it
+        // reappears looking undeleted. Keep the cause out of the dark.
+        // eslint-disable-next-line no-console
+        console.error('[performDeleteTurn] refetch after delete failed', e);
+      }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn
       // never un-dims back into a list that still shows it.
