@@ -328,7 +328,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
   projects = [],
 }) {
   const [sections, setSections] = useState([]);
@@ -425,11 +425,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   }, [reloadMemory]);
 
   useEffect(() => {
-    // Skip the fetch entirely when the rail is not showing memory.
-    if (!showMemory) return undefined;
     reloadMemory();
     return () => { memoryTicket.invalidate(); };
-  }, [refreshKey, showMemory, reloadMemory, memoryTicket]);
+  }, [refreshKey, reloadMemory, memoryTicket]);
 
   // Every instructions fetch (mount + reload-on-edit) claims a ticket. Without
   // it, saving a context edit and immediately switching projects could let the
@@ -962,7 +960,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         </div>
       )}
 
-      {showMemory && ordered.map((section) => {
+      {ordered.map((section) => {
         const max = showAll ? section.files.length : 4;
         const visible = section.files.slice(0, max);
         const remaining = section.files.length - visible.length;

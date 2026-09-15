@@ -548,7 +548,7 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
-describe('harness picker enable flags (ENG-1656 follow-up)', () => {
+describe('harness picker enable flags', () => {
   it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
     const { transformSettingsRows } = await import('./settingsTransform');

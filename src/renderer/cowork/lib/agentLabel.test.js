@@ -7,7 +7,7 @@ describe('agentLabel', () => {
     expect(getAgentLabel({ harness: 'anton' })).toBe('Anton');
   });
 
-  it('still labels messages stored under a retired harness', () => {
+  it('capitalizes a stored harness tag, so old messages keep a label', () => {
     // Old conversations keep their harness tag; the label must not go blank.
     expect(harnessLabel('hermes')).toBe('Hermes');
     expect(harnessLabel(null)).toBeNull();

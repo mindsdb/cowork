@@ -374,16 +374,6 @@ export default function Composer({
     return opts;
   }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
 
-  // If the currently-picked harness gets disabled out from under it (an
-  // admin turned it off between page loads, or Coding mode just turned on
-  // for the first time), fall back to whatever's still offered rather than
-  // silently sending a harness the pill no longer shows as selected.
-  useEffect(() => {
-    if (!codingModeEnabled || harnessPickerOptions.length === 0) return;
-    if (harnessPickerOptions.some((o) => o.value === codingHarness)) return;
-    setCodingHarness(harnessPickerOptions[0].value);
-  }, [codingModeEnabled, harnessPickerOptions, codingHarness]);
-
   // Claude Code needs a real, concrete model for its `--model` flag — no
   // auto-routing concept in the CLI — so Model Router is hidden whenever
   // that harness is the one about to send. Computed once, reused by both
@@ -395,10 +385,9 @@ export default function Composer({
   const isClaudeCode = codingModeEnabled && harnessClaudeCodeEnabled && codingHarness === 'claude-code';
 
   // What actually gets sent (handleSend below) — never the raw codingHarness
-  // state directly, so a value that just got disabled (the reset effect
-  // above hasn't re-rendered yet, or every harness is disabled) can't slip
-  // through as e.g. a stale "claude-code" that would launch the external
-  // CLI despite the toggle being off.
+  // state directly, so a pick that has since been disabled (an admin turned
+  // Claude Code off between page loads) can't slip through and launch the
+  // external CLI despite the toggle being off.
   const effectiveHarness = !codingModeEnabled
     ? 'anton'
     : (harnessPickerOptions.some((o) => o.value === codingHarness)
@@ -1702,9 +1691,9 @@ export default function Composer({
               would otherwise still see the option — launching a terminal
               is an Electron capability the web build has no equivalent
               for. A ToggleGroup, not a dropdown — a segmented toggle reads
-              better for a small,
-              always-visible choice. */}
-          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 0 && (
+              better for a small choice. Hidden when Anton is the only
+              option: a one-item toggle cannot do anything. */}
+          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 1 && (
             <ToggleGroup
               value={codingHarness}
               onValueChange={setCodingHarness}

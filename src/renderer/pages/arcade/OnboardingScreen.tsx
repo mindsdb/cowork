@@ -71,12 +71,12 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739). Best-effort: the config has ALREADY persisted authoritatively
-    // (dbOk), so a flaky model sync must NOT bounce the user to the error
-    // screen over a saved config (ENG-848). Logged because a dropped model
-    // write does NOT self-heal (model keys ride neither the bulk re-sync nor
-    // the startup migration — ENG-739/922).
+    // syncModels writes the model keys the bulk DB sync intentionally skips.
+    // Best-effort: the config has ALREADY persisted authoritatively (dbOk),
+    // so a flaky model sync must NOT bounce the user to the error screen
+    // over a saved config. Logged because a dropped model write does NOT
+    // self-heal (model keys ride neither the bulk re-sync nor the startup
+    // migration).
     try {
       await deps.syncModels(lines);
     } catch (e) {

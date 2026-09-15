@@ -2909,7 +2909,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       reasoningEffort: selectedEffort ?? null,
-      // The composer's harness pick (ENG-1656 follow-up) — Anton here;
+      // The composer's harness pick — Anton here;
       // 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
       harness: meta?.harness || null,
@@ -3460,10 +3460,6 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
-      // This UI only knows Anton. Say so on every reply rather than lean on
-      // the account default, which an older server may still hold at a
-      // harness this build has no control left to change.
-      harness: 'anton',
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {

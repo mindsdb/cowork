@@ -595,29 +595,18 @@ describe('streamNewSession — harness pick', () => {
     expect(body.harness).toBe('anton');
   });
 
-  it('forwards the harness on an in-task reply too', async () => {
+  it('names anton when the caller passes no harness, so an older server never falls back to a stale default', async () => {
     const fetchMock = vi.fn(async () => closedStreamResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     await new Promise((resolve) => {
-      streamMessage('11111111-1111-4111-8111-111111111111', 'hi', { harness: 'anton', onDone: resolve, onError: resolve });
+      streamMessage('11111111-1111-4111-8111-111111111111', 'hi', { onDone: resolve, onError: resolve });
     });
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.harness).toBe('anton');
   });
 
-  it('omits the field when the caller passes no harness (e.g. an in-task reply)', async () => {
-    const fetchMock = vi.fn(async () => closedStreamResponse());
-    vi.stubGlobal('fetch', fetchMock);
-
-    await new Promise((resolve) => {
-      streamNewSession('hi', { onDone: resolve, onError: resolve });
-    });
-
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body).not.toHaveProperty('harness');
-  });
 });
 
 // A dropped connection mid-stream must carry a code distinct from a stalled

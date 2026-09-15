@@ -49,7 +49,7 @@ describe('persistOnboarding', () => {
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
 
-  // ENG-848: syncModels runs AFTER the authoritative DB write and is
+  // syncModels runs AFTER the authoritative DB write and is
   // best-effort — a throw there must not bounce a user whose config already
   // persisted to the onboarding error screen.
   it('still succeeds when syncModels throws after the DB write lands', async () => {
