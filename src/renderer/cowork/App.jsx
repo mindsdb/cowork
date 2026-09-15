@@ -4114,8 +4114,12 @@ function AppCore() {
       // would aim the next one at a different exchange than the user sees.
       let resynced = false;
       try {
-        const fresh = await fetchSession(taskId);
-        if (fresh && Array.isArray(fresh.messages)) {
+        // fetchSessionResult, not fetchSession: that one turns a failed `/items`
+        // request into `messages: []`, which would wipe the transcript off the
+        // screen and report the re-sync as having succeeded.
+        const res = await fetchSessionResult(taskId);
+        if (res?.status === 'ok' && Array.isArray(res.task?.messages)) {
+          const fresh = res.task;
           setTasks((prev) => prev.map((t) =>
             t.id === taskId
               ? {
@@ -4128,6 +4132,9 @@ function AppCore() {
               : t,
           ));
           resynced = true;
+        } else {
+          // eslint-disable-next-line no-console
+          console.error('[performDeleteTurn] refetch after delete returned no transcript', res?.status);
         }
       } catch (e) {
         // eslint-disable-next-line no-console

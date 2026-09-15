@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 const spies = vi.hoisted(() => ({
   deleteConversationTurn: vi.fn(),
   fetchSession: vi.fn(),
+  fetchSessionResult: vi.fn(),
   fetchSessions: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   fetchSessions: (...args) => spies.fetchSessions(...args),
   fetchSession: (...args) => spies.fetchSession(...args),
+  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
   fetchArtifacts: vi.fn(async () => []),
@@ -136,6 +138,10 @@ beforeEach(() => {
     id,
     messages: exchange,
   }));
+  spies.fetchSessionResult.mockReset().mockImplementation(async (id) => ({
+    status: 'ok',
+    task: { id, messages: exchange },
+  }));
   spies.fetchSessions.mockReset().mockResolvedValue([
     { ...task },
     { ...otherTask },
@@ -178,14 +184,14 @@ describe('deleting a turn shows it as in flight', () => {
     // the refetch lands. Clearing here would un-dim the turn and leave it
     // sitting there looking untouched for the whole second round trip.
     let resolveRefetch;
-    spies.fetchSession.mockImplementation(() => new Promise((resolve) => {
+    spies.fetchSessionResult.mockImplementation(() => new Promise((resolve) => {
       resolveRefetch = resolve;
     }));
     await act(async () => { resolveDelete({ status: 'deleted' }); });
     expect(screen.getByText('Deleting turn: 0')).toBeInTheDocument();
 
     await act(async () => {
-      resolveRefetch({ id: task.id, messages: exchange.slice(2) });
+      resolveRefetch({ status: 'ok', task: { id: task.id, messages: exchange.slice(2) } });
     });
     await waitFor(() => {
       expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
@@ -259,15 +265,18 @@ describe('deleting a turn shows it as in flight', () => {
     spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
     render(<App />);
     await openTask(user, task);
-    spies.fetchSession.mockClear();
+    spies.fetchSessionResult.mockClear();
     // A delete we did not see confirmed may still have landed, and the server
     // reindexes what survives. Re-enabling delete against the old list would
     // aim the next one at a different exchange than the user is looking at.
-    spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(2) });
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: { id: task.id, messages: exchange.slice(2) },
+    });
 
     await confirmDelete(user, 0);
 
-    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalledWith(task.id));
+    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenCalledWith(task.id));
     await waitFor(() => {
       expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
     });
@@ -279,7 +288,7 @@ describe('deleting a turn shows it as in flight', () => {
     spies.deleteConversationTurn.mockResolvedValue({ status: 'deleted' });
     render(<App />);
     await openTask(user, task);
-    spies.fetchSession.mockRejectedValue(new Error('network down'));
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
 
     await confirmDelete(user, 0);
 
@@ -298,7 +307,10 @@ describe('deleting a turn shows it as in flight', () => {
     );
     render(<App />);
     await openTask(user, task);
-    spies.fetchSession.mockResolvedValue({ id: task.id, messages: exchange.slice(2) });
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: { id: task.id, messages: exchange.slice(2) },
+    });
 
     await confirmDelete(user, 0);
 
@@ -317,12 +329,32 @@ describe('deleting a turn shows it as in flight', () => {
     );
     render(<App />);
     await openTask(user, task);
-    spies.fetchSession.mockRejectedValue(new Error('network down'));
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
 
     await confirmDelete(user, 0);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
     expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+  });
+
+  it('treats a transcript that failed to load as a failed re-sync', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    render(<App />);
+    await openTask(user, task);
+    // The conversation's metadata answers and its `/items` does not. Both mocks
+    // describe that one server state: fetchSession collapses it to an empty
+    // transcript, which would blank the list and read as a clean re-sync.
+    spies.fetchSession.mockResolvedValue({ id: task.id, messages: [] });
+    spies.fetchSessionResult.mockResolvedValue({ status: 'unavailable', code: 500 });
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+    // Nothing was deleted, so nothing may disappear from the list either.
+    expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+    expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
   });
 
   it('drops a local-only turn synchronously without touching the network', async () => {
