@@ -244,7 +244,9 @@ describe('deleting a turn shows it as in flight', () => {
 
   it('clears the in-flight state when the server fails and leaves the turn deletable', async () => {
     const user = userEvent.setup();
-    spies.deleteConversationTurn.mockRejectedValue(new Error('turn is locked'));
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
     render(<App />);
     await openTask(user, task);
 
@@ -262,7 +264,9 @@ describe('deleting a turn shows it as in flight', () => {
 
   it('resyncs the list before handing the delete affordances back', async () => {
     const user = userEvent.setup();
-    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
     render(<App />);
     await openTask(user, task);
     spies.fetchSessionResult.mockClear();
@@ -400,6 +404,52 @@ describe('deleting a turn shows it as in flight', () => {
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
   });
 
+  it('gates the next delete when the delete answered with a gateway error', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('Delete turn failed (504)'), { status: 504 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    // The proxy stopped waiting; cowork-server may still be deleting. The list
+    // this returns predates a commit it cannot show.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: { id: task.id, messages: exchange },
+    });
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/may still have gone through/i);
+    alertSpy.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a refused delete nothing more: a 4xx leaves the turn deletable', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/turn is locked/);
+    alertSpy.mockClear();
+
+    // The server was explicit that it did not delete anything, so the list is
+    // still the server's and the next delete needs no refresh first.
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
   it('keeps refusing while the conversation still cannot be re-synced', async () => {
     const user = userEvent.setup();
     spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
@@ -413,8 +463,9 @@ describe('deleting a turn shows it as in flight', () => {
 
     await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
 
-    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    expect(alertSpy.mock.calls[0][0]).toMatch(/reload/i);
+    await waitFor(() => {
+      expect(alertSpy.mock.calls.some(([said]) => /reload/i.test(said))).toBe(true);
+    });
     expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
     expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
   });

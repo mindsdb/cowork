@@ -2245,7 +2245,11 @@ export async function deleteConversationTurn(id, turnIndex) {
     if (!res.ok) {
       let detail = '';
       try { detail = (await res.json())?.detail || ''; } catch {}
-      throw new Error(detail || `Delete turn failed (${res.status})`);
+      const err = new Error(detail || `Delete turn failed (${res.status})`);
+      // Carried like req() does: the caller has to tell a refusal apart from a
+      // gateway giving up on a delete the server may still be running.
+      err.status = res.status;
+      throw err;
     }
     // Awaited inside the bound: a server that sends headers and then stalls the
     // body is the same hang the timeout exists for.

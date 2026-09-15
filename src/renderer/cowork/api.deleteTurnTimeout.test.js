@@ -77,6 +77,18 @@ describe('deleteConversationTurn', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('carries the HTTP status so a gateway giving up reads apart from a refusal', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 504,
+      json: async () => { throw new Error('not json'); },
+    }));
+
+    // A 504 says the proxy stopped waiting, not that the server stopped
+    // deleting. Without the status the caller cannot tell the two apart.
+    await expect(deleteConversationTurn('conv-a', 0)).rejects.toMatchObject({ status: 504 });
+  });
+
   it('leaves no timer armed once the delete answers', async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,

@@ -4035,21 +4035,22 @@ function AppCore() {
   // conversation at once, and each has to clear only its own.
   const [deletingTurns, setDeletingTurns] = useState({});
 
-  // Conversations whose last delete ended without a list the server vouched
-  // for. Nothing the client does can bound when a delete it gave up on
-  // commits, so the guarantee here is narrower: the next delete only goes out
-  // against a list fetched after the user was told the previous one was
-  // unconfirmed.
+  // Conversations holding a list the server has not vouched for since the last
+  // delete. Nothing the client does can bound when a delete it gave up on
+  // commits, so the guarantee is narrower than it looks: the next delete only
+  // goes out against a list fetched after the user was told about this one.
   const [unconfirmedDeletes, setUnconfirmedDeletes] = useState({});
+  const refreshingAfterDeleteRef = useRef(new Set());
 
-  // Replaces a conversation's messages with the server's, so a delete keyed by
-  // position aims at the exchange the user is looking at. False means the
-  // server could not be asked, and the list on screen stays unvouched for.
+  /**
+   * Replaces a conversation's messages with the server's, so a delete keyed by
+   * position aims at the exchange the user is looking at. Returns false when
+   * the server could not be asked; the list on screen then stays unvouched for.
+   */
   const resyncConversationAfterDelete = async (taskId) => {
     try {
       // fetchSessionResult, not fetchSession: that one turns a failed `/items`
-      // request into `messages: []`, which would wipe the transcript off the
-      // screen and report the re-sync as having succeeded.
+      // into `messages: []`, blanking the transcript and reading as a re-sync.
       const res = await fetchSessionResult(taskId);
       if (res?.status !== 'ok' || !Array.isArray(res.task?.messages)) {
         // eslint-disable-next-line no-console
@@ -4083,20 +4084,26 @@ function AppCore() {
     // Another conversation is unaffected and stays deletable.
     if (deletingTurns[taskId] != null) return;
     if (unconfirmedDeletes[taskId]) {
-      // This click is spent on the refresh, not on a delete: `turnIndex` was
+      if (refreshingAfterDeleteRef.current.has(taskId)) return;
+      refreshingAfterDeleteRef.current.add(taskId);
+      // Said before the fetch, not after it: the click has to register at once,
+      // and this spends it on a refresh rather than on `turnIndex`, which was
       // read off the very list being replaced.
-      const resynced = await resyncConversationAfterDelete(taskId);
-      if (resynced) {
-        setUnconfirmedDeletes((prev) => {
-          if (!prev[taskId]) return prev;
-          const next = { ...prev };
-          delete next[taskId];
-          return next;
-        });
+      alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
+      try {
+        if (await resyncConversationAfterDelete(taskId)) {
+          setUnconfirmedDeletes((prev) => {
+            if (!prev[taskId]) return prev;
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        } else {
+          alert('This conversation could not be refreshed. Reload it before deleting anything else in it.');
+        }
+      } finally {
+        refreshingAfterDeleteRef.current.delete(taskId);
       }
-      alert(resynced
-        ? 'The last delete here could not be confirmed, so this conversation has been refreshed. Check it, then delete again if you still need to.'
-        : 'The last delete here could not be confirmed and this conversation could not be refreshed. Reload it before deleting anything else in it.');
       return;
     }
     setPendingDeleteTurn({ taskId, turnIndex });
@@ -4171,11 +4178,11 @@ function AppCore() {
       // survives, so handing the delete affordances back against the old list
       // would aim the next one at a different exchange than the user sees.
       const resynced = await resyncConversationAfterDelete(taskId);
-      // Two ways to end up holding a list the server has not vouched for: it
-      // could not be fetched, or it was fetched too early to show a delete the
-      // server may still commit. Either way the next delete in this
-      // conversation refreshes first.
-      if (!resynced || failure?.code === 'timeout') {
+      // Only a 4xx is the server saying it did not do this. Our own timeout, a
+      // gateway 5xx and no response at all all leave a delete that may still
+      // commit, which a re-sync read before it does cannot show.
+      const refused = failure?.status >= 400 && failure.status < 500;
+      if (!resynced || (failure && !refused)) {
         setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: true }));
       }
       if (!resynced) {
@@ -4185,8 +4192,8 @@ function AppCore() {
         alert(failure
           ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
           : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
-      } else if (failure?.code === 'timeout') {
-        alert('Could not confirm this delete in time. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
+      } else if (failure && !refused) {
+        alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
       } else if (failure) {
         alert(`Could not delete this exchange: ${failure?.message || failure}`);
       }
