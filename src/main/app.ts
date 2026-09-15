@@ -56,11 +56,12 @@ import {
   needsOwnershipDecision,
   observePreExistingData,
   readActiveAccount,
+  readActiveOrg,
   resolveAccountRoot,
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -1225,7 +1226,10 @@ function setupIPC() {
       const legacyState = needsOwnershipDecision(home, active)
         ? 'undecided'
         : resolveAccountRoot(home, active) === null ? 'keep' : 'purge';
-      event.returnValue = { accountId, legacyState };
+      // The organization rides the same round trip rather than a second
+      // channel: the renderer needs both before React mounts, and a channel is
+      // snapshot-locked protocol while a field is not.
+      event.returnValue = { accountId, legacyState, organizationId: readActiveOrg(accountDataRoot()) };
     } catch (err) {
       console.warn('[account] could not resolve the signed-in account', err);
       // No account means the purge is a no-op, so the verdict cannot matter.

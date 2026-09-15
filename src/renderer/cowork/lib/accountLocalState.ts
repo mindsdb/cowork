@@ -15,6 +15,11 @@
 // deepcode ignore HardcodedNonCryptoSecret: 'anton.lastAccount' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
 const LAST_ACCOUNT_KEY = 'anton.lastAccount';
 
+// Which organization the state in this origin belongs to. Separate from the
+// account marker: one account works in several organizations, and their state
+// must not survive a move between them any more than it survives a sign-out.
+const LAST_ORGANIZATION_KEY = 'anton.lastOrganization';
+
 /**
  * Key PREFIXES, not exact keys, for two reasons: the conversation caches carry
  * one entry per conversation id, and the draft and settings caches append an
@@ -99,6 +104,49 @@ export function purgeStaleAccountState(
   } catch {
     // Unavailable or over quota. Nothing here is recoverable and none of it is
     // worth failing a boot over.
+    return false;
+  }
+}
+
+/**
+ * Drop this origin's organization-scoped state when it belongs to another
+ * organization, and record the organization. Returns true only when something
+ * was removed.
+ *
+ * The same keys as the account purge: they are scoped to one working context,
+ * and an organization switch changes that context exactly as a sign-in does.
+ * A null organization is left alone, for the same reason a signed-out account
+ * is: there is nothing to attribute the state to yet.
+ */
+export function purgeOrganizationScopedState(organizationId: string | null): boolean {
+  if (!organizationId) return false;
+
+  let store: Storage | undefined;
+  try {
+    store = globalThis.localStorage;
+    if (!store) return false;
+  } catch {
+    return false;
+  }
+
+  try {
+    const last = store.getItem(LAST_ORGANIZATION_KEY);
+    if (last === organizationId) return false;
+
+    let removed = 0;
+    if (last !== null) {
+      // Collect first: removeItem during the index walk reshuffles the keys.
+      const doomed: string[] = [];
+      for (let i = 0; i < store.length; i += 1) {
+        const key = store.key(i);
+        if (key && isAccountScoped(key)) doomed.push(key);
+      }
+      for (const key of doomed) store.removeItem(key);
+      removed = doomed.length;
+    }
+    store.setItem(LAST_ORGANIZATION_KEY, organizationId);
+    return removed > 0;
+  } catch {
     return false;
   }
 }

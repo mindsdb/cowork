@@ -23,7 +23,7 @@ import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
-import { purgeStaleAccountState } from './cowork/lib/accountLocalState';
+import { purgeOrganizationScopedState, purgeStaleAccountState } from './cowork/lib/accountLocalState';
 import { accountSessionSync } from './platform/host';
 
 // Drop the previous account's browser caches BEFORE React mounts.
@@ -36,6 +36,10 @@ import { accountSessionSync } from './platform/host';
 // the new value rather than the one the window was created with.
 const accountSession = accountSessionSync();
 purgeStaleAccountState(accountSession.accountId, accountSession.legacyState);
+// And the previous ORGANIZATION's, for the same reason and at the same moment:
+// one account works in several, and a switch changes the working context as
+// completely as a sign-in does.
+purgeOrganizationScopedState(accountSession.organizationId);
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real

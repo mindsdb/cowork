@@ -1484,6 +1484,9 @@ export async function logout(): Promise<void> {
 export interface AccountSession {
   accountId: string | null;
   legacyState: LegacyStateVerdict;
+  /** The organization the session is operating as, so the boot purge can drop
+   *  the previous one's state before React seeds anything from it. */
+  organizationId: string | null;
 }
 
 /**
@@ -1493,14 +1496,15 @@ export interface AccountSession {
  * before React mounts.
  */
 export function accountSessionSync(): AccountSession {
-  const unknown: AccountSession = { accountId: null, legacyState: 'keep' };
+  const unknown: AccountSession = { accountId: null, legacyState: 'keep', organizationId: null };
   if (!isElectron) return unknown;
   const value = (bridge as { accountSession?: unknown }).accountSession;
   if (!value || typeof value !== 'object') return unknown;
-  const { accountId, legacyState } = value as Partial<AccountSession>;
+  const { accountId, legacyState, organizationId } = value as Partial<AccountSession>;
   return {
     accountId: typeof accountId === 'string' && accountId ? accountId : null,
     legacyState: legacyState === 'purge' || legacyState === 'undecided' ? legacyState : 'keep',
+    organizationId: typeof organizationId === 'string' && organizationId ? organizationId : null,
   };
 }
 

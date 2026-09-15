@@ -170,8 +170,9 @@ contextBridge.exposeInMainWorld('antontron', {
       return ipcRenderer.sendSync(IPC.ACCOUNT_SIGNED_IN_SYNC) as {
         accountId: string | null;
         legacyState: 'keep' | 'purge' | 'undecided';
+        organizationId: string | null;
       };
-    } catch { return { accountId: null, legacyState: 'keep' as const }; }
+    } catch { return { accountId: null, legacyState: 'keep' as const, organizationId: null }; }
   })(),
   decideAccountOwnership: (accountId: string, keepExisting: boolean) =>
     ipcRenderer.invoke(IPC.ACCOUNT_OWNERSHIP_DECIDE, { accountId, keepExisting }),

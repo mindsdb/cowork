@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
+import { isElectron, mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
+import { purgeOrganizationScopedState } from '../lib/accountLocalState';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -128,6 +129,25 @@ export function useMindsOrgs(accountUser) {
        * responsive shell swap must not cancel a tenant-safety reload.
        */
       if (result?.reloadRequired === true) {
+        /**
+         * Desktop takes its own path. `prepareForOrganizationReload` budgets
+         * three reloads per 10s and then stays put "refusing tokens", which in
+         * a desktop window is simply wedged, and it returns before
+         * `notifyOrganizationChanged` below, cutting off the only in-app
+         * refresh signal mounted readers have.
+         *
+         * The reload itself is not optional here: the sidecar has moved to a
+         * different database, so module state and component state both still
+         * belong to the organization being left, and only a reload clears them.
+         */
+        if (isElectron) {
+          if (result.clearTenantState !== false) {
+            purgeOrganizationScopedState(result.activeOrgId ?? organizationId);
+          }
+          notifyOrganizationChanged(sub);
+          globalThis.location?.reload();
+          return result;
+        }
         prepareForOrganizationReload({
           clearTenantState: result.clearTenantState !== false,
         });
