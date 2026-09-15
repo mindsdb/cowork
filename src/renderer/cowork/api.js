@@ -2232,9 +2232,8 @@ export async function deleteConversationTurn(id, turnIndex) {
   // reload. Multiple seconds is normal here; never answering is not.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
-  let res;
   try {
-    res = await authFetch(
+    const res = await authFetch(
       BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
       {
         method: 'DELETE',
@@ -2242,26 +2241,30 @@ export async function deleteConversationTurn(id, turnIndex) {
         signal: ctrl.signal,
       },
     );
+    if (res.status === 404) return { status: 'gone', id, turnIndex };
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json())?.detail || ''; } catch {}
+      throw new Error(detail || `Delete turn failed (${res.status})`);
+    }
+    // Awaited inside the bound: a server that sends headers and then stalls the
+    // body is the same hang the timeout exists for.
+    return await res.json();
   } catch (e) {
     // Giving up on the wire says nothing about the server, which may well have
-    // finished the delete.
+    // finished the delete, so this is typed rather than reported as a failure.
     if (ctrl.signal.aborted) {
-      throw new Error(
-        `the request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds. `
-        + 'It may still complete on the server; refresh to check.',
+      const timedOut = new Error(
+        `The delete request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds.`,
+        { cause: e },
       );
+      timedOut.code = 'timeout';
+      throw timedOut;
     }
     throw e;
   } finally {
     clearTimeout(timer);
   }
-  if (res.status === 404) return { status: 'gone', id, turnIndex };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete turn failed (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function deleteConversation(id) {

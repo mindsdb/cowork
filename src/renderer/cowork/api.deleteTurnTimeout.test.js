@@ -49,9 +49,32 @@ describe('deleteConversationTurn', () => {
     await settled;
 
     expect(signal.aborted).toBe(true);
-    // Giving up on the wire says nothing about the server, which may well have
-    // finished the delete. The message must not claim otherwise.
-    await expect(pending).rejects.toThrow(/may still complete on the server/i);
+    // Typed, because giving up on the wire says nothing about the server: the
+    // caller re-syncs and words its message differently from a real failure.
+    const err = await pending.catch((e) => e);
+    expect(err.code).toBe('timeout');
+    expect(err.cause).toBeInstanceOf(DOMException);
+  });
+
+  it('passes a network error through untouched rather than calling it a timeout', async () => {
+    const boom = new TypeError('Failed to fetch');
+    global.fetch = vi.fn(() => Promise.reject(boom));
+
+    // Only an abort earns the timeout wording; anything else keeps its own
+    // cause so the alert names what actually went wrong.
+    await expect(deleteConversationTurn('conv-a', 0)).rejects.toBe(boom);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('surfaces the server detail on a refused delete', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: 'turn is locked' }),
+    }));
+
+    await expect(deleteConversationTurn('conv-a', 0)).rejects.toThrow('turn is locked');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('leaves no timer armed once the delete answers', async () => {
