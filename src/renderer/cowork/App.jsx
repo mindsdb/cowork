@@ -4673,6 +4673,7 @@ function AppCore() {
         {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
+            health={health}
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
