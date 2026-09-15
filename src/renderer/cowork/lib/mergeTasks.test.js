@@ -63,3 +63,44 @@ describe('mergeTasksFromServer keeps the client-only usage alerts (ENG-1782)', (
     expect(mergeTasksFromServer([serverTask()], [serverTask()])[0]).not.toHaveProperty('usageNotices', expect.anything());
   });
 });
+
+describe('mergeTasksFromServer keeps the local messagesStatus (ENG-2768)', () => {
+  // `server` always comes from the conversation list fetch, which never
+  // carries real messages and so always stamps messagesStatus: 'loading' —
+  // a background list refresh must not reset an already-resolved task's
+  // status back to 'loading' and reintroduce the loading-forever bug.
+  it('does not reset an already-loaded, genuinely empty conversation back to loading', () => {
+    const local = [serverTask({ messagesStatus: 'loaded', messages: [] })];
+    const server = [serverTask({ messagesStatus: 'loading', messages: [] })];
+    expect(mergeTasksFromServer(server, local)[0].messagesStatus).toBe('loaded');
+  });
+
+  it('does not reset an unavailable conversation back to loading', () => {
+    const local = [serverTask({ messagesStatus: 'unavailable', messages: [] })];
+    const server = [serverTask({ messagesStatus: 'loading', messages: [] })];
+    expect(mergeTasksFromServer(server, local)[0].messagesStatus).toBe('unavailable');
+  });
+
+  it('preserves loaded status when local wins the conversation surface', () => {
+    const local = [serverTask({
+      messagesStatus: 'loaded',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    })];
+    const server = [serverTask({ messagesStatus: 'loading', messages: [{ role: 'user', content: 'x' }] })];
+    expect(mergeTasksFromServer(server, local)[0].messagesStatus).toBe('loaded');
+  });
+
+  it('preserves loaded status when the server has more assistant messages than the client', () => {
+    const local = [serverTask({ messagesStatus: 'loaded', messages: [{ role: 'user', content: 'x' }] })];
+    const server = [serverTask({
+      messagesStatus: 'loading',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    })];
+    expect(mergeTasksFromServer(server, local)[0].messagesStatus).toBe('loaded');
+  });
+
+  it('takes the server (loading) status for a task with no local counterpart', () => {
+    const merged = mergeTasksFromServer([serverTask({ messagesStatus: 'loading' })], []);
+    expect(merged[0].messagesStatus).toBe('loading');
+  });
+});

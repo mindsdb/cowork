@@ -39,19 +39,29 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     const isStreaming = lMessages.some((m) => m?.role === '_streaming');
     const hasLocalContent = lMessages.length > 0;
     const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
+    // `server` here always comes from the conversation LIST fetch
+    // (fetchSessions), which never carries real messages and so always
+    // stamps messagesStatus: 'loading' (ENG-2768) — spreading it verbatim
+    // would reset a task's status back to 'loading' on every background
+    // list refresh, even one already confirmed 'loaded' (with zero
+    // messages, a genuinely empty conversation) or 'unavailable'. Local
+    // knowledge of a task's own fetch state is never staler than a list
+    // refresh's placeholder, so it always wins when present.
+    const messagesStatus = l.messagesStatus ?? server.messagesStatus;
     if (!isStreaming && !hasLocalContent) {
       // Even without live messages, prefer the locally-bumped
       // updatedAt if it's newer — handleSendInTask stamps the task
       // before any stream events arrive, so a fetchSessions that
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
-      return { ...server, model, usageNotices, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
+      return { ...server, model, usageNotices, messagesStatus, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
     }
     if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
       return {
         ...server,
         model,
         usageNotices,
+        messagesStatus,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
         disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
         attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
@@ -63,6 +73,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       ...server,
       model,
       usageNotices,
+      messagesStatus,
       // Local wins for the live conversation surface.
       messages: lMessages,
       status: l.status || server.status,

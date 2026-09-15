@@ -5,6 +5,7 @@ import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -1602,7 +1603,7 @@ function AppCore() {
       if (t.id !== id) return t;
       const local = Array.isArray(t.messages) ? t.messages : [];
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
-      return { ...t, messages: msgs };
+      return { ...t, messages: msgs, messagesStatus: 'loaded' };
     }));
     // Claimed synchronously, not on resolve: refreshData re-enters on the
     // serverOnline false->true flip that its own fetchHealth above causes, and
@@ -1786,15 +1787,19 @@ function AppCore() {
   // Loader hit a transient failure and there's nothing local — show the retry
   // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
   // A locally-available conversation keeps rendering during a blip.
-  const showConversationError =
-    route === 'task' &&
-    conversationError != null &&
-    conversationError === activeTaskId &&
-    !resolvedTask;
-  // Requested id not resolved and not (yet) errored: show a loading state, not
-  // the wrong conversation, until openConversation merges it into local state.
-  const showConversationLoading =
-    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  //
+  // Requested id not resolved, or resolved but its messages haven't loaded
+  // yet (ENG-2768: every sidebar-listed task is already in `tasks` before
+  // its messages fetch even starts) — show a loading state, not the wrong
+  // conversation, until messagesStatus settles.
+  const conversationLoadState = route === 'task' && activeTaskId != null
+    ? resolveConversationLoadState({
+      resolvedTask,
+      conversationErrorMatches: conversationError != null && conversationError === activeTaskId,
+    })
+    : 'ready';
+  const showConversationError = conversationLoadState === 'error';
+  const showConversationLoading = conversationLoadState === 'loading';
   // A detail URL whose id isn't yet the selected project (resolving, or cold
   // deep link): show the grid, never a stale project, under `/projects/:id`.
   const projectDetailResolving =
@@ -2006,8 +2011,15 @@ function AppCore() {
     // loader failure flag it for a retry; any resolvable result clears a stale
     // error. The render only shows it when the conversation is absent locally,
     // so a sidebar click during a blip keeps rendering.
-    if (loaded?.unavailable) setConversationError(id);
-    else setConversationError((cur) => (cur === id ? null : cur));
+    if (loaded?.unavailable) {
+      setConversationError(id);
+      // Only a task already known locally (sidebar-listed) needs its status
+      // flipped here — an unresolved cold deep-link has no task record yet,
+      // and showConversationError's own gate already covers that case.
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, messagesStatus: 'unavailable' } : t)));
+    } else {
+      setConversationError((cur) => (cur === id ? null : cur));
+    }
     // Phase 2 reconnect — fire-and-forget. If a turn is still running
     // server-side for this conversation (closed-tab-came-back, or opened
     // from another tab/device), this re-attaches the live SSE stream and
@@ -2039,7 +2051,9 @@ function AppCore() {
     // link (conversation absent from the recents fetch) still renders, but
     // don't wipe any locally-restored messages.
     if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
-      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      setTasks((prev) => (prev.some((t) => t.id === id)
+        ? prev.map((t) => (t.id === id ? { ...t, messagesStatus: 'loaded' } : t))
+        : [fresh, ...prev]));
       return;
     }
 
@@ -2049,7 +2063,7 @@ function AppCore() {
     // conversation if it wasn't in the capped fetch.
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    const patch = (t) => ({ ...t, messages: reconciled, messagesStatus: 'loaded', ...(dc !== undefined ? { disabledConnections: dc } : {}) });
     setTasks((prev) => (prev.some((t) => t.id === id)
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));
@@ -4664,7 +4678,7 @@ function AppCore() {
 
         {route === 'task' && showConversationLoading && <ConversationLoading />}
 
-        {route === 'task' && currentTask && !showConversationError && (
+        {route === 'task' && currentTask && !showConversationError && !showConversationLoading && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}

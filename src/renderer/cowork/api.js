@@ -270,7 +270,7 @@ function _hydrateAssistantEvents(messages) {
   return out;
 }
 
-function _conversationToTask(conv, messages = []) {
+function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
   // Server stores conversations under <project>/.anton/episodes/ and
   // returns the project NAME on each conversation meta. We carry both:
   //   projectName — the canonical id from the server
@@ -295,6 +295,13 @@ function _conversationToTask(conv, messages = []) {
     subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
+    // 'loading' until a real fetch resolves (ENG-2768) — every sidebar-listed
+    // task is built with an empty placeholder array before that happens, so
+    // the loading gate needs this to distinguish "not fetched yet" from
+    // "genuinely empty". Callers that hand over messages from a real fetch
+    // (fetchSession/fetchSessionResult) rely on the 'loaded' default; the
+    // conversation-list caller (fetchSessions) passes 'loading' explicitly.
+    messagesStatus,
     projectName: conv.project || null,
     projectId: conv.project_id || null,
     projectPath: conv.project_path || null,
@@ -404,7 +411,7 @@ export async function fetchSessions({ onItems } = {}) {
     .filter((c) => c && typeof c === 'object')
     .map((c) => {
       try {
-        return _conversationToTask(c, []);
+        return _conversationToTask(c, [], { messagesStatus: 'loading' });
       } catch (err) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
