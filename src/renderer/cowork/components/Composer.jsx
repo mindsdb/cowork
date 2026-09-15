@@ -18,6 +18,8 @@ import {
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
+import Select from './ui/Select.jsx';
+import { effortLevelsFor, effortOptions, resolveEffort } from '../code/reasoning';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -27,7 +29,7 @@ import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
-import { deriveComposerWarning } from '../lib/usageWarnings';
+import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -112,12 +114,10 @@ export default function Composer({
   onProjectChange,
   model,
   onModelChange,
-  // Reasoning-effort pick for the current model (ENG-1940) — a plain
-  // string ('low'/'medium'/'high', model-specific) or '' for "use the
-  // model's default". Sibling to `model`/`onModelChange`: same shape,
-  // same optionality (a caller that never passes these just never sees
-  // ModelSelect's effort footer, same as ChatView.askUserExpiry.test.jsx-style
-  // callers that omit onModelChange today).
+  // Reasoning-effort pick for the current model: a gateway level such as
+  // 'low' / 'medium' / 'high', or '' for the model's default. Shown as its
+  // own pill next to the model pill (ENG-2591), the same control Code mode
+  // uses. Sibling to `model` / `onModelChange`, same optionality.
   effort = '',
   onEffortChange,
   projects,
@@ -407,8 +407,8 @@ export default function Composer({
       ? codingHarness
       : (harnessPickerOptions[0]?.value || 'anton'));
 
-  // Harness gate for ModelSelect's effort footer (ENG-1940) — Hermes has no
-  // effort knob, mirroring SettingsView's harnessSupportsEffort. `effectiveHarness`
+  // Harness gate for the effort pill — Hermes has no effort knob, mirroring
+  // SettingsView's harnessSupportsEffort. `effectiveHarness`
   // already accounts for a coding-mode harness pick (Anton/Hermes/Claude
   // Code); outside coding mode it's hardcoded 'anton' and says nothing
   // about the account-wide harness toggle (web-only Settings → Agent
@@ -416,6 +416,33 @@ export default function Composer({
   // existing channel for settings-derived model metadata, rather than a
   // new prop.
   const effortHarness = codingModeEnabled ? effectiveHarness : (modelMeta?.harness || 'anton');
+
+  // Effort levels the picked model advertises; null (no pill) when it has
+  // none, the catalog hasn't loaded, or the harness has no effort knob. The
+  // pill always shows the level the task will run at: the explicit pick,
+  // else the effort saved beside the planning model in Settings, else the
+  // model's own default. The middle step mirrors the server: an empty pick
+  // sends no effort, and providers.build_llm_client then applies the saved
+  // planning effort to the turn, whichever model was picked here. Without it
+  // a saved High would run while the pill said Medium.
+  const effortLevels = useMemo(
+    () => (effortHarness === 'hermes' ? null : effortLevelsFor(model?.id, modelMeta?.modelEfforts)),
+    [effortHarness, model?.id, modelMeta?.modelEfforts],
+  );
+  const resolvedEffort = effortLevels
+    ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
+    : '';
+
+  // Drop a pick the current model does not offer, so the pill never names a
+  // level the request will not send (Code mode does the same in
+  // useNewTaskDraft). Only a known entry can veto a pick: a model missing
+  // from the map may mean the catalog has not loaded, or that the MindsHub
+  // bucket failed and the server sent only the direct-provider entries, and
+  // neither is a reason to throw away a saved choice.
+  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
+  useEffect(() => {
+    if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
+  }, [effort, knownLevels, onEffortChange]);
 
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
@@ -958,13 +985,26 @@ export default function Composer({
     () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
     [hubUsage, model],
   );
-  // "Healthy" for forgetting closed bars means nothing to say for ANY pick,
-  // not merely that the current paid model hides the free-token warnings.
-  const usageHealthy = useMemo(
-    () => !!hubUsage?.usage?.reachable
-      && deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model: null }) === null,
+  // What the bar would say for ANY pick, not just the current one. Two things
+  // read it: "healthy" for forgetting closed bars, and the height reservation
+  // below.
+  const anyPickWarning = useMemo(
+    () => (hubUsage?.usage?.reachable
+      ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model: null })
+      : null),
     [hubUsage],
   );
+  // "Healthy" means nothing to WARN about for any pick, not merely that the
+  // current paid model hides the free-token warnings. `countsAsWarning` owns
+  // the resting-is-not-a-warning rule, so it is stated and tested once.
+  const usageHealthy = !!hubUsage?.usage?.reachable && !countsAsWarning(anyPickWarning);
+  // An explicit paid pick cannot spend the grant, so it gets no figure — but
+  // the account still has one, and letting the bar come and go with the pick
+  // moved the whole composer by the bar's height on every switch. Reserve
+  // exactly that height with the same component instead of a magic number:
+  // `visibility: hidden` keeps the layout and drops it out of the tab order,
+  // and aria-hidden keeps it out of the accessibility tree.
+  const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
 
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
@@ -986,6 +1026,11 @@ export default function Composer({
           isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
           usageKnown={usageHealthy}
         />
+        {reservedBar && (
+          <div className="invisible pointer-events-none" aria-hidden="true" data-usage-bar-reserved="true">
+            <UsageBar warning={reservedBar} />
+          </div>
+        )}
         <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
@@ -1414,12 +1459,22 @@ export default function Composer({
                 className="meta-pill"
                 ariaLabel="Choose model"
                 placeholder="Select model"
-                // Reasoning-effort footer (ENG-1940) — lives inside this same
-                // popup now (see ModelSelect.jsx), not as a sibling pill.
-                modelEfforts={modelMeta?.modelEfforts}
-                effort={effort}
-                onEffortChange={onEffortChange}
-                harness={effortHarness}
+              />
+            )}
+            {/* Reasoning effort as its own pill (ENG-2591), the same
+                <Select> Code mode's composer uses. Fixed with the model
+                once a task's model is read-only, and absent with no
+                provider connected, where the model pill is only a
+                shortcut to Settings. */}
+            {!modelReadOnly && !noRealModels && effortLevels && (
+              <Select
+                value={resolvedEffort}
+                onValueChange={onEffortChange}
+                options={effortOptions(effortLevels)}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Reasoning effort"
+                menuLabel="Reasoning effort"
               />
             )}
             {/* Mic / voice input intentionally hidden — voice flow isn't

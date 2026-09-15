@@ -16,7 +16,7 @@ const RESET = '2099-09-11T12:00:00Z';
 const usage = (over = {}) => ({
   reachable: true,
   isBillingOwner: true,
-  freeTokens: { limit: 5_000_000, used: 638_142, remaining: 4_361_858, resetsAt: RESET },
+  freeTokens: { percentRemaining: 87.2, limit: 100, used: 12.8, remaining: 87.2, resetsAt: RESET },
   balance: { usd: 99.63, canConsume: true, hasToppedUp: false, alert: '' },
   autoTopUp: { enabled: false, thresholdUsd: null, rechargeToUsd: null, status: 'ok' },
   creditSpend: { usd: 0.37, periodStart: '2099-08-01T00:00:00Z', periodEnd: '2099-09-01T00:00:00Z' },
@@ -37,15 +37,44 @@ beforeEach(() => {
 });
 
 describe('UsageSection', () => {
-  it('shows the real numbers and the period spend', () => {
+  it('shows the allowance proportion and the period spend', () => {
     renderWith(usage());
-    expect(screen.getByText('638.1K')).toBeInTheDocument();
-    expect(screen.getByText(/5M tokens used/)).toBeInTheDocument();
-    expect(screen.getByText(/Resets Sep 1[12]/)).toBeInTheDocument();
+    expect(screen.getByText('13%')).toBeInTheDocument();
+    expect(screen.getByText(/of your allowance used/)).toBeInTheDocument();
+    expect(screen.getByText(/87% left/)).toBeInTheDocument();
+    // A clock time; the period spend below it stays a date range.
+    expect(screen.getByText(/Resets at Sep 1[12], 12:00 PM/)).toBeInTheDocument();
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Free monthly tokens used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+  });
+
+  it('derives the meter from what is left, not from a used count the server may not send', () => {
+    /* `used` is deprecated compatibility data and a build talking to an older
+       sidecar can get an absolute there. Deriving the meter from `remaining`
+       is what keeps the fill, the two figures and the tint agreeing; a card
+       that read `used` would fill to 87% here while the copy says 13% used. */
+    renderWith(usage({
+      freeTokens: { percentRemaining: 87.2, limit: 100, used: 4_380_000, remaining: 87.2, resetsAt: RESET },
+    }));
+
+    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByText('13%')).toBeInTheDocument();
+    expect(screen.getByText(/87% left/)).toBeInTheDocument();
+  });
+
+  it('never says the allowance is fully used while a usable slice is left', () => {
+    /* 0.4% left is a real turn for a caller who caches well. Rounding the used
+       figure up to "100%" beside "0.4% left" puts a contradiction on one row
+       and reads as exhausted to anyone skimming. */
+    renderWith(usage({
+      freeTokens: { percentRemaining: 0.4, limit: 100, used: 99.6, remaining: 0.4, resetsAt: RESET },
+    }));
+
+    expect(screen.getByText('99.6%')).toBeInTheDocument();
+    expect(screen.getByText(/0\.4% left/)).toBeInTheDocument();
+    expect(screen.queryByText('100%')).toBeNull();
   });
 
   it('is quiet while the first read is in flight, not an error', () => {
@@ -69,11 +98,11 @@ describe('UsageSection', () => {
   });
 
   it('says Unlimited for an uncapped grant and hides the card for an unusable limit', () => {
-    const { unmount } = renderWith(usage({ freeTokens: { limit: -1, used: 10, remaining: -1 } }));
+    const { unmount } = renderWith(usage({ freeTokens: { percentRemaining: null, limit: -1, used: 0, remaining: -1 } }));
     expect(screen.getByText('Unlimited on this account.')).toBeInTheDocument();
     unmount();
-    renderWith(usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }));
-    expect(screen.queryByText('Free monthly tokens')).toBeNull();
+    renderWith(usage({ freeTokens: { percentRemaining: 0, limit: 0, used: 0, remaining: 0 } }));
+    expect(screen.queryByText('Free Air allowance')).toBeNull();
   });
 
   it('describes auto top up per status', () => {

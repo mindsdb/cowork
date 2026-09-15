@@ -113,7 +113,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
   it('says the task stopped and names both resources, never a bare "out of tokens"', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
     expect(screen.getByText('Task stopped')).toBeInTheDocument();
-    expect(screen.getByText(/free monthly tokens are used up and your balance is empty/)).toBeInTheDocument();
+    expect(screen.getByText(/free Air allowance is used up and your balance is empty/)).toBeInTheDocument();
     expect(screen.queryByText(/out of tokens/i)).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
@@ -125,23 +125,43 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
     expect(screen.getByRole('button', { name: 'Set up auto top up' })).toBeEnabled();
   });
 
-  it('names the reset date the gate supplied — the free way forward', () => {
+  it('names the refill the gate supplied — the free way forward', () => {
     const inMarch = new Date(Date.now() + 40 * 24 * 3600 * 1000);
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
       resetAt: inMarch.toISOString(),
     }))} />);
-    const expected = inMarch.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    expect(screen.getByText(new RegExp(`wait until ${expected} when your free tokens reset`))).toBeInTheDocument();
+    // Far enough out to carry its date; a refill later today names the time alone.
+    const day = inMarch.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const time = inMarch.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    expect(screen.getByText(new RegExp(`wait for it to refill at ${day}, ${time}`))).toBeInTheDocument();
+  });
+
+  it('names the clock time alone for a refill later today', () => {
+    const inTwoHours = new Date(Date.now() + 2 * 3600 * 1000);
+    // After 10pm local it rolls into tomorrow, so assert whichever applies.
+    const sameDay = inTwoHours.getDate() === new Date().getDate();
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
+      resetAt: inTwoHours.toISOString(),
+    }))} />);
+    const time = inTwoHours.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const expected = sameDay
+      ? `wait for it to refill at ${time}`
+      : `wait for it to refill at ${inTwoHours.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
+    expect(screen.getByText(new RegExp(expected))).toBeInTheDocument();
   });
 
   it.each([
     ['absent', undefined],
     ['malformed', 'not-a-date'],
     ['already past', new Date(Date.now() - 86_400_000).toISOString()],
-  ])('falls back to "next month" when the date is %s', (_label, resetAt) => {
-    // Never "Invalid Date", and never a stale month on a reloaded conversation.
+  ])('drops the refill clause rather than naming a schedule when the instant is %s', (_label, resetAt) => {
+    // Never "Invalid Date", and never a stale time on a reloaded conversation.
+    // The clause goes entirely rather than falling back to "next month": the
+    // allowance refills on a fixed-duration window, so a monthly promise is
+    // one the response never made.
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
-    expect(screen.getByText(/wait until next month when your free tokens reset/)).toBeInTheDocument();
+    expect(screen.getByText(/Add funds to keep working, or wait for it to refill\./)).toBeInTheDocument();
+    expect(screen.queryByText(/next month/)).toBeNull();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
 });

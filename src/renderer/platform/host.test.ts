@@ -59,6 +59,28 @@ describe('logout()', () => {
   });
 });
 
+describe('onMindsHubCredentialChanged()', () => {
+  it('subscribes through preload and returns its cleanup', async () => {
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => unsubscribe);
+    (window as unknown as Record<string, unknown>).antontron = { onMindsHubCredentialChanged: subscribe };
+    const host = await importHost();
+    const listener = vi.fn();
+    const cleanup = host.onMindsHubCredentialChanged(listener);
+    expect(subscribe).toHaveBeenCalledWith(listener);
+    cleanup();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it.each(['web', 'older desktop'])('is safe on %s without the event bridge', async (shell) => {
+    if (shell === 'older desktop') (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    const listener = vi.fn();
+    host.onMindsHubCredentialChanged(listener)();
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
 describe('MindsHub organizations', () => {
   const ORGS = [
     { id: 'org-acme', name: 'acme', displayName: 'Acme', isPersonal: false },

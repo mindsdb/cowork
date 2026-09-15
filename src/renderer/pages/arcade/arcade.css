@@ -130,15 +130,23 @@
   text-indent: 0.22em; /* optically recenter tracked text */
   color: var(--arc-ink);
   text-shadow: 0 0 18px color-mix(in srgb, var(--arc-ink) 18%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Wrap, never ellipsise. The HUD reserves the copyright's width on BOTH
+     sides (see the mirror in components.tsx), so the title's share of the row
+     is viewport minus ~272px. A nowrap title spent that shortfall on dropped
+     characters: "CHOOSE AN ORGAN…" on any viewport under ~820px. Wrapping
+     spends it on a second line instead, which costs a row of HUD height and
+     can never lose a character, whatever a future title is called. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* The HUD is one row: a hidden copyright mirror, the tracked title, then the
-   real copyright. That reserves ~93px on each side, and the title is nowrap +
-   ellipsis, so below ~600px a long title loses characters rather than shrinking.
-   Stack it instead — the name is the point of the screen. */
+   real copyright. That reserves ~136px on each side, so on a phone the title
+   is squeezed into a sliver of the row and wraps to three or four lines.
+   Stack it instead — the name is the point of the screen. The title's own rule
+   already wraps at every width, so the overrides here are the phone type scale
+   only. */
 @media (max-width: 600px) {
   .arc-hud {
     flex-direction: column;
@@ -153,9 +161,6 @@
     font-size: 20px;
     letter-spacing: 0.14em;
     text-indent: 0.14em;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
   }
 }
 

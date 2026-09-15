@@ -1,10 +1,4 @@
-import {
-  hasFrozenVersions,
-  isFrozenAlias,
-  isModelLocked,
-  isMovingAlias,
-  orderByFamily,
-} from './modelCatalog';
+import { isModelLocked, orderByFamily } from './modelCatalog';
 
 
 export interface ModelPickerSource {
@@ -62,21 +56,17 @@ export function buildModelPickerOptions(
   const ordered = orderByFamily(ids, modelFamilies)
     .map((id: string) => byId.get(id))
     .filter((model: ModelPickerSource | undefined): model is ModelPickerSource => Boolean(model));
-  const tagMoving = hasFrozenVersions(ids, modelFamilies);
 
   return ordered.map((model: ModelPickerSource) => {
     const locked = isModelLocked(modelEnabled, model.id);
-    const tag = [
-      tagMoving && isMovingAlias(model.id, modelFamilies) ? 'Latest' : '',
-      isFrozenAlias(model.id, modelFamilies) && byId.has(modelFamilies[model.id]) ? 'Older version' : '',
-      locked ? 'Needs credits' : '',
-    ].filter(Boolean).join(' · ');
-
     return {
       value: model.id,
       label: model.name,
-      ...(locked ? { disabled: true, locked: true } : {}),
-      ...(tag ? { tag } : {}),
+      // Wallet state is the only row tag (ENG-2591). Version state needs none:
+      // the name carries the version and orderByFamily seats a pinned version
+      // under its head. The old "Latest" / "Older version" pills sat on most
+      // rows and pushed long names into an ellipsis.
+      ...(locked ? { disabled: true, locked: true, tag: 'Needs credits' } : {}),
       ...(modelProviders[model.id] ? { provider: modelProviders[model.id] } : {}),
     };
   });

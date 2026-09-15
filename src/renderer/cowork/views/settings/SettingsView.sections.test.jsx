@@ -200,6 +200,20 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     // the person to sign in rather than showing numbers it cannot have.
     render(<Harness section="usage" />);
     expect(await screen.findByText('Sign in to see your usage')).toBeInTheDocument();
+    // Desktop has an Account section to send them to.
+    expect(screen.getByRole('button', { name: 'Go to Account' })).toBeInTheDocument();
+  });
+
+  it('offers no Go to Account on web, where there is no Account section to reach', async () => {
+    // `account` is not in WEB_NAV_IDS, so the deep link would resolve to the
+    // first visible section (Agent) on desktop widths and pop back to the
+    // section list on mobile. A button that silently goes somewhere else is
+    // worse than no button, and this section only became reachable on web
+    // when Usage joined the nav.
+    deployment.isWeb = true;
+    render(<Harness section="usage" />);
+    expect(await screen.findByText('Sign in to see your usage')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to Account' })).not.toBeInTheDocument();
   });
 });
 

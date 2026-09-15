@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, hasFrozenVersions, isModelLocked, orderByFamily, OTHER_MAKER,
+  modelMaker, groupModelOptions, isModelLocked, orderByFamily, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -181,25 +181,6 @@ describe('groupModelOptions', () => {
 // ─── Families: which alias moves, and which version sits under which head ───
 //
 // Both pickers read these, so a rule that disagrees with itself shows up twice.
-
-describe('hasFrozenVersions', () => {
-  it('is true when a listed version froze a listed head', () => {
-    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet' })).toBe(true);
-  });
-
-  it('ignores a pin whose head is not in the list', () => {
-    // A typo'd family in the policy, or a head filtered out upstream. The pin renders
-    // with no marker of its own, so it must not turn the moving-alias marker on for
-    // the rows around it either.
-    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonet' })).toBe(false);
-  });
-
-  it('is false for an all-moving list, and with no families at all', () => {
-    expect(hasFrozenVersions(['sonnet', 'kimi'], { sonnet: 'sonnet', kimi: 'kimi' })).toBe(false);
-    expect(hasFrozenVersions(['sonnet', 'kimi'])).toBe(false);
-    expect(hasFrozenVersions()).toBe(false);
-  });
-});
 
 describe('orderByFamily', () => {
   it('nests a chain under the alias at the top of it', () => {

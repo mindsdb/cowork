@@ -53,7 +53,8 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort } from '../lib/usageWarnings';
+import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -425,8 +426,9 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
-          {/* Agent always named; timestamp joins it when the message has
-              one (streamed turns often don't carry createdAt). */}
+          {/* Agent always named; the timestamp joins it when the caller
+              resolved one. No message row carries `createdAt` — the server
+              sends `created_at` and nothing maps it. */}
           <span className="turn-meta">
             {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
           </span>
@@ -832,6 +834,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * hover lift mark the entire surface as interactive at a glance.
    */
   return (
+    <>
+      {/* Outside the Card on purpose: Card renders role="button", and ARIA
+          treats a button's non-focusable descendants as presentational, so a
+          region nested inside it can be left out of the accessibility tree.
+          It mounts empty because `status` starts null, which is what lets
+          aria-live see a content CHANGE when an action fills it. */}
+      <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
     <Card
       as="div"
       interactive={canActivate}
@@ -840,7 +849,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
+      className="chat-artifact-card"
     >
       <div
         className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
@@ -896,15 +905,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </span>
         )}
       </div>
-      <div className="flex gap-1.5">
-        {status && (
-          <span
-            aria-live="polite"
-            className={`self-center max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
-          >
-            {status.text}
-          </span>
-        )}
+      <div className="chat-artifact-card__actions">
         {canExport && (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Tooltip content="Export to another format">
@@ -973,7 +974,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           </Tooltip>
         )}
       </div>
+      {status && (
+        <span
+          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+        >
+          {status.text}
+        </span>
+      )}
     </Card>
+    </>
   );
 }
 
@@ -1083,17 +1092,16 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
 // and "unlock" is literally true, because non-free models need a wallet this
 // org doesn't have.
 //
-// The date is formatted here, not server-side: only the client knows the
+// The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
-// users. Anything unusable — absent, malformed, or already past on a reloaded
-// conversation — degrades to "next month" rather than rendering "Invalid Date"
-// or a stale month.
-function formatAllowanceReset(resetAt) {
-  if (!resetAt) return 'next month';
-  const d = new Date(resetAt);
-  if (Number.isNaN(d.getTime())) return 'next month';
-  if (d.getTime() <= Date.now()) return 'next month';
-  return formatResetDate(resetAt) || 'next month';
+// users.
+
+/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
+   sentence promises a schedule the response never named. The guards are
+   `formatResetTime`'s, shared with the composer bar. */
+function refillClause(resetAt, lead) {
+  const time = formatResetTime(resetAt);
+  return time ? `${lead} at ${time}` : lead;
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
@@ -1101,11 +1109,29 @@ function formatAllowanceReset(resetAt) {
 // task moved onto the paid balance, or an auto top up failed. The composer
 // notice carries the same facts for the *next* task; this card explains why
 // *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   const open = (action) => () => {
     trackBillingOpened('usage_alert');
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
+  if (kind === 'free_low') {
+    // Headline names the crossing, not the count: the composer bar carries
+    // the live count a few pixels above, and two identical headlines that
+    // then drift apart (the bar tracks the next poll, this card is frozen at
+    // the crossing) read as two different figures for one number.
+    // The body says what is true of the allowance rather than of this turn.
+    // The router resolves per turn and can land on a paid model, so "this
+    // task is running on free tokens" is a claim the crossing does not prove.
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Free Air allowance running low"
+        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
+        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+      />
+    );
+  }
   if (kind === 'auto_top_up_failed') {
     return (
       <ActionCard
@@ -1124,8 +1150,8 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
     <ActionCard
       time={time}
       agentLabel={agentLabel}
-      title="Free monthly tokens used"
-      body={`This task is now using your balance. Your free tokens reset on ${formatAllowanceReset(resetsAt)}.`}
+      title="Free Air allowance used up"
+      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
     />
   );
@@ -1623,6 +1649,21 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
+  // Usage alerts sit at the turn they happened in (lib/usageNoticePlacement).
+  // Computed out here because the last bucket renders below the streaming turn,
+  // a sibling of these rows. Keyed by identity: a positional key would collide.
+  const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
+  const usageCard = (n) => (
+    <UsageAlertCard
+      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
+      time={formatMetaTime(n.createdAt)}
+      agentLabel={agentLabel}
+      kind={n.kind}
+      resetsAt={n.resetsAt}
+      fractionLeft={n.fractionLeft}
+      isBillingOwner={isBillingOwner}
+    />
+  );
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
@@ -1803,7 +1844,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2006,9 +2047,9 @@ export default function ChatView({
         <div
           ref={scrollRef}
           data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
@@ -2031,19 +2072,6 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              // Usage alerts that happened during this task (ENG-1782) sit after
-              // the turns, so the reply stays next to its question and the
-              // card reads as "while this ran, this changed".
-              const usageAlertCards = (task.usageNotices || []).map((n, i) => (
-                <UsageAlertCard
-                  key={`usage-${i}`}
-                  time={formatMetaTime(n.createdAt)}
-                  agentLabel={agentLabel}
-                  kind={n.kind}
-                  resetsAt={n.resetsAt}
-                  isBillingOwner={isBillingOwner}
-                />
-              ));
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -2358,7 +2386,7 @@ export default function ChatView({
                       // The gate only issues this code when the org has no
                       // balance to fall onto, so the turn ended (ENG-1782).
                       title="Task stopped"
-                      body={`Your free monthly tokens are used up and your balance is empty. Add funds to keep working, or wait until ${formatAllowanceReset(m.resetAt)} when your free tokens reset.`}
+                      body={`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${refillClause(m.resetAt, '')}.`}
                       buttons={[
                         {
                           label: 'Add funds',
@@ -2470,8 +2498,9 @@ export default function ChatView({
                 <AnswerTurn
                   key={i}
                   state="done"
-                  // Streamed turns rarely carry createdAt — fall back to the
-                  // turn's own start time so the hover meta still has a date.
+                  // `createdAt` is never set on a message row, so the replayed
+                  // start time supplies this — and a replay with no steps has
+                  // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
@@ -2511,7 +2540,14 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
-              return [...turns, ...usageAlertCards];
+              // The trailing bucket renders after the streaming turn below, so
+              // a live turn's notice cannot split the question from its reply.
+              const rendered = [];
+              turns.forEach((node, i) => {
+                usageBuckets[i].forEach((n) => rendered.push(usageCard(n)));
+                rendered.push(node);
+              });
+              return rendered;
             })()}
 
             {streamingMsg ? (
@@ -2576,6 +2612,11 @@ export default function ChatView({
                 <WorkingIndicator label="Streaming…" />
               </AnswerTurn>
             )}
+
+            {/* Notices from the turn still running, below the answer rather
+                than above it: the crossing happened during this turn. With
+                nothing streaming this is just the end of the conversation. */}
+            {usageBuckets[visibleMessages.length].map(usageCard)}
           </div>
         </div>
 
@@ -2585,7 +2626,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}

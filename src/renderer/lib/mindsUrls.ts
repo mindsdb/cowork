@@ -99,6 +99,12 @@ export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/bil
 // owner (ENG-1782). For anyone else the same page opens a request-tokens
 // dialog instead, so callers only use this for the owner.
 export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
+/* The same add-credits dialog opened on its automatic tab, so an offer to turn
+   on auto top up lands on the form rather than on the billing page with the
+   control still to be found. Owner-only for the reason MINDS_ADD_FUNDS_URL is:
+   the console's auto top up controls call owner-only wallet endpoints, and a
+   member who follows this link gets a dialog they cannot submit. */
+export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —
@@ -115,6 +121,12 @@ export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
 export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
+
+// Desktop app download. `os=auto` lets the marketing page detect the visitor's
+// OS server-side and serve the right installer; `from` tags the referral
+// source for attribution, so traffic off the post-verification welcome page is
+// separable from the in-app "coming soon to Cloud" prompt (`from=cowork-web`).
+export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-welcome';
 
 // MindsHub sign-up: the Keycloak registration flow (not the account
 // page), which lands the new user back on the console. Built from the

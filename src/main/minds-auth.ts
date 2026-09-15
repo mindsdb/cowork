@@ -243,8 +243,9 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         // The session JWT is definitively dead, so replace it in the sidecar.
         // Re-resolve rather than blindly clearing: a user-supplied mdb_ key is
         // independent of the dead SSO session and keeps its explicit priority;
-        // without one, the same call clears the expired JWT.
-        if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential();
+        // without one, the same call clears the expired JWT and invalidates
+        // model availability. This is session loss, not routine token rotation.
+        if (!suppressCredentialHandoff) void settleResumeGateFromSelectedCredential(true);
         return { status: 'invalid_grant' };
       }
       console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
@@ -1499,7 +1500,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // working provider onto one with no credential behind it. Bailing leaves the
   // prior configuration intact; the boot path re-pushes on the next start and
   // the next sign-in retries the whole sequence.
-  if (!(await syncUsableMindsCredential())) {
+  if (!(await syncUsableMindsCredential({ invalidateCatalog: true }))) {
     console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
     return { dataRootChanged };
   }
@@ -1630,7 +1631,7 @@ function scheduleRefreshAt(expiresAt: number): void {
  * while the barrier stayed armed, so `POST /api/v1/responses` kept being held
  * its full bound and cancelled until the backed-off retry next came round. */
 export async function handOffMindsCredentialToStartedSidecar(): Promise<boolean> {
-  const usable = await syncUsableMindsCredential();
+  const usable = await syncUsableMindsCredential({ invalidateCatalog: true });
   if (usable) {
     cancelCredentialHandoffRetry();
     settleMindsResumeCredentialGate(true);
@@ -1683,12 +1684,12 @@ async function retryCredentialHandoff(generation: number): Promise<void> {
   scheduleCredentialHandoffRetry();
 }
 
-async function settleResumeGateFromSelectedCredential(): Promise<void> {
+async function settleResumeGateFromSelectedCredential(invalidateCatalog = false): Promise<void> {
   // A newer login or a user-supplied mdb_ key is usable; a successful PUT of
   // an empty value is not. Keep that distinction when deciding whether a turn
   // held across resume may proceed.
   const cancellationEpoch = _credentialHandoffCancellationEpoch;
-  const ready = await syncUsableMindsCredential();
+  const ready = await syncUsableMindsCredential({ invalidateCatalog });
   if (cancellationEpoch === _credentialHandoffCancellationEpoch) {
     settleMindsResumeCredentialGate(ready);
   }
@@ -1838,7 +1839,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // leave the sidecar presenting a token that still names the old organization
   // until the next refresh tick, so turns would bill the organization the
   // person just left while the menu said otherwise.
-  if (!await syncMindsCredential()) {
+  if (!await syncMindsCredential({ invalidateCatalog: true })) {
     await restoreActiveOrg(switched, sourceOrgId);
     return {
       ok: false,

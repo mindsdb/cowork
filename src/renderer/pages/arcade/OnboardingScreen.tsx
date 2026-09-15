@@ -11,7 +11,7 @@ import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '.
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
-import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
@@ -218,6 +218,12 @@ export default function OnboardingScreen({
   // effect (which re-runs on `provider` toggles) can't double-save /
   // double-fire onComplete.
   const finalizedRef = useRef(false);
+  // When the desktop-app link was last opened. host.openExternal is
+  // window.open() on web, so an accidental double-click lands two tabs on the
+  // download page. Deliberately NOT a one-shot latch like finalizedRef above:
+  // this screen stays mounted after the click, so latching would leave the
+  // link dead for anyone who closes the tab and comes back for it.
+  const downloadOpenedAtRef = useRef(0);
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
   // Which MindsHub organization the API key gets minted in. Only ever asked
@@ -719,6 +725,24 @@ export default function OnboardingScreen({
           >
             Continue
           </button>
+          {/* ENG-2311: the onboarding email sent minutes before this screen
+              makes getting the desktop app step 1 of 5, and this page said
+              nothing about it. An offer beside Continue, not ahead of it. */}
+          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
+            Cowork also runs on your desktop.{' '}
+            <button
+              type="button"
+              className="arc-link"
+              onClick={() => {
+                const now = Date.now();
+                if (now - downloadOpenedAtRef.current < 1000) return; // swallow a double-click
+                downloadOpenedAtRef.current = now;
+                host.openExternal(MINDS_DOWNLOAD_URL);
+              }}
+            >
+              Get the desktop app
+            </button>
+          </div>
           <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
             By continuing, you agree to our{' '}
             <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
