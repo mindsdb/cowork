@@ -149,7 +149,7 @@ python3 -c "import ast; ast.parse(open('server/anton_api/<file>.py').read())"
 Electron main (Node/TS)
   ├── spawns cowork-server subprocess (src/main/server-process.ts)
   ├── manages OAuth PKCE loopback (src/main/oauth-service.ts)
-  ├── handles IPC from renderer (src/main/index.ts)
+  ├── handles IPC from renderer (src/main/app.ts)
   └── exposes bridge via contextBridge (src/main/preload.ts → window.antontron)
 
 Electron renderer (React/TS, sandboxed)

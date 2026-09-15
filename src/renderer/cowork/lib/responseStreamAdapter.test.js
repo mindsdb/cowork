@@ -175,7 +175,7 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
 
-  it('clears the burst when a Hermes tool call starts', () => {
+  it('clears the burst when a tool call starts', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'thinking', content: 'Deciding…' },
@@ -238,7 +238,7 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
     expect(state.steps[0]._isScratchpad).toBe(true);
   });
 
-  it('moves preamble before a Hermes tool_call.start too', () => {
+  it('moves preamble before a tool_call.start too', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.output_text.delta', delta: 'Checking the docs.' },

@@ -352,6 +352,7 @@
 .code-approval__detail { max-height: 92px; margin: 8px 0 0; padding: 8px 9px; overflow: auto; border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent); border-radius: var(--r); background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 10.5px/1.45 var(--font-mono); }
 .code-approval__context { margin-top: 7px; display: flex; gap: 8px 12px; flex-wrap: wrap; color: inherit; font-size: 10px; opacity: .82; }
 .code-approval__actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.code-approval__actions .btn { height: auto; min-height: 28px; padding-block: var(--space-1); }
 
 .code-composer { flex: none; padding: 8px 28px 22px; background: transparent; }
 .code-prompt-queue { width: min(var(--code-measure), 100%); margin: 0 auto 6px; display: grid; gap: 4px; }
@@ -980,7 +981,8 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-user-message { max-width: 90%; }
   .code-activity-row { grid-template-columns: 1fr; }
   .code-activity-row__kind { display: none; }
-  .code-approval { max-height: 42vh; overflow-y: auto; }
+  .code-approval { max-height: 50vh; overflow-y: auto; }
+  .code-approval__signal { display: none; }
   .code-approval__actions { justify-content: stretch; }
   .code-approval__actions .btn { flex: 1 1 auto; }
   .code-handoff-primary { align-items: stretch; flex-direction: column; }

@@ -27,7 +27,7 @@ export function ApprovalCard({
         <div className="code-approval__actions">
           <Button size="sm" variant="danger" disabled={busy} onClick={() => onDecision('deny')}>Deny</Button>
           {approval.allow_session && (
-            <Button size="sm" variant="default" disabled={busy} onClick={() => onDecision('approve_session')}>Allow similar this task</Button>
+            <Button size="sm" variant="default" disabled={busy} onClick={() => onDecision('approve_session')}>Allow now and allow for similar commands</Button>
           )}
           <Button size="sm" variant="primary" disabled={busy} onClick={() => onDecision('approve_once')}>Approve once</Button>
         </div>

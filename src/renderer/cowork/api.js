@@ -39,7 +39,7 @@ const ROOT_BASE = `${API_ORIGIN}`;
 //
 // Electron: the main process injects the loopback server's bearer token (when
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
-// (src/main/index.ts). That token never reaches the renderer and is NOT the
+// (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
@@ -506,12 +506,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // (modelCatalog.js). The server already treats a null/absent
           // model as exactly that.
           model: (model && model !== MODEL_ROUTER_ID) ? model : null,
-          // The composer's per-task harness pick (ENG-1656 follow-up) —
-          // overrides the account-wide harness setting for this
-          // conversation only. Omitted (server keeps the account default)
-          // when the caller doesn't pass one, e.g. an in-task reply, where
-          // the harness pill never shows.
-          ...(harness ? { harness } : {}),
+          // Always named. This UI only knows Anton, so every send says so
+          // rather than lean on the account default, which an older server
+          // may still hold at a harness this build has no control left to
+          // change. Callers with a per-task pick (the composer) still win.
+          harness: harness || 'anton',
           // Per-task reasoning-effort override (ENG-1940) — takes precedence
           // over the account-wide per-role effort setting for this turn only.
           // Same conditional-key pattern as `harness` just above: omitted
@@ -2218,26 +2217,59 @@ export async function patchConversation(id, body) {
   });
 }
 
+const DELETE_TURN_TIMEOUT_MS = 30000;
+
 // Delete one user→answer cycle (the question + the assistant
 // response, including any internal tool_use/tool_result blocks
 // anton generated during the turn). `turnIndex` is the 0-based
 // displayable bubble index — same value used to look up events
 // in the per-turn sidecar.
 export async function deleteConversationTurn(id, turnIndex) {
-  const res = await authFetch(
-    BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
-    {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    },
-  );
-  if (res.status === 404) return { status: 'gone', id, turnIndex };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete turn failed (${res.status})`);
+  // The caller holds the turn in an in-flight state for the life of this
+  // request and refuses further deletes in that conversation while it is out,
+  // so a request that never settles would strand the conversation until a
+  // reload. Multiple seconds is normal here; never answering is not.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
+  try {
+    const res = await authFetch(
+      BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+      },
+    );
+    if (res.status === 404) return { status: 'gone', id, turnIndex };
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json())?.detail || ''; } catch {}
+      const err = new Error(detail || `Delete turn failed (${res.status})`);
+      // Carried like req() does: the caller has to tell a refusal apart from a
+      // gateway giving up on a delete the server may still be running.
+      err.status = res.status;
+      throw err;
+    }
+    // Awaited inside the bound: a server that sends headers and then stalls the
+    // body is the same hang the timeout exists for.
+    return await res.json();
+  } catch (e) {
+    // Giving up on the wire says nothing about the server, which may well have
+    // finished the delete, so this is typed rather than reported as a failure.
+    // Keyed on the error, not on `signal.aborted`: a server error raised after
+    // the timer fired is a refusal the server was explicit about, not a hang.
+    if (e?.name === 'AbortError') {
+      const timedOut = new Error(
+        `The delete request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds.`,
+        { cause: e },
+      );
+      timedOut.code = 'timeout';
+      throw timedOut;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 export async function deleteConversation(id) {

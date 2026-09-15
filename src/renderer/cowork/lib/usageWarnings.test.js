@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
   usageTransitions,
@@ -9,6 +9,7 @@ import {
   formatPercentShort,
   formatUsd,
   formatResetDate,
+  formatResetTime,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
 } from './usageWarnings';
@@ -59,6 +60,49 @@ describe('formatting', () => {
     expect(formatResetDate('nope')).toBeNull();
     expect(formatResetDate(null)).toBeNull();
   });
+
+  // It refills every few hours, so a date names a day the reader is in already.
+  describe('formatResetTime', () => {
+    const NOW = new Date('2026-09-14T09:00:00Z');
+
+    it('gives the clock time alone when the refill is later today', () => {
+      expect(formatResetTime('2026-09-14T14:15:00Z', NOW)).toBe('2:15 PM');
+    });
+
+    it('adds the date only when the refill lands on another local day', () => {
+      // A window crossing midnight must not read as a time already past.
+      expect(formatResetTime('2026-09-15T02:15:00Z', NOW)).toBe('Sep 15, 2:15 AM');
+    });
+
+    it('says nothing at all about a refill already past', () => {
+      // A stale time reads as imminent in a way a stale date never did.
+      expect(formatResetTime('2026-09-14T08:59:00Z', NOW)).toBeNull();
+      expect(formatResetTime(NOW.toISOString(), NOW)).toBeNull();
+    });
+
+    it('says nothing when there is nothing usable to quote', () => {
+      expect(formatResetTime('nope', NOW)).toBeNull();
+      expect(formatResetTime(null, NOW)).toBeNull();
+    });
+
+    // At TZ=UTC a same-UTC-day test and a same-local-day test agree. West of
+    // UTC they part company, and only the local one is right.
+    describe('west of UTC', () => {
+      const realTz = process.env.TZ;
+      beforeEach(() => { process.env.TZ = 'America/Los_Angeles'; });
+      afterEach(() => { process.env.TZ = realTz; });
+
+      it('keeps the time bare when the refill is a different UTC day but the same local one', () => {
+        // 23:00Z is 4pm in LA and 01:15Z is 6:15pm the same evening. A UTC
+        // comparison would wrongly prepend "Sep 15" to tonight.
+        expect(formatResetTime('2026-09-15T01:15:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('6:15 PM');
+      });
+
+      it('names the LOCAL date when the refill really is another day', () => {
+        expect(formatResetTime('2026-09-15T08:30:00Z', new Date('2026-09-14T23:00:00Z'))).toBe('Sep 15, 1:30 AM');
+      });
+    });
+  });
 });
 
 describe('deriveComposerWarning', () => {
@@ -67,7 +111,7 @@ describe('deriveComposerWarning', () => {
     expect(w.kind).toBe('free_at_rest');
     expect(w.resting).toBe(true);
     expect(w.title).toBe('80% of your free allowance left');
-    expect(w.body).toMatch(/^Resets on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^Resets at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
     // No dismissal key: the standing figure is not closable, so nothing can
     // key a dismissal to it.
@@ -123,7 +167,7 @@ describe('deriveComposerWarning', () => {
     }));
     expect(w.kind).toBe('free_low');
     expect(w.title).toBe('12% of your free allowance left');
-    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your allowance refills on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your allowance refills at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
@@ -144,7 +188,7 @@ describe('deriveComposerWarning', () => {
     expect(w.kind).toBe('free_used');
     expect(w.tone).toBe('info');
     expect(w.title).toBe('Free allowance used up');
-    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your allowance refills on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your allowance refills at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
@@ -268,14 +312,14 @@ describe('deriveComposerWarning', () => {
     }), { model: 'mindshub_air' })?.kind).toBe('balance_empty');
   });
 
-  it('balance empty and free tokens used on Air: names both and the reset date', () => {
+  it('balance empty and free tokens used on Air: names both and the refill time', () => {
     const w = deriveComposerWarning(usage({
       freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'ok' },
     }));
     expect(w.kind).toBe('balance_empty');
-    expect(w.body).toMatch(/^Your free allowance is used up too\. Add funds, or wait for it to refill on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^Your free allowance is used up too\. Add funds, or wait for it to refill at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['Add funds']);
   });
 

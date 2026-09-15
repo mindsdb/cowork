@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
-import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { Tooltip } from './cowork/components/ui/Tooltip';
@@ -15,7 +14,6 @@ import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
-import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
 // Onboarding flow:
@@ -27,7 +25,6 @@ type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
-const COWORKER_KEY = 'anton.coworker';
 // Minimum time the welcome orb stays up so it doesn't flash on fast boots.
 // The boot veil only briefly masks the window-show moment (~140ms + ~260ms
 // fade), so the animated orb is on screen almost immediately and stays for
@@ -51,17 +48,6 @@ function hasLocalTermsConsent(): boolean {
 
 function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
-}
-
-// Agent defaults to Anton (no picker in onboarding). A previously-selected
-// coworker in localStorage is still honored if present.
-function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
-  let id = 'anton';
-  try { id = window.localStorage.getItem(COWORKER_KEY) || 'anton'; } catch {}
-  const cw = COWORKERS.find((c) => c.id === id && !c.locked);
-  return cw
-    ? { id: cw.id, label: cw.name, sprite: cw.sprite }
-    : { id: 'anton', label: 'ANTON', sprite: 'anton' };
 }
 
 // Map skin + theme → the onboarding shell's look. arcade.css reads
@@ -89,7 +75,6 @@ export default function App() {
   // first-run/auth routing so interrupted, approval, failure, dense, and
   // responsive states stay deterministic even on a clean local profile.
   const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
-  const [coworker] = useState(recallCoworker);
   // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
   // setup/install screen (server wasn't up to take the DB write). Consumed once
   // by handlePostAuth after install. A ref (not state) — it drives a one-shot
@@ -327,7 +312,7 @@ export default function App() {
       )}
 
       {page === 'auth' && (
-        <OnboardingScreen coworker={coworker} onComplete={handleAuthComplete} />
+        <OnboardingScreen onComplete={handleAuthComplete} />
       )}
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}

@@ -1198,7 +1198,7 @@ export async function oauthCancel(): Promise<void> {
 }
 
 // ── MindsHub onboarding bridge ──────────────────────────────────
-// See main/index.ts for the rationale on the login/refresh/finalize
+// See main/app.ts for the rationale on the login/refresh/finalize
 // split. Web shells return failure — MindsHub PKCE only runs in
 // Electron; the web shell uses Keycloak redirect auth instead.
 

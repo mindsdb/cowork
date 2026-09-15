@@ -3,18 +3,18 @@
 // The logic is a 1:1 port of the previous Onboarding page — same phase
 // machine (choose / validating / minds-no-llm / success / error), same
 // host calls, same .env lines, same backend sync — re-skinned as the
-// stage where you plug a power source into the coworker you just chose.
+// stage where you plug a power source into the agent.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { type MindsOrg, needsOrgPick, organizationLabel, rankMindsOrgs } from '../../../shared/minds-orgs';
-import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
+import { fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
 import { MINDS_API_BASE, MINDS_DOWNLOAD_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
-import { PixelSprite, type SpriteName } from './sprites';
+import { PixelSprite } from './sprites';
 import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
@@ -29,17 +29,6 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai
 
 const CUSTOM_MODEL = '__custom__';
 
-/** Persist the cartridge choice as the `harness` setting (best-effort). */
-async function syncHarness(harnessId: string): Promise<void> {
-  try {
-    await authFetch(`${BASE}/settings/harness`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: harnessId }),
-    });
-  } catch {}
-}
-
 // The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
 // only non-picker path allowed to set a model (ENG-739) — so both onboarding and
 // the post-install replay (ENG-922) share one implementation.
@@ -52,7 +41,6 @@ export interface PersistDeps {
   /** Best-effort model write here (result ignored on the success path — server
    *  is up); the return type is widened so syncModelsToDb's boolean fits. */
   syncModels: (lines: string[]) => Promise<unknown>;
-  syncHarness: () => Promise<void>;
 }
 
 export type PersistResult =
@@ -83,23 +71,16 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
-    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
-    // model/harness sync must NOT bounce the user to the error screen over a
-    // saved config (ENG-848). Each gets its own catch so one failing can't
-    // skip the other (#435 review). Logged because a dropped model write does
-    // NOT self-heal (model keys ride neither the bulk re-sync nor the startup
-    // migration — ENG-739/922).
+    // syncModels writes the model keys the bulk DB sync intentionally skips.
+    // Best-effort: the config has ALREADY persisted authoritatively (dbOk),
+    // so a flaky model sync must NOT bounce the user to the error screen
+    // over a saved config. Logged because a dropped model write does NOT
+    // self-heal (model keys ride neither the bulk re-sync nor the startup
+    // migration).
     try {
       await deps.syncModels(lines);
     } catch (e) {
       console.error('[onboarding] best-effort model sync failed', e);
-    }
-    try {
-      await deps.syncHarness();
-    } catch (e) {
-      console.error('[onboarding] best-effort harness sync failed', e);
     }
     return { ok: true };
   } catch (e) {
@@ -182,12 +163,8 @@ function buildProviderEnv(
 }
 
 export default function OnboardingScreen({
-  coworker,
   onComplete,
-  onBack,
 }: {
-  /** Cartridge chosen on the select screen; persisted with the settings. */
-  coworker: { id: string; label: string; sprite: SpriteName };
   /**
    * Advance out of onboarding. On the setup-deferral path (fresh install, server
    * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
@@ -195,8 +172,6 @@ export default function OnboardingScreen({
    * other path.
    */
   onComplete: (deferredModelLines?: string[]) => void;
-  /** Optional — returns to the coworker-select screen. */
-  onBack?: () => void;
 }) {
   const [provider, setProvider] = useState<Provider>('minds');
   const [byokProvider, setByokProvider] = useState<ByokProvider>('anthropic');
@@ -361,7 +336,6 @@ export default function OnboardingScreen({
         saveSettings: (c) => host.saveSettings(c),
         syncToDb: syncSettingsToDb,
         syncModels: syncModelsToDb,
-        syncHarness: () => syncHarness(coworker.id),
       },
       lines,
     );
@@ -699,7 +673,7 @@ export default function OnboardingScreen({
     return (
       <ArcadeShell title="Welcome" subtitle="getting things ready">
         <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
-          <PixelSprite name={coworker.sprite} size={72} bob title={coworker.label} />
+          <PixelSprite name="anton" size={72} bob title="Anton" />
         </div>
       </ArcadeShell>
     );
@@ -713,7 +687,7 @@ export default function OnboardingScreen({
     return (
       <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
-          <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
+          <PixelSprite name="anton" size={84} bob title="Anton" />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
             Your workspace is ready. Give the agent a task. It does the work and hands back
             the results.
@@ -805,7 +779,7 @@ export default function OnboardingScreen({
     return (
       <ArcadeShell title="All set" subtitle="you're signed in">
         <div className="arc-stack arc-pop" style={{ gap: 18 }}>
-          <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
+          <PixelSprite name="anton" size={84} bob title="Anton" />
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--arc-green)' }}>
             You're all set!
           </div>
@@ -1117,12 +1091,6 @@ export default function OnboardingScreen({
             and{' '}
             <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
           </div>
-        )}
-
-        {onBack && phase !== 'validating' && (
-          <button type="button" className="arc-link" onClick={onBack} style={{ marginTop: 2 }}>
-            ← back
-          </button>
         )}
       </div>
     </ArcadeShell>
