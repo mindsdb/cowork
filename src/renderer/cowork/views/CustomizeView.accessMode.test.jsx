@@ -23,8 +23,14 @@ vi.mock('../api', () => ({
   deleteDatasource: vi.fn(),
   fetchConnector: vi.fn(() => Promise.resolve(HUBSPOT_SPEC)),
   fetchDatasources: vi.fn(() => Promise.resolve({ connections: CONNECTIONS })),
+  // method is top-level here, not nested under fields — the real local-mode
+  // detail endpoint pops _method out of `fields` and promotes it
+  // (ConnectionDetailResponse.method, connections.py). Nesting it under
+  // `fields` instead let a real bug (CustomizeView.jsx reading
+  // vaultFields._method, which is never actually populated) pass unnoticed.
   fetchSavedConnection: vi.fn(() => Promise.resolve({
-    fields: { _method: 'mcp', _access_mode: 'read', account_email: 'acme.hubspot' },
+    method: 'mcp',
+    fields: { _access_mode: 'read', account_email: 'acme.hubspot' },
     secureKeys: [],
   })),
   patchConnectionAccessMode: patchConnectionAccessModeMock,

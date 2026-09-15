@@ -395,8 +395,14 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Tool access — only MCP-based connections have this
                   (ENG-487, HubSpot first): every other connector's access
                   is fixed by whatever OAuth scopes it requested at connect
-                  time, with no after-the-fact control. */}
-              {vaultFields._method === 'mcp' && (
+                  time, with no after-the-fact control. `saved.method`, not
+                  `vaultFields._method`: the local-mode detail endpoint pops
+                  `_method` out of `fields` and promotes it to this top-level
+                  field (connections.py's ConnectionDetailResponse) — the
+                  same field `handleDelete` above already reads it from. A
+                  test double that leaves `_method` nested under `fields`
+                  instead would pass without ever exercising the real shape. */}
+              {saved?.method === 'mcp' && (
                 <>
                   <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
                     Tool access
@@ -553,7 +559,13 @@ export default function CustomizeView({
       if (host.isElectron) {
         const detail = savedDetail || await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
         const accountEmail = detail?.fields?.account_email;
-        if (detail?.method === 'browser_oauth_builtin' && accountEmail) {
+        // 'mcp' (HubSpot, ENG-487) needs the same Electron-side cleanup as
+        // browser_oauth_builtin — it's the only place holding the real
+        // refresh_token, so skipping this for 'mcp' would leave a stale
+        // keychain entry and an orphaned refresh-loop interval behind after
+        // "disconnect". Live-tested miss, same class as the other hardcoded
+        // 'browser_oauth_builtin' checks found and fixed in app.ts.
+        if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
           const fresh = await fetchDatasources();
           const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
