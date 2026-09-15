@@ -119,18 +119,20 @@ describe('a turn being deleted', () => {
     const { rerender } = render(
       <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} />,
     );
+    // Selected by its own hook: artifact cards each render a role="status"
+    // region too, and theirs precede this one in document order.
     // Mounted before the delete starts: a live region inserted at the moment
     // it should speak is not reliably announced. It also has to sit outside
     // the aria-busy turn, which tells a reader to hold off on that subtree.
-    const live = document.querySelector('[role="status"][aria-live="polite"]');
-    expect(live).not.toBeNull();
+    const live = screen.getByTestId('delete-turn-status');
+    expect(live).toHaveAttribute('aria-live', 'polite');
     expect(live.textContent).toBe('');
     expect(live.closest('[aria-busy="true"]')).toBeNull();
 
     rerender(
       <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
     );
-    const liveAfter = document.querySelector('[role="status"][aria-live="polite"]');
+    const liveAfter = screen.getByTestId('delete-turn-status');
     expect(liveAfter.textContent).toMatch(/deleting/i);
     expect(liveAfter.closest('[aria-busy="true"]')).toBeNull();
   });

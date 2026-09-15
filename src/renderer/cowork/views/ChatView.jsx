@@ -2666,7 +2666,12 @@ export default function ChatView({
                 inserted at the moment it should speak is not reliably
                 announced, and the turn is aria-busy, which tells a reader to
                 hold off on that subtree. */}
-            <div className="sr-only" role="status" aria-live="polite">
+            <div
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="delete-turn-status"
+            >
               {deleteInFlight ? 'Deleting the selected exchange.' : ''}
             </div>
           </div>
