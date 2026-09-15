@@ -932,3 +932,97 @@ describe('reaping quarantined organization subtrees', () => {
     expect(fs.existsSync(live)).toBe(true);
   });
 });
+
+// The ticket's acceptance criteria, exercised through the real resolution
+// rather than through a helper that models it. Each one names the criterion it
+// covers, so a future reader can tell what removing it would give up.
+describe('organization switching, end to end', () => {
+  const ORG_A = 'org-aaaa';
+  const ORG_B = 'org-bbbb';
+  let root: string;
+
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  const storesFor = (orgId: string) => orgStoreRoot(root, orgId);
+  const seed = (dir: string, marker: string) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'cowork.db'), marker, 'utf-8');
+  };
+
+  it('shows the other organization nothing of the first, and gives it back on the way home', () => {
+    // "Switching back to Organization A shows its data only after an explicit
+    // switch back" — so the data must be SEPARATED, never deleted.
+    claimOrgRoot(root, ORG_A);
+    writeActiveOrgSync(root, ORG_A);
+    seed(storesFor(ORG_A), 'org-a-data');
+
+    writeActiveOrgSync(root, ORG_B);
+    const bStores = storesFor(ORG_B);
+    expect(bStores).not.toBe(storesFor(ORG_A));
+    expect(fs.existsSync(path.join(bStores, 'cowork.db'))).toBe(false);
+    seed(bStores, 'org-b-data');
+
+    writeActiveOrgSync(root, ORG_A);
+    expect(fs.readFileSync(path.join(storesFor(ORG_A), 'cowork.db'), 'utf-8')).toBe('org-a-data');
+    // And the first organization's work did not disturb the second's.
+    expect(fs.readFileSync(path.join(bStores, 'cowork.db'), 'utf-8')).toBe('org-b-data');
+  });
+
+  it('cannot resolve the previous organization\'s stores while another is active', () => {
+    // "Direct navigation or refresh cannot restore Organization A data while
+    // Organization B is active." A refresh re-reads the record; it must keep
+    // answering with B.
+    claimOrgRoot(root, ORG_A);
+    seed(root, 'org-a-data');
+    writeActiveOrgSync(root, ORG_B);
+
+    for (let refresh = 0; refresh < 3; refresh += 1) {
+      const stores = orgStoreRoot(root, readActiveOrg(root));
+      expect(stores).toBe(path.join(root, ORGS_DIR, ORG_B));
+      expect(stores).not.toBe(root);
+    }
+  });
+
+  it('every store moves together, so none is left behind shared', () => {
+    // "Chat history, tasks and responses, traces, artifacts, projects, skills
+    // or memory" — the ticket lists them, and one left behind is the bug.
+    claimOrgRoot(root, ORG_A);
+    const env = orgStoreEnv(root, ORG_B);
+    const subtree = path.join(root, ORGS_DIR, ORG_B);
+    expect(env.DATABASE_URI).toContain(subtree);       // chats, tasks, responses
+    expect(env.COWORK_PROJECTS_DIR).toBe(path.join(subtree, 'projects'));
+    expect(env.COWORK_FILES_DIR).toBe(path.join(subtree, 'files'));
+    expect(env.COWORK_SKILLS_DIR).toBe(path.join(subtree, 'skills'));
+    expect(env.COWORK_MEMORY_DIR).toBe(path.join(subtree, 'memory'));
+    expect(env.COWORK_VAULT_DIR).toBe(path.join(subtree, 'data-vault'));
+    expect(env.COWORK_CODING_DIR).toBe(path.join(subtree, 'coding'));
+    expect(env.ANTON_COWORK_STATE_DIR).toBe(subtree);  // publish history
+    expect(env.ANTON_SKILLS_ROOT_DIR).toBe(path.join(subtree, 'anton', 'skills'));
+  });
+
+  it('keeps an upgraded install on its data, under the organization it was in', () => {
+    // The regression that matters most: this is the one that could break for
+    // every existing user. The organization the token already named claims the
+    // root, so a ranked default preferring a different one cannot take it.
+    seed(root, 'existing-history');
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+
+    claimOrgRoot(root, ORG_A);                 // the organization already in use
+    writeActiveOrgSync(root, ORG_A);
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+    expect(fs.readFileSync(path.join(root, 'cowork.db'), 'utf-8')).toBe('existing-history');
+
+    // A different organization does NOT inherit it.
+    writeActiveOrgSync(root, ORG_B);
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(path.join(root, ORGS_DIR, ORG_B));
+  });
+
+  it('leaves a single-organization install on exactly the paths it had', () => {
+    claimOrgRoot(root, ORG_A);
+    writeActiveOrgSync(root, ORG_A);
+    expect(orgStoreEnv(root, readActiveOrg(root))).toEqual({});
+  });
+});
