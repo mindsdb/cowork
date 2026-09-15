@@ -9,8 +9,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Alert, Button, EmptyState } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { Alert, Button, EmptyState, Select } from '../components/ui';
+import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -103,6 +103,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerState, setPickerState] = useState({ status: 'idle' });
+  // "Edit access" (ENG-487) — no existing connector has an editable-
+  // after-connect setting, so this is its own small piece of state rather
+  // than reusing pickerState's shape.
+  const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
   // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
   // a pick attempt's own continuation can tell whether it's still the
   // active one — a single shared boolean "was cancel ever clicked" flag
@@ -119,6 +123,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
     setSpec(null);
     setSaved(null);
     setPickerState({ status: 'idle' });
+    setAccessModeState({ status: 'idle' });
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -186,6 +191,17 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
     pickerAttemptRef.current++; // invalidates the in-flight attempt's eventual resolution
     host.cancelDrivePicker();
     setPickerState({ status: 'idle' });
+  };
+
+  const handleChangeAccessMode = async (nextMode) => {
+    setAccessModeState({ status: 'saving' });
+    try {
+      await patchConnectionAccessMode(connection.engine, connection.name, nextMode);
+      setSaved((prev) => (prev ? { ...prev, fields: { ...prev.fields, _access_mode: nextMode } } : prev));
+      setAccessModeState({ status: 'idle' });
+    } catch (err) {
+      setAccessModeState({ status: 'error', reason: err?.message || String(err) });
+    }
   };
 
   // Display list: spec fields in order (vault value where available),
@@ -360,6 +376,36 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                           </a>
                         ))}
                       </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Tool access — only MCP-based connections have this
+                  (ENG-487, HubSpot first): every other connector's access
+                  is fixed by whatever OAuth scopes it requested at connect
+                  time, with no after-the-fact control. */}
+              {vaultFields._method === 'mcp' && (
+                <>
+                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                    Tool access
+                  </div>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
+                      What Anton can do with this connection's tools. Changing this doesn't require reconnecting.
+                    </div>
+                    <Select
+                      value={vaultFields._access_mode || 'read'}
+                      onValueChange={handleChangeAccessMode}
+                      disabled={accessModeState.status === 'saving'}
+                      options={[
+                        { value: 'read', label: 'Read only' },
+                        { value: 'write', label: 'Read and write' },
+                        { value: 'none', label: 'No tool access' },
+                      ]}
+                    />
+                    {accessModeState.status === 'error' && (
+                      <div className="text-[12px] text-danger">{accessModeState.reason}</div>
                     )}
                   </div>
                 </>

@@ -1700,6 +1700,18 @@ export async function fetchSavedConnection(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
 }
 
+// Changes an MCP-based connection's read/write/none tool-access mode after
+// it's already connected (ENG-487 — HubSpot's connector is the first with
+// an editable-after-connect setting). No PKCE, no reconnect — a purely
+// local write on cowork-server's side (or a proxy to auth in org mode),
+// works identically from Electron and the web SPA.
+export async function patchConnectionAccessMode(engine, name, accessMode) {
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
+    method: 'PATCH',
+    body: JSON.stringify({ access_mode: accessMode }),
+  });
+}
+
 // Sentinel string used in the modify-flow round-trip. Mirrors the
 // constant in `anton.core.datasources.data_vault.ANTON_VAULT_KEEP` —
 // they MUST stay in sync. The form panel uses this to detect "user

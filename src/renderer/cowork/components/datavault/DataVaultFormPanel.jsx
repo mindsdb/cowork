@@ -285,8 +285,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
 
     // Built-in browser OAuth — user clicked Submit after filling any
-    // required fields (e.g. developer token for Google Ads).
-    if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
+    // required fields (e.g. developer token for Google Ads). 'mcp' drives
+    // the identical host.oauthConnect() PKCE call — HubSpot's MCP Auth App
+    // (ENG-487) is OAuth 2.1 + PKCE with a fixed client_id/secret, same
+    // shape as browser_oauth_builtin, just a different method id since it
+    // authenticates against HubSpot's MCP server rather than its REST API.
+    if ((authMethod === 'browser_oauth_builtin' || authMethod === 'mcp') && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const providerLabel = providerNameFromSpec(spec);
       const successTitle = `${providerLabel} connected`;
