@@ -146,7 +146,7 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
-  recordSignedInAccount(accessToken);
+  recordSignedInAccount(accessToken, refreshToken);
   broadcastAuthChanged(true);
 }
 
@@ -156,12 +156,16 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 // boot with no network. Writing it here and clearing it in clearTokens keeps the
 // record's lifetime equal to the session's, so "no record" and "no session" are
 // one state rather than two.
-function recordSignedInAccount(accessToken: string): void {
-  const accountId = accountIdFromToken(accessToken);
+function recordSignedInAccount(accessToken: string, refreshToken: string): void {
+  // Both tokens come from the one exchange and name the same account, so an
+  // access token this cannot read is not on its own a reason to give up the
+  // session's identity. Never the STORED refresh token, which may be older
+  // than this exchange and name whoever held the session before it.
+  const accountId = accountIdFromToken(accessToken) ?? accountIdFromToken(refreshToken || null);
   if (!accountId) {
-    // An opaque or sub-less token still authenticates, so the session is real
-    // and the previous account's record must not be left standing for it.
-    console.warn('[token-store] the signed-in token names no account');
+    // Both tokens opaque, and the session still authenticates, so the previous
+    // account's record must not be left standing for it.
+    console.warn('[token-store] the signed-in tokens name no account');
     quarantineSession();
     return;
   }
@@ -173,16 +177,10 @@ function recordSignedInAccount(accessToken: string): void {
   }
 }
 
-// NOT best-effort, and never a plain return. Whenever the record cannot be made
-// to name THIS session it still names the PREVIOUS account, which resolves this
-// session onto that account's data root, and every check downstream compares
-// against the same stale record and agrees.
-//
-// Marked, not removed: an absent record reads as "never signed in", which on an
-// upgraded install resolves to the DEFAULT root — its incumbent's data, and the
-// reconciliation path would then move the sidecar onto it. The marker says
-// "signed in, unnameable", which quarantines. An empty app is recoverable; a
-// cross-account read is the bug.
+// NOT best-effort, and never a plain return: a record that cannot be made to
+// name THIS session still names the previous account and resolves onto its
+// data. Marked rather than removed, because an absent record reads as "never
+// signed in", which does not always quarantine — see clearActiveAccountRecord.
 function quarantineSession(): void {
   try {
     markActiveAccountUnresolved(coworkHome());
