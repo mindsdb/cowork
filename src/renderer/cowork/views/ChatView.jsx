@@ -2086,15 +2086,6 @@ export default function ChatView({
               </button>
             )}
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
-              let assistantTurnIdx = -1;
-              let userInputIdx = -1;
               // Skip + orphan rules live together in lib/turnVisibility so a
               // user message whose only assistant bubble is skipped keeps the
               // delete affordance the hidden bubble used to carry (ENG-1304,
@@ -2109,8 +2100,6 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
-                userInputIdx += 1;
-                const turnIdxForThisUser = userInputIdx;
                 const orphan = isOrphanUser(i);
                 return (
                   <UserTurn
@@ -2124,7 +2113,13 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    // Anchored on this user message's own id (ENG-2768) — an
+                    // orphan turn (stopped/failed before any answer) has no
+                    // assistant row to anchor on instead. Hidden, not just
+                    // disabled, when there's no id yet (a stop/error refetch
+                    // that hasn't landed) rather than rendering a button that
+                    // 422s silently when clicked.
+                    onDelete={orphan && m.id ? () => onDeleteTurn?.(m.id) : null}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
@@ -2515,20 +2510,12 @@ export default function ChatView({
                   />
                 );
               }
-              assistantTurnIdx += 1;
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Same predicate keeps isOrphanUser's delete affordance honest.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
-              const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
                   key={messageKey(m, i)}
@@ -2538,7 +2525,12 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
+                  // Anchored on this assistant message's own id (ENG-2768).
+                  // Hidden, not just disabled, when there's no id yet — a
+                  // just-completed turn always has one (step 9 captures it
+                  // off the completion frame), so this only ever applies to
+                  // the sliver of time before that lands.
+                  onDelete={m.id ? () => onDeleteTurn?.(m.id) : null}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
                 >

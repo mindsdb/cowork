@@ -60,7 +60,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
+import { currentTurnAnchorId, dropNoticesFromTurn } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -87,6 +87,7 @@ import {
   applySessionMessages,
   persistTurnState,
   mergeConvTurns,
+  removeConvTurnsFor,
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
@@ -1956,11 +1957,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -1976,7 +1975,7 @@ function AppCore() {
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent && !configErrorInBody) {
-          persistTurnState(taskId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(taskId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // Open the side panel if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
@@ -2611,8 +2610,8 @@ function AppCore() {
       // composer: a task on an explicit paid model never hears about free tokens.
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
-      const turnIndex = currentTurnIndex(t.messages);
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, turnIndex }))] };
+      const anchorId = currentTurnAnchorId(t.messages);
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, anchorId }))] };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -3115,15 +3114,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          // Count prior assistant turns BEFORE adding the new one so
-          // the persisted index lines up with what mergeConvTurns
-          // expects on reload (the merge walks assistant messages in
-          // the same order and looks up by index).
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -3145,7 +3138,7 @@ function AppCore() {
         // history file doesn't carry step metadata, so this is a
         // sidecar in localStorage.
         if (finalContent && !configErrorInBody) {
-          persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(finalId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // If the agent streamed a connect form, open the side panel
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
@@ -3555,11 +3548,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -3576,7 +3567,7 @@ function AppCore() {
         }));
         if (finalContent && !configErrorInBody) {
           // Sidecar — see persistTurnState comment for the full schema.
-          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3864,11 +3855,9 @@ function AppCore() {
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
         const finalAssistantMessageId = streamState.assistantMessageId;
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
@@ -3881,7 +3870,7 @@ function AppCore() {
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent) {
-          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         // A successful save changes the connectors list — refetch
@@ -4083,14 +4072,15 @@ function AppCore() {
   };
 
   // Pending delete-turn confirm payload — null when no modal is open.
-  // The user clicked the trash on the assistant message at this turn
-  // index of the conversation; we open ConfirmModal, then on confirm
-  // hit the API and re-hydrate the chat from the truncated history.
+  // The user clicked the trash on the turn's anchor row (the assistant
+  // reply, or the user message itself for an orphan turn) — see
+  // ChatView's onDelete wiring; we open ConfirmModal, then on confirm hit
+  // the API and truncate the chat locally (see truncateTaskAt).
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
-  const handleDeleteTurnRequest = (taskId, turnIndex) => {
-    if (!taskId || typeof turnIndex !== 'number') return;
-    setPendingDeleteTurn({ taskId, turnIndex });
+  const handleDeleteTurnRequest = (taskId, messageId) => {
+    if (!taskId || !messageId) return;
+    setPendingDeleteTurn({ taskId, messageId });
   };
 
   // "Load earlier messages" (ENG-2768): tracks which tasks currently have a
@@ -4127,8 +4117,41 @@ function AppCore() {
     }
   };
 
-  const performDeleteTurn = async (taskId, turnIndex) => {
-    if (!taskId || typeof turnIndex !== 'number') return;
+  // `messageId` (ENG-2768) anchors the turn being deleted: the assistant
+  // reply, or (an orphan turn with no reply yet) the user message that
+  // opened it — see ChatView's onDelete wiring. Both the local (`tmp-`)
+  // and server-backed paths now truncate `t.messages` locally at that
+  // id's own position instead of refetching: delete_turn always removes
+  // "this turn and everything after", the client already knows exactly
+  // which local rows that covers, and a page-merge refetch could
+  // resurrect rows the server actually deleted (or fail to remove ghosted
+  // ones) if the server's real cut point ever differs from what the
+  // client assumed — e.g. an error row widening the cut server-side.
+  const truncateTaskAt = (t, messageId) => {
+    const msgs = t.messages || [];
+    const anchorIdx = msgs.findIndex((m) => m.id === messageId);
+    if (anchorIdx === -1) return t;
+    // The anchor is the assistant reply for a paired turn, or the user
+    // message itself for an orphan turn (see ChatView's onDelete wiring).
+    // A paired turn's actual start is the nearest user row at or before the
+    // anchor, walking back over any tool/activity rows in between —
+    // matching delete_turn's own "walk back to the opening user message"
+    // rule server-side (services/conversations.py). An orphan anchor is
+    // already a user row, so the loop is a no-op for it.
+    let cutFrom = anchorIdx;
+    while (cutFrom > 0 && msgs[cutFrom].role !== 'user') cutFrom -= 1;
+    const removed = msgs.slice(cutFrom);
+    const removedIds = removed.map((m) => m.id).filter(Boolean);
+    removeConvTurnsFor(t.id, removedIds);
+    return {
+      ...t,
+      messages: msgs.slice(0, cutFrom),
+      usageNotices: dropNoticesFromTurn(t.usageNotices, removedIds),
+    };
+  };
+
+  const performDeleteTurn = async (taskId, messageId) => {
+    if (!taskId || !messageId) return;
     // If anton is actively streaming a response to the turn being
     // deleted, stop the stream first so the SSE connection doesn't
     // keep producing events for a turn that no longer exists. The
@@ -4138,69 +4161,18 @@ function AppCore() {
     }
     if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
       // No server-side history yet — drop the local pair only.
-      setTasks((prev) => prev.map((t) => {
-        if (t.id !== taskId) return t;
-        let assistantSeen = -1;
-        let dropFromUserAt = -1;
-        let dropEnd = (t.messages || []).length;
-        for (let i = 0; i < (t.messages || []).length; i++) {
-          const m = t.messages[i];
-          if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
-            dropFromUserAt = i;
-          }
-          if (m.role === 'assistant') {
-            assistantSeen += 1;
-            if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
-              dropEnd = i;
-              break;
-            }
-          }
-        }
-        if (dropFromUserAt === -1) return t;
-        // Read off the cut, not off `turnIndex`: the walk above counts assistant
-        // rows while the caller counts user ones, so it can take extra turns.
-        const cut = t.messages.slice(dropFromUserAt, dropEnd);
-        return {
-          ...t,
-          usageNotices: removeNoticeTurns(
-            t.usageNotices,
-            userTurnCount(t.messages.slice(0, dropFromUserAt)),
-            userTurnCount(cut),
-          ),
-          messages: [
-            ...t.messages.slice(0, dropFromUserAt),
-            ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
-          ],
-        };
-      }));
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
       return;
     }
     try {
-      await deleteConversationTurn(taskId, turnIndex);
+      await deleteConversationTurn(taskId, messageId);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTurn] server delete failed', e);
       alert(`Could not delete this exchange: ${e?.message || e}`);
       return;
     }
-    // Re-fetch the conversation so `tasks[].messages` reflects the
-    // truncated server history (and any reindexed events sidecar).
-    try {
-      const fresh = await fetchSession(taskId);
-      if (fresh && Array.isArray(fresh.messages)) {
-        setTasks((prev) => prev.map((t) =>
-          t.id === taskId
-            ? {
-              ...t,
-              messages: applySessionMessages(taskId, fresh.messages),
-              // What survived says how many turns are left. Counted from the
-              // refetch, since the server resolves `turnIndex` its own way.
-              usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
-            }
-            : t,
-        ));
-      }
-    } catch {}
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
   };
 
   const handleDeleteProject = (project) => {
@@ -4810,7 +4782,7 @@ function AppCore() {
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
-            onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
+            onDeleteTurn={(messageId) => handleDeleteTurnRequest(currentTask?.id, messageId)}
             onLoadEarlierMessages={() => handleLoadEarlierMessages(currentTask?.id)}
             loadingEarlierMessages={loadingOlderMessagesFor.has(currentTask?.id)}
             onMoveTaskToProject={handleOpenMoveModal}
@@ -5276,7 +5248,7 @@ function AppCore() {
         onConfirm={async () => {
           const payload = pendingDeleteTurn;
           setPendingDeleteTurn(null);
-          if (payload) await performDeleteTurn(payload.taskId, payload.turnIndex);
+          if (payload) await performDeleteTurn(payload.taskId, payload.messageId);
         }}
       />
 

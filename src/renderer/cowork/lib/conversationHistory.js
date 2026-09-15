@@ -206,6 +206,24 @@ export function writeConvTurns(cid, data) {
   catch {} // private mode / quota — fail silently
 }
 
+// Drops the sidecar entries for message ids removed by a turn delete
+// (ENG-2768) — hygiene, not correctness: an id key can't collide with a
+// surviving turn's entry the way a counted position could, so leaving a
+// stale entry behind would only ever be inert, never wrong. `removedIds`
+// may be an array or a Set.
+export function removeConvTurnsFor(cid, removedIds) {
+  if (!cid) return;
+  const ids = removedIds instanceof Set ? removedIds : new Set(removedIds || []);
+  if (ids.size === 0) return;
+  const map = readConvTurns(cid);
+  if (!map) return;
+  let changed = false;
+  for (const id of ids) {
+    if (id in map) { delete map[id]; changed = true; }
+  }
+  if (changed) writeConvTurns(cid, map);
+}
+
 // One-time migration from the old artifact-only sidecar. Each entry
 // was an array of artifact-shape steps; promote it to the new shape.
 export function migrateLegacyArtifacts(cid) {
@@ -345,10 +363,14 @@ export function applySessionMessages(
 
 // Persist the full step set for one assistant turn so reload restores
 // the Thinking block, scratchpad tabs, and inline artifact cards.
-// `turnIndex` is the 0-based position of this assistant message among
-// all assistant messages in the conversation.
-export function persistTurnState(cid, turnIndex, steps, startedAt) {
-  if (!cid || !Array.isArray(steps) || steps.length === 0) return;
+// `messageId` (ENG-2768) is the assistant message's own persisted id —
+// previously a counted position among assistant messages, which broke
+// once a conversation could be lazily/partially loaded (the same write
+// could land under a DIFFERENT turn's key depending on how much history
+// happened to be in memory, silently overwriting it). An id-keyed write
+// can't collide with another turn's entry regardless of what's loaded.
+export function persistTurnState(cid, messageId, steps, startedAt) {
+  if (!cid || !messageId || !Array.isArray(steps) || steps.length === 0) return;
   const map = readConvTurns(cid) || {};
   // Strip any non-serialisable fields (refs, functions). The step
   // shape is plain data otherwise.
@@ -380,24 +402,29 @@ export function persistTurnState(cid, turnIndex, steps, startedAt) {
     _isToolCall: !!s._isToolCall,
     _scratchpadTabId: s._scratchpadTabId || null,
   }));
-  map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
+  map[messageId] = { steps: sanitized, startedAt: startedAt ?? null };
   writeConvTurns(cid, map);
 }
 
-// Merge persisted step + timing data onto assistant messages by turn
-// index. Idempotent — if a message already has steps from a fresh
-// stream we don't overwrite (the live data is more accurate).
+// Merge persisted step + timing data onto assistant messages by id
+// (ENG-2768 — previously a counted position, see persistTurnState).
+// Idempotent — if a message already has steps from a fresh stream we
+// don't overwrite (the live data is more accurate). A message with no id
+// yet (a live/local-only row still in flight) has nothing to look up and
+// is left as-is; old position-keyed entries from before this change
+// simply stop matching, which only means those specific turns render
+// without their restored Thinking block until re-run — never a
+// wrong-turn attachment, which is the bug this replaces.
 export function mergeConvTurns(cid, messages) {
   if (!cid || !messages) return messages;
   migrateLegacyArtifacts(cid);
   const map = readConvTurns(cid);
   if (!map) return messages;
-  let assistantIdx = 0;
   return messages.map((m) => {
     if (m.role !== 'assistant') return m;
     if (m._turnComplete) return m;
-    const saved = map[assistantIdx];
-    assistantIdx += 1;
+    if (!m.id) return m;
+    const saved = map[m.id];
     if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
     const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
     if (hasLiveSteps) return m;

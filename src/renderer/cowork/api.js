@@ -2280,18 +2280,22 @@ export async function patchConversation(id, body) {
 
 // Delete one user→answer cycle (the question + the assistant
 // response, including any internal tool_use/tool_result blocks
-// anton generated during the turn). `turnIndex` is the 0-based
-// displayable bubble index — same value used to look up events
-// in the per-turn sidecar.
-export async function deleteConversationTurn(id, turnIndex) {
+// anton generated during the turn).
+/** `messageId` anchors the turn: the visible assistant message it produced,
+ * or (a turn stopped/failed before any answer) the opening user message
+ * itself — matching the server's two accepted anchor shapes (ENG-2768).
+ * Positional (`turnIndex`) doesn't survive a lazily-loaded/paginated
+ * conversation, so this replaced that contract; both worktrees land
+ * together. */
+export async function deleteConversationTurn(id, messageId) {
   const res = await authFetch(
-    BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+    BASE + `/conversations/${encodeURIComponent(id)}/turns/${encodeURIComponent(messageId)}`,
     {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     },
   );
-  if (res.status === 404) return { status: 'gone', id, turnIndex };
+  if (res.status === 404) return { status: 'gone', id, messageId };
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json())?.detail || ''; } catch {}

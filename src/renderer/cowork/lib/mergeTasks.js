@@ -48,13 +48,24 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     // knowledge of a task's own fetch state is never staler than a list
     // refresh's placeholder, so it always wins when present.
     const messagesStatus = l.messagesStatus ?? server.messagesStatus;
+    // Same story as messagesStatus: `server` is the list fetch, which never
+    // carries pagination state at all (undefined, not false) — so the local
+    // value always wins when present. Without this, the unconditional
+    // background refresh every task-open triggers (openConversation) wipes
+    // "load earlier messages" the moment it lands, on a task whose own
+    // fetchSession already established there's more history (ENG-2768).
+    const hasMoreMessages = l.hasMoreMessages ?? server.hasMoreMessages;
+    const messagesCursor = l.messagesCursor ?? server.messagesCursor;
     if (!isStreaming && !hasLocalContent) {
       // Even without live messages, prefer the locally-bumped
       // updatedAt if it's newer — handleSendInTask stamps the task
       // before any stream events arrive, so a fetchSessions that
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
-      return { ...server, model, usageNotices, messagesStatus, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
+      return {
+        ...server, model, usageNotices, messagesStatus, hasMoreMessages, messagesCursor,
+        updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
+      };
     }
     if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
       return {
@@ -62,6 +73,8 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
         model,
         usageNotices,
         messagesStatus,
+        hasMoreMessages,
+        messagesCursor,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
         disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
         attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
@@ -74,6 +87,8 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       model,
       usageNotices,
       messagesStatus,
+      hasMoreMessages,
+      messagesCursor,
       // Local wins for the live conversation surface.
       messages: lMessages,
       status: l.status || server.status,

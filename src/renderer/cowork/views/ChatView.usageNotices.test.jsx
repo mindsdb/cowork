@@ -25,8 +25,8 @@ const task = (usageNotices, extraMessages = []) => ({
   title: 'Weekly digest',
   status: 'idle',
   messages: [
-    { role: 'user', content: 'Pull last week into a digest.' },
-    { role: 'assistant', content: 'Done. Here is the digest.' },
+    { role: 'user', id: 'u0', content: 'Pull last week into a digest.' },
+    { role: 'assistant', id: 'a0', content: 'Done. Here is the digest.' },
     ...extraMessages,
   ],
   usageNotices,
@@ -70,7 +70,7 @@ describe('ChatView usage notices', () => {
   // The cards used to be appended after every turn, so after a top-up a
   // "running low" card sat below the newer messages.
   it('leaves a notice at the turn it happened in when the conversation continues', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
     const later = [
       { role: 'user', content: 'Added credits — carry on.' },
       { role: 'assistant', content: 'Picking it back up.' },
@@ -84,7 +84,7 @@ describe('ChatView usage notices', () => {
   // The anchor is the turn, not the row, so a card never splits a question from
   // its answer.
   it('keeps the reply next to its question', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 0 }];
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
     render(<ChatView task={task(notices, [{ role: 'user', content: 'Added credits — carry on.' }])} />);
     const question = screen.getByText('Pull last week into a digest.');
     const reply = screen.getByText('Done. Here is the digest.');
@@ -96,9 +96,9 @@ describe('ChatView usage notices', () => {
   // The streaming answer is a sibling of the transcript rows, so a trailing
   // card used to render above it, then move once the turn committed.
   it('keeps a live turn\'s notice below the answer still streaming', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', turnIndex: 1 }];
+    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u1' }];
     const streaming = [
-      { role: 'user', content: 'One more thing.' },
+      { role: 'user', id: 'u1', content: 'One more thing.' },
       { role: '_streaming', content: 'Working on it', streamStatus: 'in_progress' },
     ];
     // Streaming text is one <span> per word, so a single node never holds the
