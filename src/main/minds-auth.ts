@@ -1789,6 +1789,20 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
   }
 }
 
+/** Put the record back, reporting whether it landed. writeActiveOrgSync throws
+ *  by contract, and on a rollback path that exception would escape the switch
+ *  with the record still naming the target organization and the session never
+ *  restored. */
+function rollbackActiveOrg(orgId: string | null): boolean {
+  try {
+    writeActiveOrgSync(accountDataRoot(), orgId);
+    return true;
+  } catch (err) {
+    console.warn('[minds-auth] could not put the active organization record back', err);
+    return false;
+  }
+}
+
 async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
   const token = await freshAccessToken();
   if (!token) return { ok: false, activeOrgId: null, orgs: [], error: 'Sign in to change organization.' };
@@ -1825,8 +1839,16 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
       };
     }
     storeOrgPreference(userId, target.id, true);
-    const moved = await ensureSidecarOnCurrentAccountRoot();
-    return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: !moved, clearTenantState: true };
+    // Asked BEFORE the move, because ensureSidecar... answers the same `true`
+    // for "already correct" and "restarted", and only the second needs a
+    // reload: the renderer's state came from the database that was replaced.
+    if (sidecarIsOnCurrentStores()) {
+      return { ok: true, activeOrgId: sourceOrgId, orgs };
+    }
+    await ensureSidecarOnCurrentAccountRoot();
+    // Reload whether or not the move succeeded. The renderer is holding state
+    // from a database this session is no longer meant to be reading either way.
+    return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: true, clearTenantState: true };
   }
 
   if (!await switchActiveOrg(token, target.id)) {
@@ -1879,8 +1901,8 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // this one, so a turn started in that window bills this organization and
   // writes into the previous one. The start re-pushes the credential anyway.
   if (!await ensureSidecarOnCurrentAccountRoot()) {
-    writeActiveOrgSync(accountDataRoot(), sourceOrgId);
-    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
     // Not startServer(): two of the four ways the call above returns false
     // never stopped the sidecar, and a start already in flight would return a
     // pending start that captured its environment before this rollback. Only
@@ -1903,14 +1925,18 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // until the next refresh tick, so turns would bill the organization the
   // person just left while the menu said otherwise.
   if (!await syncMindsCredential({ invalidateCatalog: true })) {
-    writeActiveOrgSync(accountDataRoot(), sourceOrgId);
-    const restored = await restoreActiveOrg(switched, sourceOrgId);
-    await ensureSidecarOnCurrentAccountRoot();
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
+    // Captured, like the sibling branch above: if the sidecar cannot be moved
+    // back it is still serving the TARGET organization's database, and
+    // reporting "Nothing changed" there would leave every later read and write
+    // landing in the organization the person believes they left.
+    const recovered = await ensureSidecarOnCurrentAccountRoot();
     return {
       ok: false,
       activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
-      reloadRequired: !restored,
+      reloadRequired: !restored || !recovered,
       clearTenantState: true,
       error: 'Could not hand the new credential to the local server. Nothing changed.',
     };

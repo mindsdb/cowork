@@ -62,7 +62,7 @@ import { ensureActiveOrg, listMindsOrgs, selectEntitledOrg, switchMindsOrg } fro
 
 
 const b64url = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-import { ensureSidecarOnCurrentAccountRoot } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, sidecarIsOnCurrentStores } from './server-process';
 import { readActiveOrg } from './account-data';
 
 const makeJwt = (payload: Record<string, unknown>) =>
@@ -309,6 +309,8 @@ describe('switchMindsOrg', () => {
     // move fail would otherwise leave every later switch failing too.
     vi.mocked(ensureSidecarOnCurrentAccountRoot).mockReset();
     vi.mocked(ensureSidecarOnCurrentAccountRoot).mockResolvedValue(true);
+    vi.mocked(sidecarIsOnCurrentStores).mockReset();
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(true);
   });
   afterEach(() => {
     fs.rmSync(TEST_HOME, { recursive: true, force: true });
@@ -458,14 +460,30 @@ describe('switchMindsOrg', () => {
   });
 
   it('moves the sidecar when re-picking the organization already active', async () => {
-    // The repair action a person takes when they notice the wrong data. A
-    // no-op here leaves them with no way out from inside the app.
+    // The repair action a person takes when they notice the wrong data: the
+    // sidecar is on the wrong stores, so re-picking must move it AND reload,
+    // because the renderer's state came from the database being replaced.
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(false);
     installRoutedFetch(routesFor({ current: PERSONAL }));
 
     const result = await switchMindsOrg(PERSONAL.id);
 
     expect(result.ok).toBe(true);
     expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).toHaveBeenCalled();
+    expect(result.reloadRequired).toBe(true);
+  });
+
+  it('does nothing when re-picking and the sidecar is already right', async () => {
+    // No database changed under the renderer, so a reload here would throw away
+    // a person's unsent work for nothing.
+    vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(true);
+    installRoutedFetch(routesFor({ current: PERSONAL }));
+
+    const result = await switchMindsOrg(PERSONAL.id);
+
+    expect(result.ok).toBe(true);
+    expect(result.reloadRequired).toBeUndefined();
+    expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).not.toHaveBeenCalled();
   });
 
   it('puts the organization back when the sidecar will not take the credential', async () => {
