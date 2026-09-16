@@ -6,7 +6,6 @@ import {
   balanceDismissStep,
   freeDismissStep,
   countsAsWarning,
-  FREE_FIGURE_FRACTION,
   formatPercentShort,
   formatUsd,
   formatResetDate,
@@ -26,9 +25,9 @@ const usage = (over = {}) => ({
   ...over,
 });
 
-// Someone the allowance can actually stop: no wallet to fall through to, and
-// far enough in (28% left) for the number to matter. The standing figure is
-// theirs alone (ENG-2749); `usage()` above, with $42.10 in the wallet, keeps
+// Someone the allowance can actually stop: no wallet to fall through to. The
+// standing figure is theirs alone (ENG-2749), at any level; 28% is just a
+// number to read back. `usage()` above, with $42.10 in the wallet, keeps
 // working when the allowance runs out and gets no figure at any number.
 const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
 const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
@@ -82,13 +81,14 @@ describe('deriveComposerWarning', () => {
     expect(w.dismissKey).toBeUndefined();
   });
 
-  it('shows no figure above 30% left: at 80% the number is furniture, not a plan', () => {
-    expect(FREE_FIGURE_FRACTION).toBe(0.3);
-    expect(deriveComposerWarning(unpaid({ freeTokens: at(80) }))).toBeNull();
-    expect(deriveComposerWarning(unpaid({ freeTokens: at(30.0001) }))).toBeNull();
-    // The band's own edge is in, like the warning's.
-    expect(deriveComposerWarning(unpaid({ freeTokens: at(30) }))?.kind).toBe('free_at_rest');
-    expect(deriveComposerWarning(unpaid({ freeTokens: at(21) }))?.kind).toBe('free_at_rest');
+  it('keeps the figure at any level for someone with no wallet, down to the 20% warning', () => {
+    // Exactly as before ENG-2749: for them it is the only place the number
+    // shows before the warning, so an untouched allowance gets one too.
+    for (const percent of [100, 80, 30, 21]) {
+      const w = deriveComposerWarning(unpaid({ freeTokens: at(percent) }));
+      expect(w?.kind, `${percent}% left`).toBe('free_at_rest');
+      expect(w.title).toBe(`${percent}% of your free allowance left`);
+    }
     expect(deriveComposerWarning(unpaid({ freeTokens: at(20) }))?.kind).toBe('free_low');
   });
 

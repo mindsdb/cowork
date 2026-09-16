@@ -73,15 +73,15 @@ describe('UsageBar', () => {
 
   it('a closed standing figure stays closed across a refill (ENG-2749)', async () => {
     const user = userEvent.setup();
-    // Close the number at 68%...
+    // Close the number at 28%...
     const first = render(<UsageBar warning={atRest} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
     first.unmount();
-    // ...the window refills five hours later and drains back into the band.
+    // ...the window refills five hours later and the figure reads 100% again.
     // The figure is the healthy state, so "healthy again" must not be what
     // brings it back: that would make the close last one window at most, for
     // someone who asked for it to go.
-    render(<UsageBar warning={{ ...atRest, title: '30% of your free allowance left' }} usageKnown />);
+    render(<UsageBar warning={{ ...atRest, title: '100% of your free allowance left' }} usageKnown />);
     expect(document.querySelector('.usage-bar')).toBeNull();
   });
 
@@ -90,9 +90,9 @@ describe('UsageBar', () => {
     const first = render(<UsageBar warning={atRest} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'Hide allowance' }));
     first.unmount();
-    // A BYOK provider, an uncapped grant, or the allowance refilling above 30%
-    // all leave the bar with nothing to show while usage still reads healthy.
-    // None of them is the person changing their mind about the number.
+    // A BYOK provider or an uncapped grant leaves the bar with nothing to show
+    // while usage still reads healthy. Neither is the person changing their
+    // mind about the number.
     render(<UsageBar warning={null} usageKnown />).unmount();
     render(<UsageBar warning={atRest} usageKnown />);
     expect(document.querySelector('.usage-bar')).toBeNull();
@@ -107,9 +107,10 @@ describe('UsageBar', () => {
     expect(screen.getByText('12% of your free allowance left.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(document.querySelector('.usage-bar')).toBeNull();
-    // Refills above 30%: nothing to show, and usage is healthy again.
-    rerender(<UsageBar warning={null} usageKnown />);
-    // Drains back into the figure band: still closed...
+    // Refills: the figure is back at 100%, still closed, and usage is healthy again.
+    rerender(<UsageBar warning={{ ...atRest, title: '100% of your free allowance left' }} usageKnown />);
+    expect(document.querySelector('.usage-bar')).toBeNull();
+    // Drains toward the warning: still closed...
     rerender(<UsageBar warning={atRest} usageKnown />);
     expect(document.querySelector('.usage-bar')).toBeNull();
     // ...and into the warning band: the warning is new again.
