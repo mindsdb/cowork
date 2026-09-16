@@ -47,7 +47,11 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     // messages, a genuinely empty conversation) or 'unavailable'. Local
     // knowledge of a task's own fetch state is never staler than a list
     // refresh's placeholder, so it always wins when present.
-    const messagesStatus = l.messagesStatus ?? server.messagesStatus;
+    // A task holding local messages is not waiting on a fetch, whatever the
+    // list placeholder says — falling through to it would cover a rendered
+    // conversation with a spinner only a route change can clear.
+    const messagesStatus = l.messagesStatus
+      ?? (hasLocalContent ? 'loaded' : server.messagesStatus);
     // Same story as messagesStatus: `server` is the list fetch, which never
     // carries pagination state at all (undefined, not false) — so the local
     // value always wins when present. Without this, the unconditional

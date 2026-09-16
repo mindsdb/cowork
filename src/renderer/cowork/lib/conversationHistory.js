@@ -175,7 +175,7 @@ export function describeActivity(event, agentName = 'Anton') {
 // Scratchpad modal.
 //
 // We sidecar the full step list in localStorage keyed by conversation
-// id → assistant turn index. Persistence is local to this install
+// id → assistant message id. Persistence is local to this install
 // (fine for a desktop app); promote to a server-side sidecar later if
 // cross-device sync matters.
 //
@@ -224,23 +224,29 @@ export function removeConvTurnsFor(cid, removedIds) {
   if (changed) writeConvTurns(cid, map);
 }
 
-// One-time migration from the old artifact-only sidecar. Each entry
-// was an array of artifact-shape steps; promote it to the new shape.
-export function migrateLegacyArtifacts(cid) {
+// Both sidecars predating the id rekey were keyed by assistant TURN INDEX.
+// Nothing can read those entries any more, and they cannot be translated:
+// recovering the message id an index meant needs the conversation's full
+// message list, which a lazily-paginated client no longer has — guessing
+// from a partial list is what attached one turn's steps to another turn in
+// the first place. So they are dropped rather than migrated: a turn loses a
+// restored Thinking block until it is streamed again, which is cosmetic,
+// where a wrong id would silently show the wrong turn's work.
+//
+// Runs on every hydration (mergeConvTurns), so the dead keys are cleared out
+// on first open instead of accumulating forever.
+const _isTurnIndexKey = (key) => /^\d+$/.test(key);
+
+export function dropLegacyIndexKeyedSidecar(cid) {
   if (!cid) return;
   try {
-    const legacy = localStorage.getItem(LEGACY_ARTIFACTS_KEY(cid));
-    if (!legacy) return;
-    const map = JSON.parse(legacy);
-    if (!map || typeof map !== 'object') return;
-    const next = readConvTurns(cid) || {};
-    for (const [idx, arts] of Object.entries(map)) {
-      if (!Array.isArray(arts) || arts.length === 0) continue;
-      const existing = next[idx]?.steps || [];
-      next[idx] = { steps: [...existing, ...arts], startedAt: next[idx]?.startedAt || null };
-    }
-    writeConvTurns(cid, next);
     localStorage.removeItem(LEGACY_ARTIFACTS_KEY(cid));
+    const map = readConvTurns(cid);
+    if (!map) return;
+    const stale = Object.keys(map).filter(_isTurnIndexKey);
+    if (stale.length === 0) return;
+    for (const key of stale) delete map[key];
+    writeConvTurns(cid, map);
   } catch {}
 }
 
@@ -417,7 +423,7 @@ export function persistTurnState(cid, messageId, steps, startedAt) {
 // wrong-turn attachment, which is the bug this replaces.
 export function mergeConvTurns(cid, messages) {
   if (!cid || !messages) return messages;
-  migrateLegacyArtifacts(cid);
+  dropLegacyIndexKeyedSidecar(cid);
   const map = readConvTurns(cid);
   if (!map) return messages;
   return messages.map((m) => {

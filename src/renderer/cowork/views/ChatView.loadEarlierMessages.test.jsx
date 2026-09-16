@@ -50,4 +50,50 @@ describe('the "load earlier messages" affordance', () => {
     const button = screen.getByRole('button', { name: /loading/i });
     expect(button).toBeDisabled();
   });
+
+  // The ticket asks for lazy-loading on scroll-up, not only a button. happy-dom
+  // has no IntersectionObserver, so the sentinel is driven directly here.
+  it('loads the next older page when the top of the transcript comes into view', () => {
+    const observers = [];
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; observers.push(this); }
+      observe(el) { this.el = el; }
+      disconnect() {}
+    };
+    try {
+      const onLoadEarlierMessages = vi.fn();
+      render(
+        <ChatView
+          task={taskWith({ hasMoreMessages: true })}
+          onLoadEarlierMessages={onLoadEarlierMessages}
+        />,
+      );
+      expect(observers.length).toBeGreaterThan(0);
+      expect(onLoadEarlierMessages).not.toHaveBeenCalled();
+
+      observers[observers.length - 1].cb([{ isIntersecting: true }]);
+      expect(onLoadEarlierMessages).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.IntersectionObserver = original;
+    }
+  });
+
+  it('does not observe anything when there is no more history to load', () => {
+    const observers = [];
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; observers.push(this); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      render(
+        <ChatView task={taskWith({ hasMoreMessages: false })} onLoadEarlierMessages={vi.fn()} />,
+      );
+      expect(observers).toHaveLength(0);
+    } finally {
+      globalThis.IntersectionObserver = original;
+    }
+  });
 });

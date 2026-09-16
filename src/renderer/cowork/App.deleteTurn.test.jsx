@@ -258,8 +258,8 @@ describe('deleting a turn (id-based, local truncation)', () => {
 
     const stream = await waitForStream();
     await emitOn(stream, { type: 'response.output_text.delta', delta: 'Fresh answer' });
-    // The completion-id contract (step 4/9): the persisted assistant
-    // message's real id rides on response.completed.
+    // The completion-id contract: the persisted assistant message's real id
+    // rides on response.completed.
     await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-fresh' });
     await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
 
@@ -292,5 +292,66 @@ describe('deleting a turn (id-based, local truncation)', () => {
     await screen.findByText('An answer with no persisted id');
 
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('does not truncate locally when the server rejects the anchor with a 404', async () => {
+    // deleteConversationTurn maps 404 to {status:'gone'} instead of throwing.
+    // The server did NOT cut here, so truncating anyway drops history it
+    // still holds — and with the refetch gone there is nothing to restore it.
+    const user = userEvent.setup();
+    const messages = [
+      { role: 'user', id: 'u1', content: 'Hi there' },
+      { role: 'assistant', id: 'a1', content: 'Hello back' },
+    ];
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages }) });
+    spies.deleteConversationTurn.mockResolvedValue({ status: 'gone', id: 'conv-a', messageId: 'a1' });
+    spies.fetchSession.mockResolvedValue({
+      id: 'conv-a', messages, hasMoreMessages: false, messagesCursor: null,
+    });
+
+    await openTask(user);
+    await screen.findByText('Hello back');
+
+    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a1');
+    });
+    // Both rows still on screen, and a resync was issued.
+    expect(await screen.findByText('Hi there')).toBeTruthy();
+    expect(screen.getByText('Hello back')).toBeTruthy();
+  });
+
+  it('cuts at the anchor alone when the row before it is not that turn\'s question', async () => {
+    // A probe persists an assistant turn with no user message of its own, so
+    // two visible assistant rows can sit next to each other. The server walks
+    // back only to an immediately preceding user row; a client that scanned
+    // further would delete rows the server kept, which then reappear on the
+    // next refetch.
+    const user = userEvent.setup();
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({
+        messages: [
+          { role: 'user', id: 'u1', content: 'Connect my database' },
+          { role: 'assistant', id: 'a1', content: 'Here is the form' },
+          { role: 'assistant', id: 'a2', content: 'Probe result' },
+        ],
+      }),
+    });
+
+    await openTask(user);
+    await screen.findByText('Probe result');
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
+    await deleteTurn(user, deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a2');
+    });
+    expect(screen.queryByText('Probe result')).toBeNull();
+    // The rows the server kept are still here.
+    expect(screen.getByText('Connect my database')).toBeTruthy();
+    expect(screen.getByText('Here is the form')).toBeTruthy();
   });
 });

@@ -68,6 +68,11 @@ export function initialStreamState() {
      *  server-side). Null when the turn persisted nothing (an empty turn,
      *  or a probe turn that never reached the point of saving one). */
     assistantMessageId: null,
+    /** Persisted user Message's id, off `response.created`'s root. The
+     *  client appends the user's row optimistically on send, so this is the
+     *  only thing that gives that row a real id during its own turn. Null on
+     *  a producer that persists no user row (the probe path). */
+    userMessageId: null,
   };
 }
 
@@ -267,6 +272,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       responseId: event.response?.id ?? state.responseId,
       conversationId: event.conversation_id ?? state.conversationId,
       harness: event.harness ?? state.harness,
+      userMessageId: event.user_message_id ?? state.userMessageId,
       startedAt: state.startedAt ?? now(),
       status: 'thinking',
     };

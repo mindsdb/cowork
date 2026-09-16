@@ -141,4 +141,22 @@ describe('mergeTasksFromServer keeps the local pagination state', () => {
     const merged = mergeTasksFromServer([serverTask()], []);
     expect(merged[0].hasMoreMessages).toBeUndefined();
   });
+
+  it('does not downgrade a task holding local messages to the list placeholder', () => {
+    // A conversation created in-session never gets a messagesStatus of its
+    // own from a fetch, because there is nothing to fetch. Adopting the list
+    // fetch's 'loading' placeholder covers a rendered conversation with a
+    // spinner that only a route change can clear.
+    const local = { id: 'c1', messages: [{ role: 'user', content: 'hi' }, { id: 'a1', role: 'assistant', content: 'yo' }] };
+    const server = { id: 'c1', messages: [], messagesStatus: 'loading' };
+    const [merged] = mergeTasksFromServer([server], [local]);
+    expect(merged.messagesStatus).toBe('loaded');
+  });
+
+  it('still adopts the placeholder for a task with no local messages yet', () => {
+    const local = { id: 'c1', messages: [] };
+    const server = { id: 'c1', messages: [], messagesStatus: 'loading' };
+    const [merged] = mergeTasksFromServer([server], [local]);
+    expect(merged.messagesStatus).toBe('loading');
+  });
 });

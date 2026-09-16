@@ -657,4 +657,20 @@ describe('assistantMessageId', () => {
     ]);
     expect(state.assistantMessageId).toBeNull();
   });
+
+  it('captures the user message id from response.created', () => {
+    // The user's own row is appended optimistically on send and has no id
+    // until this frame supplies one.
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1', user_message_id: 'u-real',
+    });
+    expect(state.userMessageId).toBe('u-real');
+  });
+
+  it('leaves the user message id null when the frame omits it', () => {
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.created', conversation_id: 'c1',
+    });
+    expect(state.userMessageId).toBeNull();
+  });
 });

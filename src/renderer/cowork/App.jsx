@@ -937,6 +937,29 @@ function AppCore() {
     });
   };
 
+  // The persisted user Message's id, off `response.created`. The row it
+  // belongs to was appended optimistically on send and carries no id of its
+  // own, so until this lands every id-keyed consumer (turn delete, the step
+  // sidecar, the usage-notice anchor) is blind to the turn the user is
+  // actually looking at. Stamps the newest still-id-less user row, and is a
+  // no-op once that row has an id.
+  const stampUserMessageId = (taskIds, userMessageId) => {
+    if (!userMessageId) return;
+    const ids = new Set(taskIds.filter(Boolean).map(String));
+    setTasks((prev) => prev.map((t) => {
+      if (!ids.has(String(t.id))) return t;
+      const msgs = Array.isArray(t.messages) ? t.messages : [];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]?.role !== 'user') continue;
+        if (msgs[i].id != null) return t;
+        const next = msgs.slice();
+        next[i] = { ...next[i], id: userMessageId };
+        return { ...t, messages: next };
+      }
+      return t;
+    }));
+  };
+
   // Called from every stream's onEvent, right after reduceStream. Keeps
   // liveStepsRef current (so handleSendInTask can see a pending question
   // without threading stream state through the composer) and, the first
@@ -1927,6 +1950,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
+        stampUserMessageId([taskId], ev?.user_message_id);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -2948,6 +2972,12 @@ function AppCore() {
       subtitle: 'just now',
       status: 'active',
       messages: [],
+      // Locally created: nothing is fetching history for it, because it has
+      // none yet. Without an explicit status here the conversation LIST
+      // fetch's 'loading' placeholder is adopted on the next background
+      // refresh and the loading gate covers a working chat with a spinner
+      // that nothing ever resolves.
+      messagesStatus: 'loaded',
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
@@ -3059,6 +3089,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageId([resolvedId, taskId], ev?.user_message_id);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -3512,6 +3543,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageId([resolvedId, id], ev?.user_message_id);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -3785,6 +3817,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageId([resolvedId, id], ev?.user_message_id);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
@@ -4152,17 +4185,18 @@ function AppCore() {
     if (anchorIdx === -1) return t;
     // The anchor is the assistant reply for a paired turn, or the user
     // message itself for an orphan turn (see ChatView's onDelete wiring).
-    // A paired turn's actual start is the nearest user row at or before the
-    // anchor — matching delete_turn's own "walk back to the opening user
-    // message" rule server-side (services/conversations.py). Tool rows
-    // never reach the client (the server's /items already filters them
-    // out), so an assistant row here is always immediately preceded by
-    // exactly its own opening user row: this loop only ever takes one step
-    // for a paired turn, with no gap from the server's "walk back over
-    // hidden tool rows too" version of the same rule to reconcile. An
-    // orphan anchor is already a user row, so the loop is a no-op for it.
-    let cutFrom = anchorIdx;
-    while (cutFrom > 0 && msgs[cutFrom].role !== 'user') cutFrom -= 1;
+    // delete_turn's server-side rule is to step back over hidden tool rows
+    // and take the user message only when it is the row immediately before
+    // the anchor, cutting at the anchor itself otherwise
+    // (services/conversations.py). Tool rows never reach the client, so the
+    // same rule here is a single step back. It must NOT scan further for a
+    // user row: two visible assistant rows can sit next to each other (the
+    // probe persists an assistant turn with no user message of its own), and
+    // scanning past one would delete rows server-side the server kept, which
+    // then reappear on the next refetch.
+    const cutFrom = (msgs[anchorIdx].role === 'assistant' && msgs[anchorIdx - 1]?.role === 'user')
+      ? anchorIdx - 1
+      : anchorIdx;
     const removed = msgs.slice(cutFrom);
     const removedIds = removed.map((m) => m.id).filter(Boolean);
     removeConvTurnsFor(t.id, removedIds);
@@ -4187,12 +4221,34 @@ function AppCore() {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
       return;
     }
+    let result;
     try {
-      await deleteConversationTurn(taskId, messageId);
+      result = await deleteConversationTurn(taskId, messageId);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTurn] server delete failed', e);
       alert(`Could not delete this exchange: ${e?.message || e}`);
+      return;
+    }
+    // A 404 comes back as {status:'gone'} rather than throwing, and means the
+    // server did NOT cut here: it either never had this id or rejected it as
+    // an anchor. Truncating anyway would drop history the server still holds,
+    // with no refetch left to put it back. Resync from the server instead.
+    if (result?.status === 'gone') {
+      toastManager.add({
+        type: 'danger',
+        title: "Couldn't delete this exchange. Reloading the conversation.",
+      });
+      const loaded = await loadSessionMessagesWithRetry(taskId, { isLive: false });
+      if (loaded) {
+        setTasks((prev) => prev.map((t) => (t.id === taskId
+          ? {
+              ...t,
+              messages: mergeMessagePage(t.messages, loaded.messages),
+              ...reconcilePaginationState(t, loaded),
+            }
+          : t)));
+      }
       return;
     }
     setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));

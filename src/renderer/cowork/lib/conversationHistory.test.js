@@ -12,7 +12,7 @@ import {
   persistTurnState,
   mergeConvTurns,
   removeConvTurnsFor,
-  migrateLegacyArtifacts,
+  dropLegacyIndexKeyedSidecar,
   reduceServerEvents,
   failedEventMeta,
   hydrateMessagesFromServerEvents,
@@ -201,11 +201,23 @@ describe('conversation-turn sidecar (localStorage)', () => {
     expect(readConvTurns('c1')['a1'].steps).toEqual([expect.objectContaining({ id: 'keep' })]);
   });
 
-  it('migrateLegacyArtifacts promotes the old artifact-only sidecar and clears it', () => {
+  it('clears the old artifact-only sidecar rather than promoting unreadable keys', () => {
+    // Its keys were assistant turn indices, which nothing reads since the
+    // rekey and which cannot be translated back to message ids.
     localStorage.setItem('anton:conv-artifacts:c1', JSON.stringify({ 0: [{ id: 'art' }] }));
-    migrateLegacyArtifacts('c1');
-    expect(readConvTurns('c1')[0].steps).toEqual([{ id: 'art' }]);
+    dropLegacyIndexKeyedSidecar('c1');
     expect(localStorage.getItem('anton:conv-artifacts:c1')).toBeNull();
+    expect(readConvTurns('c1')).toBeNull();
+  });
+
+  it('prunes turn-index keys from the step sidecar and keeps id-keyed ones', () => {
+    localStorage.setItem('anton:conv-turns:c1', JSON.stringify({
+      0: { steps: [{ id: 'stale' }], startedAt: 1 },
+      12: { steps: [{ id: 'also-stale' }], startedAt: 2 },
+      'a1b2c3': { steps: [{ id: 'keep' }], startedAt: 3 },
+    }));
+    dropLegacyIndexKeyedSidecar('c1');
+    expect(Object.keys(readConvTurns('c1'))).toEqual(['a1b2c3']);
   });
 });
 

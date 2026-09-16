@@ -1492,9 +1492,10 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // "Load earlier messages": present only when the task's most
-  // recent page doesn't cover its whole history. Omitted callers (existing
-  // tests, any surface that doesn't paginate) simply never see the
+  // "Load earlier messages": present only when the task's most recent page
+  // doesn't cover its whole history. Fired both by scrolling to the top of
+  // the transcript and by the explicit button. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see either
   // affordance — task.hasMoreMessages is falsy for them.
   onLoadEarlierMessages,
   loadingEarlierMessages,
@@ -1773,6 +1774,32 @@ export default function ChatView({
     // effect firing only when the count actually changes, same as before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.messages.length, isStreaming]);
+
+  // Inverted infinite scroll: reaching the top of the transcript pulls the
+  // next older page in, which is the behaviour a long conversation is
+  // expected to have. The button below stays as the explicit affordance and
+  // as the fallback wherever IntersectionObserver is unavailable.
+  //
+  // Firing repeatedly is safe: onLoadEarlierMessages guards its own dispatch
+  // against a fetch already in flight and against there being nothing more to
+  // load. Re-running once a load settles re-checks a reader who is still
+  // parked at the top and needs the page after this one.
+  const loadEarlierSentinelRef = useRef(null);
+  useEffect(() => {
+    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const root = scrollRef.current;
+    const sentinel = loadEarlierSentinelRef.current;
+    if (!root || !sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages(); },
+      // Start the fetch slightly before the top is actually reached, so the
+      // page is usually already there by the time the reader gets there.
+      { root, rootMargin: '200px 0px 0px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -2074,6 +2101,7 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+            <div ref={loadEarlierSentinelRef} aria-hidden="true" />
             {task.hasMoreMessages && (
               // Adapted from Sidebar's dashed-pill "Show more" idiom.
               <button
@@ -2527,9 +2555,9 @@ export default function ChatView({
                   copyText={m.content}
                   // Anchored on this assistant message's own id.
                   // Hidden, not just disabled, when there's no id yet — a
-                  // just-completed turn always has one (step 9 captures it
-                  // off the completion frame), so this only ever applies to
-                  // the sliver of time before that lands.
+                  // just-completed turn always has one (the id rides the
+                  // completion frame), so this only ever applies to the
+                  // sliver of time before that lands.
                   onDelete={m.id ? () => onDeleteTurn?.(m.id) : null}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}

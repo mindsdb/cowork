@@ -22,13 +22,17 @@ const isAnchorTurn = (m) => m?.role === 'user' && !m?._unsent;
 // to yet (falls through to the trailing bucket, same as an unstamped
 // notice always has).
 //
-// Only the LAST anchor-turn row counts as "the current turn" — if it has
-// no id yet (it was just appended locally and the server hasn't answered
-// back with one), this returns null rather than falling back to an
-// earlier turn's id. Falling back would silently reattribute a notice
-// stamped for the live turn to a turn that already finished (it would
-// render above the live question instead of at the bottom, where a
-// just-crossed threshold belongs).
+// Only the LAST anchor-turn row counts as "the current turn". A notice is
+// stamped mid-turn, and the live turn's user row gets its real id from
+// `response.created` (see stampUserMessageId in App.jsx), which lands well
+// before any usage threshold can be crossed — so in practice there is an id
+// here to anchor on.
+//
+// If there somehow isn't one, this returns null rather than falling back to
+// an earlier turn's id: null puts the notice in the trailing bucket, at the
+// bottom, which is where a just-crossed threshold belongs anyway. Falling
+// back would instead render it above the live question, attributed to a turn
+// that already finished.
 export function currentTurnAnchorId(messages) {
   const rows = Array.isArray(messages) ? messages : [];
   for (let i = rows.length - 1; i >= 0; i--) {
