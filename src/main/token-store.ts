@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import {
+  claimDefaultRoot,
   clearActiveAccountRecord,
   clearInMemorySessionQuarantine,
   markActiveAccountUnresolved,
@@ -173,6 +174,17 @@ function recordSignedInAccount(accessToken: string, refreshToken: string): void 
   }
   try {
     writeActiveAccountSync(coworkHome(), accountId);
+    // Ownership is settled HERE, beside the record, and no longer only in
+    // commitMindsSignIn. A sign-in whose organization selection fails returns
+    // before that function is ever reached while the session stays
+    // authenticated, so a claim made only there leaves the root unclaimed for
+    // an account that is already reading and writing data. This refuses a root
+    // holding pre-existing data exactly as before; only when it runs changed.
+    try {
+      claimDefaultRoot(coworkHome(), accountId);
+    } catch (claimErr) {
+      console.warn('[token-store] could not settle the account data root', claimErr);
+    }
     // The record names this session again, so an earlier held quarantine has
     // nothing left to protect against. Lifting it here rather than holding it
     // to the end of the process keeps one transient disk failure from stranding

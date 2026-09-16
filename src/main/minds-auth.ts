@@ -1440,18 +1440,10 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // rather than reloading, so React would seed the composer draft and the
   // settings cache from the PREVIOUS account during render, and the draft
   // store's module cache would then re-persist them under this account.
+  // Ownership is settled at the token choke point now, beside the account
+  // record, because a sign-in that never reaches this function still has to own
+  // the root it is already reading.
   let dataRootChanged = false;
-  const accountId = signedInAccountId();
-  if (accountId) {
-    try {
-      // Settles ownership only, and is safe to attempt more than once; the
-      // token store already recorded the account itself. The SHARED home, not
-      // the account's own root, because a subtree cannot settle the default.
-      claimDefaultRoot(coworkHome(), accountId);
-    } catch (err) {
-      console.warn('[minds-auth] could not settle the account data root', err);
-    }
-  }
 
   // On a fresh install the server isn't available yet: the setup wizard runs
   // after this and starts it, and that start hands the credential over on its

@@ -226,6 +226,38 @@ describe('the signed-in account record', () => {
     expect(resolveAccountRoot(h.home, readActiveAccount(h.home))).toMatch(/^_unresolved-/);
   });
 
+  it('claims the root at sign-in, without waiting for finalization', async () => {
+    // Isolation must not depend on the organization step succeeding. A sign-in
+    // whose selectEntitledOrg fails returns before commitMindsSignIn while the
+    // session stays authenticated, so a claim made only there leaves the root
+    // unclaimed for an account already reading and writing data — and the next
+    // account to arrive would inherit it.
+    // As the app does at boot, before any sign-in: an unrecorded marker reads
+    // as "had data", so the claim is refused until the install has been looked
+    // at once.
+    const { observePreExistingData, readAccountClaim } = await import('./account-data');
+    observePreExistingData(h.home);
+
+    const store = await loadStore('linux');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+
+    expect(readAccountClaim(h.home)).toEqual({ kind: 'claimed', accountId: ACCOUNT_A });
+  });
+
+  it('still refuses a root holding data nobody has claimed', async () => {
+    // Moving the claim earlier must not turn it into a land grab: data that
+    // predates per-account roots still belongs to whoever the ownership dialog
+    // says, not to whoever signs in first.
+    fs.writeFileSync(path.join(h.home, 'cowork.db'), 'x', 'utf-8');
+    const { observePreExistingData, readAccountClaim } = await import('./account-data');
+    observePreExistingData(h.home);
+
+    const store = await loadStore('linux');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+
+    expect(readAccountClaim(h.home)).toEqual({ kind: 'unclaimed' });
+  });
+
   it('quarantines in memory when the disk refuses both the record and the marker', async () => {
     // The disk is the authority whenever it can be written. When it cannot,
     // the file still names the PREVIOUS account while saveTokens has already

@@ -1104,6 +1104,20 @@ function setupIPC() {
     // suppress a fallback, so anything but a real `true` off the wire must not
     // arm it. Today's renderer sends a boolean or nothing, so this is the
     // contract written down rather than a hole being closed.
+    // Before anything this session can read. The account is recorded and its
+    // root claimed at the token choke point, well before this handler, but the
+    // SIDECAR is only moved by commitMindsSignIn below — and the branches under
+    // it return early, so a failed organization selection leaves a signed-in
+    // session served by the previous account's database. The Settings sign-in
+    // treats this handler as non-gating and refreshes regardless, and the
+    // readiness check reconciles a reload rather than a live document.
+    if (isServerRunning() || isServerStarting()) {
+      if (!(await ensureSidecarOnCurrentAccountRoot())) {
+        console.error('[mindshub:finalize] could not move the sidecar onto this account root');
+        return { ok: false, reason: 'Could not open this account\'s data. Restart Cowork and try again.' };
+      }
+    }
+
     const selected = await selectEntitledOrg(token, {
       preferOrgId: organizationId,
       chosenByUser: chosenByUser === true,
