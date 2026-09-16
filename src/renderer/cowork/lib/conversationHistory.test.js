@@ -144,7 +144,7 @@ describe('conversation-turn sidecar (localStorage)', () => {
     expect(saved.steps[0]).not.toHaveProperty('fn');
   });
 
-  // ENG-2768: keyed by the assistant message's own id, not a counted
+  // Keyed by the assistant message's own id, not a counted
   // position — a write under a falsy-but-real key (id '0', or index 0
   // pre-rekey) must not be swallowed by a truthiness guard.
   it('persistTurnState accepts a message id that would be falsy as a number', () => {
@@ -176,7 +176,7 @@ describe('conversation-turn sidecar (localStorage)', () => {
   // The whole point of keying by id instead of a counted position: this
   // page has no idea an earlier page exists, but the lookup still lands on
   // the right turn because the key never depended on how much history is
-  // loaded (ENG-2768).
+  // loaded.
   it('mergeConvTurns restores the correct steps by id when only a partial page is loaded', () => {
     persistTurnState('c1', 'a1', [{ id: 'old-turn-steps' }], 1);
     persistTurnState('c1', 'a99', [{ id: 'recent-turn-steps' }], 99);

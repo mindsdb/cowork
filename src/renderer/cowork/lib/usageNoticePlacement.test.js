@@ -42,6 +42,17 @@ describe('currentTurnAnchorId', () => {
     // than anchoring on undefined.
     expect(currentTurnAnchorId([{ role: 'user', content: 'a' }])).toBeNull();
   });
+
+  it('does not fall back to an earlier turn when only the CURRENT turn lacks an id', () => {
+    // A second message sent this session: the first turn is already
+    // hydrated (real id), the live turn's user row is appended locally
+    // before the server round-trip lands its id. A notice stamped here
+    // (e.g. a threshold crossed mid-reply) must fall through to the
+    // trailing bucket, not silently reattach to the finished first turn
+    // and render above the live question.
+    const msgs = [user('u1', 'a'), assistant('a1', 'b'), { role: 'user', content: 'c' }];
+    expect(currentTurnAnchorId(msgs)).toBeNull();
+  });
 });
 
 describe('usageNoticeBuckets', () => {
@@ -64,7 +75,7 @@ describe('usageNoticeBuckets', () => {
 
   it('anchors correctly even when the array is only a partial (paginated) page', () => {
     // Unlike a counted ordinal, an id-based anchor doesn't depend on how
-    // much earlier history happens to be loaded (ENG-2768).
+    // much earlier history happens to be loaded.
     const partialPage = [user('u2', 'c'), assistant('a2', 'd')];
     expect(rowOf(partialPage, notice('u2'))).toBe(partialPage.length);
   });

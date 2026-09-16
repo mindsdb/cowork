@@ -1,5 +1,5 @@
-// Merges a freshly-fetched page of messages into the locally-held array
-// (ENG-2768). Once /items is paginated, a plain wholesale replace at every
+// Merges a freshly-fetched page of messages into the locally-held array.
+// Once /items is paginated, a plain wholesale replace at every
 // refetch site would truncate a conversation the user has already scrolled
 // back through via "load earlier" — this keeps that older, already-loaded
 // prefix intact and only replaces the tail the fresh page actually covers.
@@ -31,4 +31,33 @@ export function mergeMessagePage(existing, freshPage) {
   const trailingLocal = firstLocalIdx === -1 ? [] : nonOverlapping.slice(firstLocalIdx);
 
   return [...olderPrefix, ...freshArr, ...trailingLocal];
+}
+
+// What a task's hasMoreMessages/messagesCursor should be after merging a
+// freshly-fetched page into it via mergeMessagePage above.
+//
+// A page fetch is always bounded to the most recent N messages and reports
+// hasMoreMessages/nextBefore relative to ITS OWN oldest row — it has no idea
+// how much further back the array it's being merged into already extends.
+// mergeMessagePage never touches an existing older prefix, so once a task's
+// true oldest boundary has been established (by an earlier full load, or by
+// "load earlier messages" extending it further), a later refresh of just the
+// tail must not regress that boundary back to the fresh page's own, shallower
+// one — that desyncs the cursor from what's actually loaded and makes the
+// next "load earlier" click re-fetch and re-prepend a page that's already
+// present. `existingTask.hasMoreMessages` is `null`/`undefined` only when no
+// boundary has been established yet (a task straight off the sidebar list,
+// or a brand-new conversation) — that's the one case where the fresh page's
+// own values are adopted.
+export function reconcilePaginationState(existingTask, freshPage) {
+  if (existingTask && existingTask.hasMoreMessages != null) {
+    return {
+      hasMoreMessages: existingTask.hasMoreMessages,
+      messagesCursor: existingTask.messagesCursor ?? null,
+    };
+  }
+  return {
+    hasMoreMessages: freshPage?.hasMoreMessages ?? false,
+    messagesCursor: freshPage?.messagesCursor ?? null,
+  };
 }

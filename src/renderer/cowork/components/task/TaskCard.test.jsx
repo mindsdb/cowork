@@ -22,7 +22,7 @@ describe('turnsCount', () => {
     expect(turnsCount(task)).toBe(2);
   });
 
-  it('is unknown for a partially-loaded task (ENG-2768) even though messages is non-empty', () => {
+  it('is unknown for a partially-loaded task even though messages is non-empty', () => {
     // Only the most recent page is loaded — the count would be wrong, not
     // just incomplete, so this must not show a number at all.
     const task = {
@@ -32,10 +32,16 @@ describe('turnsCount', () => {
     expect(turnsCount(task)).toBeNull();
   });
 
-  it('is unknown when hasMoreMessages has never been set, even with messages present', () => {
-    // A task whose pagination status is simply unknown (not yet fetched via
-    // /items at all) must not be read as "definitely no more".
-    const task = { messages: [{ role: 'user', content: 'q1' }] };
-    expect(turnsCount(task)).toBeNull();
+  it('counts directly when hasMoreMessages has never been set — a brand-new or purely local task', () => {
+    // A task built up client-side this session (a new chat, or one that's
+    // only ever streamed) has never been fetched via /items at all, so
+    // hasMoreMessages is simply absent — but nothing else could have added
+    // to its history, so `messages` already IS the complete total. Hiding
+    // the count here would be a regression: every freshly-created task
+    // would show no turn count until the user navigated away and back.
+    const task = {
+      messages: [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }],
+    };
+    expect(turnsCount(task)).toBe(1);
   });
 });

@@ -34,7 +34,7 @@ describe('resolveConversationLoadState', () => {
       .toBe('ready');
   });
 
-  it('is ready (not error) when a KNOWN task\'s message fetch failed — a known task keeps rendering through a blip (ENG-1233)', () => {
+  it('is ready (not error) when a KNOWN task\'s message fetch failed — a known task keeps rendering through a blip', () => {
     const resolvedTask = { id: 't1', messages: [], messagesStatus: 'unavailable' };
     expect(resolveConversationLoadState({ resolvedTask, conversationErrorMatches: true }))
       .toBe('ready');

@@ -62,7 +62,7 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
-    /** Persisted assistant Message's id (ENG-2768), off `response.completed`/
+    /** Persisted assistant Message's id, off `response.completed`/
      *  `response.failed`'s root (same placement as conversation_id/harness
      *  on `response.created` — see _inject_created/_inject_completion_id
      *  server-side). Null when the turn persisted nothing (an empty turn,
@@ -325,7 +325,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       errorCode: event.code || null,
       currentThought: null,
       // Present only when a partial assistant row was persisted before the
-      // failure (ENG-2768) — absent otherwise, not null-vs-unset here since
+      // failure — absent otherwise, not null-vs-unset here since
       // the wire frame itself omits the field in that case.
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
     };

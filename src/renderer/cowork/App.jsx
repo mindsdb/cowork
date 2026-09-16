@@ -6,7 +6,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
-import { mergeMessagePage } from './lib/mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState } from './lib/mergeMessagePage';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -480,7 +480,7 @@ async function loadSessionMessagesWithRetry(
     const fresh = await fetchSession(cid);
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
-      // Only the most recent PAGE (ENG-2768) — the caller merges this
+      // Only the most recent page — the caller merges this
       // against whatever it already has, rather than replacing wholesale.
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
       disabledConnections: fresh.disabledConnections,
@@ -801,11 +801,10 @@ function AppCore() {
                 if (t.id !== cid) return t;
                 return {
                   ...t,
-                  // Only the most recent PAGE (ENG-2768) — merge against
-                  // what the task already has instead of replacing wholesale.
+                  // Only the most recent page — merge against what the
+                  // task already has instead of replacing wholesale.
                   messages: mergeMessagePage(t.messages, reconciled),
-                  hasMoreMessages: fresh.hasMoreMessages ?? false,
-                  messagesCursor: fresh.messagesCursor ?? null,
+                  ...reconcilePaginationState(t, fresh),
                   status: 'idle',
                 };
               }));
@@ -1137,8 +1136,7 @@ function AppCore() {
                 ...t,
                 status: 'idle',
                 messages: mergeMessagePage(t.messages, loaded.messages),
-                hasMoreMessages: loaded.hasMoreMessages,
-                messagesCursor: loaded.messagesCursor,
+                ...reconcilePaginationState(t, loaded),
                 ...(Array.isArray(loaded.disabledConnections)
                   ? { disabledConnections: loaded.disabledConnections }
                   : {}),
@@ -1198,8 +1196,7 @@ function AppCore() {
           ...t,
           status: hasError ? 'error' : 'idle',
           messages: mergeMessagePage(t.messages, loaded.messages),
-          hasMoreMessages: loaded.hasMoreMessages,
-          messagesCursor: loaded.messagesCursor,
+          ...reconcilePaginationState(t, loaded),
           ...(Array.isArray(loaded.disabledConnections)
             ? { disabledConnections: loaded.disabledConnections }
             : {}),
@@ -1618,8 +1615,8 @@ function AppCore() {
       if (t.id !== id) return t;
       const local = Array.isArray(t.messages) ? t.messages : [];
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
-      // Still the full, unbounded /items call (no limit param) — ENG-2246's
-      // eager-warm-up depth stays out of scope for pagination (ENG-2768) —
+      // Still the full, unbounded /items call (no limit param) — the
+      // eager-warm-up depth stays out of scope for pagination —
       // so a task this seeds already has its complete history.
       return { ...t, messages: msgs, messagesStatus: 'loaded', hasMoreMessages: false };
     }));
@@ -1807,7 +1804,7 @@ function AppCore() {
   // A locally-available conversation keeps rendering during a blip.
   //
   // Requested id not resolved, or resolved but its messages haven't loaded
-  // yet (ENG-2768: every sidebar-listed task is already in `tasks` before
+  // yet (every sidebar-listed task is already in `tasks` before
   // its messages fetch even starts) — show a loading state, not the wrong
   // conversation, until messagesStatus settles.
   const conversationLoadState = route === 'task' && activeTaskId != null
@@ -1946,7 +1943,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        // ENG-2768: the persisted row's real id, off response.completed/
+        // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
@@ -2075,8 +2072,7 @@ function AppCore() {
         ? prev.map((t) => (t.id === id ? {
           ...t,
           messagesStatus: 'loaded',
-          hasMoreMessages: fresh.hasMoreMessages ?? false,
-          messagesCursor: fresh.messagesCursor ?? null,
+          ...reconcilePaginationState(t, fresh),
         } : t))
         : [fresh, ...prev]));
       return;
@@ -2088,15 +2084,14 @@ function AppCore() {
     // conversation if it wasn't in the capped fetch.
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-    // fresh.messages is only the most recent PAGE (ENG-2768) — merge it
-    // against whatever the task already has rather than replacing wholesale,
-    // so an older prefix loaded earlier via "load earlier messages" survives.
+    // fresh.messages is only the most recent page — merge it against
+    // whatever the task already has rather than replacing wholesale, so an
+    // older prefix loaded earlier via "load earlier messages" survives.
     const patch = (t) => ({
       ...t,
       messages: mergeMessagePage(t.messages, reconciled),
       messagesStatus: 'loaded',
-      hasMoreMessages: fresh.hasMoreMessages ?? false,
-      messagesCursor: fresh.messagesCursor ?? null,
+      ...reconcilePaginationState(t, fresh),
       ...(dc !== undefined ? { disabledConnections: dc } : {}),
     });
     setTasks((prev) => (prev.some((t) => t.id === id)
@@ -3099,7 +3094,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        // ENG-2768: the persisted row's real id, off response.completed/
+        // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
         // Anton sometimes wraps auth failures into a 200 stream that
@@ -3537,7 +3532,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        // ENG-2768: the persisted row's real id, off response.completed/
+        // The persisted row's real id, off response.completed/
         // failed — absent for an empty/config-error turn (nothing persisted).
         const finalAssistantMessageId = streamState.assistantMessageId;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
@@ -3851,7 +3846,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        // ENG-2768: probe turns frequently persist nothing (no conversation
+        // Probe turns frequently persist nothing (no conversation
         // context, or no body text) — an absent id here is the expected
         // case, not an error.
         const finalAssistantMessageId = streamState.assistantMessageId;
@@ -4083,31 +4078,55 @@ function AppCore() {
     setPendingDeleteTurn({ taskId, messageId });
   };
 
-  // "Load earlier messages" (ENG-2768): tracks which tasks currently have a
+  // "Load earlier messages": tracks which tasks currently have a
   // page fetch in flight, so ChatView can disable/relabel the affordance
   // per task rather than globally.
   const [loadingOlderMessagesFor, setLoadingOlderMessagesFor] = useState(() => new Set());
+  // Guards the actual dispatch synchronously — the state Set above only
+  // drives the button's disabled/label UI and can't stop a second click
+  // dispatched before React re-renders from also passing the guard and
+  // prepending the same page twice.
+  const loadingOlderMessagesForRef = useRef(new Set());
 
   const handleLoadEarlierMessages = async (taskId) => {
     const current = tasksRef.current.find((t) => t.id === taskId);
     if (!current?.hasMoreMessages || !current?.messagesCursor) return;
-    if (loadingOlderMessagesFor.has(taskId)) return;
+    if (loadingOlderMessagesForRef.current.has(taskId)) return;
+    loadingOlderMessagesForRef.current.add(taskId);
     setLoadingOlderMessagesFor((prev) => new Set(prev).add(taskId));
     try {
       const page = await fetchOlderMessages(taskId, current.messagesCursor);
-      if (!page) return;
+      if (!page) {
+        toastManager.add({
+          type: 'danger',
+          title: "Couldn't load earlier messages. Try again.",
+        });
+        return;
+      }
+      // Hydrate exactly like the first page does (fetchSession ->
+      // _conversationToTask -> _hydrateAssistantEvents): a raw item dict's
+      // `events` needs replaying into `steps`/`startedAt` for its Thinking
+      // block/scratchpad tabs to render, and a failed turn needs its
+      // synthetic error/provider_required row appended — skipped here
+      // before, so a turn loaded via "load earlier" rendered with no
+      // Thinking block and no error card even though the same turn would
+      // render correctly on the first page.
+      const hydrated = applySessionMessages(taskId, page.messages, {
+        isLive: false, isServerInFlight: false,
+      });
       // Older page: prepend directly, no id-based merge needed — the
       // cursor guarantees no overlap with what's already loaded, unlike
       // mergeMessagePage's job of reconciling a re-fetched TAIL.
       setTasks((prev) => prev.map((t) => (t.id === taskId
         ? {
             ...t,
-            messages: [...page.messages, ...t.messages],
+            messages: [...hydrated, ...t.messages],
             hasMoreMessages: page.hasMoreMessages,
             messagesCursor: page.messagesCursor,
           }
         : t)));
     } finally {
+      loadingOlderMessagesForRef.current.delete(taskId);
       setLoadingOlderMessagesFor((prev) => {
         if (!prev.has(taskId)) return prev;
         const next = new Set(prev);
@@ -4117,7 +4136,7 @@ function AppCore() {
     }
   };
 
-  // `messageId` (ENG-2768) anchors the turn being deleted: the assistant
+  // `messageId` anchors the turn being deleted: the assistant
   // reply, or (an orphan turn with no reply yet) the user message that
   // opened it — see ChatView's onDelete wiring. Both the local (`tmp-`)
   // and server-backed paths now truncate `t.messages` locally at that
@@ -4134,10 +4153,14 @@ function AppCore() {
     // The anchor is the assistant reply for a paired turn, or the user
     // message itself for an orphan turn (see ChatView's onDelete wiring).
     // A paired turn's actual start is the nearest user row at or before the
-    // anchor, walking back over any tool/activity rows in between —
-    // matching delete_turn's own "walk back to the opening user message"
-    // rule server-side (services/conversations.py). An orphan anchor is
-    // already a user row, so the loop is a no-op for it.
+    // anchor — matching delete_turn's own "walk back to the opening user
+    // message" rule server-side (services/conversations.py). Tool rows
+    // never reach the client (the server's /items already filters them
+    // out), so an assistant row here is always immediately preceded by
+    // exactly its own opening user row: this loop only ever takes one step
+    // for a paired turn, with no gap from the server's "walk back over
+    // hidden tool rows too" version of the same rule to reconcile. An
+    // orphan anchor is already a user row, so the loop is a no-op for it.
     let cutFrom = anchorIdx;
     while (cutFrom > 0 && msgs[cutFrom].role !== 'user') cutFrom -= 1;
     const removed = msgs.slice(cutFrom);

@@ -206,8 +206,8 @@ export function writeConvTurns(cid, data) {
   catch {} // private mode / quota — fail silently
 }
 
-// Drops the sidecar entries for message ids removed by a turn delete
-// (ENG-2768) — hygiene, not correctness: an id key can't collide with a
+// Drops the sidecar entries for message ids removed by a turn delete —
+// hygiene, not correctness: an id key can't collide with a
 // surviving turn's entry the way a counted position could, so leaving a
 // stale entry behind would only ever be inert, never wrong. `removedIds`
 // may be an array or a Set.
@@ -363,7 +363,7 @@ export function applySessionMessages(
 
 // Persist the full step set for one assistant turn so reload restores
 // the Thinking block, scratchpad tabs, and inline artifact cards.
-// `messageId` (ENG-2768) is the assistant message's own persisted id —
+// `messageId` is the assistant message's own persisted id —
 // previously a counted position among assistant messages, which broke
 // once a conversation could be lazily/partially loaded (the same write
 // could land under a DIFFERENT turn's key depending on how much history
@@ -407,7 +407,7 @@ export function persistTurnState(cid, messageId, steps, startedAt) {
 }
 
 // Merge persisted step + timing data onto assistant messages by id
-// (ENG-2768 — previously a counted position, see persistTurnState).
+// (previously a counted position, see persistTurnState).
 // Idempotent — if a message already has steps from a fresh stream we
 // don't overwrite (the live data is more accurate). A message with no id
 // yet (a live/local-only row still in flight) has nothing to look up and

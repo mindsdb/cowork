@@ -295,7 +295,7 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
-    // 'loading' until a real fetch resolves (ENG-2768) — every sidebar-listed
+    // 'loading' until a real fetch resolves — every sidebar-listed
     // task is built with an empty placeholder array before that happens, so
     // the loading gate needs this to distinguish "not fetched yet" from
     // "genuinely empty". Callers that hand over messages from a real fetch
@@ -357,7 +357,7 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
-/** Default page size for the paginated /items envelope (ENG-2768). Matches
+/** Default page size for the paginated /items envelope. Matches
  * the server's own default so the two agree without either side needing to
  * repeat the number. */
 const MESSAGE_PAGE_LIMIT = 50;
@@ -2283,7 +2283,7 @@ export async function patchConversation(id, body) {
 // anton generated during the turn).
 /** `messageId` anchors the turn: the visible assistant message it produced,
  * or (a turn stopped/failed before any answer) the opening user message
- * itself — matching the server's two accepted anchor shapes (ENG-2768).
+ * itself — matching the server's two accepted anchor shapes.
  * Positional (`turnIndex`) doesn't survive a lazily-loaded/paginated
  * conversation, so this replaced that contract; both worktrees land
  * together. */

@@ -1188,7 +1188,7 @@ describe('a requested conversation id not present locally (ENG-1233 Major 4)', (
   });
 });
 
-describe('a sidebar-known task whose messages have not loaded yet (ENG-2768)', () => {
+describe('a sidebar-known task whose messages have not loaded yet', () => {
   // fetchSessions has no global reset (only fetchSessionResult/fetchSession
   // do, in the top-level beforeEach) — restore the file's own default shape
   // so a later test in this file doesn't inherit messagesStatus: 'loading'

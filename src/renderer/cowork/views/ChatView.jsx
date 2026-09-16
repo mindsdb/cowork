@@ -1492,7 +1492,7 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // "Load earlier messages" (ENG-2768): present only when the task's most
+  // "Load earlier messages": present only when the task's most
   // recent page doesn't cover its whole history. Omitted callers (existing
   // tests, any surface that doesn't paginate) simply never see the
   // affordance — task.hasMoreMessages is falsy for them.
@@ -1761,7 +1761,7 @@ export default function ChatView({
     });
     // Loading an older page prepends content above what's on screen —
     // shifting scrollTop by the same delta keeps the reader's position
-    // steady instead of yanking them to the bottom (ENG-2768).
+    // steady instead of yanking them to the bottom.
     if (isPrepend) {
       el.scrollTop += scrollHeightDelta;
     } else {
@@ -2113,7 +2113,7 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    // Anchored on this user message's own id (ENG-2768) — an
+                    // Anchored on this user message's own id — an
                     // orphan turn (stopped/failed before any answer) has no
                     // assistant row to anchor on instead. Hidden, not just
                     // disabled, when there's no id yet (a stop/error refetch
@@ -2525,7 +2525,7 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  // Anchored on this assistant message's own id (ENG-2768).
+                  // Anchored on this assistant message's own id.
                   // Hidden, not just disabled, when there's no id yet — a
                   // just-completed turn always has one (step 9 captures it
                   // off the completion frame), so this only ever applies to

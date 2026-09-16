@@ -619,10 +619,10 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
   });
 });
 
-// ENG-2768: the persisted assistant message id rides response.completed/
+// The persisted assistant message id rides response.completed/
 // response.failed at the frame ROOT (not nested under `response`) — same
 // placement as conversation_id/harness on response.created.
-describe('assistantMessageId (ENG-2768)', () => {
+describe('assistantMessageId', () => {
   it('starts null', () => {
     expect(initialStreamState().assistantMessageId).toBeNull();
   });

@@ -947,12 +947,12 @@ describe('fetchArtifactStatus', () => {
   });
 });
 
-// ─── ENG-2768: /items pagination — fetchSession/fetchSessionResult opt into
+// ─── /items pagination — fetchSession/fetchSessionResult opt into
 // the cursor-paginated envelope via `limit`, and fetchOlderMessages walks
 // further back. The server response is normalized either way: the paginated
 // envelope ({items, hasMore, nextBefore}), or (a version-skewed server, or
 // any other unparameterized caller's shape) a bare array treated as complete.
-describe('paginated /items (ENG-2768)', () => {
+describe('paginated /items', () => {
   const meta = { id: 'c1', title: 'T', project: null };
 
   afterEach(() => vi.unstubAllGlobals());

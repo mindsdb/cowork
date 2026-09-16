@@ -4,7 +4,7 @@
 // there, rendering just before the next user message — so it never splits
 // a question from its reply.
 //
-// ENG-2768: anchored by message id, not a counted turn ordinal. A counted
+// Anchored by message id, not a counted turn ordinal. A counted
 // ordinal undercounts on a partially-loaded (paginated) conversation —
 // the array handed to `currentTurnAnchorId` at stamp time may only be the
 // most recent page, not the whole history. An id survives regardless of
@@ -21,10 +21,18 @@ const isAnchorTurn = (m) => m?.role === 'user' && !m?._unsent;
 // Stamped onto the notice at creation; null if there's nothing to anchor
 // to yet (falls through to the trailing bucket, same as an unstamped
 // notice always has).
+//
+// Only the LAST anchor-turn row counts as "the current turn" — if it has
+// no id yet (it was just appended locally and the server hasn't answered
+// back with one), this returns null rather than falling back to an
+// earlier turn's id. Falling back would silently reattribute a notice
+// stamped for the live turn to a turn that already finished (it would
+// render above the live question instead of at the bottom, where a
+// just-crossed threshold belongs).
 export function currentTurnAnchorId(messages) {
   const rows = Array.isArray(messages) ? messages : [];
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (isAnchorTurn(rows[i]) && rows[i].id != null) return rows[i].id;
+    if (isAnchorTurn(rows[i])) return rows[i].id ?? null;
   }
   return null;
 }

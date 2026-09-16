@@ -1,4 +1,4 @@
-// ENG-2768: delete-turn moved from a counted position to the anchor
+// Delete-turn moved from a counted position to the anchor
 // message's own id, and the post-delete update moved from a server
 // refetch-and-merge to a local truncation (see performDeleteTurn /
 // truncateTaskAt in App.jsx). These tests drive the real confirm-modal
@@ -149,7 +149,7 @@ beforeEach(() => {
   spies.streamMessage.mockClear();
 });
 
-describe('deleting a turn (ENG-2768: id-based, local truncation)', () => {
+describe('deleting a turn (id-based, local truncation)', () => {
   it('deletes the last turn by the assistant message id and truncates locally, without refetching the transcript', async () => {
     const user = userEvent.setup();
     spies.fetchSessionResult.mockResolvedValue({

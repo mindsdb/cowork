@@ -41,7 +41,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
     // `server` here always comes from the conversation LIST fetch
     // (fetchSessions), which never carries real messages and so always
-    // stamps messagesStatus: 'loading' (ENG-2768) — spreading it verbatim
+    // stamps messagesStatus: 'loading' — spreading it verbatim
     // would reset a task's status back to 'loading' on every background
     // list refresh, even one already confirmed 'loaded' (with zero
     // messages, a genuinely empty conversation) or 'unavailable'. Local
@@ -53,7 +53,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     // value always wins when present. Without this, the unconditional
     // background refresh every task-open triggers (openConversation) wipes
     // "load earlier messages" the moment it lands, on a task whose own
-    // fetchSession already established there's more history (ENG-2768).
+    // fetchSession already established there's more history.
     const hasMoreMessages = l.hasMoreMessages ?? server.hasMoreMessages;
     const messagesCursor = l.messagesCursor ?? server.messagesCursor;
     if (!isStreaming && !hasLocalContent) {

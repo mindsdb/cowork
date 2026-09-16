@@ -1,5 +1,5 @@
 // Decides how a conversation's scroll position should react to its visible
-// message list changing (ENG-2768). Appending new content at the end (a
+// message list changing. Appending new content at the end (a
 // live stream, a new turn finishing) keeps the existing "snap to bottom"
 // behavior; prepending an older page (the "load earlier messages"
 // affordance) must instead preserve the reader's current position — a

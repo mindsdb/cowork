@@ -1,4 +1,4 @@
-// ENG-2768: the "load earlier messages" affordance only appears when the
+// The "load earlier messages" affordance only appears when the
 // task's most recent page doesn't cover its whole history
 // (hasMoreMessages), and defers entirely to the caller for the actual
 // fetch/merge — ChatView just renders the button and reports the click.

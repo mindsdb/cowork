@@ -64,7 +64,7 @@ describe('mergeTasksFromServer keeps the client-only usage alerts (ENG-1782)', (
   });
 });
 
-describe('mergeTasksFromServer keeps the local messagesStatus (ENG-2768)', () => {
+describe('mergeTasksFromServer keeps the local messagesStatus', () => {
   // `server` always comes from the conversation list fetch, which never
   // carries real messages and so always stamps messagesStatus: 'loading' —
   // a background list refresh must not reset an already-resolved task's
@@ -105,7 +105,7 @@ describe('mergeTasksFromServer keeps the local messagesStatus (ENG-2768)', () =>
   });
 });
 
-describe('mergeTasksFromServer keeps the local pagination state (ENG-2768)', () => {
+describe('mergeTasksFromServer keeps the local pagination state', () => {
   // `server` always comes from the conversation list fetch, which never
   // carries hasMoreMessages/messagesCursor at all (undefined, not false) —
   // spreading it verbatim would silently hide "load earlier messages" the
