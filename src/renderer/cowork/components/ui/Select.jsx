@@ -233,7 +233,9 @@ export function Select({
     <BaseSelect.Root
       value={value}
       items={itemsForLabels}
-      onValueChange={(next) => onValueChange?.(next)}
+      // Base UI ≥ 1.7 emits null when the selected value leaves a shrinking
+      // option list. A user can't pick null from a listbox, so never forward it.
+      onValueChange={(next) => { if (next != null) onValueChange?.(next); }}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}
