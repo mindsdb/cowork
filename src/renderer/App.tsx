@@ -313,7 +313,7 @@ export default function App() {
       setOwnershipError(
         reason === 'account-changed'
           ? 'The signed-in account changed. Sign in again to answer this.'
-          : 'Could not take that history. Nothing was changed — try again.',
+          : 'Could not take that data. Nothing was changed — try again.',
       );
       return;
     }
