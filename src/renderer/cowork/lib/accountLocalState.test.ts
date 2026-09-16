@@ -219,7 +219,7 @@ describe('purgeOrganizationScopedState', () => {
     expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
   });
 
-  it('records an unmarked origin without purging it', () => {
+  it('records an unmarked origin without purging it at boot', () => {
     // Nothing here has been attributed to an organization yet, so it belongs to
     // this one. Purging would throw away an existing install's own drafts on
     // the first launch after the upgrade.
@@ -229,6 +229,31 @@ describe('purgeOrganizationScopedState', () => {
 
     expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
     expect(localStorage.getItem('anton.lastOrganization')).toBe('org-a');
+  });
+
+  it('purges an unmarked origin on an explicit switch', () => {
+    // Boot runs before the asynchronous refresh writes the organization
+    // record, so it is handed null and stamps nothing. A switch in that same
+    // launch would otherwise keep every cache and stamp it as the target's,
+    // and the reload after it would read that marker as correct — the source
+    // organization's chats and drafts surfacing under the target.
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    localStorage.setItem('anton.composerDrafts', '{"new":"draft"}');
+
+    expect(purgeOrganizationScopedState('org-b', 'purge')).toBe(true);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+    expect(localStorage.getItem('anton.composerDrafts')).toBeNull();
+    expect(localStorage.getItem('anton.lastOrganization')).toBe('org-b');
+  });
+
+  it('still does nothing on a switch back to the organization already marked', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+
+    expect(purgeOrganizationScopedState('org-a', 'purge')).toBe(false);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
   });
 
   it('leaves everything alone when there is no organization to attribute to', () => {

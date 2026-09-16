@@ -142,7 +142,10 @@ export function useMindsOrgs(accountUser) {
          */
         if (isElectron) {
           if (result.clearTenantState !== false) {
-            purgeOrganizationScopedState(result.activeOrgId ?? organizationId);
+            // 'purge': this is an explicit switch, so state carrying no
+            // organization marker belongs to the one being left. Boot cannot
+            // assume that and passes the default.
+            purgeOrganizationScopedState(result.activeOrgId ?? organizationId, 'purge');
           }
           notifyOrganizationChanged(sub);
           globalThis.location?.reload();

@@ -1895,11 +1895,21 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   if (!await ensureSidecarOnCurrentAccountRoot()) {
     const rolledBack = rollbackActiveOrg(sourceOrgId);
     const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
-    // Not startServer(): two of the four ways the call above returns false
-    // never stopped the sidecar, and a start already in flight would return a
-    // pending start that captured its environment before this rollback. Only
-    // this handles both "down" and "up on the wrong stores".
-    const recovered = await ensureSidecarOnCurrentAccountRoot();
+    // Recovery has to cover both shapes the failure leaves behind, and they
+    // need different calls.
+    //
+    // If the move stopped the sidecar and then could not start it, nothing is
+    // running, and ensureSidecarOnCurrentAccountRoot returns false without
+    // trying anything (it guards on a server being up). The reload below does
+    // not restart the main process, so the backend would stay down until the
+    // app was relaunched. That case needs a start.
+    //
+    // If the move never stopped anything — not running, or a start already in
+    // flight — the sidecar may just be on the wrong stores, which is what the
+    // helper is for.
+    const recovered = (isServerRunning() || isServerStarting())
+      ? await ensureSidecarOnCurrentAccountRoot()
+      : (await startServer()).ok && sidecarIsOnCurrentStores();
     return {
       ok: false,
       activeOrgId: restored ? sourceOrgId : target.id,

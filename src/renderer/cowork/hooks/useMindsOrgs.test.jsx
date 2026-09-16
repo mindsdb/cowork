@@ -526,6 +526,24 @@ describe('useMindsOrgs on desktop', () => {
     expect(transitionMock.prepareForOrganizationReload).not.toHaveBeenCalled();
   });
 
+  it('falls back to the requested organization when the result names none', async () => {
+    // A refusal that still requires a reload can come back without an
+    // activeOrgId; the purge still has to be keyed to something, and the
+    // organization that was asked for is the only thing known here.
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue({
+      ok: false, reloadRequired: true, clearTenantState: true, orgs: [ACME, PERSONAL],
+    });
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton.lastOrganization')).toBe(PERSONAL.id);
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+  });
+
   it('keeps local state when the switch says not to clear it', async () => {
     localStorage.setItem('anton.lastOrganization', ACME.id);
     localStorage.setItem('anton:conv-turns:c1', '[]');

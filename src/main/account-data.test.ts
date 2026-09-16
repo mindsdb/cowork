@@ -1015,6 +1015,24 @@ describe('recording which organization a session is operating as', () => {
   it('refuses an organization id that is not a safe path segment', () => {
     expect(() => writeActiveOrgSync(root, '../escape')).toThrow();
   });
+
+  it('is a no-op when asked to remove a record that was never written', () => {
+    // Sign-out and the rollback path both clear unconditionally; a missing file
+    // is the ordinary case there, not a failure.
+    expect(() => writeActiveOrgSync(root, null)).not.toThrow();
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('reads null from a record whose orgId is not a string', () => {
+    // Valid JSON, wrong shape — a hand-edited or truncated-then-rewritten file.
+    fs.writeFileSync(path.join(root, 'active-org.json'), JSON.stringify({ orgId: 42 }), 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('refuses a blank organization id rather than claiming for one', () => {
+    expect(claimOrgRoot(root, '   ')).toEqual({ kind: 'unreadable' });
+    expect(readOrgClaim(root)).toEqual({ kind: 'unclaimed' });
+  });
 });
 
 describe('reaping quarantined organization subtrees', () => {

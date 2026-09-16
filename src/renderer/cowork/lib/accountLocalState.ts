@@ -156,7 +156,10 @@ export function purgeStaleAccountState(
  * A null organization is left alone, for the same reason a signed-out account
  * is: there is nothing to attribute the state to yet.
  */
-export function purgeOrganizationScopedState(organizationId: string | null): boolean {
+export function purgeOrganizationScopedState(
+  organizationId: string | null,
+  unmarked: 'keep' | 'purge' = 'keep',
+): boolean {
   if (!organizationId) return false;
 
   let store: Storage | undefined;
@@ -172,7 +175,18 @@ export function purgeOrganizationScopedState(organizationId: string | null): boo
     if (last === organizationId) return false;
 
     let removed = 0;
-    if (last !== null) {
+    // An unmarked origin is kept at BOOT, because state with no organization
+    // attributed to it belongs to whoever is using the install, and purging it
+    // would throw away an existing user's own drafts on the first launch after
+    // this ships.
+    //
+    // An explicit SWITCH is the opposite: the working context demonstrably
+    // changed, so unmarked state belongs to the organization being left. Boot
+    // can legitimately see no marker at all — it runs before the asynchronous
+    // refresh writes the record, so it is handed null and stamps nothing — and
+    // without this a switch in that same launch would keep every cache and
+    // stamp it as the target's, which the next reload then reads as correct.
+    if (last !== null || unmarked === 'purge') {
       // Collect first: removeItem during the index walk reshuffles the keys.
       const doomed: string[] = [];
       for (let i = 0; i < store.length; i += 1) {
