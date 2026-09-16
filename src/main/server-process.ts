@@ -21,8 +21,13 @@ import {
   readActiveAccount,
   resolveAccountRoot,
   sidecarEnvForSession,
+  orgStoreEnv,
+  orgStoreRoot,
+  readActiveOrg,
+  ACCOUNTS_DIR,
+  listOrgSegments,
 } from './account-data';
-import { coworkHome, buildKind } from './cowork-home';
+import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
@@ -81,9 +86,24 @@ function serverOwnerSecret(): string {
 }
 
 // The owner value a spawned server is stamped with and echoed back at /health,
-// bound to the account whose data root it was started on. See accountOwnerToken.
-function serverOwnerToken(accountId?: string | null): string {
-  return accountOwnerToken(serverOwnerSecret(), accountId ?? null);
+// bound to the account AND the organization whose stores it was started on.
+// `orgSegment` is null for the organization that owns the account root, so that
+// session's token is exactly what it was before organizations were partitioned
+// and an existing sidecar is still adopted across the upgrade.
+function serverOwnerToken(accountId?: string | null, orgSegment?: string | null): string {
+  const base = accountOwnerToken(serverOwnerSecret(), accountId ?? null);
+  if (!orgSegment) return base;
+  return crypto.createHmac('sha256', base).update(orgSegment).digest('hex');
+}
+
+// Which organization subtree the session's stores sit in, or null when they are
+// the account root's own. The path, not the recorded id: a session with no
+// record yet and the organization that owns the root are the same stores, and
+// stamping them alike is what keeps an un-partitioned install adoptable.
+function currentOrgSegment(): string | null {
+  const account = accountDataRoot();
+  const stores = currentOrgStoreRoot();
+  return stores === account ? null : path.basename(stores);
 }
 
 /**
@@ -98,8 +118,12 @@ function serverOwnerToken(accountId?: string | null): string {
  * our own stale ones get reaped by the normal start path.
  */
 function isOwnerTokenOurs(owner: string): boolean {
-  if (owner === serverOwnerToken(null)) return true;
-  return knownAccountRoots(coworkHome()).some((id) => owner === serverOwnerToken(id));
+  const home = coworkHome();
+  const roots: Array<[string | null, string]> = [[null, home]];
+  for (const id of knownAccountRoots(home)) roots.push([id, path.join(home, ACCOUNTS_DIR, id)]);
+  return roots.some(([id, root]) =>
+    owner === serverOwnerToken(id)
+    || listOrgSegments(root).some((seg) => owner === serverOwnerToken(id, seg)));
 }
 
 // Which account's stores this session uses, or null for the default root. Read
@@ -109,6 +133,15 @@ function isOwnerTokenOurs(owner: string): boolean {
 function currentAccountRoot(): string | null {
   const home = coworkHome();
   return resolveAccountRoot(home, readActiveAccount(home));
+}
+
+// Which organization's stores this session uses, as an absolute path. Separate
+// from the account root because an organization switch keeps the same account:
+// comparing account ids alone reads as unchanged across a switch, so the
+// sidecar would never be moved off the previous organization's database.
+function currentOrgStoreRoot(): string {
+  const account = accountDataRoot();
+  return orgStoreRoot(account, readActiveOrg(account));
 }
 
 // Deterministic per-OS-user, per-build-kind port. Stable across launches for a
@@ -159,6 +192,11 @@ function findFreePort(): Promise<number> {
 // names the new account by the time a sign-in asks whether to restart.
 let _runningAccountRoot: string | null | undefined;
 
+// Which organization's stores the RUNNING sidecar was started on, as an
+// absolute path. Captured at spawn rather than re-read later, so a record that
+// moves during a start cannot make us record a root the process is not on.
+let _runningOrgStoreRoot: string | undefined;
+
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
 let serverStarted = false;
@@ -171,8 +209,9 @@ let pendingStart: Promise<StartServerResult> | null = null;
  * Whether the running sidecar is serving the account root this session resolves
  * to. False when nothing is running, so callers pair it with isServerRunning.
  */
-export function sidecarIsOnCurrentAccountRoot(): boolean {
-  return _runningAccountRoot === currentAccountRoot();
+export function sidecarIsOnCurrentStores(): boolean {
+  return _runningAccountRoot === currentAccountRoot()
+    && _runningOrgStoreRoot === currentOrgStoreRoot();
 }
 
 /**
@@ -192,7 +231,7 @@ export function sidecarIsOnCurrentAccountRoot(): boolean {
 export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   if (!isServerRunning() && !isServerStarting()) return false;
   if (isServerStarting()) return false; // a start in flight will use the current root
-  if (sidecarIsOnCurrentAccountRoot()) return true;
+  if (sidecarIsOnCurrentStores()) return true;
   console.log('[server] running on another account data root — restarting');
   try {
     await stopServer();
@@ -200,7 +239,7 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
     // the previous root would be sent to the new server and refused.
     resetServerAuthTokenCache();
     const result = await startServer();
-    return result.ok && sidecarIsOnCurrentAccountRoot();
+    return result.ok && sidecarIsOnCurrentStores();
   } catch (err) {
     console.warn('[server] could not move the sidecar onto this account root', err);
     return false;
@@ -633,7 +672,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // recovery attempt as a no-op.
     if (!_adoptedExternal) return { ok: true, port: serverPort };
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot())) {
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
       return { ok: true, port: serverPort };
     }
     console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -659,12 +698,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // adopting (a foreign server was already routed around in resolveServerPort).
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot())) {
+    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
       serverStarted = true;
       _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
+      _runningOrgStoreRoot = currentOrgStoreRoot();
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
@@ -760,9 +800,17 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // an existing single-account install on exactly the paths it has today.
     const account = currentAccountRoot();
     const accountEnv = sidecarEnvForSession(dataHome, readActiveAccount(dataHome));
+    // Per-organization store paths inside that account root. COWORK_HOME stays
+    // put: it carries the .env and the provider config, which no organization
+    // switch rewrites, so moving it would leave a switched-to organization
+    // unconfigured.
+    const orgStoreRootAtSpawn = currentOrgStoreRoot();
+    const orgSegmentAtSpawn = currentOrgSegment();
+    const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
     console.log(
       `[server] build kind "${kind}" → data home ${dataHome}` +
-        (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : ''),
+        (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
+        (orgEnv.DATABASE_URI ? ` → organization stores ${orgStoreRootAtSpawn}` : ''),
     );
     const env = {
       ...process.env,
@@ -808,12 +856,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // legacy ~/.anton/.env fallback in place — that is dropped only when
       // COWORK_HOME is set at all.
       ...accountEnv,
+      ...orgEnv,
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it. Bound to the account
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
-      COWORK_SERVER_OWNER: serverOwnerToken(account),
+      COWORK_SERVER_OWNER: serverOwnerToken(account, orgSegmentAtSpawn),
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
       // build points at. Only set when the build is baked for a non-prod env
@@ -957,6 +1006,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     }
     serverStarted = true;
     _runningAccountRoot = account;
+    _runningOrgStoreRoot = orgStoreRootAtSpawn;
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a
@@ -1051,6 +1101,7 @@ async function stopServerUnlocked(): Promise<void> {
   await prepareCodingTasksForShutdown();
   serverStarted = false;
   _runningAccountRoot = undefined;
+  _runningOrgStoreRoot = undefined;
 
   const exited = new Promise<void>((resolve) => {
     proc.once('exit', () => resolve());

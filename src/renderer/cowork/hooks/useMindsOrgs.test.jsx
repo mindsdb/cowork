@@ -4,6 +4,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 const hostMock = vi.hoisted(() => ({
   mindshubListOrgs: vi.fn(),
   mindshubSwitchOrg: vi.fn(),
+  // Desktop and web take different reload paths; the existing cases are web.
+  isElectron: false,
 }));
 vi.mock('../../platform/host', () => hostMock);
 
@@ -104,7 +106,7 @@ describe('useMindsOrgs', () => {
     expect(result.current.orgs).toEqual([PERSONAL]);
   });
 
-  it('keeps the desktop switch result as local state without reloading', async () => {
+  it('keeps a switch result carrying no reload requirement as local state', async () => {
     hostMock.mindshubSwitchOrg.mockResolvedValue({
       ok: true,
       activeOrgId: PERSONAL.id,
@@ -471,5 +473,87 @@ describe('useMindsOrgs', () => {
     await waitFor(() => expect(hostMock.mindshubListOrgs).toHaveBeenCalled());
     expect(result.current.orgs).toEqual([]);
     expect(result.current.activeOrgId).toBeNull();
+  });
+});
+
+// Desktop does not share the web reload path. Its budget ends in "staying put
+// and refusing tokens", which in a desktop window is wedged, and it returns
+// before the in-app refresh signal mounted readers depend on.
+describe('useMindsOrgs on desktop', () => {
+  let reload;
+
+  beforeEach(() => {
+    hostMock.isElectron = true;
+    reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    hostMock.isElectron = false;
+    vi.unstubAllGlobals();
+  });
+
+  const switched = () => ({
+    ok: true,
+    reloadRequired: true,
+    clearTenantState: true,
+    activeOrgId: PERSONAL.id,
+    orgs: [ACME, PERSONAL],
+  });
+
+  it('purges, notifies mounted readers, then reloads', async () => {
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+    expect(organizationChanged).toHaveBeenCalledWith('user-1');
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('does not take the web reload path', async () => {
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(transitionMock.prepareForOrganizationReload).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the requested organization when the result names none', async () => {
+    // A refusal that still requires a reload can come back without an
+    // activeOrgId; the purge still has to be keyed to something, and the
+    // organization that was asked for is the only thing known here.
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue({
+      ok: false, reloadRequired: true, clearTenantState: true, orgs: [ACME, PERSONAL],
+    });
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton.lastOrganization')).toBe(PERSONAL.id);
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+  });
+
+  it('keeps local state when the switch says not to clear it', async () => {
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    hostMock.mindshubSwitchOrg.mockResolvedValue({ ...switched(), clearTenantState: false });
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

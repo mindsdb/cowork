@@ -4,14 +4,18 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import {
   claimDefaultRoot,
+  claimOrgRoot,
   clearActiveAccountRecord,
   clearInMemorySessionQuarantine,
   markActiveAccountUnresolved,
   markSessionUnresolvedInMemory,
+  readActiveOrg,
+  readOrgClaim,
   writeActiveAccountSync,
+  writeActiveOrgSync,
 } from './account-data';
-import { accountIdFromToken } from './jwt';
-import { coworkHome } from './cowork-home';
+import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
+import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 
 // Persistence for the Keycloak refresh token.
@@ -150,6 +154,9 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
     }
   }
   recordSignedInAccount(accessToken, refreshToken);
+  // After the account, always: the organization root resolves through whichever
+  // account root the call above just settled.
+  recordActiveOrganization(accessToken);
   broadcastAuthChanged(true);
 }
 
@@ -222,6 +229,62 @@ function quarantineSession(): void {
       + 'this session may resolve onto another account data root',
       removeErr,
     );
+  }
+}
+
+/**
+ * Which organization the session is operating as, recorded at the same choke
+ * point as the account and for the same reason: every auth transition flows
+ * through here, so a launch that never reaches the finalize step still records.
+ * Recording only where a person picks an organization would miss every install
+ * that is already signed in, which is precisely the population whose data is
+ * unpartitioned.
+ *
+ * The claim is separate and is taken at most once per process, only when this
+ * install has never recorded or claimed one. That makes the owner of existing
+ * data the organization the FIRST token names, not the ranked default a boot
+ * may switch to a moment later, and not the target of a switch.
+ */
+function recordActiveOrganization(accessToken: string): void {
+  const orgId = activeOrgIdFromToken(accessToken);
+  if (!orgId) return;
+  const root = accountDataRoot();
+
+  try {
+    // Attempted on EVERY token that names an organization, not once per
+    // process. An unclaimed root is one that EVERY organization resolves onto,
+    // so leaving it unclaimed is the reported bug: a launch whose token carries
+    // no organization claim, or a claim write that failed, would otherwise
+    // close the only chance to write one, and every organization after it would
+    // share one database. claimOrgRoot is idempotent and never steals, so
+    // retrying costs nothing and repairs both cases.
+    //
+    // Accepted cost: when the root is unclaimed and already holds data,
+    // whichever organization is active when the first claim lands inherits it.
+    // Attributing that data to one organization is better than sharing it with
+    // all of them, and unlike the sharing it is visible.
+    if (readOrgClaim(root).kind !== 'claimed' && claimOrgRoot(root, orgId).kind !== 'claimed') {
+      console.error(
+        '[token-store] could not record which organization owns this data root — '
+        + 'organizations on this account may share stores until it can be written',
+      );
+    }
+    writeActiveOrgSync(root, orgId);
+  } catch (e) {
+    // NOT best-effort, for the same reason as the account record: a stale
+    // record names the PREVIOUS organization and every check downstream
+    // compares against it and agrees, so the sidecar is never moved. Removing
+    // it resolves to an empty quarantine root instead, which is recoverable.
+    console.warn('[token-store] could not record the active organization', e);
+    try {
+      writeActiveOrgSync(root, null);
+    } catch (removeErr) {
+      console.error(
+        '[token-store] could not record OR clear the active organization — '
+        + 'this session may read another organization\'s data',
+        removeErr,
+      );
+    }
   }
 }
 

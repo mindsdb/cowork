@@ -6,7 +6,12 @@ import * as path from 'path';
 // the last place the previous account's data can still reach the screen after a
 // switch. The cases that matter are: a real switch purges, a same-account boot
 // does not, and unrelated keys are never touched.
-import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './accountLocalState';
+import {
+  legacyVerdictForSession,
+  purgeOrganizationScopedState,
+  purgeStaleAccountState,
+  shouldReloadForAccountChange,
+} from './accountLocalState';
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
@@ -183,6 +188,91 @@ describe('an unmarked legacy cache', () => {
     for (const key of Object.keys(ACCOUNT_KEYS)) {
       expect(localStorage.getItem(key)).toBeNull();
     }
+  });
+});
+
+// One account works in several organizations, and a switch changes the working
+// context as completely as a sign-in does. The sidecar moves to another
+// database; without this, localStorage repaints the previous organization's
+// drafts and caches over the new one's empty stores.
+describe('purgeOrganizationScopedState', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('drops the previous organization\'s state and records the new one', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    localStorage.setItem('anton.composerDrafts', '{"new":"draft"}');
+
+    expect(purgeOrganizationScopedState('org-b')).toBe(true);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+    expect(localStorage.getItem('anton.composerDrafts')).toBeNull();
+    expect(localStorage.getItem('anton.lastOrganization')).toBe('org-b');
+  });
+
+  it('keeps state when the organization has not changed', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+
+    expect(purgeOrganizationScopedState('org-a')).toBe(false);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+  });
+
+  it('records an unmarked origin without purging it at boot', () => {
+    // Nothing here has been attributed to an organization yet, so it belongs to
+    // this one. Purging would throw away an existing install's own drafts on
+    // the first launch after the upgrade.
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+
+    expect(purgeOrganizationScopedState('org-a')).toBe(false);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+    expect(localStorage.getItem('anton.lastOrganization')).toBe('org-a');
+  });
+
+  it('purges an unmarked origin on an explicit switch', () => {
+    // Boot runs before the asynchronous refresh writes the organization
+    // record, so it is handed null and stamps nothing. A switch in that same
+    // launch would otherwise keep every cache and stamp it as the target's,
+    // and the reload after it would read that marker as correct — the source
+    // organization's chats and drafts surfacing under the target.
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+    localStorage.setItem('anton.composerDrafts', '{"new":"draft"}');
+
+    expect(purgeOrganizationScopedState('org-b', 'purge')).toBe(true);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
+    expect(localStorage.getItem('anton.composerDrafts')).toBeNull();
+    expect(localStorage.getItem('anton.lastOrganization')).toBe('org-b');
+  });
+
+  it('still does nothing on a switch back to the organization already marked', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+
+    expect(purgeOrganizationScopedState('org-a', 'purge')).toBe(false);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+  });
+
+  it('leaves everything alone when there is no organization to attribute to', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton:conv-turns:c1', '[]');
+
+    expect(purgeOrganizationScopedState(null)).toBe(false);
+
+    expect(localStorage.getItem('anton:conv-turns:c1')).toBe('[]');
+    expect(localStorage.getItem('anton.lastOrganization')).toBe('org-a');
+  });
+
+  it('leaves keys that belong to neither context', () => {
+    localStorage.setItem('anton.lastOrganization', 'org-a');
+    localStorage.setItem('anton.theme', 'dark');
+
+    purgeOrganizationScopedState('org-b');
+
+    expect(localStorage.getItem('anton.theme')).toBe('dark');
   });
 });
 

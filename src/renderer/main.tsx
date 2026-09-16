@@ -23,7 +23,7 @@ import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
-import { purgeStaleAccountState } from './cowork/lib/accountLocalState';
+import { purgeOrganizationScopedState, purgeStaleAccountState } from './cowork/lib/accountLocalState';
 import { accountSessionSync } from './platform/host';
 import { reset as resetOnboardingProgress } from './cowork/components/onboarding/onboardingStore';
 
@@ -47,6 +47,10 @@ const purgedStaleAccount = purgeStaleAccountState(
 // the store's own reset (clears both the keys and the snapshot, and notifies
 // subscribers) has to run too whenever the purge actually found something.
 if (purgedStaleAccount) resetOnboardingProgress();
+// And the previous ORGANIZATION's, for the same reason and at the same moment:
+// one account works in several, and a switch changes the working context as
+// completely as a sign-in does.
+purgeOrganizationScopedState(shellSession?.organizationId ?? null);
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real

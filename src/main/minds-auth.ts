@@ -1,10 +1,10 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentAccountRoot } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
 import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
-import { claimDefaultRoot } from './account-data';
-import { accountIdFromToken, decodeJwtPayload } from './jwt';
-import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
+import { claimDefaultRoot, writeActiveOrgSync } from './account-data';
+import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
+import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -417,10 +417,10 @@ export function signedInAccountId(): string | null {
 function normalizeOrgRef(value: any, source: string): OrgRef | null {
   const raw = value?.organization ?? value;
   if (!raw || typeof raw !== 'object') return null;
-  const id = raw.id ?? raw.keycloak_id ?? raw.organization_id ?? raw.org_id ?? raw.name;
+  const id = orgIdFromClaim(raw);
   if (!id) return null;
   return {
-    id: String(id),
+    id,
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
     slug: raw.name ? String(raw.name) : undefined,
     source,
@@ -428,10 +428,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
 }
 
 function getActiveOrgFromPayload(payload: Record<string, unknown> | null): OrgRef | null {
-  const raw =
-    payload?.active_organization ??
-    payload?.activate_organization ??
-    payload?.organization;
+  const raw = activeOrgClaim(payload);
 
   if (!raw) return null;
   if (typeof raw === 'string') {
@@ -1467,7 +1464,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // database any other way, and leaving it would show the new account the
   // previous one's tasks. Safe here specifically because the credential push
   // below runs after it, and `setServerStartedHook` re-pushes on every start.
-  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentAccountRoot()) {
+  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentStores()) {
     console.log('[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();
@@ -1749,6 +1746,12 @@ export interface SwitchMindsOrgResult {
   orgs: MindsOrg[];
   /** A sentence to show. Present only when `ok` is false. */
   error?: string;
+  /** The renderer must reload before it can be trusted: its in-memory state
+   *  belongs to the organization being left. Optional, so an older renderer
+   *  reading this payload is unaffected. */
+  reloadRequired?: boolean;
+  /** Drop organization-scoped local state as part of that reload. */
+  clearTenantState?: boolean;
 }
 
 /**
@@ -1778,6 +1781,20 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
   }
 }
 
+/** Put the record back, reporting whether it landed. writeActiveOrgSync throws
+ *  by contract, and on a rollback path that exception would escape the switch
+ *  with the record still naming the target organization and the session never
+ *  restored. */
+function rollbackActiveOrg(orgId: string | null): boolean {
+  try {
+    writeActiveOrgSync(accountDataRoot(), orgId);
+    return true;
+  } catch (err) {
+    console.warn('[minds-auth] could not put the active organization record back', err);
+    return false;
+  }
+}
+
 async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
   const token = await freshAccessToken();
   if (!token) return { ok: false, activeOrgId: null, orgs: [], error: 'Sign in to change organization.' };
@@ -1799,8 +1816,31 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
   }
   if (target.id === sourceOrgId) {
+    // The action a person takes when they notice the wrong data: re-pick the
+    // organization they are already in. Record and move the sidecar, or the one
+    // thing they try does nothing.
+    try {
+      writeActiveOrgSync(accountDataRoot(), target.id);
+    } catch (err) {
+      console.warn('[minds-auth] could not record the active organization', err);
+      return {
+        ok: false,
+        activeOrgId: sourceOrgId,
+        orgs,
+        error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+      };
+    }
     storeOrgPreference(userId, target.id, true);
-    return { ok: true, activeOrgId: sourceOrgId, orgs };
+    // Asked BEFORE the move, because ensureSidecar... answers the same `true`
+    // for "already correct" and "restarted", and only the second needs a
+    // reload: the renderer's state came from the database that was replaced.
+    if (sidecarIsOnCurrentStores()) {
+      return { ok: true, activeOrgId: sourceOrgId, orgs };
+    }
+    await ensureSidecarOnCurrentAccountRoot();
+    // Reload whether or not the move succeeded. The renderer is holding state
+    // from a database this session is no longer meant to be reading either way.
+    return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: true, clearTenantState: true };
   }
 
   if (!await switchActiveOrg(token, target.id)) {
@@ -1816,12 +1856,69 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   if (!switched) {
     // The switch landed on Keycloak even though this token did not follow it,
     // so the session has genuinely moved and has to be moved back.
-    await restoreActiveOrg(token, sourceOrgId);
+    const restored = await restoreActiveOrg(token, sourceOrgId);
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
-      error: `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: restored
+        ? `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
+    };
+  }
+
+  // The record decides which stores the sidecar is moved onto, so it goes first.
+  // It throws rather than swallowing: a lost write would leave the record naming
+  // the organization being left, the restart below would compare two stale
+  // values and agree, and the switch would report success having moved nothing.
+  try {
+    writeActiveOrgSync(accountDataRoot(), target.id);
+  } catch (err) {
+    console.warn('[minds-auth] could not record the active organization', err);
+    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+    };
+  }
+
+  // Move the sidecar BEFORE handing over the credential. The other way round
+  // leaves it on the previous organization's database holding a token naming
+  // this one, so a turn started in that window bills this organization and
+  // writes into the previous one. The start re-pushes the credential anyway.
+  if (!await ensureSidecarOnCurrentAccountRoot()) {
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
+    // Recovery has to cover both shapes the failure leaves behind, and they
+    // need different calls.
+    //
+    // If the move stopped the sidecar and then could not start it, nothing is
+    // running, and ensureSidecarOnCurrentAccountRoot returns false without
+    // trying anything (it guards on a server being up). The reload below does
+    // not restart the main process, so the backend would stay down until the
+    // app was relaunched. That case needs a start.
+    //
+    // If the move never stopped anything — not running, or a start already in
+    // flight — the sidecar may just be on the wrong stores, which is what the
+    // helper is for.
+    const recovered = (isServerRunning() || isServerStarting())
+      ? await ensureSidecarOnCurrentAccountRoot()
+      : (await startServer()).ok && sidecarIsOnCurrentStores();
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored || !recovered,
+      clearTenantState: true,
+      error: restored
+        ? `Could not move the local server to ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
     };
   }
 
@@ -1830,15 +1927,26 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // until the next refresh tick, so turns would bill the organization the
   // person just left while the menu said otherwise.
   if (!await syncMindsCredential({ invalidateCatalog: true })) {
-    await restoreActiveOrg(switched, sourceOrgId);
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
+    // Captured, like the sibling branch above: if the sidecar cannot be moved
+    // back it is still serving the TARGET organization's database, and
+    // reporting "Nothing changed" there would leave every later read and write
+    // landing in the organization the person believes they left.
+    const recovered = await ensureSidecarOnCurrentAccountRoot();
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
+      reloadRequired: !restored || !recovered,
+      clearTenantState: true,
       error: 'Could not hand the new credential to the local server. Nothing changed.',
     };
   }
 
+  // Last, because it is what survives a relaunch: written earlier, a later
+  // failure would leave the next launch moving to an organization this call
+  // reported as unchanged.
   storeOrgPreference(userId, target.id, true);
-  return { ok: true, activeOrgId: target.id, orgs };
+  return { ok: true, activeOrgId: target.id, orgs, reloadRequired: true, clearTenantState: true };
 }

@@ -19,13 +19,21 @@ import {
   hadPreExistingData,
   isOwnershipSettled,
   knownAccountRoots,
+  knownOrgRoots,
   needsOwnershipDecision,
   observePreExistingData,
   recordedIncumbent,
   rendererAccountSession,
   settleOwnership,
+  claimOrgRoot,
+  readActiveOrg,
+  writeActiveOrgSync,
+  orgStoreEnv,
+  orgStoreRoot,
+  ORGS_DIR,
   readAccountClaim,
   readActiveAccount,
+  readOrgClaim,
   resolveAccountRoot,
   sidecarEnvForSession,
   sweepStaleQuarantineRoots,
@@ -848,5 +856,311 @@ describe('claiming leaves no temp file behind', () => {
     fresh();
     claimDefaultRoot(home, A);
     expect(fs.readdirSync(home).filter((n) => n.startsWith('.account.tmp-'))).toEqual([]);
+  });
+});
+
+// Which organization's stores a session reads, inside one account's root. The
+// account root itself belongs to the organization that claimed it, so an
+// existing install keeps its data exactly where it is and nothing is moved.
+describe('resolving an organization store root', () => {
+  const ORG_A = 'org-aaaa';
+  const ORG_B = 'org-bbbb';
+  let root: string;
+
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  const orgRoot = (id: string) => path.join(root, ORGS_DIR, id);
+
+  it('keeps an install that never partitioned on its account root', () => {
+    // The upgrade case. No claim, no orgs/ directory, so there is no second
+    // organization to leak to and the data stays where the install left it.
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+    expect(orgStoreEnv(root, ORG_A)).toEqual({});
+  });
+
+  it('keeps the claiming organization on the account root', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+    expect(orgStoreEnv(root, ORG_A)).toEqual({});
+  });
+
+  it('gives every other organization its own subtree', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, ORG_B)).toBe(orgRoot(ORG_B));
+  });
+
+  it('never steals a claim that is already held', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(claimOrgRoot(root, ORG_B)).toEqual({ kind: 'claimed', orgId: ORG_A });
+    expect(readOrgClaim(root)).toEqual({ kind: 'claimed', orgId: ORG_A });
+  });
+
+  it('sends an organization away from a root it cannot read the owner of', () => {
+    fs.writeFileSync(path.join(root, '.organization'), '{ not json', 'utf-8');
+    expect(readOrgClaim(root)).toEqual({ kind: 'unreadable' });
+    expect(orgStoreRoot(root, ORG_A)).toBe(orgRoot(ORG_A));
+  });
+
+  it('sends an organization away once the root has been partitioned', () => {
+    fs.mkdirSync(orgRoot(ORG_B), { recursive: true });
+    expect(orgStoreRoot(root, 'org-cccc')).toBe(orgRoot('org-cccc'));
+  });
+
+  it('ignores a quarantine bucket when asking whether the root was partitioned', () => {
+    // A quarantined subtree the sidecar wrote to is never reaped, so counting it
+    // would strand the owning organization in an empty subtree for good.
+    fs.mkdirSync(path.join(root, ORGS_DIR, '_unresolved-dead'), { recursive: true });
+    expect(knownOrgRoots(root)).toEqual([]);
+    expect(orgStoreRoot(root, ORG_A)).toBe(root);
+  });
+
+  it('quarantines a session that cannot name its organization once someone owns the root', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreRoot(root, null)).toContain('_unresolved-');
+  });
+
+  it('leaves an unclaimed unpartitioned root to a session that cannot name itself', () => {
+    expect(orgStoreRoot(root, null)).toBe(root);
+  });
+
+  it('refuses an organization id that is not a safe path segment', () => {
+    expect(orgStoreRoot(root, '../escape')).toContain('_unresolved-');
+    expect(claimOrgRoot(root, '../escape')).toEqual({ kind: 'unreadable' });
+  });
+
+  it('points every store at the organization subtree', () => {
+    claimOrgRoot(root, ORG_A);
+    const env = orgStoreEnv(root, ORG_B);
+    // Ten, and all of them: a store left out shares across organizations.
+    expect(Object.keys(env).sort()).toEqual([
+      'ANTON_COWORK_STATE_DIR',
+      'ANTON_SKILLS_ROOT_DIR',
+      'COWORK_CODING_DIR',
+      'COWORK_FILES_DIR',
+      'COWORK_MEMORY_DIR',
+      'COWORK_PROJECTS_DIR',
+      'COWORK_SKILLS_DIR',
+      'COWORK_STREAMS_DIR',
+      'COWORK_VAULT_DIR',
+      'DATABASE_URI',
+    ]);
+    for (const [key, value] of Object.entries(env)) {
+      const bare = key === 'DATABASE_URI' ? value.replace('sqlite:///', '') : value;
+      expect(bare.startsWith(orgRoot(ORG_B))).toBe(true);
+    }
+  });
+
+  it('does not move COWORK_HOME, so the .env and provider config stay shared', () => {
+    claimOrgRoot(root, ORG_A);
+    expect(orgStoreEnv(root, ORG_B)).not.toHaveProperty('COWORK_HOME');
+  });
+
+  it('builds a database URI cowork-server parses back to the same path', () => {
+    claimOrgRoot(root, ORG_A);
+    const uri = orgStoreEnv(root, ORG_B).DATABASE_URI;
+    expect(uri.startsWith('sqlite:///')).toBe(true);
+    expect(uri.replace('sqlite:///', '')).toBe(path.join(orgRoot(ORG_B), 'cowork.db'));
+  });
+});
+
+describe('recording which organization a session is operating as', () => {
+  let root: string;
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  it('reads back what it recorded', () => {
+    writeActiveOrgSync(root, 'org-aaaa');
+    expect(readActiveOrg(root)).toBe('org-aaaa');
+  });
+
+  it('reads null before anything was recorded, so an upgrade stays on its root', () => {
+    expect(readActiveOrg(root)).toBeNull();
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+  });
+
+  it('reads null from a corrupt record rather than naming an organization', () => {
+    fs.writeFileSync(path.join(root, 'active-org.json'), '{ not json', 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('reads null from a record that is not a safe path segment', () => {
+    fs.writeFileSync(path.join(root, 'active-org.json'), JSON.stringify({ orgId: '../escape' }), 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('removes the record when told there is no organization', () => {
+    writeActiveOrgSync(root, 'org-aaaa');
+    writeActiveOrgSync(root, null);
+    expect(readActiveOrg(root)).toBeNull();
+    expect(fs.existsSync(path.join(root, 'active-org.json'))).toBe(false);
+  });
+
+  it('THROWS rather than silently losing the record', () => {
+    // Swallowing this is the failure that matters: the record would keep naming
+    // the previous organization, every check downstream would compare against
+    // it and agree, and a switch would report success having moved nothing.
+    fs.chmodSync(root, 0o500);
+    try {
+      expect(() => writeActiveOrgSync(root, 'org-aaaa')).toThrow();
+    } finally {
+      fs.chmodSync(root, 0o700);
+    }
+  });
+
+  it('refuses an organization id that is not a safe path segment', () => {
+    expect(() => writeActiveOrgSync(root, '../escape')).toThrow();
+  });
+
+  it('is a no-op when asked to remove a record that was never written', () => {
+    // Sign-out and the rollback path both clear unconditionally; a missing file
+    // is the ordinary case there, not a failure.
+    expect(() => writeActiveOrgSync(root, null)).not.toThrow();
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('reads null from a record whose orgId is not a string', () => {
+    // Valid JSON, wrong shape — a hand-edited or truncated-then-rewritten file.
+    fs.writeFileSync(path.join(root, 'active-org.json'), JSON.stringify({ orgId: 42 }), 'utf-8');
+    expect(readActiveOrg(root)).toBeNull();
+  });
+
+  it('refuses a blank organization id rather than claiming for one', () => {
+    expect(claimOrgRoot(root, '   ')).toEqual({ kind: 'unreadable' });
+    expect(readOrgClaim(root)).toEqual({ kind: 'unclaimed' });
+  });
+});
+
+describe('reaping quarantined organization subtrees', () => {
+  const quarantined = (root: string, name: string) => {
+    fs.mkdirSync(path.join(root, ORGS_DIR, name), { recursive: true });
+    return path.join(root, ORGS_DIR, name);
+  };
+
+  it('reaps one under the default root, which is the single-account case', () => {
+    // The account that owns the default root has no accounts/<id> directory, so
+    // its organization subtrees sit at <home>/orgs and a sweep that only walks
+    // accounts/* would never reach them.
+    const dead = quarantined(home, '_unresolved-dead');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(false);
+  });
+
+  it('reaps one under a named account root', () => {
+    makeAccountRoot(A);
+    const dead = quarantined(accountRoot(A), '_unresolved-dead');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(false);
+  });
+
+  it('keeps one that holds data, and says so', () => {
+    const dead = quarantined(home, '_unresolved-has-data');
+    fs.writeFileSync(path.join(dead, 'cowork.db'), 'x', 'utf-8');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(dead)).toBe(true);
+  });
+
+  it('leaves a real organization subtree alone', () => {
+    const live = quarantined(home, 'org-aaaa');
+    sweepStaleQuarantineRoots(home);
+    expect(fs.existsSync(live)).toBe(true);
+  });
+});
+
+// The ticket's acceptance criteria, exercised through the real resolution
+// rather than through a helper that models it. Each one names the criterion it
+// covers, so a future reader can tell what removing it would give up.
+describe('organization switching, end to end', () => {
+  const ORG_A = 'org-aaaa';
+  const ORG_B = 'org-bbbb';
+  let root: string;
+
+  beforeEach(() => {
+    root = accountRoot(A);
+    makeAccountRoot(A);
+  });
+
+  const storesFor = (orgId: string) => orgStoreRoot(root, orgId);
+  const seed = (dir: string, marker: string) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'cowork.db'), marker, 'utf-8');
+  };
+
+  it('shows the other organization nothing of the first, and gives it back on the way home', () => {
+    // "Switching back to Organization A shows its data only after an explicit
+    // switch back" — so the data must be SEPARATED, never deleted.
+    claimOrgRoot(root, ORG_A);
+    writeActiveOrgSync(root, ORG_A);
+    seed(storesFor(ORG_A), 'org-a-data');
+
+    writeActiveOrgSync(root, ORG_B);
+    const bStores = storesFor(ORG_B);
+    expect(bStores).not.toBe(storesFor(ORG_A));
+    expect(fs.existsSync(path.join(bStores, 'cowork.db'))).toBe(false);
+    seed(bStores, 'org-b-data');
+
+    writeActiveOrgSync(root, ORG_A);
+    expect(fs.readFileSync(path.join(storesFor(ORG_A), 'cowork.db'), 'utf-8')).toBe('org-a-data');
+    // And the first organization's work did not disturb the second's.
+    expect(fs.readFileSync(path.join(bStores, 'cowork.db'), 'utf-8')).toBe('org-b-data');
+  });
+
+  it('cannot resolve the previous organization\'s stores while another is active', () => {
+    // "Direct navigation or refresh cannot restore Organization A data while
+    // Organization B is active." A refresh re-reads the record; it must keep
+    // answering with B.
+    claimOrgRoot(root, ORG_A);
+    seed(root, 'org-a-data');
+    writeActiveOrgSync(root, ORG_B);
+
+    for (let refresh = 0; refresh < 3; refresh += 1) {
+      const stores = orgStoreRoot(root, readActiveOrg(root));
+      expect(stores).toBe(path.join(root, ORGS_DIR, ORG_B));
+      expect(stores).not.toBe(root);
+    }
+  });
+
+  it('every store moves together, so none is left behind shared', () => {
+    // "Chat history, tasks and responses, traces, artifacts, projects, skills
+    // or memory" — the ticket lists them, and one left behind is the bug.
+    claimOrgRoot(root, ORG_A);
+    const env = orgStoreEnv(root, ORG_B);
+    const subtree = path.join(root, ORGS_DIR, ORG_B);
+    expect(env.DATABASE_URI).toContain(subtree);       // chats, tasks, responses
+    expect(env.COWORK_PROJECTS_DIR).toBe(path.join(subtree, 'projects'));
+    expect(env.COWORK_FILES_DIR).toBe(path.join(subtree, 'files'));
+    expect(env.COWORK_SKILLS_DIR).toBe(path.join(subtree, 'skills'));
+    expect(env.COWORK_MEMORY_DIR).toBe(path.join(subtree, 'memory'));
+    expect(env.COWORK_VAULT_DIR).toBe(path.join(subtree, 'data-vault'));
+    expect(env.COWORK_CODING_DIR).toBe(path.join(subtree, 'coding'));
+    expect(env.ANTON_COWORK_STATE_DIR).toBe(subtree);  // publish history
+    expect(env.ANTON_SKILLS_ROOT_DIR).toBe(path.join(subtree, 'anton', 'skills'));
+  });
+
+  it('keeps an upgraded install on its data, under the organization it was in', () => {
+    // The regression that matters most: this is the one that could break for
+    // every existing user. The organization the token already named claims the
+    // root, so a ranked default preferring a different one cannot take it.
+    seed(root, 'existing-history');
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+
+    claimOrgRoot(root, ORG_A);                 // the organization already in use
+    writeActiveOrgSync(root, ORG_A);
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(root);
+    expect(fs.readFileSync(path.join(root, 'cowork.db'), 'utf-8')).toBe('existing-history');
+
+    // A different organization does NOT inherit it.
+    writeActiveOrgSync(root, ORG_B);
+    expect(orgStoreRoot(root, readActiveOrg(root))).toBe(path.join(root, ORGS_DIR, ORG_B));
+  });
+
+  it('leaves a single-organization install on exactly the paths it had', () => {
+    claimOrgRoot(root, ORG_A);
+    writeActiveOrgSync(root, ORG_A);
+    expect(orgStoreEnv(root, readActiveOrg(root))).toEqual({});
   });
 });

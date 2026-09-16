@@ -56,11 +56,12 @@ import {
   needsOwnershipDecision,
   observePreExistingData,
   readActiveAccount,
+  readActiveOrg,
   rendererAccountSession,
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -1233,7 +1234,14 @@ function setupIPC() {
       // Both fields are decided in account-data because the claim is there: the
       // renderer cannot see whether this session resolved onto the default root
       // or its own, nor that it has no name to resolve with.
-      event.returnValue = rendererAccountSession(coworkHome());
+      //
+      // The organization rides the same round trip rather than a second
+      // channel: the renderer needs both before React mounts, and a channel is
+      // snapshot-locked protocol while a field is not.
+      event.returnValue = {
+        ...rendererAccountSession(coworkHome()),
+        organizationId: readActiveOrg(accountDataRoot()),
+      };
     } catch (err) {
       console.warn('[account] could not resolve the signed-in account', err);
       // No account means the purge is a no-op, so the verdict cannot matter.
