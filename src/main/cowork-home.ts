@@ -165,6 +165,27 @@ export function accountDataRoot(): string {
 export function ensureAccountDataRoot(): string {
   const root = accountDataRoot();
   fs.mkdirSync(root, { recursive: true });
+  // Owner-only, and pinned past the umask with chmod the way installation-id
+  // pins its own file. A per-account root holds that account's database, files,
+  // connector vault and dotenv, so another OS user on the machine should not be
+  // able to read it. Leaf-level is enough: the ancestors only need to be
+  // traversable, and it is entering THIS directory that reading its contents
+  // requires.
+  //
+  // Only a root this feature created. The account that owns the default root
+  // uses coworkHome() itself, which predates all of this and carries whatever
+  // permissions the install already had; tightening it here would change
+  // existing state for a reason this ticket did not ask for.
+  if (root !== coworkHome()) {
+    try {
+      fs.chmodSync(root, 0o700);
+    } catch (err) {
+      // Best-effort: a root that cannot be tightened is still the right root,
+      // and failing the session over file modes would be worse than the
+      // exposure it guards against.
+      console.warn('[cowork-home] could not restrict the account data root', err);
+    }
+  }
   return root;
 }
 
