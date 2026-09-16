@@ -45,9 +45,25 @@ export function mergeMessagePage(existing, freshPage) {
   // share really is the page's own newest. Otherwise the page already covers
   // them -- an optimistic user row whose turn the page has since persisted is
   // the common case, and keeping it would duplicate the question.
-  const trailingLocal = existingArr[lastIdIdx]?.id === withId[withId.length - 1].id
+  let trailingLocal = existingArr[lastIdIdx]?.id === withId[withId.length - 1].id
     ? existingArr.slice(lastIdIdx + 1)
     : [];
+
+  // A failed turn is usually the NEWEST turn, so its synthetic
+  // error/provider_required card sits after the last id-bearing row in the
+  // page and in local state alike. Both describe the same failure, so keeping
+  // both appends one more card per merge, forever — one extra every time the
+  // task is reopened. Drop as many leading synthetic rows from the local tail
+  // as the page supplies for that same position, and no more: anything past
+  // that (an optimistic send, the live stub) is genuinely newer.
+  let pageTrailingSynthetic = 0;
+  for (let i = freshArr.length - 1; i >= 0 && freshArr[i]?.id == null; i--) pageTrailingSynthetic += 1;
+  let superseded = 0;
+  while (superseded < trailingLocal.length
+    && superseded < pageTrailingSynthetic
+    && trailingLocal[superseded]?.id == null
+    && trailingLocal[superseded]?.role !== '_streaming') superseded += 1;
+  trailingLocal = trailingLocal.slice(superseded);
 
   // The live `_streaming` stub is render state, not history — the stream's
   // own lifecycle removes it, never a fetch. A refetch landing mid-turn must
@@ -58,6 +74,19 @@ export function mergeMessagePage(existing, freshPage) {
     : existingArr.filter((m) => m?.role === '_streaming');
 
   return [...existingArr.slice(0, startIdx), ...freshArr, ...trailingLocal, ...liveStub];
+}
+
+// True when the fetched page shares no row with what is already loaded, so
+// mergeMessagePage replaces local state wholesale rather than splicing. The
+// pagination state has to know this: the boundary it was holding described
+// the array that just got thrown away.
+export function pageReplacesLocalHistory(existing, freshPage) {
+  const existingArr = Array.isArray(existing) ? existing : [];
+  const freshArr = Array.isArray(freshPage) ? freshPage : [];
+  if (existingArr.length === 0 || freshArr.length === 0) return false;
+  const oldestFresh = freshArr.find((m) => m?.id != null);
+  if (!oldestFresh) return false;
+  return !existingArr.some((m) => m?.id === oldestFresh.id);
 }
 
 // What a task's hasMoreMessages/messagesCursor should be after merging a
@@ -77,7 +106,12 @@ export function mergeMessagePage(existing, freshPage) {
 // or a brand-new conversation) — that's the one case where the fresh page's
 // own values are adopted.
 export function reconcilePaginationState(existingTask, freshPage) {
-  if (existingTask && existingTask.hasMoreMessages != null) {
+  // Except when the page replaced local history outright: the boundary being
+  // preserved belongs to the array that was just discarded, so keeping it
+  // points the next "load earlier" at a cursor far newer than the oldest row
+  // now loaded, and that page comes back already on screen.
+  const replaced = pageReplacesLocalHistory(existingTask?.messages, freshPage?.messages);
+  if (!replaced && existingTask && existingTask.hasMoreMessages != null) {
     return {
       hasMoreMessages: existingTask.hasMoreMessages,
       messagesCursor: existingTask.messagesCursor ?? null,

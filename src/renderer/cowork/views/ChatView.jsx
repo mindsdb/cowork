@@ -1792,7 +1792,7 @@ export default function ChatView({
     const sentinel = loadEarlierSentinelRef.current;
     if (!root || !sentinel) return undefined;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages(); },
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
       // Start the fetch slightly before the top is actually reached, so the
       // page is usually already there by the time the reader gets there.
       { root, rootMargin: '200px 0px 0px 0px' },
@@ -2101,11 +2101,11 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
-            <div ref={loadEarlierSentinelRef} aria-hidden="true" />
             {task.hasMoreMessages && (
               // Adapted from Sidebar's dashed-pill "Show more" idiom.
               <button
                 type="button"
+                ref={loadEarlierSentinelRef}
                 onClick={() => onLoadEarlierMessages?.()}
                 disabled={loadingEarlierMessages}
                 className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"

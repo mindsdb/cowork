@@ -7,7 +7,7 @@
 // bubble instead of its error card once loaded this way, even though the
 // exact same turn renders correctly as part of the first page.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
@@ -164,5 +164,59 @@ describe('loading earlier messages hydrates the page like the first one does', (
 
     expect(await screen.findByText(/Couldn't load earlier messages/)).toBeInTheDocument();
     expect(screen.getByText('Load earlier messages')).toBeInTheDocument();
+  });
+
+  it('does not let the scroll trigger retry a cursor that just failed', async () => {
+    // The sentinel stays on screen after a failed fetch (nothing was
+    // prepended), so an unguarded observer re-fires the moment the in-flight
+    // flag clears — a tight request loop against an already-failing server,
+    // stacking one toast per attempt. A click is still allowed to retry.
+    const user = userEvent.setup();
+    const observers = [];
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; observers.push(this); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok',
+        task: baseTask({
+          hasMoreMessages: true,
+          messagesCursor: 'cursor-1',
+          messages: [
+            { role: 'user', id: 'u1', content: 'Only question' },
+            { role: 'assistant', id: 'a1', content: 'Only answer' },
+          ],
+        }),
+      });
+      spies.fetchOlderMessages.mockResolvedValue(null);
+
+      await openTask(user);
+      await screen.findByText('Only answer');
+
+      const fire = async () => {
+        await act(async () => {
+          observers[observers.length - 1].cb([{ isIntersecting: true }]);
+          await Promise.resolve();
+        });
+      };
+
+      await fire();
+      await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(1));
+
+      // Every further automatic attempt at the same cursor is suppressed.
+      await fire();
+      await fire();
+      await fire();
+      expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(1);
+
+      // The button is still a manual retry.
+      await user.click(screen.getByText('Load earlier messages'));
+      await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(2));
+    } finally {
+      globalThis.IntersectionObserver = original;
+    }
   });
 });

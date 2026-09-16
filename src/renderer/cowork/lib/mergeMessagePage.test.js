@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeMessagePage, reconcilePaginationState } from './mergeMessagePage';
+import { mergeMessagePage, reconcilePaginationState, pageReplacesLocalHistory } from './mergeMessagePage';
 
 const m = (id, content) => ({ id, role: 'user', content });
 
@@ -9,6 +9,27 @@ describe('mergeMessagePage', () => {
   // an id of its own until response.created lands. Anything that treats "the
   // first row without an id" as a structural boundary therefore breaks on
   // ordinary conversations, not just exotic ones.
+
+  it('is idempotent when the failed turn is the newest one', () => {
+    // The common shape: a card is appended the moment a turn fails, so it
+    // trails the last id-bearing row in the page and in local state alike.
+    // An earlier fix only covered the mid-history position.
+    const errorCard = { role: 'error', content: 'boom' };
+    const page = [m('u1', 'q1'), m('a1', 'a1'), m('u2', 'q2'), m('a2', 'a2'), errorCard];
+    let state = [...page];
+    for (let i = 0; i < 4; i++) state = mergeMessagePage(state, page);
+    expect(state.filter((r) => r.role === 'error')).toHaveLength(1);
+    expect(state).toEqual(page);
+  });
+
+  it('keeps a live stub and an optimistic send that trail the page\'s own card', () => {
+    const errorCard = { role: 'error', content: 'boom' };
+    const echo = { role: 'user', content: 'asked again' };
+    const stub = { role: '_streaming', content: 'typing…' };
+    const page = [m('u1', 'q1'), m('a1', 'a1'), errorCard];
+    const existing = [...page, echo, stub];
+    expect(mergeMessagePage(existing, page)).toEqual([...page, echo, stub]);
+  });
 
   it('is idempotent when the fresh page carries a mid-history error card', () => {
     const errorCard = { role: 'error', content: 'boom' };
@@ -142,5 +163,36 @@ describe('reconcilePaginationState', () => {
     expect(reconcilePaginationState({ hasMoreMessages: true, messagesCursor: 'c' }, null))
       .toEqual({ hasMoreMessages: true, messagesCursor: 'c' });
     expect(reconcilePaginationState(null, null)).toEqual({ hasMoreMessages: false, messagesCursor: null });
+  });
+});
+
+describe('pageReplacesLocalHistory', () => {
+  const m2 = (id) => ({ id, role: 'user', content: id });
+
+  it('is true when the page shares no row with what is loaded', () => {
+    expect(pageReplacesLocalHistory([m2('a')], [m2('x'), m2('y')])).toBe(true);
+  });
+
+  it('is false when the page overlaps what is loaded', () => {
+    expect(pageReplacesLocalHistory([m2('a'), m2('b')], [m2('b'), m2('c')])).toBe(false);
+  });
+
+  it('adopts the page\'s own cursor when it replaced local history', () => {
+    // Keeping the old boundary points "load earlier" at a cursor describing
+    // the array that was just discarded, and that page comes back already on
+    // screen — the same rows render twice.
+    const task = { messages: [m2('old-1')], hasMoreMessages: true, messagesCursor: 'cursor-old' };
+    const page = { messages: [m2('new-1')], hasMoreMessages: true, messagesCursor: 'cursor-new' };
+    expect(reconcilePaginationState(task, page)).toEqual({
+      hasMoreMessages: true, messagesCursor: 'cursor-new',
+    });
+  });
+
+  it('still keeps an established boundary when the page merely refreshes the tail', () => {
+    const task = { messages: [m2('a'), m2('b')], hasMoreMessages: true, messagesCursor: 'cursor-deep' };
+    const page = { messages: [m2('b')], hasMoreMessages: false, messagesCursor: null };
+    expect(reconcilePaginationState(task, page)).toEqual({
+      hasMoreMessages: true, messagesCursor: 'cursor-deep',
+    });
   });
 });

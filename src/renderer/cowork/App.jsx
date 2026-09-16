@@ -950,7 +950,12 @@ function AppCore() {
       if (!ids.has(String(t.id))) return t;
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i]?.role !== 'user') continue;
+        // `_unsent` rows never reached the server (a send with no provider
+        // configured leaves one behind), so the id belongs to a different row
+        // — stamping it here would hand that row a delete affordance that
+        // cuts a real turn server-side. Same exclusion usageNoticePlacement
+        // makes for the same reason.
+        if (msgs[i]?.role !== 'user' || msgs[i]?._unsent) continue;
         if (msgs[i].id != null) return t;
         const next = msgs.slice();
         next[i] = { ...next[i], id: userMessageId };
@@ -1950,7 +1955,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([taskId], ev?.user_message_id);
+        stampUserMessageId([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -3089,7 +3094,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, taskId], ev?.user_message_id);
+        stampUserMessageId([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -3543,7 +3548,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, id], ev?.user_message_id);
+        stampUserMessageId([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -3817,7 +3822,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, id], ev?.user_message_id);
+        stampUserMessageId([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
@@ -4120,22 +4125,31 @@ function AppCore() {
   // dispatched before React re-renders from also passing the guard and
   // prepending the same page twice.
   const loadingOlderMessagesForRef = useRef(new Set());
+  // Cursor whose fetch just failed, per task. The scroll trigger will not
+  // retry it: nothing scrolled, so the sentinel is still on screen and the
+  // observer re-fires the moment the in-flight flag clears, which is a tight
+  // request loop against a server that is already failing. The button stays
+  // as the manual retry and clears this.
+  const failedOlderCursorRef = useRef(new Map());
 
-  const handleLoadEarlierMessages = async (taskId) => {
+  const handleLoadEarlierMessages = async (taskId, { auto = false } = {}) => {
     const current = tasksRef.current.find((t) => t.id === taskId);
     if (!current?.hasMoreMessages || !current?.messagesCursor) return;
     if (loadingOlderMessagesForRef.current.has(taskId)) return;
+    if (auto && failedOlderCursorRef.current.get(taskId) === current.messagesCursor) return;
     loadingOlderMessagesForRef.current.add(taskId);
     setLoadingOlderMessagesFor((prev) => new Set(prev).add(taskId));
     try {
       const page = await fetchOlderMessages(taskId, current.messagesCursor);
       if (!page) {
+        failedOlderCursorRef.current.set(taskId, current.messagesCursor);
         toastManager.add({
           type: 'danger',
           title: "Couldn't load earlier messages. Try again.",
         });
         return;
       }
+      failedOlderCursorRef.current.delete(taskId);
       // Hydrate exactly like the first page does (fetchSession ->
       // _conversationToTask -> _hydrateAssistantEvents): a raw item dict's
       // `events` needs replaying into `steps`/`startedAt` for its Thinking
@@ -4168,6 +4182,16 @@ function AppCore() {
       });
     }
   };
+
+  // Stable identity on purpose: ChatView rebuilds its scroll observer
+  // whenever this prop changes, and an inline arrow changes on every
+  // render — which for a streaming task is every SSE delta.
+  const currentTaskId = currentTask?.id;
+  const handleLoadEarlierMessagesForCurrent = useCallback(
+    (opts) => handleLoadEarlierMessages(currentTaskId, opts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentTaskId],
+  );
 
   // `messageId` anchors the turn being deleted: the assistant
   // reply, or (an orphan turn with no reply yet) the user message that
@@ -4240,15 +4264,20 @@ function AppCore() {
         title: "Couldn't delete this exchange. Reloading the conversation.",
       });
       const loaded = await loadSessionMessagesWithRetry(taskId, { isLive: false });
-      if (loaded) {
-        setTasks((prev) => prev.map((t) => (t.id === taskId
-          ? {
-              ...t,
-              messages: mergeMessagePage(t.messages, loaded.messages),
-              ...reconcilePaginationState(t, loaded),
-            }
-          : t)));
+      if (!loaded) {
+        toastManager.add({
+          type: 'danger',
+          title: "Couldn't reload this conversation. Refresh to see its current state.",
+        });
+        return;
       }
+      setTasks((prev) => prev.map((t) => (t.id === taskId
+        ? {
+            ...t,
+            messages: mergeMessagePage(t.messages, loaded.messages),
+            ...reconcilePaginationState(t, loaded),
+          }
+        : t)));
       return;
     }
     setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
@@ -4862,7 +4891,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(messageId) => handleDeleteTurnRequest(currentTask?.id, messageId)}
-            onLoadEarlierMessages={() => handleLoadEarlierMessages(currentTask?.id)}
+            onLoadEarlierMessages={handleLoadEarlierMessagesForCurrent}
             loadingEarlierMessages={loadingOlderMessagesFor.has(currentTask?.id)}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
