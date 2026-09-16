@@ -222,20 +222,59 @@ describe('recording the active organization', () => {
     expect(readRecord()).toBe('org-c');
   });
 
-  it('does not claim from a switch made later in the same process', async () => {
-    // Even with no claim on disk, only the FIRST token this process sees may
-    // claim, so the target of a switch cannot take a root it does not own.
+  it('still claims when the launch token named no organization', async () => {
+    // A launch whose token carries no organization claim used to close the only
+    // chance to write one. The root then stayed unclaimed for good, and an
+    // unclaimed root is one that EVERY organization resolves onto: the reported
+    // bug, reached through a state the app reaches routinely.
     const store = await loadStore('linux');
     store.saveTokens(tokenFor(null), 3600, 'rt');   // no organization claim
     store.saveTokens(tokenFor('org-c'), 3600, 'rt');
-    expect(readClaim()).toBeNull();
+    expect(readClaim()).toBe('org-c');
     expect(readRecord()).toBe('org-c');
+  });
+
+  it('keeps a root claimable until a claim actually lands', async () => {
+    // The same failure by another route: one unwritable moment must not leave
+    // the root permanently shared.
+    const store = await loadStore('linux');
+    fs.chmodSync(h.home, 0o500);
+    try {
+      store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    } finally {
+      fs.chmodSync(h.home, 0o700);
+    }
+    expect(readClaim()).toBeNull();
+
+    store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    expect(readClaim()).toBe('org-c');
   });
 
   it('leaves no record when the token names no organization', async () => {
     const store = await loadStore('linux');
     store.saveTokens(tokenFor(null), 3600, 'rt');
     expect(readRecord()).toBeNull();
+  });
+
+  it('never lets two organizations resolve onto the same stores', async () => {
+    // The end-to-end leak, and the one no earlier test carried far enough: the
+    // record and the claim were asserted, but never followed into the
+    // resolution that actually decides which database a session reads.
+    //
+    // Sequence the app reaches routinely: a launch whose token names no
+    // organization, then the ranked default arriving as org-c, then the person
+    // switching to org-d. Every step reported success while all three resolved
+    // onto one database.
+    const { orgStoreRoot } = await import('./account-data');
+    const store = await loadStore('linux');
+
+    store.saveTokens(tokenFor(null), 3600, 'rt');
+    store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    expect(orgStoreRoot(h.home, 'org-c')).toBe(h.home);
+
+    store.saveTokens(tokenFor('org-d'), 3600, 'rt');
+    expect(orgStoreRoot(h.home, 'org-d')).not.toBe(h.home);
+    expect(orgStoreRoot(h.home, 'org-d')).toBe(path.join(h.home, 'orgs', 'org-d'));
   });
 
   it('surfaces a record it can neither write nor clear', async () => {

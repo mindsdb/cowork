@@ -178,12 +178,6 @@ function recordSignedInAccount(accessToken: string): void {
   }
 }
 
-// Whether this process has yet seen a token, which is what makes the claim
-// below "the organization the session was already in". A switch re-rolls the
-// token mid-process, so without this the target of a switch could claim a root
-// whose data belongs to the organization being left.
-let _observedOrganization = false;
-
 /**
  * Which organization the session is operating as, recorded at the same choke
  * point as the account and for the same reason: every auth transition flows
@@ -198,20 +192,28 @@ let _observedOrganization = false;
  * may switch to a moment later, and not the target of a switch.
  */
 function recordActiveOrganization(accessToken: string): void {
-  // Consumed by ANY token, before the early return below. A token naming no
-  // organization is still this process's first observation, and treating it as
-  // if nothing had been seen would let the next token — a switch target — claim
-  // a root whose data it does not own.
-  const firstThisProcess = !_observedOrganization;
-  _observedOrganization = true;
-
   const orgId = activeOrgIdFromToken(accessToken);
   if (!orgId) return;
   const root = accountDataRoot();
 
   try {
-    if (firstThisProcess && readActiveOrg(root) === null && readOrgClaim(root).kind === 'unclaimed') {
-      claimOrgRoot(root, orgId);
+    // Attempted on EVERY token that names an organization, not once per
+    // process. An unclaimed root is one that EVERY organization resolves onto,
+    // so leaving it unclaimed is the reported bug: a launch whose token carries
+    // no organization claim, or a claim write that failed, would otherwise
+    // close the only chance to write one, and every organization after it would
+    // share one database. claimOrgRoot is idempotent and never steals, so
+    // retrying costs nothing and repairs both cases.
+    //
+    // Accepted cost: when the root is unclaimed and already holds data,
+    // whichever organization is active when the first claim lands inherits it.
+    // Attributing that data to one organization is better than sharing it with
+    // all of them, and unlike the sharing it is visible.
+    if (readOrgClaim(root).kind !== 'claimed' && claimOrgRoot(root, orgId).kind !== 'claimed') {
+      console.error(
+        '[token-store] could not record which organization owns this data root — '
+        + 'organizations on this account may share stores until it can be written',
+      );
     }
     writeActiveOrgSync(root, orgId);
   } catch (e) {
@@ -251,7 +253,6 @@ export function getRefreshToken(): string | null {
 }
 
 export function clearTokens(): void {
-  _observedOrganization = false;
   _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;
