@@ -4,7 +4,9 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import {
   clearActiveAccountRecord,
+  clearInMemorySessionQuarantine,
   markActiveAccountUnresolved,
+  markSessionUnresolvedInMemory,
   writeActiveAccountSync,
 } from './account-data';
 import { accountIdFromToken } from './jwt';
@@ -171,6 +173,11 @@ function recordSignedInAccount(accessToken: string, refreshToken: string): void 
   }
   try {
     writeActiveAccountSync(coworkHome(), accountId);
+    // The record names this session again, so an earlier held quarantine has
+    // nothing left to protect against. Lifting it here rather than holding it
+    // to the end of the process keeps one transient disk failure from stranding
+    // the rest of the session on an empty root.
+    clearInMemorySessionQuarantine();
   } catch (e) {
     console.warn('[token-store] could not record the signed-in account', e);
     quarantineSession();
@@ -188,6 +195,11 @@ function quarantineSession(): void {
   } catch (markErr) {
     console.warn('[token-store] could not mark the session unresolved', markErr);
   }
+  // Disk refused, so hold it in memory instead. Without this the session keeps
+  // running on whatever the file still says, and saveTokens has already kept
+  // the new token and broadcast a successful sign-in, so the app is
+  // authenticated as one account while root resolution selects another.
+  markSessionUnresolvedInMemory();
   // The same disk just refused a write. Removing the record is weaker, and is
   // here only because a record naming somebody else is weaker still.
   try {
@@ -220,6 +232,9 @@ export function getRefreshToken(): string | null {
 }
 
 export function clearTokens(): void {
+  // The next session establishes its own identity, and a quarantine held from
+  // the previous one would strand an install whose disk has since recovered.
+  clearInMemorySessionQuarantine();
   _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;

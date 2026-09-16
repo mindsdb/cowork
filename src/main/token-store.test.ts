@@ -179,6 +179,7 @@ describe('token-store auth-changed broadcast', () => {
 // root and reports that account to the renderer's pre-mount cache purge.
 describe('the signed-in account record', () => {
   const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+  const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
   const activeFile = () => path.join(h.home, 'active-account.json');
 
   function jwtNaming(sub: string): string {
@@ -223,5 +224,49 @@ describe('the signed-in account record', () => {
       'utf-8',
     );
     expect(resolveAccountRoot(h.home, readActiveAccount(h.home))).toMatch(/^_unresolved-/);
+  });
+
+  it('quarantines in memory when the disk refuses both the record and the marker', async () => {
+    // The disk is the authority whenever it can be written. When it cannot,
+    // the file still names the PREVIOUS account while saveTokens has already
+    // kept the new token and broadcast a successful sign-in, so the app is
+    // authenticated as one account while root resolution selects another.
+    const store = await loadStore('linux');
+    store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+
+    const { readActiveAccount, resolveAccountRoot } = await import('./account-data');
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'signed-in', accountId: ACCOUNT_A });
+
+    // Every write to the home refused, so recording B, marking the session
+    // unresolved, and removing the record all fail.
+    fs.chmodSync(h.home, 0o500);
+    try {
+      store.saveTokens(jwtNaming(ACCOUNT_B), 3600, 'rt-b');
+    } finally {
+      fs.chmodSync(h.home, 0o700);
+    }
+
+    // The file still says A. What resolution reads must not.
+    expect(JSON.parse(fs.readFileSync(path.join(h.home, 'active-account.json'), 'utf-8')).accountId)
+      .toBe(ACCOUNT_A);
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'unresolved' });
+    expect(resolveAccountRoot(h.home, readActiveAccount(h.home))).toMatch(/^_unresolved-/);
+  });
+
+  it('lifts the held quarantine once the record can be written again', async () => {
+    // Otherwise one transient failure strands the rest of the session on an
+    // empty root, with no way back short of a restart.
+    const store = await loadStore('linux');
+    fs.chmodSync(h.home, 0o500);
+    try {
+      store.saveTokens(jwtNaming(ACCOUNT_A), 3600, 'rt-a');
+    } finally {
+      fs.chmodSync(h.home, 0o700);
+    }
+    const { readActiveAccount } = await import('./account-data');
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'unresolved' });
+
+    store.saveTokens(jwtNaming(ACCOUNT_B), 3600, 'rt-b');
+    expect(readActiveAccount(h.home)).toEqual({ kind: 'signed-in', accountId: ACCOUNT_B });
   });
 });

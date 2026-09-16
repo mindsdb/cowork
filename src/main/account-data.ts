@@ -310,7 +310,33 @@ export function adoptDefaultRootAsIncumbent(home: string, accountId: string): Cl
 }
 
 /** The account the app is signed in as, and the one it last was. */
+// Quarantine held in memory, for when the DISK cannot be made to say it. The
+// record on disk is the authority whenever it can be written; this covers the
+// one case it cannot, where marking the session unresolved AND removing the
+// record both failed and the file still names the previous account.
+//
+// Process-lifetime on purpose: a disk that refuses these writes will not
+// improve within the session, and every root that belongs to somebody is the
+// wrong one for a session that cannot say who it is.
+let _sessionUnresolved = false;
+
+/** Quarantine this session for the life of the process. Called only when the
+ *  record on disk could neither be marked unresolved nor removed, so nothing
+ *  read from it can be trusted to name this session. */
+export function markSessionUnresolvedInMemory(): void {
+  _sessionUnresolved = true;
+}
+
+/** Sign-out clears it: the next session gets to establish its own identity, and
+ *  a stale quarantine would strand an install that has since recovered. */
+export function clearInMemorySessionQuarantine(): void {
+  _sessionUnresolved = false;
+}
+
 export function readActiveAccount(home: string): ActiveAccount {
+  // Ahead of the file, which is exactly what this exists to override.
+  if (_sessionUnresolved) return { kind: 'unresolved' };
+
   let raw: string;
   try {
     raw = fs.readFileSync(path.join(home, ACTIVE_FILE), 'utf-8');
