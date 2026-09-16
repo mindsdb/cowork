@@ -1,27 +1,13 @@
-// Delete-turn moved from a counted position to the anchor
-// message's own id, and the post-delete update moved from a server
-// refetch-and-merge to a local truncation (see performDeleteTurn /
-// truncateTaskAt in App.jsx). These tests drive the real confirm-modal
-// flow end to end so a regression back to either the old counted index or
-// the old refetch-and-merge shows up here, not just in the pure-function
-// unit tests.
-//
-// Mounting pattern copied from App.askUser.send.test.jsx (the streaming
-// helpers) and App.deleteTask.test.jsx (the mock/host boilerplate) — see
-// that file's header note about a shared fixture being worth doing.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
-  fetchSessions: vi.fn(),
+  deleteConversationTurn: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
-  deleteConversationTurn: vi.fn(),
-  streamMessage: vi.fn(),
+  fetchSessions: vi.fn(),
 }));
-
-const streams = [];
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -30,7 +16,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSession: (...args) => spies.fetchSession(...args),
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
-  fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
+  fetchProjects: vi.fn(async () => []),
   fetchArtifacts: vi.fn(async () => []),
   fetchSettings: vi.fn(async () => ({})),
   fetchPins: vi.fn(async () => ({ pins: [] })),
@@ -43,26 +29,46 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSavedConnection: vi.fn(async () => ({})),
   updateSettings: vi.fn(async () => ({})),
   recordTaskVisit: vi.fn(async () => ({})),
-  pinTask: vi.fn(async () => ({})),
   unpinTask: vi.fn(async () => ({})),
-  renameConversation: vi.fn(async () => ({})),
-  deleteConversation: vi.fn(async () => ({})),
   deleteConversationTurn: (...args) => spies.deleteConversationTurn(...args),
-  moveConversation: vi.fn(async () => ({})),
-  moveTaskToProject: vi.fn(async () => ({})),
-  deleteProject: vi.fn(async () => ({})),
-  cancelResponse: vi.fn(async () => ({})),
-  streamMessage: (...args) => {
-    spies.streamMessage(...args);
-    const handle = { kind: 'reply', opts: args[args.length - 1], abort: vi.fn() };
-    streams.push(handle);
-    return handle;
-  },
 }));
 
-// Spread the real host and override only what a mount needs — see
-// App.deleteTask.test.jsx for why spreading (not hand-listing) is what keeps
-// this file from breaking on every unrelated host addition.
+// The chat tree is stubbed so this file tests App's in-flight bookkeeping
+// alone: which turn it publishes as deleting, and when it stops. The bubble
+// treatment that reads `deletingTurnIndex` is covered in
+// views/ChatView.deletingTurn.test.jsx, which also pins the prop contract
+// between the two.
+vi.mock('./views/ChatView', () => ({
+  default: ({ task, deletingTurnMessageId, onDeleteTurn }) => (
+    <div>
+      <div>Chat task: {task?.title || 'none'}</div>
+      {deletingTurnMessageId != null && <div>{`Deleting turn: ${deletingTurnMessageId}`}</div>}
+      {(task?.messages || []).map((m, i) => (
+        <div key={i}>{`msg: ${m.role}: ${m.content}`}</div>
+      ))}
+      {(task?.messages || [])
+        .filter((m) => m.role === 'assistant' && m.id)
+        .map((m, idx) => (
+          <button key={m.id} type="button" onClick={() => onDeleteTurn?.(m.id)}>
+            {`Request turn delete ${idx}`}
+          </button>
+        ))}
+    </div>
+  ),
+}));
+
+vi.mock('./views/ProjectsView', () => ({
+  default: ({ tasks, onSelectTask }) => (
+    <div>
+      {(tasks || []).map((t) => (
+        <button key={t.id} type="button" onClick={() => onSelectTask(t.id)}>
+          {`Open task ${t.title}`}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
 vi.mock('../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -70,6 +76,7 @@ vi.mock('../platform/host', async (importOriginal) => {
     host: {
       ...actual.host,
       isElectron: false,
+      isWeb: true,
       isMac: () => false,
       getApiOrigin: () => 'http://localhost:1',
       openPath: vi.fn(),
@@ -89,269 +96,398 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
-import { __resetDraftsForTests } from './lib/draftStore';
 
-const baseTask = (overrides = {}) => ({
+// Anchors are message ids now, and a turn's anchor is its assistant reply, so
+// turn 0 is `a1` and turn 1 is `a2`.
+const exchange = [
+  { role: 'user', id: 'u1', content: 'first question' },
+  { role: 'assistant', id: 'a1', content: 'first answer' },
+  { role: 'user', id: 'u2', content: 'second question' },
+  { role: 'assistant', id: 'a2', content: 'second answer' },
+];
+
+const task = {
   id: 'conv-a',
-  title: 'Alpha task',
+  title: 'Saved task',
+  messages: exchange,
   status: 'idle',
-  projectName: 'general',
-  hasMoreMessages: false,
-  messagesCursor: null,
-  messages: [],
-  ...overrides,
-});
+};
+const otherTask = {
+  id: 'conv-b',
+  title: 'Other task',
+  messages: exchange,
+  status: 'idle',
+};
+// A conversation with no server history yet: performDeleteTurn drops the pair
+// locally and never reaches the network. The rows still carry ids — a tmp-
+// task that has streamed gets them from the turn's own created/completed
+// frames — because a row with no id offers no delete affordance at all now.
+const localTask = {
+  id: 'tmp-local-1',
+  title: 'Unsaved task',
+  messages: [
+    { role: 'user', id: 'lu1', content: 'local question' },
+    { role: 'assistant', id: 'la1', content: 'local answer' },
+  ],
+  status: 'idle',
+};
 
-/** Renders App and opens the seeded conversation, returning the composer. */
-async function openTask(user) {
-  render(<App />);
-  await user.click(await screen.findByText('Alpha task'));
-  return waitFor(() => {
-    const ta = document.querySelector('textarea');
-    if (!ta) throw new Error('composer not mounted');
-    return ta;
-  });
-}
-
-/** Resolves once a stream handle newer than `after` exists. */
-async function waitForStream(after = null) {
-  return waitFor(() => {
-    const last = streams[streams.length - 1];
-    if (!last || last === after) throw new Error('stream not started yet');
-    return last;
-  });
-}
-
-async function emitOn(handle, event) {
-  await act(async () => {
-    handle.opts.onEvent(event);
-    await Promise.resolve();
-  });
-}
-
-/** Clicks a turn's trash icon, then confirms in the modal that opens. */
-async function deleteTurn(user, deleteButton) {
-  await user.click(deleteButton);
-  const dialog = await screen.findByRole('dialog');
-  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
-}
+// The failure path is a bare alert(), which this environment does not define.
+let alertSpy;
+const originalAlert = window.alert;
 
 beforeEach(() => {
-  window.history.replaceState(null, '', '/');
-  __resetDraftsForTests();
-  streams.length = 0;
+  alertSpy = vi.fn();
+  window.alert = alertSpy;
+  spies.deleteConversationTurn.mockReset().mockResolvedValue({ status: 'deleted' });
+  spies.fetchSession.mockReset().mockImplementation(async (id) => ({
+    id,
+    messages: exchange,
+  }));
+  spies.fetchSessionResult.mockReset().mockImplementation(async (id) => ({
+    status: 'ok',
+    task: { id, messages: exchange },
+  }));
   spies.fetchSessions.mockReset().mockResolvedValue([
-    { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+    { ...task },
+    { ...otherTask },
+    { ...localTask },
   ]);
-  spies.fetchSession.mockReset().mockResolvedValue({ id: 'conv-a', messages: [], hasMoreMessages: false, messagesCursor: null });
-  spies.fetchSessionResult.mockReset();
-  spies.deleteConversationTurn.mockReset().mockResolvedValue({});
-  spies.streamMessage.mockClear();
 });
 
-describe('deleting a turn (id-based, local truncation)', () => {
-  it('deletes the last turn by the assistant message id and truncates locally, without refetching the transcript', async () => {
+afterEach(() => {
+  window.alert = originalAlert;
+});
+
+const openTask = async (user, which) => {
+  await user.click(await screen.findByRole('button', { name: 'Projects' }));
+  await user.click(await screen.findByRole('button', { name: `Open task ${which.title}` }));
+  expect(await screen.findByText(`Chat task: ${which.title}`)).toBeInTheDocument();
+};
+
+const confirmDelete = async (user, idx) => {
+  await user.click(await screen.findByRole('button', { name: `Request turn delete ${idx}` }));
+  expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+};
+
+describe('deleting a turn shows it as in flight', () => {
+  it('publishes the turn as deleting until the refetched list lands', async () => {
     const user = userEvent.setup();
+    let resolveDelete;
+    spies.deleteConversationTurn.mockImplementation(() => new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+    render(<App />);
+    await openTask(user, task);
+
+    await confirmDelete(user, 0);
+
+    // The DELETE is still out: the turn must already read as in flight.
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
+
+    // The server has answered, but the list still shows the old messages until
+    // the refetch lands. Clearing here would un-dim the turn and leave it
+    // sitting there looking untouched for the whole second round trip.
+    let resolveRefetch;
+    spies.fetchSessionResult.mockImplementation(() => new Promise((resolve) => {
+      resolveRefetch = resolve;
+    }));
+    await act(async () => { resolveDelete({ status: 'deleted' }); });
+    expect(screen.getByText('Deleting turn: a1')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveRefetch({ status: 'ok', task: { id: task.id, messages: exchange.slice(2) } });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
+    expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
+  });
+
+  it('refuses a second delete in the same conversation while one is in flight', async () => {
+    const user = userEvent.setup();
+    let resolveDelete;
+    spies.deleteConversationTurn.mockImplementation(() => new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+    render(<App />);
+    await openTask(user, task);
+
+    await confirmDelete(user, 0);
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
+
+    // A stale index: the server reindexes what survives, so this second
+    // request would delete the wrong exchange.
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+
+    await act(async () => { resolveDelete({ status: 'deleted' }); });
+  });
+
+  it('still allows a delete in a different conversation', async () => {
+    const user = userEvent.setup();
+    let resolveDelete;
+    spies.deleteConversationTurn.mockImplementation(() => new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+    render(<App />);
+    await openTask(user, task);
+    await confirmDelete(user, 0);
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
+
+    await openTask(user, otherTask);
+    // The in-flight turn belongs to the other conversation, so nothing here
+    // reads as deleting and the affordance still works.
+    expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+
+    await act(async () => { resolveDelete({ status: 'deleted' }); });
+  });
+
+  it('clears the in-flight state when the server fails and leaves the turn deletable', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
+    });
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('turn is locked'));
+    // Nothing was removed, and the turn can be deleted again.
+    expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+  });
+
+  it('resyncs the list before handing the delete affordances back', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSessionResult.mockClear();
+    // A delete we did not see confirmed may still have landed, and the server
+    // reindexes what survives. Re-enabling delete against the old list would
+    // aim the next one at a different exchange than the user is looking at.
     spies.fetchSessionResult.mockResolvedValue({
       status: 'ok',
-      task: baseTask({
-        messages: [
-          { role: 'user', id: 'u1', content: 'Hi there' },
-          { role: 'assistant', id: 'a1', content: 'Hello back' },
-        ],
-      }),
+      task: { id: task.id, messages: exchange.slice(2) },
     });
 
-    await openTask(user);
-    await screen.findByText('Hello back');
-    const fetchSessionCallsBefore = spies.fetchSession.mock.calls.length;
+    await confirmDelete(user, 0);
 
-    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
-
+    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenCalledWith(task.id));
     await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a1');
+      expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
     });
-    expect(screen.queryByText('Hi there')).toBeNull();
-    expect(screen.queryByText('Hello back')).toBeNull();
-    // Local truncation, not a refetch-and-merge — the mechanism that could
-    // resurrect a row the server actually deleted.
-    expect(spies.fetchSession).toHaveBeenCalledTimes(fetchSessionCallsBefore);
+    expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
   });
 
-  it('on a partially-loaded conversation, deletes only the clicked turn and everything after it, and keeps "load earlier" available', async () => {
+  it('warns when the delete landed but the list could not be re-synced', async () => {
     const user = userEvent.setup();
+    spies.deleteConversationTurn.mockResolvedValue({ status: 'deleted' });
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+
+    // The quiet version of this is the one that loses data: the exchange is
+    // gone on the server, the list still shows it, and the next delete is
+    // keyed by position in that list.
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+    expect(alertSpy.mock.calls[0][0]).toMatch(/reload/i);
+  });
+
+  it('words a timeout as unconfirmed rather than failed', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
     spies.fetchSessionResult.mockResolvedValue({
       status: 'ok',
-      task: baseTask({
-        hasMoreMessages: true,
-        messagesCursor: 'cursor-abc',
-        messages: [
-          { role: 'user', id: 'u1', content: 'Turn one question' },
-          { role: 'assistant', id: 'a1', content: 'Turn one answer' },
-          { role: 'user', id: 'u2', content: 'Turn two question' },
-          { role: 'assistant', id: 'a2', content: 'Turn two answer' },
-        ],
-      }),
+      task: { id: task.id, messages: exchange.slice(2) },
     });
 
-    await openTask(user);
-    await screen.findByText('Turn two answer');
+    await confirmDelete(user, 0);
 
-    // Two assistant turns loaded → two delete affordances; the earlier one
-    // is index 0 in document order.
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
-    expect(deleteButtons).toHaveLength(2);
-    await deleteTurn(user, deleteButtons[0]);
-
-    await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a1');
-    });
-    // delete_turn removes this turn and everything after it.
-    expect(screen.queryByText('Turn one question')).toBeNull();
-    expect(screen.queryByText('Turn one answer')).toBeNull();
-    expect(screen.queryByText('Turn two question')).toBeNull();
-    expect(screen.queryByText('Turn two answer')).toBeNull();
-    // The older, not-yet-loaded page is untouched by this — the pill stays.
-    expect(screen.getByText('Load earlier messages')).toBeInTheDocument();
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    const said = alertSpy.mock.calls[0][0];
+    // Abandoning the request says nothing about the server, so the copy must
+    // not assert a failure the user can see is untrue a moment later.
+    expect(said).toMatch(/may still have gone through/i);
+    expect(said).not.toMatch(/could not delete this exchange/i);
   });
 
-  it('deletes an orphan turn (no assistant reply) by the user message\'s own id', async () => {
+  it('warns harder when a timeout could not be re-synced either', async () => {
     const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+  });
+
+  it('treats a transcript that failed to load as a failed re-sync', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    render(<App />);
+    await openTask(user, task);
+    // The conversation's metadata answers and its `/items` does not. Both mocks
+    // describe that one server state: fetchSession collapses it to an empty
+    // transcript, which would blank the list and read as a clean re-sync.
+    spies.fetchSession.mockResolvedValue({ id: task.id, messages: [] });
+    spies.fetchSessionResult.mockResolvedValue({ status: 'unavailable', code: 500 });
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/could not be refreshed/i);
+    // Nothing was deleted, so nothing may disappear from the list either.
+    expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
+    expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
+  });
+
+  it('refreshes instead of deleting after an unconfirmed timeout, then allows the next delete', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('The delete request timed out after 30 seconds.'), { code: 'timeout' }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    // We gave up on the wire before the server committed, so this re-sync still
+    // shows the exchange. It says nothing about what the server will do next.
     spies.fetchSessionResult.mockResolvedValue({
       status: 'ok',
-      task: baseTask({
-        messages: [
-          { role: 'user', id: 'u1', content: 'First question' },
-          { role: 'assistant', id: 'a1', content: 'First answer' },
-          { role: 'user', id: 'u2', content: 'Orphan question' },
-        ],
-      }),
+      task: { id: task.id, messages: exchange },
     });
 
-    await openTask(user);
-    await screen.findByText('Orphan question');
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(screen.getByText('msg: user: first question')).toBeInTheDocument();
 
-    // a1 (paired turn) and u2 (orphan) each carry a delete affordance; the
-    // orphan's is the later one in document order.
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
-    expect(deleteButtons).toHaveLength(2);
-    await deleteTurn(user, deleteButtons[1]);
-
-    await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'u2');
-    });
-    expect(screen.queryByText('Orphan question')).toBeNull();
-    // The paired turn before it survives — an orphan delete removes only
-    // its own row, unlike a paired-turn delete which removes the question too.
-    expect(screen.getByText('First question')).toBeInTheDocument();
-    expect(screen.getByText('First answer')).toBeInTheDocument();
-  });
-
-  it('a turn just sent this session is deletable immediately after it completes, using the id captured off the completion stream', async () => {
-    const user = userEvent.setup();
-    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask() });
-
-    const composer = await openTask(user);
-    await user.click(composer);
-    await user.keyboard('New question');
-    await user.keyboard('{Enter}');
-
-    const stream = await waitForStream();
-    await emitOn(stream, { type: 'response.output_text.delta', delta: 'Fresh answer' });
-    // The completion-id contract: the persisted assistant message's real id
-    // rides on response.completed.
-    await emitOn(stream, { type: 'response.completed', assistant_message_id: 'a-fresh' });
-    await act(async () => { stream.opts.onDone(); await Promise.resolve(); });
-
-    await screen.findByText('Fresh answer');
-
-    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a-fresh');
-    });
-    expect(screen.queryByText('Fresh answer')).toBeNull();
-    expect(screen.queryByText('New question')).toBeNull();
-  });
-
-  it('hides the delete affordance on a turn whose anchor row has no id yet, rather than sending a request that would 422', async () => {
-    const user = userEvent.setup();
+    // The server finished the delete after we stopped listening and reindexed
+    // what survived: index 1 on screen is no longer index 1 on the server.
     spies.fetchSessionResult.mockResolvedValue({
       status: 'ok',
-      task: baseTask({
-        messages: [
-          { role: 'user', id: 'u1', content: 'First question' },
-          // No id: e.g. a probe turn, or an orphan row whose own refetch
-          // hasn't landed one yet.
-          { role: 'assistant', content: 'An answer with no persisted id' },
-        ],
-      }),
+      task: { id: task.id, messages: exchange.slice(2) },
     });
+    alertSpy.mockClear();
 
-    await openTask(user);
-    await screen.findByText('An answer with no persisted id');
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
 
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
-  });
-
-  it('does not truncate locally when the server rejects the anchor with a 404', async () => {
-    // deleteConversationTurn maps 404 to {status:'gone'} instead of throwing.
-    // The server did NOT cut here, so truncating anyway drops history it
-    // still holds — and with the refetch gone there is nothing to restore it.
-    const user = userEvent.setup();
-    const messages = [
-      { role: 'user', id: 'u1', content: 'Hi there' },
-      { role: 'assistant', id: 'a1', content: 'Hello back' },
-    ];
-    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: baseTask({ messages }) });
-    spies.deleteConversationTurn.mockResolvedValue({ status: 'gone', id: 'conv-a', messageId: 'a1' });
-    spies.fetchSession.mockResolvedValue({
-      id: 'conv-a', messages, hasMoreMessages: false, messagesCursor: null,
-    });
-
-    await openTask(user);
-    await screen.findByText('Hello back');
-
-    await deleteTurn(user, screen.getByRole('button', { name: 'Delete' }));
-
+    // The click buys a refresh, not a delete: sending that index would have
+    // removed an exchange the user never pointed at.
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/refreshed/i);
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a1');
+      expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
     });
-    // Both rows still on screen, and a resync was issued.
-    expect(await screen.findByText('Hi there')).toBeTruthy();
-    expect(screen.getByText('Hello back')).toBeTruthy();
+
+    // The list is the server's again, so deleting works normally from here.
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
   });
 
-  it('cuts at the anchor alone when the row before it is not that turn\'s question', async () => {
-    // A probe persists an assistant turn with no user message of its own, so
-    // two visible assistant rows can sit next to each other. The server walks
-    // back only to an immediately preceding user row; a client that scanned
-    // further would delete rows the server kept, which then reappear on the
-    // next refetch.
+  it('gates the next delete when the delete answered with a gateway error', async () => {
     const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('Delete turn failed (504)'), { status: 504 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+    // The proxy stopped waiting; cowork-server may still be deleting. The list
+    // this returns predates a commit it cannot show.
     spies.fetchSessionResult.mockResolvedValue({
       status: 'ok',
-      task: baseTask({
-        messages: [
-          { role: 'user', id: 'u1', content: 'Connect my database' },
-          { role: 'assistant', id: 'a1', content: 'Here is the form' },
-          { role: 'assistant', id: 'a2', content: 'Probe result' },
-        ],
-      }),
+      task: { id: task.id, messages: exchange },
     });
 
-    await openTask(user);
-    await screen.findByText('Probe result');
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/may still have gone through/i);
+    alertSpy.mockClear();
 
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
-    await deleteTurn(user, deleteButtons[deleteButtons.length - 1]);
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a refused delete nothing more: a 4xx leaves the turn deletable', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(
+      Object.assign(new Error('turn is locked'), { status: 423 }),
+    );
+    render(<App />);
+    await openTask(user, task);
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/turn is locked/);
+    alertSpy.mockClear();
+
+    // The server was explicit that it did not delete anything, so the list is
+    // still the server's and the next delete needs no refresh first.
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
+    expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps refusing while the conversation still cannot be re-synced', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversationTurn.mockRejectedValue(new Error('gateway timeout'));
+    render(<App />);
+    await openTask(user, task);
+    spies.fetchSessionResult.mockRejectedValue(new Error('network down'));
+
+    await confirmDelete(user, 0);
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    alertSpy.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Request turn delete 1' }));
 
     await waitFor(() => {
-      expect(spies.deleteConversationTurn).toHaveBeenCalledWith('conv-a', 'a2');
+      expect(alertSpy.mock.calls.some(([said]) => /reload/i.test(said))).toBe(true);
     });
-    expect(screen.queryByText('Probe result')).toBeNull();
-    // The rows the server kept are still here.
-    expect(screen.getByText('Connect my database')).toBeTruthy();
-    expect(screen.getByText('Here is the form')).toBeTruthy();
+    expect(screen.queryByText('Delete this exchange?')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a local-only turn synchronously without touching the network', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openTask(user, localTask);
+    expect(screen.getByText('msg: user: local question')).toBeInTheDocument();
+
+    await confirmDelete(user, 0);
+
+    await waitFor(() => {
+      expect(screen.queryByText('msg: user: local question')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('msg: assistant: local answer')).not.toBeInTheDocument();
+    expect(spies.deleteConversationTurn).not.toHaveBeenCalled();
   });
 });

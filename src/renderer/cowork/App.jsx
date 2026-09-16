@@ -4112,8 +4112,88 @@ function AppCore() {
   // the API and truncate the chat locally (see truncateTaskAt).
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
-  const handleDeleteTurnRequest = (taskId, messageId) => {
+  // Message id currently being deleted, per conversation id. Keyed rather than
+  // a single slot because a delete may be in flight in more than one
+  // conversation at once, and each has to clear only its own.
+  const [deletingTurns, setDeletingTurns] = useState({});
+
+  // Conversations holding a list the server has not vouched for since the last
+  // delete. Nothing the client does can bound when a delete it gave up on
+  // commits, so the guarantee is narrower than it looks: the next delete only
+  // goes out against a list fetched after the user was told about this one.
+  const [unconfirmedDeletes, setUnconfirmedDeletes] = useState({});
+  const refreshingAfterDeleteRef = useRef(new Set());
+
+  /**
+   * Re-reads the conversation from the server after a delete, so the list on
+   * screen is one the server has vouched for. Returns false when the server
+   * could not be asked; the list then stays unvouched for.
+   */
+  const resyncConversationAfterDelete = async (taskId) => {
+    try {
+      // fetchSessionResult, not fetchSession: that one turns a failed `/items`
+      // into `messages: []`, blanking the transcript and reading as a re-sync.
+      const res = await fetchSessionResult(taskId);
+      if (res?.status !== 'ok' || !Array.isArray(res.task?.messages)) {
+        // eslint-disable-next-line no-console
+        console.error('[resyncConversationAfterDelete] no transcript returned', res?.status);
+        return false;
+      }
+      const fresh = res.task;
+      // Replaced, not merged. After a delete the server's list is the whole
+      // truth about this conversation, and a merge cannot express it: an empty
+      // page (every turn deleted) is indistinguishable from "nothing to merge",
+      // so the removed rows would stay on screen. Pagination is re-anchored on
+      // what came back, which means an older prefix pulled in through "load
+      // earlier" has to be loaded again — the honest cost of trusting the
+      // server here. Notices and sidecar entries are handled by
+      // forgetTurnArtifacts, which knows the ids that went.
+      setTasks((prev) => prev.map((t) =>
+        t.id === taskId
+          ? {
+            ...t,
+            messages: applySessionMessages(taskId, fresh.messages),
+            hasMoreMessages: fresh.hasMoreMessages ?? false,
+            messagesCursor: fresh.messagesCursor ?? null,
+          }
+          : t,
+      ));
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[resyncConversationAfterDelete] refetch failed', e);
+      return false;
+    }
+  };
+
+  const handleDeleteTurnRequest = async (taskId, messageId) => {
     if (!taskId || !messageId) return;
+    // One delete at a time per conversation: a second would race the first's
+    // resync, and the list it was clicked against is the one being replaced.
+    // Another conversation is unaffected and stays deletable.
+    if (deletingTurns[taskId] != null) return;
+    if (unconfirmedDeletes[taskId]) {
+      if (refreshingAfterDeleteRef.current.has(taskId)) return;
+      refreshingAfterDeleteRef.current.add(taskId);
+      // Said before the fetch, not after it: the click has to register at once,
+      // and this spends it on a refresh rather than on the delete.
+      alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
+      try {
+        if (await resyncConversationAfterDelete(taskId)) {
+          setUnconfirmedDeletes((prev) => {
+            if (!prev[taskId]) return prev;
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        } else {
+          alert('This conversation could not be refreshed. Reload it before deleting anything else in it.');
+        }
+      } finally {
+        refreshingAfterDeleteRef.current.delete(taskId);
+      }
+      return;
+    }
     setPendingDeleteTurn({ taskId, messageId });
   };
 
@@ -4204,84 +4284,126 @@ function AppCore() {
   // resurrect rows the server actually deleted (or fail to remove ghosted
   // ones) if the server's real cut point ever differs from what the
   // client assumed — e.g. an error row widening the cut server-side.
-  const truncateTaskAt = (t, messageId) => {
-    const msgs = t.messages || [];
+  const turnCutFrom = (msgs, messageId) => {
     const anchorIdx = msgs.findIndex((m) => m.id === messageId);
-    if (anchorIdx === -1) return t;
-    // The anchor is the assistant reply for a paired turn, or the user
-    // message itself for an orphan turn (see ChatView's onDelete wiring).
-    // delete_turn's server-side rule is to step back over hidden tool rows
-    // and take the user message only when it is the row immediately before
-    // the anchor, cutting at the anchor itself otherwise
+    if (anchorIdx === -1) return -1;
+    // delete_turn's server-side rule is to step back over hidden tool rows and
+    // take the user message only when it is the row immediately before the
+    // anchor, cutting at the anchor itself otherwise
     // (services/conversations.py). Tool rows never reach the client, so the
     // same rule here is a single step back. It must NOT scan further for a
     // user row: two visible assistant rows can sit next to each other (the
     // probe persists an assistant turn with no user message of its own), and
-    // scanning past one would delete rows server-side the server kept, which
-    // then reappear on the next refetch.
-    const cutFrom = (msgs[anchorIdx].role === 'assistant' && msgs[anchorIdx - 1]?.role === 'user')
+    // scanning past one would drop rows the server kept, which then reappear
+    // on the next refetch.
+    return (msgs[anchorIdx].role === 'assistant' && msgs[anchorIdx - 1]?.role === 'user')
       ? anchorIdx - 1
       : anchorIdx;
-    const removed = msgs.slice(cutFrom);
-    const removedIds = removed.map((m) => m.id).filter(Boolean);
+  };
+
+  // The notices and localStorage sidecar entries belonging to the turn anchored
+  // at `messageId` and everything after it. Split from truncateTaskAt because
+  // the server-backed path deliberately leaves the list alone until the resync
+  // lands — clearing rows early would un-dim the turn into a list that no
+  // longer matches the server — but the by-id cleanup has to happen while the
+  // client still knows which ids went.
+  const forgetTurnArtifacts = (t, messageId) => {
+    const msgs = t.messages || [];
+    const cutFrom = turnCutFrom(msgs, messageId);
+    if (cutFrom === -1) return t;
+    const removedIds = msgs.slice(cutFrom).map((m) => m.id).filter(Boolean);
     removeConvTurnsFor(t.id, removedIds);
-    return {
-      ...t,
-      messages: msgs.slice(0, cutFrom),
-      usageNotices: dropNoticesFromTurn(t.usageNotices, removedIds),
-    };
+    return { ...t, usageNotices: dropNoticesFromTurn(t.usageNotices, removedIds) };
+  };
+
+  // Full local cut, for a conversation the server has never seen: there is no
+  // resync to follow it, so this is the only thing that removes the rows.
+  const truncateTaskAt = (t, messageId) => {
+    const msgs = t.messages || [];
+    const cutFrom = turnCutFrom(msgs, messageId);
+    if (cutFrom === -1) return t;
+    return { ...forgetTurnArtifacts(t, messageId), messages: msgs.slice(0, cutFrom) };
   };
 
   const performDeleteTurn = async (taskId, messageId) => {
     if (!taskId || !messageId) return;
-    // If anton is actively streaming a response to the turn being
-    // deleted, stop the stream first so the SSE connection doesn't
-    // keep producing events for a turn that no longer exists. The
-    // silent flag skips the post-cancel session refetch.
-    if (activeStreamingTaskIdRef.current === taskId) {
-      try { await handleStopStream({ silent: true }); } catch {}
+    const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
+    // Raised before the stop-stream branch, not after it: cancelling a live
+    // stream is itself two network calls, and the turn has to read as in
+    // flight for that wait too. The local-only path never sets it.
+    if (!isLocalOnly) {
+      setDeletingTurns((prev) => ({ ...prev, [taskId]: messageId }));
     }
-    if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
-      // No server-side history yet — drop the local pair only.
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
-      return;
-    }
-    let result;
     try {
-      result = await deleteConversationTurn(taskId, messageId);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteTurn] server delete failed', e);
-      alert(`Could not delete this exchange: ${e?.message || e}`);
-      return;
-    }
-    // A 404 comes back as {status:'gone'} rather than throwing, and means the
-    // server did NOT cut here: it either never had this id or rejected it as
-    // an anchor. Truncating anyway would drop history the server still holds,
-    // with no refetch left to put it back. Resync from the server instead.
-    if (result?.status === 'gone') {
-      toastManager.add({
-        type: 'danger',
-        title: "Couldn't delete this exchange. Reloading the conversation.",
-      });
-      const loaded = await loadSessionMessagesWithRetry(taskId, { isLive: false });
-      if (!loaded) {
-        toastManager.add({
-          type: 'danger',
-          title: "Couldn't reload this conversation. Refresh to see its current state.",
-        });
+      // If anton is actively streaming a response to the turn being
+      // deleted, stop the stream first so the SSE connection doesn't
+      // keep producing events for a turn that no longer exists. The
+      // silent flag skips the post-cancel session refetch.
+      if (activeStreamingTaskIdRef.current === taskId) {
+        try { await handleStopStream({ silent: true }); } catch {}
+      }
+      if (isLocalOnly) {
+        // No server-side history yet — drop the local pair only.
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
         return;
       }
-      setTasks((prev) => prev.map((t) => (t.id === taskId
-        ? {
-            ...t,
-            messages: mergeMessagePage(t.messages, loaded.messages),
-            ...reconcilePaginationState(t, loaded),
-          }
-        : t)));
-      return;
+      let failure = null;
+      let result = null;
+      try {
+        result = await deleteConversationTurn(taskId, messageId);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[performDeleteTurn] server delete failed', e);
+        failure = e;
+      }
+      // A 404 arrives as {status:'gone'} rather than throwing, and means the
+      // server did not cut here: it either never had this id or rejected it as
+      // an anchor. That is a refusal, not a failure to reach the server, so
+      // the resync below is what puts the list right.
+      const gone = result?.status === 'gone';
+      // The list itself is left to the resync below, so the turn never
+      // un-dims into one the server has not vouched for. Only the by-id
+      // cleanup happens here, while the client still knows which ids went —
+      // the resync replaces messages and cannot work that out afterwards.
+      if (!failure && !gone) {
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? forgetTurnArtifacts(t, messageId) : t)));
+      }
+      // Re-fetch whatever happened above, not just on success: a delete we did
+      // not see confirmed may still have landed, so the list on screen is not
+      // one the server has vouched for until this returns.
+      const resynced = await resyncConversationAfterDelete(taskId);
+      // Only a 4xx is the server saying it did not do this. Our own timeout, a
+      // gateway 5xx and no response at all all leave a delete that may still
+      // commit, which a re-sync read before it does cannot show.
+      const refused = gone || (failure?.status >= 400 && failure.status < 500);
+      if (!resynced || (failure && !refused)) {
+        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: true }));
+      }
+      if (!resynced) {
+        // The quiet version of this is the one that loses data: the exchange
+        // may be gone on the server while the list still shows it.
+        alert(failure
+          ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
+          : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
+      } else if (failure && !refused) {
+        alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
+      } else if (failure) {
+        alert(`Could not delete this exchange: ${failure?.message || failure}`);
+      } else if (gone) {
+        alert('This exchange was already gone on the server, so the conversation has been refreshed.');
+      }
+    } finally {
+      // Cleared in the same continuation that truncates the list, so the turn
+      // never un-dims back into a list that still shows it.
+      if (!isLocalOnly) {
+        setDeletingTurns((prev) => {
+          if (prev[taskId] == null) return prev;
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      }
     }
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
   };
 
   const handleDeleteProject = (project) => {
@@ -4894,6 +5016,7 @@ function AppCore() {
             onDeleteTurn={(messageId) => handleDeleteTurnRequest(currentTask?.id, messageId)}
             onLoadEarlierMessages={handleLoadEarlierMessagesForCurrent}
             loadingEarlierMessages={loadingOlderMessagesFor.has(currentTask?.id)}
+            deletingTurnMessageId={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
