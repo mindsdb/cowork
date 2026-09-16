@@ -580,10 +580,18 @@ export function claimOrgRoot(accountRoot: string, orgId: string): OrgClaimState 
  * permanently true and strand the owning organization in an empty subtree.
  */
 export function knownOrgRoots(accountRoot: string): string[] {
+  return listOrgSegments(accountRoot).filter((name) => !name.startsWith(QUARANTINE_PREFIX));
+}
+
+/** Every organization subtree directory under an account root, quarantine
+ *  buckets included. Callers that must not count a quarantine bucket filter it
+ *  themselves, because the two questions differ: "has this root been
+ *  partitioned" excludes them, "is this orphan one of ours" does not. */
+export function listOrgSegments(accountRoot: string): string[] {
   try {
     return fs
       .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith(QUARANTINE_PREFIX))
+      .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {
     return [];
@@ -746,21 +754,10 @@ function reapQuarantineRoot(root: string, name: string): void {
  *  organization subtrees sit at `<home>/orgs`, because the account that owns it
  *  has no `accounts/<id>` directory of its own, and a single-account install is
  *  the common case rather than the rare one. */
-function orgQuarantineNames(accountRoot: string): string[] {
-  try {
-    return fs
-      .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
-}
-
 export function sweepStaleQuarantineRoots(home: string): void {
   const accountRoots = [home, ...knownAccountRoots(home).map((n) => path.join(home, ACCOUNTS_DIR, n))];
   for (const accountRoot of accountRoots) {
-    for (const name of orgQuarantineNames(accountRoot)) {
+    for (const name of listOrgSegments(accountRoot)) {
       reapQuarantineRoot(path.join(accountRoot, ORGS_DIR, name), name);
     }
   }

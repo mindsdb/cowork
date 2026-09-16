@@ -25,7 +25,7 @@ import {
   orgStoreRoot,
   readActiveOrg,
   ACCOUNTS_DIR,
-  ORGS_DIR,
+  listOrgSegments,
 } from './account-data';
 import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
@@ -106,19 +106,6 @@ function currentOrgSegment(): string | null {
   return stores === account ? null : path.basename(stores);
 }
 
-/** Every organization subtree under an account root, quarantine buckets
- *  INCLUDED: an orphan we stamped for one is still ours to reap. */
-function orgSegmentsUnder(accountRoot: string): string[] {
-  try {
-    return fs
-      .readdirSync(path.join(accountRoot, ORGS_DIR), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Whether an owner token at /health is one THIS install could have stamped.
  *
@@ -136,7 +123,7 @@ function isOwnerTokenOurs(owner: string): boolean {
   for (const id of knownAccountRoots(home)) roots.push([id, path.join(home, ACCOUNTS_DIR, id)]);
   return roots.some(([id, root]) =>
     owner === serverOwnerToken(id)
-    || orgSegmentsUnder(root).some((seg) => owner === serverOwnerToken(id, seg)));
+    || listOrgSegments(root).some((seg) => owner === serverOwnerToken(id, seg)));
 }
 
 // Which account's stores this session uses, or null for the default root. Read
