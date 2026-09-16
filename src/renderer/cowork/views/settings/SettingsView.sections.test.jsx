@@ -56,7 +56,6 @@ vi.mock('../../../lib/orgMode', () => ({
   useOrgMode: () => deployment.orgMode,
 }));
 vi.mock('../../lib/analytics', () => ({
-  trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));

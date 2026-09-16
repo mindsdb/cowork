@@ -42,7 +42,8 @@ describe('UsageSection', () => {
     expect(screen.getByText('13%')).toBeInTheDocument();
     expect(screen.getByText(/of your allowance used/)).toBeInTheDocument();
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
-    expect(screen.getByText(/Resets Sep 1[12]/)).toBeInTheDocument();
+    // A clock time; the period spend below it stays a date range.
+    expect(screen.getByText(/Resets at Sep 1[12], 12:00 PM/)).toBeInTheDocument();
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();

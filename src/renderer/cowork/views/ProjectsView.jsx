@@ -621,7 +621,6 @@ function ProjectDetail({
   onOpenSchedule,
   onOpenSettings,
   codingModelDefault,
-  harnessHermesEnabled,
   harnessClaudeCodeEnabled,
   showMobileContext = false,
 }) {
@@ -796,7 +795,6 @@ function ProjectDetail({
                 codingModeEnabled={codingModeEnabled}
                 onOpenSettings={onOpenSettings}
                 codingModelDefault={codingModelDefault}
-                harnessHermesEnabled={harnessHermesEnabled}
                 harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
                 sendsMeta
                 placeholder={`Start a new task in ${projectLabel(project)}…`}
@@ -908,7 +906,6 @@ export default function ProjectsView({
   agentLabel = 'the agent',
   onOpenSettings,
   codingModelDefault,
-  harnessHermesEnabled,
   harnessClaudeCodeEnabled,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
@@ -1122,7 +1119,6 @@ export default function ProjectsView({
         onUpdateConnectorMute={onUpdateConnectorMute}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}
-        harnessHermesEnabled={harnessHermesEnabled}
         harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
         showMobileContext={isMobile}
         onShowAll={() => setDetailProject(null)}

@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetDate, formatPercentShort } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort } from '../lib/usageWarnings';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -302,7 +302,7 @@ function userTurnAttachmentLabel(a) {
 // pasted prompt doesn't dominate the viewport before the answer starts.
 const USER_CLAMP_MAX_PX = 176;
 
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false }) {
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false, deleting = false }) {
   const contentRef = useRef(null);
   const [collapsed, setCollapsed] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
@@ -323,7 +323,10 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
     return () => ro.disconnect();
   }, [content]);
   return (
-    <div className="user-turn">
+    <div
+      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      aria-busy={deleting || undefined}
+    >
       <div className="user-turn-inner">
         <div className="user-turn-bubble">
           {/* User messages flow through the same markdown pipeline as
@@ -393,13 +396,23 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
             </div>
           );
         })}
-        <TurnActions
-          getText={() => content || ''}
-          onEdit={onEdit ? () => onEdit(content) : null}
-          onDelete={onDelete}
-          isLast={isLast}
-          align="right"
-        />
+        {deleting ? (
+          <span
+            // Primary ink, not the usual meta grey: the turn around it is at
+            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
+          >
+            Deleting…
+          </span>
+        ) : (
+          <TurnActions
+            getText={() => content || ''}
+            onEdit={onEdit ? () => onEdit(content) : null}
+            onDelete={onDelete}
+            isLast={isLast}
+            align="right"
+          />
+        )}
       </div>
     </div>
   );
@@ -413,17 +426,18 @@ const CHAT_ORB_SIZE = 22;
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
   return (
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className="answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1"
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      aria-busy={deleting || undefined}
     >
       {children}
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
-          {showActions && (
+          {showActions && !deleting && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
@@ -1049,9 +1063,9 @@ async function waitForServerReady(timeoutMs = 8000) {
 // buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
 // the base for per-button tweaks (e.g. the reconnect busy state). An empty
 // list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
+function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
   return (
-    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
       <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
         {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
         <div className="s-h3">
@@ -1092,27 +1106,16 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
 // and "unlock" is literally true, because non-free models need a wallet this
 // org doesn't have.
 //
-// The date is formatted here, not server-side: only the client knows the
+// The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
-// users. Anything unusable — absent, malformed, or already past on a reloaded
-// conversation — returns null rather than rendering "Invalid Date" or a stale
-// date, and the caller drops its whole clause. Null rather than a stand-in
-// phrase: the allowance refills on a fixed-duration window, so naming a month
-// would promise a schedule that does not exist. Same shape as `resetClause` in
-// usageWarnings.js, which the composer already uses.
-function formatAllowanceReset(resetAt) {
-  if (!resetAt) return null;
-  const d = new Date(resetAt);
-  if (Number.isNaN(d.getTime())) return null;
-  if (d.getTime() <= Date.now()) return null;
-  return formatResetDate(resetAt) || null;
-}
+// users.
 
-/* " on Sep 11" when the gate gave a usable date, and nothing at all when it
-   did not, so no sentence promises a schedule the response never named. */
+/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
+   sentence promises a schedule the response never named. The guards are
+   `formatResetTime`'s, shared with the composer bar. */
 function refillClause(resetAt, lead) {
-  const date = formatAllowanceReset(resetAt);
-  return date ? `${lead} on ${date}` : lead;
+  const time = formatResetTime(resetAt);
+  return time ? `${lead} at ${time}` : lead;
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
@@ -1186,7 +1189,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
 // from a broken card (ENG-1537 review).
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
-function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
+function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = false }) {
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1225,6 +1228,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title="Too many requests too quickly"
@@ -1240,7 +1244,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
 // Settings instead of dragging them into a MindsHub login. Reconnect is also
 // desktop-only (finalize/login are Electron IPC), so on web we fall back to
 // Settings too.
-function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
+function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel, deleting = false }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -1303,6 +1307,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={title}
@@ -1345,6 +1350,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
+  deleting = false,
 }) {
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
@@ -1377,6 +1383,7 @@ export function ModelUnavailableCard({
   // which under pay as you go misdescribes an empty wallet.
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={title}
@@ -1416,6 +1423,7 @@ export function ModelUnavailableCard({
 //    subscribe are resolved for real.
 function ProviderOverloadedCard({
   time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
+  deleting = false,
 }) {
   const onManaged = Boolean(reconnectable);
   const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
@@ -1427,6 +1435,7 @@ function ProviderOverloadedCard({
 
   return (
     <ActionCard
+      deleting={deleting}
       time={time}
       agentLabel={agentLabel}
       title={`${who} is having a temporary issue`}
@@ -1502,6 +1511,9 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
+  // User-input index of the turn whose delete is on the wire, or null. The
+  // same index this view hands to onDeleteTurn.
+  deletingTurnIndex = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1512,7 +1524,6 @@ export default function ChatView({
   onOpenProjectsList,
   onOpenSettings,
   codingModelDefault,
-  harnessHermesEnabled,
   harnessClaudeCodeEnabled,
   onStop,
   projects = [],
@@ -1614,9 +1625,6 @@ export default function ChatView({
   // through anton's chat pipeline — it embeds a live PTY terminal instead of
   // the message transcript + Composer (see CodingTerminal / coding-terminal.ts).
   const isClaudeCodeTask = task?.harness === 'claude-code';
-  // Hermes has no memory system of its own — the Context rail's Project/
-  // Global memory sections are an Anton concept and don't apply.
-  const isHermesTask = task?.harness === 'hermes';
   const subscribeFormStore = useMemo(
     () => (onChange) => subscribeDataVaultForm(taskId, onChange),
     [taskId],
@@ -1783,6 +1791,8 @@ export default function ChatView({
     if (!isThinkingActive(streamingMsg.streamStatus)) return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
+
+  const deleteInFlight = deletingTurnIndex != null;
 
   return (
     <div
@@ -2100,7 +2110,11 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    // No turn offers a delete while one is out: every other
+                    // turn's index is about to shift when the server reindexes
+                    // what survives, so it would take the wrong exchange.
+                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    deleting={deletingTurnIndex === turnIdxForThisUser}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
@@ -2115,6 +2129,9 @@ export default function ChatView({
                   />
                 );
               }
+              // Past the user branch, userInputIdx names the turn this
+              // message belongs to, whatever kind of row it renders as.
+              const deletingThisTurn = deletingTurnIndex === userInputIdx;
               if (m.role === 'activity') {
                 // Activity rows normally live in the rail's Progress
                 // only. Exception: when this is the just-sent
@@ -2179,6 +2196,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       // A billing failure ends the turn; there is no resume,
@@ -2210,6 +2228,7 @@ export default function ChatView({
                   return (
                     <ReconnectCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2228,6 +2247,7 @@ export default function ChatView({
                   return (
                     <ModelUnavailableCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2250,6 +2270,7 @@ export default function ChatView({
                   return (
                     <ProviderOverloadedCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
@@ -2284,6 +2305,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
@@ -2313,6 +2335,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="That image couldn't be read"
@@ -2333,6 +2356,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="Fixed an issue with this conversation"
@@ -2351,6 +2375,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
@@ -2374,6 +2399,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="The agent didn't start"
@@ -2392,6 +2418,7 @@ export default function ChatView({
                   return (
                     <ActionCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       // The gate only issues this code when the org has no
@@ -2432,6 +2459,7 @@ export default function ChatView({
                   return (
                     <RateLimitedCard
                       key={i}
+                      deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       body={m.content}
@@ -2455,7 +2483,7 @@ export default function ChatView({
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
@@ -2471,6 +2499,7 @@ export default function ChatView({
                 return (
                   <ActionCard
                     key={i}
+                    deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
                     title="Connect a provider to start chatting"
                     body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
@@ -2514,7 +2543,8 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
+                  onDelete={deleteInFlight ? null : () => onDeleteTurn?.(turnIdxForThisBubble)}
+                  deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
                 >
@@ -2628,6 +2658,18 @@ export default function ChatView({
                 than above it: the crossing happened during this turn. With
                 nothing streaming this is just the end of the conversation. */}
             {usageBuckets[visibleMessages.length].map(usageCard)}
+            {/* Always mounted, and outside the turn it describes: a region
+                inserted at the moment it should speak is not reliably
+                announced, and the turn is aria-busy, which tells a reader to
+                hold off on that subtree. */}
+            <div
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="delete-turn-status"
+            >
+              {deleteInFlight ? 'Deleting the selected exchange.' : ''}
+            </div>
           </div>
         </div>
 
@@ -2697,7 +2739,6 @@ export default function ChatView({
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
-            harnessHermesEnabled={harnessHermesEnabled}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
         </div>
@@ -2780,7 +2821,6 @@ export default function ChatView({
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
-          showMemory={!isHermesTask}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}

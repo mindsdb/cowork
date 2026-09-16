@@ -356,15 +356,6 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
-  it('does not render the footer for harness="hermes", even for a model with effort options', async () => {
-    const user = userEvent.setup();
-    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} harness="hermes" />);
-
-    await user.click(screen.getByRole('combobox'));
-
-    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
-  });
-
   it('does not render the footer at all when no model is selected', async () => {
     const user = userEvent.setup();
     render(<Harness initial="" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);

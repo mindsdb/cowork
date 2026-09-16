@@ -165,9 +165,9 @@ body[data-skin="8bit"][data-theme="dark"] {
   /* Arcade cartridge family. */
   --tint-1:       #3dd6f5;  /* cyan */
   --tint-2:       #4ade80;  /* anton green */
-  --tint-3:       #fbbf24;  /* hermes gold */
-  --tint-4:       #f87168;  /* openclaw red */
-  --tint-5:       #a78bfa;  /* mystery purple */
+  --tint-3:       #fbbf24;  /* gold */
+  --tint-4:       #f87168;  /* red */
+  --tint-5:       #a78bfa;  /* purple */
   --tint-6:       #f472b6;  /* pink */
 
   /* Hard offset shadows — pixels don't blur. */

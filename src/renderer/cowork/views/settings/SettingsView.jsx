@@ -5,7 +5,7 @@ import { validateSettings, revealSettingKey, testProviders, fetchRecommendedMode
 import { isModelLocked } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
+import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -1048,14 +1048,6 @@ export default function SettingsView({
     setTested(false);
     try {
       await onSave(withResolvedRoles(clampBudgets(settings)));
-      // Record the harness swap only now that it's persisted (ENG-385). Compare
-      // against the pre-save snapshot — settingsRef holds the latest value since
-      // the closure `settings` is stale after the await.
-      try {
-        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
-        const savedHarness = settingsRef.current?.harness || 'anton';
-        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
-      } catch { /* analytics must never break Save */ }
       const result = await validateSettings();
       setValidation(result);
       if (shouldTestLlm) {
@@ -1512,7 +1504,6 @@ export default function SettingsView({
                   // (ENG-1940, ModelSelect's footer row), only for models that
                   // advertise effort levels (settings.modelEfforts, sourced from
                   // MindsHub /v1/models + the static direct-provider catalog).
-                  // Suppressed for the Hermes harness, which has no effort knob.
                   // Router has no reasoning-effort knob — it's a single cheap
                   // gating call, not a reasoning role. `effortEntry`/`effortOptions`/
                   // `effortValue` still get derived here (ModelSelect needs
@@ -1521,7 +1512,6 @@ export default function SettingsView({
                   const effortKey = role === 'planning' ? 'planningReasoningEffort'
                     : role === 'coding' ? 'codingReasoningEffort'
                     : null;
-                  const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
                   const effortEntry = (settings.modelEfforts || {})[curModel];
                   const effortOptions = effortEntry?.efforts || [];
                   const savedEffort = effortKey ? settings[effortKey] : '';
@@ -1707,7 +1697,6 @@ export default function SettingsView({
                                   modelEfforts={effortKey ? settings.modelEfforts : undefined}
                                   effort={effortValue}
                                   onEffortChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
-                                  harness={settings.harness}
                                 />
                                 {inputMode && allowOther && (
                                   <TextInput
@@ -1783,30 +1772,6 @@ export default function SettingsView({
             </SettingsGroup>
           </div>
         </div>
-
-        {/* Coding Mode itself lives in its own top-level nav section (see
-            renderCodingModeSection) — desktop-only, since launching an
-            external CLI in a terminal is an Electron main-process
-            capability with no web equivalent. Web keeps its simple
-            single-select Anton/Hermes toggle here instead, unaffected by
-            Coding Mode since that concept doesn't exist there. */}
-        {host.isWeb && (
-          <SettingsGroup title="Agent Harness">
-            <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-              <ToggleGroup
-                value={settings.harness || 'anton'}
-                onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-                aria-label="Agent harness"
-                options={[
-                  { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
-                  ...((settings.harnessOptions || []).includes('hermes') ? [
-                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-                  ] : []),
-                ]}
-              />
-            </Section>
-          </SettingsGroup>
-        )}
 
         <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>

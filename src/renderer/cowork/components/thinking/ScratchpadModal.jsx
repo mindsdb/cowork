@@ -52,7 +52,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
   const tabs = useMemo(() => {
     const byTab = new Map();
     for (const s of steps) {
-      // Include scratchpad cells (Anton) and tool-call cells (Hermes).
+      // Include scratchpad cells and generic tool-call cells.
       // Skip reasoning-only steps — they have no inspectable payload.
       if (!s._isScratchpad && !s._isToolCall) continue;
       const raw = s._scratchpadTabId;
@@ -219,7 +219,7 @@ function CellView({ cell, index, total, focused = false }) {
   // for the rare cell that exceeds that, one of the two fields may
   // still hold a parseable copy. Try data.code first (canonical),
   // then result.code (sent with stdout/stderr), then result.input.code.
-  // For tool-call cells (Hermes, and now anton generic tools), show
+  // For tool-call cells (anton generic tools), show
   // args as JSON — excluding `one_line_description`, which lives in
   // the same `data` bag but is our own live-progress bookkeeping field
   // (patched in by thought.tool_call.progress), not a real argument.
