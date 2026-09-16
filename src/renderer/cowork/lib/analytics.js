@@ -79,12 +79,19 @@ const EVENTS = {
   // content main already has as diverged and will tell you prod is missing a
   // condition it has been emitting for weeks.
   //
-  // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` now ride
-  // EVERY event this module emits, not only this one: they are stamped in
-  // capture(), beside is_internal. Noted here because this is the event they
-  // were added for and this is where a reader looks. Additive, so no existing
-  // query changes meaning, and both are absent on pre-login events and on any
-  // event from a build older than this one.
+  // ENG-2206, 10 Sep 2026 — `sso_organization_id` and `sso_plan_tier` ride THIS
+  // event and no other. They are stamped in capture(), beside is_internal, but
+  // behind an `event === EVENTS.TOKEN_CAP_HIT` guard: putting them on every
+  // product event was considered there and rejected as widening the change
+  // beyond the rejection boundary. Additive, so no existing query changes
+  // meaning, and both are absent on pre-login events and on any event from a
+  // build older than this one.
+  //
+  // That paragraph read "ride EVERY event this module emits" until 16 Sep 2026,
+  // and was wrong from the day it was written. Corrected rather than deleted
+  // because it had already been read as a spec: a post-release telemetry check
+  // was briefed to watch total event volume for this change, which the code
+  // could never have moved — only token_cap_hit carries the properties.
   // They are the signed-in session's org and tier. **They are not the subject a
   // limit bound to** — a user-supplied `mdb_` key overrides the session token,
   // and limits are org-scoped with per-org overrides rather than tier-scoped.
