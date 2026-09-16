@@ -63,6 +63,10 @@ describe('Select', () => {
 
     await user.click(screen.getByRole('combobox'));
     await user.keyboard('{Escape}');
+    // Precondition: the closed popup stays mounted. That is what lets Base UI
+    // re-register the shrunk list and emit the null. If this ever fails, the
+    // rest of the test no longer exercises the guard.
+    expect(document.querySelector('[role="listbox"]')).not.toBeNull();
     rerender(<Harness initial="high" options={three} onValueChange={onValueChange} />);
 
     expect(onValueChange).not.toHaveBeenCalled();
