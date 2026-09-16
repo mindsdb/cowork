@@ -10,6 +10,18 @@ describe('mergeMessagePage', () => {
   // first row without an id" as a structural boundary therefore breaks on
   // ordinary conversations, not just exotic ones.
 
+  it('keeps an optimistic send when the page ends with a card local state lacks', () => {
+    // The dedupe is about the synthetic card hydration derives from a failed
+    // turn. An optimistic send is also id-less, but it is content the page does
+    // not have yet — dropping it makes the message the user just sent vanish
+    // while its request is still in flight.
+    const errorCard = { role: 'error', content: 'boom' };
+    const echo = { role: 'user', content: 'just typed' };
+    const existing = [m('u1', 'q1'), m('a1', 'a1'), echo];
+    const page = [m('u1', 'q1'), m('a1', 'a1'), errorCard];
+    expect(mergeMessagePage(existing, page)).toEqual([...page, echo]);
+  });
+
   it('is idempotent when the failed turn is the newest one', () => {
     // The common shape: a card is appended the moment a turn fails, so it
     // trails the last id-bearing row in the page and in local state alike.
@@ -171,6 +183,14 @@ describe('pageReplacesLocalHistory', () => {
 
   it('is true when the page shares no row with what is loaded', () => {
     expect(pageReplacesLocalHistory([m2('a')], [m2('x'), m2('y')])).toBe(true);
+  });
+
+  it('is true when nothing is loaded at all', () => {
+    // A turn delete that cuts to the top leaves an empty array beside a cursor
+    // describing the history it just removed. Keeping that cursor makes the
+    // next "load earlier" re-prepend rows already on screen.
+    expect(pageReplacesLocalHistory([], [m2('x')])).toBe(true);
+    expect(pageReplacesLocalHistory([{ role: 'error' }], [m2('x')])).toBe(true);
   });
 
   it('is false when the page overlaps what is loaded', () => {

@@ -419,13 +419,24 @@ export async function fetchSessions({ onItems } = {}) {
   // interaction.
   if (onItems) {
     for (const c of conversations.slice(0, EAGER)) {
-      req(`/conversations/${encodeURIComponent(c.id)}/items`)
+      // Bounded like every other transcript fetch. Warming the FULL history of
+      // the 50 most recent conversations moved the unbounded fetch from
+      // task-open to startup rather than removing it — and it pre-filled a long
+      // conversation so completely that neither the loading state nor
+      // "load earlier" ever engaged for the tasks most likely to be opened.
+      req(`/conversations/${encodeURIComponent(c.id)}/items?limit=${MESSAGE_PAGE_LIMIT}`)
         // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
         // through _conversationToTask, so they got _hydrateAssistantEvents —
         // which replays `events` into steps/startedAt and appends the synthetic
         // `error` / `provider_required` message a failed turn renders its card
         // from. Handing over the raw array silently dropped both.
-        .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
+        .then((r) => {
+          const page = _pageFromItemsResponse(r);
+          onItems(c.id, _hydrateAssistantEvents(page.items), {
+            hasMoreMessages: page.hasMore,
+            messagesCursor: page.nextBefore,
+          });
+        })
         .catch(() => {});
     }
   }

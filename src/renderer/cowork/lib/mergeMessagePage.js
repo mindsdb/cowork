@@ -22,6 +22,12 @@
 // one as a structural boundary reorders older history below newer, strands a
 // duplicate of the question the page already covers, and re-appends a
 // hydrated error card on every merge.
+// The id-less rows hydration derives from a failed turn. Deliberately narrow:
+// an optimistic send and the live stub are also id-less, and they are content
+// the page genuinely does not have yet.
+const _isSyntheticCard = (m) => m?.id == null
+  && (m?.role === 'error' || m?.role === 'provider_required');
+
 export function mergeMessagePage(existing, freshPage) {
   const existingArr = Array.isArray(existing) ? existing : [];
   const freshArr = Array.isArray(freshPage) ? freshPage : [];
@@ -61,8 +67,7 @@ export function mergeMessagePage(existing, freshPage) {
   let superseded = 0;
   while (superseded < trailingLocal.length
     && superseded < pageTrailingSynthetic
-    && trailingLocal[superseded]?.id == null
-    && trailingLocal[superseded]?.role !== '_streaming') superseded += 1;
+    && _isSyntheticCard(trailingLocal[superseded])) superseded += 1;
   trailingLocal = trailingLocal.slice(superseded);
 
   // The live `_streaming` stub is render state, not history — the stream's
@@ -83,9 +88,15 @@ export function mergeMessagePage(existing, freshPage) {
 export function pageReplacesLocalHistory(existing, freshPage) {
   const existingArr = Array.isArray(existing) ? existing : [];
   const freshArr = Array.isArray(freshPage) ? freshPage : [];
-  if (existingArr.length === 0 || freshArr.length === 0) return false;
+  if (freshArr.length === 0) return false;
   const oldestFresh = freshArr.find((m) => m?.id != null);
   if (!oldestFresh) return false;
+  // Nothing loaded (or nothing the server has ever seen) is the most complete
+  // replacement there is, not an exception to it. A turn delete that cuts to
+  // the top leaves exactly this: an empty array beside a cursor describing the
+  // history that was just removed. Keeping that cursor makes the next "load
+  // earlier" re-fetch and re-prepend rows already on screen.
+  if (!existingArr.some((m) => m?.id != null)) return true;
   return !existingArr.some((m) => m?.id === oldestFresh.id);
 }
 

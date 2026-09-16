@@ -7,6 +7,7 @@ import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState } from './lib/mergeMessagePage';
+import { stampUserMessageId } from './lib/stampUserMessageId';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -804,7 +805,10 @@ function AppCore() {
                   // Only the most recent page — merge against what the
                   // task already has instead of replacing wholesale.
                   messages: mergeMessagePage(t.messages, reconciled),
-                  ...reconcilePaginationState(t, fresh),
+                  // Same array the merge just used: the two decisions have to
+                  // agree on which rows the page actually covers, and `fresh`
+                  // is the pre-hydration shape.
+                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
                   status: 'idle',
                 };
               }));
@@ -943,25 +947,13 @@ function AppCore() {
   // sidecar, the usage-notice anchor) is blind to the turn the user is
   // actually looking at. Stamps the newest still-id-less user row, and is a
   // no-op once that row has an id.
-  const stampUserMessageId = (taskIds, userMessageId) => {
+  const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
     if (!userMessageId) return;
     const ids = new Set(taskIds.filter(Boolean).map(String));
     setTasks((prev) => prev.map((t) => {
       if (!ids.has(String(t.id))) return t;
-      const msgs = Array.isArray(t.messages) ? t.messages : [];
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        // `_unsent` rows never reached the server (a send with no provider
-        // configured leaves one behind), so the id belongs to a different row
-        // — stamping it here would hand that row a delete affordance that
-        // cuts a real turn server-side. Same exclusion usageNoticePlacement
-        // makes for the same reason.
-        if (msgs[i]?.role !== 'user' || msgs[i]?._unsent) continue;
-        if (msgs[i].id != null) return t;
-        const next = msgs.slice();
-        next[i] = { ...next[i], id: userMessageId };
-        return { ...t, messages: next };
-      }
-      return t;
+      const next = stampUserMessageId(t.messages, userMessageId);
+      return next === t.messages ? t : { ...t, messages: next };
     }));
   };
 
@@ -1639,14 +1631,20 @@ function AppCore() {
     setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
     // Merges a warmed transcript in without disturbing a live conversation:
     // anything mid-stream, or already filled, keeps what it has.
-    const warmTranscript = (id, msgs) => setTasks((prev) => prev.map((t) => {
+    const warmTranscript = (id, msgs, page) => setTasks((prev) => prev.map((t) => {
       if (t.id !== id) return t;
       const local = Array.isArray(t.messages) ? t.messages : [];
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
-      // Still the full, unbounded /items call (no limit param) — the
-      // eager-warm-up depth stays out of scope for pagination —
-      // so a task this seeds already has its complete history.
-      return { ...t, messages: msgs, messagesStatus: 'loaded', hasMoreMessages: false };
+      // The warm-up fetches a page, not the whole history, so the boundary has
+      // to come from what it actually loaded. Hardcoding "nothing more to
+      // load" here is what hid "load earlier" on every recently-opened task.
+      return {
+        ...t,
+        messages: msgs,
+        messagesStatus: 'loaded',
+        hasMoreMessages: page?.hasMoreMessages ?? false,
+        messagesCursor: page?.messagesCursor ?? null,
+      };
     }));
     // Claimed synchronously, not on resolve: refreshData re-enters on the
     // serverOnline false->true flip that its own fetchHealth above causes, and
@@ -1955,7 +1953,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([taskId], streamState.userMessageId);
+        stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -2111,6 +2109,11 @@ function AppCore() {
     // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
     // legacy localStorage sidecar. Merge into recents, inserting the
     // conversation if it wasn't in the capped fetch.
+    // Opening the conversation is a fresh intent: let the scroll trigger try
+    // again. Without this one transient failure suppresses auto-loading for
+    // this task until a full reload, because the cursor it failed on is
+    // deliberately preserved across every later refetch.
+    failedOlderCursorRef.current.delete(id);
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
     // fresh.messages is only the most recent page — merge it against
@@ -2120,7 +2123,8 @@ function AppCore() {
       ...t,
       messages: mergeMessagePage(t.messages, reconciled),
       messagesStatus: 'loaded',
-      ...reconcilePaginationState(t, fresh),
+      // Decided from the array the merge consumed, not the raw page.
+      ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
       ...(dc !== undefined ? { disabledConnections: dc } : {}),
     });
     setTasks((prev) => (prev.some((t) => t.id === id)
@@ -3094,7 +3098,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, taskId], streamState.userMessageId);
+        stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -3548,7 +3552,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, id], streamState.userMessageId);
+        stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -3822,7 +3826,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
-        stampUserMessageId([resolvedId, id], streamState.userMessageId);
+        stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
