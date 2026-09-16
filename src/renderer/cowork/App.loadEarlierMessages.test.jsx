@@ -196,7 +196,12 @@ describe('loading earlier messages hydrates the page like the first one does', (
       await openTask(user);
       await screen.findByText('Only answer');
 
+      // Waited for, not assumed: the observer is only constructed once the
+      // task reports more history, which arrives from a fetch. Reaching into
+      // the array before that effect has run reads undefined, and on a loaded
+      // machine it loses the race often enough to redden CI.
       const fire = async () => {
+        await waitFor(() => expect(observers.length).toBeGreaterThan(0));
         await act(async () => {
           observers[observers.length - 1].cb([{ isIntersecting: true }]);
           await Promise.resolve();
@@ -293,7 +298,10 @@ describe('loading earlier messages hydrates the page like the first one does', (
       await openTask(user);
       await screen.findByText('Only question');
 
+      // See the note in the test above: the observer has to exist before it
+      // can be fired, and it is created by an effect keyed on the fetch.
       const fire = async () => {
+        await waitFor(() => expect(observers.length).toBeGreaterThan(0));
         await act(async () => {
           observers[observers.length - 1].cb([{ isIntersecting: true }]);
           await Promise.resolve();
@@ -306,9 +314,13 @@ describe('loading earlier messages hydrates the page like the first one does', (
       expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(1);   // guard holds
 
       // Leave the conversation and come back: a fresh open is a fresh intent.
+      const observersBeforeReopen = observers.length;
       await user.click(await screen.findByText('New task'));
       await user.click(await screen.findByText('Alpha task'));
       await screen.findByText('Only question');
+      // The reopened view builds its own observer; firing the previous one
+      // would test a disconnected instance.
+      await waitFor(() => expect(observers.length).toBeGreaterThan(observersBeforeReopen));
 
       await fire();
       await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(2));
