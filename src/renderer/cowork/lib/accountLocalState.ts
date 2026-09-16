@@ -140,3 +140,25 @@ export function purgeStaleAccountState(
     return false;
   }
 }
+
+/**
+ * Whether a document that has rendered for `lastRendered` must reload now that
+ * the account is `next`.
+ *
+ * `lastRendered` is the last account the document actually rendered for, never
+ * null-in-between, so signing out and back in as someone else reads as the one
+ * change it is rather than two non-changes.
+ *
+ * Clearing storage cannot substitute for this. The composer can already hold
+ * the previous account's draft before the identity resolves, and that draft
+ * lives in a module map and in component state under a home key every account
+ * spells the same way, neither of which storage removal touches.
+ */
+export function shouldReloadForAccountChange(
+  lastRendered: string | null,
+  next: string | null,
+): boolean {
+  // Not the first identity a document resolves, and not a sign-out on its own:
+  // one is no change and the other has no account to show yet.
+  return Boolean(lastRendered && next && lastRendered !== next);
+}

@@ -50,7 +50,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
-import { legacyVerdictForSession, purgeStaleAccountState } from './lib/accountLocalState';
+import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
@@ -2532,6 +2532,10 @@ function AppCore() {
   // undefined (never a real accountId or the null of "signed out") so the
   // very first render always runs the check below at least once.
   const purgedAccountRef = useRef(undefined);
+  // The last account this document actually rendered for. Separate from the
+  // purge ref, which tracks nulls too: a sign-out and a sign-in are two steps
+  // through null, and the pair is still one account change to this document.
+  const renderedForAccountRef = useRef(null);
 
   // Drop the previous account's browser-local caches once we know who is signed
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
@@ -2557,6 +2561,30 @@ function AppCore() {
     // caches its localStorage keys into a module-level variable at import
     // time, so removing the keys alone leaves that snapshot stale.
     if (purgedStaleAccount) resetOnboardingProgress();
+
+    /**
+     * A document that has already rendered for another account reloads rather
+     * than trying to scrub itself.
+     *
+     * Clearing storage is not enough and cannot be made enough by adding
+     * resets: `useAccountUser` resolves asynchronously, so the composer can
+     * already hold the previous account's draft before this runs, and that
+     * draft lives in `draftStore`'s module map and in `useDraft`'s state under
+     * a home key every account spells the same way. `resetOnboardingProgress`
+     * above is the same problem solved once by hand; a reload solves the whole
+     * class by construction, including the stores nobody has thought of yet.
+     *
+     * Only a change BETWEEN accounts reloads. The first identity of a document
+     * is not a change, and a sign-out on its own is not either, which is why
+     * this tracks the last account rendered for rather than the last value
+     * seen: signing out and back in as someone else passes through null and is
+     * still one change.
+     */
+    const previous = renderedForAccountRef.current;
+    if (accountId) renderedForAccountRef.current = accountId;
+    if (shouldReloadForAccountChange(previous, accountId)) {
+      globalThis.location?.reload();
+    }
   }
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice

@@ -6,7 +6,7 @@ import * as path from 'path';
 // the last place the previous account's data can still reach the screen after a
 // switch. The cases that matter are: a real switch purges, a same-account boot
 // does not, and unrelated keys are never touched.
-import { legacyVerdictForSession, purgeStaleAccountState } from './accountLocalState';
+import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './accountLocalState';
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
@@ -203,6 +203,18 @@ describe('the chat app purge call', () => {
       /purgeStaleAccountState\(\s*(\w+)\s*,\s*legacyVerdictForSession\(\s*\1\s*,/,
     );
   });
+
+  it('reloads the document on an account change rather than only purging', () => {
+    // Purging storage cannot finish the job: the composer can already hold the
+    // previous account's draft before the identity resolves, and that draft
+    // lives in draftStore's module map and in useDraft's state under a home key
+    // every account spells the same way. Pinned mechanically for the same
+    // reason as the call above: rendering the whole chat app to observe a
+    // reload is not worth it, and a bare purge would look identical here.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'App.jsx'), 'utf-8');
+    expect(source).toMatch(/shouldReloadForAccountChange\([^)]*\)/);
+    expect(source).toMatch(/shouldReloadForAccountChange\([\s\S]{0,80}?location\?\.reload\(\)/);
+  });
 });
 
 // The shell's snapshot is taken in preload, once per document. Which session it
@@ -274,5 +286,37 @@ describe('an unrecognised verdict', () => {
     expect(purgeStaleAccountState(ACCOUNT_A, undefined)).toBe(false);
     expect(localStorage.getItem('anton.lastAccount')).toBeNull();
     expect(localStorage.getItem('anton.composerDrafts')).not.toBeNull();
+  });
+});
+
+// A document that has rendered for another account reloads rather than trying
+// to scrub itself: storage removal leaves draftStore's module map and
+// useDraft's state, whose home key every account spells the same way.
+describe('shouldReloadForAccountChange', () => {
+  it('reloads when one account replaces another in the same document', () => {
+    expect(shouldReloadForAccountChange('acct-a', 'acct-b')).toBe(true);
+  });
+
+  it('treats a sign-out and a sign-in as someone else as the one change it is', () => {
+    // The document passes through null between them, and the caller tracks the
+    // last account RENDERED for, not the last value seen, so the pair is not
+    // two non-changes.
+    let lastRendered: string | null = 'acct-a';
+    expect(shouldReloadForAccountChange(lastRendered, null)).toBe(false);
+    expect(shouldReloadForAccountChange(lastRendered, 'acct-b')).toBe(true);
+  });
+
+  it('does not reload on the first identity a document resolves', () => {
+    // useAccountUser resolves asynchronously, so every boot goes null then
+    // account. Reloading there would reload every launch.
+    expect(shouldReloadForAccountChange(null, 'acct-a')).toBe(false);
+  });
+
+  it('does not reload when the account has not changed', () => {
+    expect(shouldReloadForAccountChange('acct-a', 'acct-a')).toBe(false);
+  });
+
+  it('does not reload on a sign-out alone', () => {
+    expect(shouldReloadForAccountChange('acct-a', null)).toBe(false);
   });
 });
