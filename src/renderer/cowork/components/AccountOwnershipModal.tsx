@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import Button from './ui/Button';
 
-// Asks who owns the tasks already on this machine.
+// Asks who owns the data already on this machine.
+//
+// "Data", not "tasks": taking it also takes the provider API keys saved in this
+// root's dotenv and the credentials in its connector vault. The copy has to say
+// so, because the consequence of answering wrongly is not a tidy-up problem, it
+// is one person's keys handed to another.
 //
 // Several MindsHub accounts can share one desktop install, and each now gets its
 // own data. On an install that predates that split there is history sitting in
@@ -62,16 +67,20 @@ export default function AccountOwnershipModal({
     >
       <ModalHeader
         id="account-ownership-title"
-        title="Whose tasks are these?"
+        title="Whose data is this?"
         onClose={busy ? undefined : onDismiss}
       />
       <ModalBody>
         <p style={{ margin: 0, lineHeight: 1.5 }}>
-          There is existing history on this computer from before accounts were kept
+          There is existing data on this computer from before accounts were kept
           separate, and we can&apos;t tell whether it belongs to {who}.
         </p>
         <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
-          Nothing is deleted either way. If you start fresh, the existing history
+          It is more than past chats. Taking it also takes the provider API keys
+          saved here and the credentials for any datasources that were connected.
+        </p>
+        <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
+          Nothing is deleted either way. If you start fresh, the existing data
           stays on this computer for whoever it belongs to.
         </p>
         {error && (
@@ -85,7 +94,7 @@ export default function AccountOwnershipModal({
           {busy === 'fresh' ? 'Starting fresh…' : 'Start fresh'}
         </Button>
         <Button variant="primary" disabled={busy !== null} onClick={() => decide(true)}>
-          {busy === 'keep' ? 'Restoring…' : 'This history is mine'}
+          {busy === 'keep' ? 'Restoring…' : 'This data is mine'}
         </Button>
       </ModalFooter>
     </Modal>

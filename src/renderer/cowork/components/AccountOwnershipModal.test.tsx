@@ -2,18 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// The modal is the only place a person can answer "is this history mine?", and
+// The modal is the only place a person can answer "is this data mine?", and
 // both answers are consequential — one hands over a data root, the other leaves
 // it behind — so what matters is that each button reports the right answer and
 // that neither can be fired twice while the first is still running.
 import AccountOwnershipModal from './AccountOwnershipModal';
 
 describe('AccountOwnershipModal', () => {
-  it('reports keeping the existing history', async () => {
+  it('reports keeping the existing data', async () => {
     const onDecide = vi.fn().mockResolvedValue(undefined);
     render(<AccountOwnershipModal open accountLabel="a@example.com" onDecide={onDecide} onDismiss={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole('button', { name: /this history is mine/i }));
+    await userEvent.click(screen.getByRole('button', { name: /this data is mine/i }));
 
     expect(onDecide).toHaveBeenCalledExactlyOnceWith(true);
   });
@@ -44,12 +44,22 @@ describe('AccountOwnershipModal', () => {
     expect(screen.getByText(/nothing is deleted either way/i)).toBeTruthy();
   });
 
+  it('says that taking the data takes the credentials with it', () => {
+    // The consequence of answering wrongly is not a tidy-up problem: the root
+    // carries the provider API keys and the connector vault, so "this data is
+    // mine" hands one person's credentials to another. A dialog that only
+    // mentions past chats is asking for consent it has not described.
+    render(<AccountOwnershipModal open accountLabel="a@example.com" onDecide={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(/provider API keys/i)).toBeTruthy();
+    expect(screen.getByText(/datasources that were connected/i)).toBeTruthy();
+  });
+
   it('cannot be answered twice while the first answer is in flight', async () => {
     let release: (() => void) | undefined;
     const onDecide = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
     render(<AccountOwnershipModal open accountLabel={null} onDecide={onDecide} onDismiss={vi.fn()} />);
 
-    const keep = screen.getByRole<HTMLButtonElement>('button', { name: /this history is mine/i });
+    const keep = screen.getByRole<HTMLButtonElement>('button', { name: /this data is mine/i });
     await userEvent.click(keep);
     // Both buttons disabled, so a double-click cannot adopt and decline at once.
     await waitFor(() => expect(keep.disabled).toBe(true));
@@ -71,12 +81,12 @@ describe('when the answer does not take effect', () => {
       <AccountOwnershipModal
         open
         accountLabel="a@example.com"
-        error="Could not take that history. Nothing was changed — try again."
+        error="Could not take that data. Nothing was changed — try again."
         onDecide={vi.fn()} onDismiss={vi.fn()}
       />,
     );
-    expect(screen.getByText(/could not take that history/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /this history is mine/i })).toBeTruthy();
+    expect(screen.getByText(/could not take that data/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /this data is mine/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /start fresh/i })).toBeTruthy();
   });
 
@@ -116,7 +126,7 @@ describe('closing without answering', () => {
       <AccountOwnershipModal open accountLabel={null} onDecide={onDecide} onDismiss={onDismiss} />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /this history is mine/i }));
+    await userEvent.click(screen.getByRole('button', { name: /this data is mine/i }));
     await userEvent.keyboard('{Escape}');
 
     expect(onDismiss).not.toHaveBeenCalled();
