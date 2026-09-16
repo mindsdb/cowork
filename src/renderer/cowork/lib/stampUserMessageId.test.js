@@ -32,10 +32,14 @@ describe('stampUserMessageId', () => {
     expect(out[1].id).toBeUndefined();
   });
 
-  it('returns the same array when there is no id yet or nothing to stamp', () => {
+  it('returns the input unchanged when there is nothing to stamp', () => {
+    // Identity, not equality: App.jsx compares the result against the task's
+    // own array to decide whether to rebuild the task, so returning a fresh
+    // array would make every stream event look like a change.
     const rows = [user({ id: 'u1' })];
     expect(stampUserMessageId(rows, null)).toBe(rows);
-    expect(stampUserMessageId([assistant({ id: 'a1' })], 'u2')).toEqual([assistant({ id: 'a1' })]);
-    expect(stampUserMessageId(undefined, 'u2')).toEqual([]);
+    const noUserRow = [assistant({ id: 'a1' })];
+    expect(stampUserMessageId(noUserRow, 'u2')).toBe(noUserRow);
+    expect(stampUserMessageId(undefined, 'u2')).toBeUndefined();
   });
 });

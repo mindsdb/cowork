@@ -15,8 +15,11 @@
 const isStampable = (m) => m?.role === 'user' && !m?._unsent;
 
 export function stampUserMessageId(messages, userMessageId) {
-  const rows = Array.isArray(messages) ? messages : [];
-  if (!userMessageId) return rows;
+  // Returned unchanged, not normalized to []: callers compare by identity to
+  // decide whether to rebuild the task, and handing back a fresh array would
+  // make every stream event look like a change.
+  if (!Array.isArray(messages) || !userMessageId) return messages;
+  const rows = messages;
   for (let i = rows.length - 1; i >= 0; i--) {
     if (!isStampable(rows[i])) continue;
     // The newest stampable row already has an id: either this landed once

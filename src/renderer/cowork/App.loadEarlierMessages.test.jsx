@@ -219,4 +219,101 @@ describe('loading earlier messages hydrates the page like the first one does', (
       globalThis.IntersectionObserver = original;
     }
   });
+
+  it('keeps the affordance when the warm-up loaded only a page of a long conversation', async () => {
+    // The warm-up now fetches a page, not the whole history, so the boundary
+    // has to come from what it actually loaded. Hardcoding "nothing more to
+    // load" here is what hid "load earlier" on every recently-opened task:
+    // reconcilePaginationState treats a non-null false as an established
+    // boundary and keeps it through every later refetch.
+    const user = userEvent.setup();
+    // The real fetchSessions reports each warmed transcript AFTER the list has
+    // resolved, so capture the callback and fire it once the task exists —
+    // calling it inline would warm a task that is not in state yet.
+    let reportWarmed = null;
+    spies.fetchSessions.mockImplementation(async (opts) => {
+      if (opts?.onItems) reportWarmed = opts.onItems;
+      return [{ id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' }];
+    });
+    // The open path deliberately reports NO further history, so the warm-up is
+    // the only thing that can supply the boundary. reconcilePaginationState
+    // keeps whatever the task already established, so if warmTranscript
+    // hardcodes false the affordance never appears.
+    spies.fetchSessionResult.mockResolvedValue({
+      status: 'ok',
+      task: baseTask({
+        hasMoreMessages: false,
+        messagesCursor: null,
+        messages: [{ role: 'user', id: 'u50', content: 'Newest page question' }],
+      }),
+    });
+
+    render(<App />);
+    await screen.findByText('Alpha task');
+    await waitFor(() => expect(reportWarmed).toBeTypeOf('function'));
+    await act(async () => {
+      reportWarmed(
+        'conv-a',
+        [{ role: 'user', id: 'u50', content: 'Newest page question' }],
+        { hasMoreMessages: true, messagesCursor: 'cursor-deep' },
+      );
+      await Promise.resolve();
+    });
+
+    await user.click(screen.getByText('Alpha task'));
+    await screen.findByText('Newest page question');
+
+    expect(await screen.findByText('Load earlier messages')).toBeInTheDocument();
+  });
+
+  it('lets the scroll trigger try again after the conversation is reopened', async () => {
+    // The failed-cursor guard exists to stop a tight request loop, but the
+    // cursor it failed on is deliberately preserved across later refetches, so
+    // without clearing it on open one transient failure disables scroll
+    // loading for the life of the mount.
+    const user = userEvent.setup();
+    const observers = [];
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; observers.push(this); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      spies.fetchSessionResult.mockResolvedValue({
+        status: 'ok',
+        task: baseTask({
+          hasMoreMessages: true,
+          messagesCursor: 'cursor-1',
+          messages: [{ role: 'user', id: 'u1', content: 'Only question' }],
+        }),
+      });
+      spies.fetchOlderMessages.mockResolvedValue(null);
+
+      await openTask(user);
+      await screen.findByText('Only question');
+
+      const fire = async () => {
+        await act(async () => {
+          observers[observers.length - 1].cb([{ isIntersecting: true }]);
+          await Promise.resolve();
+        });
+      };
+
+      await fire();
+      await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(1));
+      await fire();
+      expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(1);   // guard holds
+
+      // Leave the conversation and come back: a fresh open is a fresh intent.
+      await user.click(await screen.findByText('New task'));
+      await user.click(await screen.findByText('Alpha task'));
+      await screen.findByText('Only question');
+
+      await fire();
+      await waitFor(() => expect(spies.fetchOlderMessages).toHaveBeenCalledTimes(2));
+    } finally {
+      globalThis.IntersectionObserver = original;
+    }
+  });
 });

@@ -805,9 +805,10 @@ function AppCore() {
                   // Only the most recent page — merge against what the
                   // task already has instead of replacing wholesale.
                   messages: mergeMessagePage(t.messages, reconciled),
-                  // Same array the merge just used: the two decisions have to
-                  // agree on which rows the page actually covers, and `fresh`
-                  // is the pre-hydration shape.
+                  // Same array the merge just used. Inert today — applySessionMessages
+                  // neither adds nor removes an id-bearing row, so both see the
+                  // same oldest id — but the two decisions must agree on which
+                  // rows the page covers, and only one of them should pick.
                   ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
                   status: 'idle',
                 };
@@ -941,12 +942,8 @@ function AppCore() {
     });
   };
 
-  // The persisted user Message's id, off `response.created`. The row it
-  // belongs to was appended optimistically on send and carries no id of its
-  // own, so until this lands every id-keyed consumer (turn delete, the step
-  // sidecar, the usage-notice anchor) is blind to the turn the user is
-  // actually looking at. Stamps the newest still-id-less user row, and is a
-  // no-op once that row has an id.
+  // Fans lib/stampUserMessageId out over the ids a stream can be filed under
+  // (a tmp- id and the server's canonical one both reach here mid-adoption).
   const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
     if (!userMessageId) return;
     const ids = new Set(taskIds.filter(Boolean).map(String));
