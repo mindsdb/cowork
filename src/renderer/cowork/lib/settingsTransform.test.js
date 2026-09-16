@@ -548,38 +548,14 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
-describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
-  it('transforms the per-harness enable flags into camelCase booleans', async () => {
+describe('harness picker enable flags', () => {
+  it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
     const { transformSettingsRows } = await import('./settingsTransform');
     const rows = [
-      { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
-      { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
+      { key: 'harness_claude_code_enabled', value: 'False', is_sensitive: false, is_set: true },
     ];
-    const s = transformSettingsRows(rows);
-    expect(s.harnessHermesEnabled).toBe(false);
-    expect(s.harnessClaudeCodeEnabled).toBe(true);
-  });
-
-  it('surfaces the harness row\'s `options` as harnessOptions, separate from its own value', async () => {
-    const { transformSettingsRows } = await import('./settingsTransform');
-    const rows = [
-      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true, options: ['anton'] },
-    ];
-    const s = transformSettingsRows(rows);
-    // Server's available_harness_ids() omitted "hermes" (not installed) —
-    // the picker needs this to hide the enable-toggle entirely, distinct
-    // from "hermes is available but the account disabled it."
-    expect(s.harnessOptions).toEqual(['anton']);
-    expect(s.harness).toBe('anton');
-  });
-
-  it('leaves harnessOptions unset when the harness row carries no options', async () => {
-    const { transformSettingsRows } = await import('./settingsTransform');
-    const rows = [
-      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true },
-    ];
-    expect(transformSettingsRows(rows).harnessOptions).toBeUndefined();
+    expect(transformSettingsRows(rows).harnessClaudeCodeEnabled).toBe(false);
   });
 });
 

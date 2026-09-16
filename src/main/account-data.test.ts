@@ -15,6 +15,7 @@ import {
   claimDefaultRoot,
   clearActiveAccountRecord,
   claimForRecordedIncumbent,
+  markActiveAccountUnresolved,
   hadPreExistingData,
   isOwnershipSettled,
   knownAccountRoots,
@@ -22,6 +23,7 @@ import {
   needsOwnershipDecision,
   observePreExistingData,
   recordedIncumbent,
+  rendererAccountSession,
   settleOwnership,
   claimOrgRoot,
   readActiveOrg,
@@ -555,6 +557,124 @@ describe('the active-account record', () => {
 
   it('refuses to record an unsafe id', async () => {
     await expect(writeActiveAccount(home, '../escape')).rejects.toThrow(/unexpected account id/);
+  });
+});
+
+// A session that IS signed in and cannot be named. It is a state of its own
+// because the never-signed-in one is allowed to fall back onto the default root,
+// and a real session taking that fallback is the leak this module exists for.
+describe('an unresolvable session', () => {
+  it('replaces the account the record used to name', async () => {
+    await writeActiveAccount(home, A);
+    markActiveAccountUnresolved(home);
+    expect(readActiveAccount(home)).toEqual({ kind: 'unresolved' });
+  });
+
+  it('quarantines on the install whose incumbent owns the default root', () => {
+    // The shape of every upgraded install of an existing user: the incumbent is
+    // recorded at boot and its claim is written before anyone signs in. Read as
+    // never-signed-in, this resolves to the DEFAULT root, so the sidecar
+    // reconciliation would move this session onto the incumbent's data.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    expect(claimForRecordedIncumbent(home)).toBe(A);
+    expect(resolveAccountRoot(home, NEVER)).toBeNull();
+
+    markActiveAccountUnresolved(home);
+    const root = resolveAccountRoot(home, readActiveAccount(home));
+    expect(root).toMatch(/^_unresolved-/);
+  });
+
+  it('quarantines on a fresh install too, where nothing is claimed yet', () => {
+    fresh();
+    expect(resolveAccountRoot(home, NEVER)).toBeNull();
+    markActiveAccountUnresolved(home);
+    expect(resolveAccountRoot(home, readActiveAccount(home))).toMatch(/^_unresolved-/);
+  });
+
+  it('gets the sidecar pointed off the default root', () => {
+    upgraded();
+    adoptDefaultRootAsIncumbent(home, A);
+    markActiveAccountUnresolved(home);
+    const env = sidecarEnvForSession(home, readActiveAccount(home));
+    expect(env.COWORK_HOME).toMatch(/accounts\/_unresolved-/);
+  });
+
+  it('is never asked who owns the data, having no name to answer as', () => {
+    upgraded();
+    markActiveAccountUnresolved(home);
+    expect(needsOwnershipDecision(home, readActiveAccount(home))).toBe(false);
+  });
+
+  it('stays quarantined through a sign-out', async () => {
+    // The record the sign-out would otherwise write carries no name, and a
+    // nameless record resolves back onto the default root. Sign-out scrubs the
+    // credentials and provider state of whatever root it lands on, so that is
+    // the incumbent's `.env` destroyed by a session that was never theirs.
+    fs.writeFileSync(path.join(home, 'cowork.db'), 'x', 'utf-8');
+    observePreExistingData(home, A);
+    claimForRecordedIncumbent(home);
+    markActiveAccountUnresolved(home);
+
+    await writeActiveAccount(home, null);
+
+    expect(readActiveAccount(home)).toEqual({ kind: 'unresolved' });
+    expect(resolveAccountRoot(home, readActiveAccount(home))).toMatch(/^_unresolved-/);
+  });
+
+  it('reports a failed write and leaves no temp file behind', () => {
+    // The caller has to hear this: it falls back to removing the record, which
+    // is weaker but still better than one naming somebody else.
+    fs.mkdirSync(path.join(home, 'active-account.json'));
+
+    expect(() => markActiveAccountUnresolved(home)).toThrow();
+
+    const strays = fs.readdirSync(home).filter((name) => name.includes('.tmp-'));
+    expect(strays).toEqual([]);
+  });
+});
+
+// What the renderer is handed for its localStorage purge. Its correctness is
+// the same question as the sidecar's root, one step later.
+describe('the renderer session', () => {
+  it('names the account that owns the default root, and keeps its cache', async () => {
+    upgraded();
+    adoptDefaultRootAsIncumbent(home, A);
+    settleOwnership(home);
+    await writeActiveAccount(home, A);
+    expect(rendererAccountSession(home)).toEqual({ accountId: A, legacyState: 'keep' });
+  });
+
+  it('purges for an account resolved onto its own root', async () => {
+    upgraded();
+    adoptDefaultRootAsIncumbent(home, A);
+    settleOwnership(home);
+    await writeActiveAccount(home, B);
+    expect(rendererAccountSession(home)).toEqual({ accountId: B, legacyState: 'purge' });
+  });
+
+  it('defers while the ownership question is open', async () => {
+    upgraded();
+    await writeActiveAccount(home, B);
+    expect(rendererAccountSession(home)).toEqual({ accountId: B, legacyState: 'undecided' });
+  });
+
+  it('gives an unnameable session the quarantine name, so its cache is purged too', () => {
+    // Without a name the renderer purge is a no-op, and the previous account's
+    // drafts stay on screen for a session the sidecar has already been
+    // quarantined away from that account's database.
+    upgraded();
+    claimDefaultRoot(home, A);
+    markActiveAccountUnresolved(home);
+
+    const session = rendererAccountSession(home);
+    expect(session.accountId).toMatch(/^_unresolved-/);
+    expect(session.legacyState).toBe('purge');
+  });
+
+  it('names nobody on an install that has never signed in', () => {
+    fresh();
+    expect(rendererAccountSession(home)).toEqual({ accountId: null, legacyState: 'keep' });
   });
 });
 

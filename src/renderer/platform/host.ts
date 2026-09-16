@@ -1494,12 +1494,17 @@ export interface AccountSession {
  * preload time and therefore readable synchronously. The async accessors cannot
  * serve the one caller that needs it — the browser-cache purge, which has to run
  * before React mounts.
+ *
+ * `null` means this shell has no opinion: the web build, and an Electron shell
+ * older than the bridge field, which a UI bundle can be hot-swapped onto. That
+ * is NOT the same as a shell reporting a signed-out session, and a caller that
+ * collapsed the two would stop marking caches on exactly the pairing that has
+ * no per-account roots to fall back on.
  */
-export function accountSessionSync(): AccountSession {
-  const unknown: AccountSession = { accountId: null, legacyState: 'keep', organizationId: null };
-  if (!isElectron) return unknown;
+export function accountSessionSync(): AccountSession | null {
+  if (!isElectron) return null;
   const value = (bridge as { accountSession?: unknown }).accountSession;
-  if (!value || typeof value !== 'object') return unknown;
+  if (!value || typeof value !== 'object') return null;
   const { accountId, legacyState, organizationId } = value as Partial<AccountSession>;
   return {
     accountId: typeof accountId === 'string' && accountId ? accountId : null,

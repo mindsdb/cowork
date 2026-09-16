@@ -29,8 +29,7 @@ import * as path from 'path';
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
 
-// `.anton/` (project memory/artifacts, shared by Anton AND Hermes despite
-// the name) and `skills/` (symlinks into the global skills store) are both
+// `.anton/` (project memory/artifacts) and `skills/` (symlinks into the global skills store) are both
 // live, harness-shared state — never git-tracked, so `ensureSharedLinks`
 // below can point each worktree back at the one real copy instead of a
 // frozen snapshot from whenever the repo happened to be initialized.
@@ -99,7 +98,7 @@ function taskBranchName(taskId: string): string {
 
 /** Symlink `.anton/` and `skills/` from the worktree back to the real
  *  (project-level) directories, so a Claude Code task sees the exact same
- *  live project memory and skills Anton/Hermes do — not a git snapshot
+ *  live project memory and skills Anton does — not a git snapshot
  *  frozen at whenever the repo was first initialized. Idempotent and
  *  best-effort: skips a dir that doesn't exist yet in the repo (e.g. no
  *  harness has ever run there) and leaves anything already at the link

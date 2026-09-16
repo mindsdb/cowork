@@ -57,7 +57,7 @@ import {
   observePreExistingData,
   readActiveAccount,
   readActiveOrg,
-  resolveAccountRoot,
+  rendererAccountSession,
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
@@ -1105,6 +1105,20 @@ function setupIPC() {
     // suppress a fallback, so anything but a real `true` off the wire must not
     // arm it. Today's renderer sends a boolean or nothing, so this is the
     // contract written down rather than a hole being closed.
+    // Before anything this session can read. The account is recorded and its
+    // root claimed at the token choke point, well before this handler, but the
+    // SIDECAR is only moved by commitMindsSignIn below — and the branches under
+    // it return early, so a failed organization selection leaves a signed-in
+    // session served by the previous account's database. The Settings sign-in
+    // treats this handler as non-gating and refreshes regardless, and the
+    // readiness check reconciles a reload rather than a live document.
+    if (isServerRunning() || isServerStarting()) {
+      if (!(await ensureSidecarOnCurrentAccountRoot())) {
+        console.error('[mindshub:finalize] could not move the sidecar onto this account root');
+        return { ok: false, reason: 'Could not open this account\'s data. Restart Cowork and try again.' };
+      }
+    }
+
     const selected = await selectEntitledOrg(token, {
       preferOrgId: organizationId,
       chosenByUser: chosenByUser === true,
@@ -1217,19 +1231,17 @@ function setupIPC() {
     // The renderer blocks on this reply, and coworkHome() throws by design on a
     // mispackaged build-config, so it must answer even then.
     try {
-      const home = coworkHome();
-      const active = readActiveAccount(home);
-      const accountId = active.kind === 'signed-in' ? active.accountId : null;
-      // The verdict on browser state that carries no account marker. It is
-      // decided here because the claim is here: the renderer cannot see whether
-      // this session resolved onto the default root or its own.
-      const legacyState = needsOwnershipDecision(home, active)
-        ? 'undecided'
-        : resolveAccountRoot(home, active) === null ? 'keep' : 'purge';
+      // Both fields are decided in account-data because the claim is there: the
+      // renderer cannot see whether this session resolved onto the default root
+      // or its own, nor that it has no name to resolve with.
+      //
       // The organization rides the same round trip rather than a second
       // channel: the renderer needs both before React mounts, and a channel is
       // snapshot-locked protocol while a field is not.
-      event.returnValue = { accountId, legacyState, organizationId: readActiveOrg(accountDataRoot()) };
+      event.returnValue = {
+        ...rendererAccountSession(coworkHome()),
+        organizationId: readActiveOrg(accountDataRoot()),
+      };
     } catch (err) {
       console.warn('[account] could not resolve the signed-in account', err);
       // No account means the purge is a no-op, so the verdict cannot matter.

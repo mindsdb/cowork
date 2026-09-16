@@ -56,7 +56,7 @@ export function initialStreamState() {
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
-    /** Harness/agent ID from `response.created` (e.g. 'anton', 'hermes'). */
+    /** Harness/agent ID from `response.created` (e.g. 'anton'). */
     harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
     error: null,
@@ -132,7 +132,7 @@ function closeOpenScratchpadStep(steps, completedAt) {
   return next;
 }
 
-/** Build a descriptive label for a Hermes tool-call step from the
+/** Build a descriptive label for a tool-call step from the
  *  tool name and its arguments dict. Shows a preview of the actual
  *  command/code so the user can see what's running at a glance. */
 function toolCallLabel(name, args) {
@@ -631,9 +631,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: byId || patchLastScratchpadStep(state.steps, patch) };
   }
 
-  // ── Hermes tool-call events ──────────────────────────────────────
-  // Generic tool-call start/end from harnesses that don't use
-  // anton's scratchpad model (e.g. Hermes). Creates steps so the
+  // ── Generic tool-call events ─────────────────────────────────────
+  // Tool-call start/end outside anton's scratchpad model. Creates steps so the
   // ThinkingBlock shows tool activity.
   if (role === 'thought.tool_call.start') {
     const id = `step-${state.steps.length + 1}`;
@@ -732,7 +731,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps };
   }
 
-  // ── Hermes reasoning/thinking ────────────────────────────────────
+  // ── Reasoning/thinking ───────────────────────────────────────────
   // Streaming reasoning text from the model's extended thinking. This is
   // NOT part of the final answer, so it never becomes a step (ENG-1108) —
   // it accumulates into the ephemeral `currentThought` burst instead,

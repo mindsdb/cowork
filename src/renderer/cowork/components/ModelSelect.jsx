@@ -35,7 +35,6 @@
 //     modelEfforts={{ sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } }}
 //     effort={effort}
 //     onEffortChange={setEffort}
-//     harness={harness}      // optional — Hermes has no effort knob
 //   />
 //
 // The footer reflects the CURRENTLY SELECTED model (this component's own
@@ -389,7 +388,6 @@ export function ModelSelect({
   modelEfforts,
   effort = '',
   onEffortChange,
-  harness,
   open,
   onOpenChange,
   onValueChange,
@@ -427,7 +425,6 @@ export function ModelSelect({
   // not any list-hover state — the footer always describes the currently
   // selected model, matching the reference: the footer reads Opus's effort
   // even while the list above shows every model.
-  const harnessSupportsEffort = (harness || 'anton') !== 'hermes';
   const effortEntry = modelEfforts ? (modelEfforts[rest.value] || null) : null;
   const effortOptions = effortEntry?.efforts || [];
   const resolvedEffort = effortOptions.includes(effort)
@@ -441,13 +438,11 @@ export function ModelSelect({
   // displayed nothing and the pick looked like it hadn't taken. Only a
   // never-touched effort ('' — resolution silently falls back to the
   // model's default) leaves the trigger showing just the model name.
-  const showEffortOnTrigger = harnessSupportsEffort && effortOptions.includes(effort);
+  const showEffortOnTrigger = effortOptions.includes(effort);
   // Only mounted when the selected model actually has effort options — no
   // footer at all for a model with none, rather than a disabled "Default"
-  // row (also suppressed with no model selected, or under a harness with no
-  // effort knob).
-  const showEffortFooter = effortFeatureEnabled && !!rest.value && harnessSupportsEffort
-    && effortOptions.length > 0;
+  // row (also suppressed with no model selected).
+  const showEffortFooter = effortFeatureEnabled && !!rest.value && effortOptions.length > 0;
 
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpenControlledByCaller = open !== undefined;
@@ -539,7 +534,7 @@ export function ModelSelect({
   const comboboxOnValueChange = effortFeatureEnabled
     ? (nextValue) => {
       const nextEntry = modelEfforts ? (modelEfforts[nextValue] || null) : null;
-      const nextHasEfforts = harnessSupportsEffort && !!nextEntry?.efforts?.length;
+      const nextHasEfforts = !!nextEntry?.efforts?.length;
       pendingEffortModelRef.current = nextHasEfforts;
       // A pick landing mid-exit supersedes the choreography — clear the
       // pending close so an effort-capable pick isn't yanked shut by the

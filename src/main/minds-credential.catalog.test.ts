@@ -24,9 +24,9 @@ vi.mock('./token-store', () => ({
   clearTokens: () => { state.accessToken = null; state.version += 1; },
 }));
 vi.mock('./keychain-service', () => ({
-  getMindsApiKey: async () => state.apiKey,
-  setMindsApiKey: async (key: string) => { state.apiKey = key; },
-  deleteMindsApiKey: async () => { state.apiKey = null; },
+  getMindsApiKey: async (_scope: string | null) => state.apiKey,
+  setMindsApiKey: async (_scope: string | null, key: string) => { state.apiKey = key; },
+  deleteMindsApiKey: async (_scope: string | null) => { state.apiKey = null; },
 }));
 vi.mock('./server-process', () => ({
   getServerPort: () => 8765,

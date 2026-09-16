@@ -50,7 +50,8 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
-import { purgeStaleAccountState } from './lib/accountLocalState';
+import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
+import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -1276,13 +1277,8 @@ function AppCore() {
     // the server falls back to this one (providers.build_llm_client), so the
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
-    // Account-wide harness toggle (web-only Settings → Agent Harness) —
-    // EffortSelect needs this outside coding mode, where Composer's own
-    // harness state is hardcoded 'anton' and can't say whether Hermes is
-    // actually configured account-wide.
-    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, settings.harness, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2533,17 +2529,63 @@ function AppCore() {
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
+  // undefined (never a real accountId or the null of "signed out") so the
+  // very first render always runs the check below at least once.
+  const purgedAccountRef = useRef(undefined);
+  // The last account this document actually rendered for. Separate from the
+  // purge ref, which tracks nulls too: a sign-out and a sign-in are two steps
+  // through null, and the pair is still one account change to this document.
+  const renderedForAccountRef = useRef(null);
+
   // Drop the previous account's browser-local caches once we know who is signed
   // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
   // has its own epoch, and only a change of ACCOUNT invalidates this state.
   //
-  // This handles a MARKED cache naming another account. An unmarked one needs
-  // to know who owns the default data root, which only the main process can
-  // answer, so that verdict is applied by the pre-mount purge in main.tsx and
-  // left at its 'keep' default here.
-  useEffect(() => {
-    purgeStaleAccountState(codeAccountUser?.sub ?? null);
-  }, [codeAccountUser?.sub]);
+  // This handles a MARKED cache naming another account. An unmarked one is the
+  // shell's ruling to make, and its snapshot is resolved in preload, so it
+  // applies only while it is about this same account: a sign-in inside this
+  // document is a session the snapshot predates (see legacyVerdictForSession).
+  //
+  // Adopted during render, not from an effect, for the same reason `useDraft`
+  // adopts a changed key during render rather than an effect: a descendant
+  // (the composer) seeds its state from this same storage on ITS first
+  // render, which happens before an effect registered here would ever run —
+  // on web there is no earlier, pre-mount purge to catch it first the way
+  // Electron's main.tsx has.
+  const accountId = codeAccountUser?.sub ?? null;
+  if (purgedAccountRef.current !== accountId) {
+    purgedAccountRef.current = accountId;
+    const shellSession = host.accountSessionSync();
+    const purgedStaleAccount = purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
+    // See main.tsx for why this has to run alongside the purge: onboardingStore
+    // caches its localStorage keys into a module-level variable at import
+    // time, so removing the keys alone leaves that snapshot stale.
+    if (purgedStaleAccount) resetOnboardingProgress();
+
+    /**
+     * A document that has already rendered for another account reloads rather
+     * than trying to scrub itself.
+     *
+     * Clearing storage is not enough and cannot be made enough by adding
+     * resets: `useAccountUser` resolves asynchronously, so the composer can
+     * already hold the previous account's draft before this runs, and that
+     * draft lives in `draftStore`'s module map and in `useDraft`'s state under
+     * a home key every account spells the same way. `resetOnboardingProgress`
+     * above is the same problem solved once by hand; a reload solves the whole
+     * class by construction, including the stores nobody has thought of yet.
+     *
+     * Only a change BETWEEN accounts reloads. The first identity of a document
+     * is not a change, and a sign-out on its own is not either, which is why
+     * this tracks the last account rendered for rather than the last value
+     * seen: signing out and back in as someone else passes through null and is
+     * still one change.
+     */
+    const previous = renderedForAccountRef.current;
+    if (accountId) renderedForAccountRef.current = accountId;
+    if (shouldReloadForAccountChange(previous, accountId)) {
+      globalThis.location?.reload();
+    }
+  }
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
   // and Settings → Usage read it through HubUsageContext. Re-read when a turn
@@ -2927,8 +2969,8 @@ function AppCore() {
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       reasoningEffort: selectedEffort ?? null,
-      // The composer's harness pick (ENG-1656 follow-up) — Anton or
-      // Hermes here; 'claude-code' never reaches this function (the top
+      // The composer's harness pick — Anton here;
+      // 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
       harness: meta?.harness || null,
       attachments: sendingAttachments,
@@ -4667,7 +4709,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
@@ -4691,7 +4732,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -4862,7 +4902,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}

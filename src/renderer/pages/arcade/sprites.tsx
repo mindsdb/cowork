@@ -40,98 +40,6 @@ const ANTON: SpriteDef = {
   ],
 };
 
-// HERMES — monochrome pixel portrait of the Nous "Hermes" mark, matching
-// the black-&-white brand logo: dark-grey bob, white hair-shine streaks,
-// white headband, light-grey face with one eye, and a white "N" collar
-// tab. Greyscale only (no colour). 18×18.
-const HERMES: SpriteDef = {
-  palette: {
-    h: '#3c3f4d', // hair (dark grey — reads on the dark card)
-    w: '#f2f4fa', // white: shine streaks, headband, collar tab
-    s: '#cdd0da', // skin (light grey, separates from hair)
-    o: '#898d9b', // mid-grey shadow / lips / contour
-    e: '#14141c', // eye / lash / tab letter
-  },
-  rows: [
-    '....hhhhhhhhhh....',
-    '..hhhhhhhhhhhhhh..',
-    '.hhhhhhhhhhhhhhhh.',
-    '.hhhwwwwwwwwhhhhh.',
-    '.hhhhhhhhhhhhhhhhh',
-    'hhwwwhhhwwwhhhhhhh',
-    'hhhhhhhhhhhhhhhhhh',
-    '.hssssshhhhhhhhhhh',
-    '.hssessshhhhhhhhhh',
-    '.hsseossshhhhhhhhh',
-    '.hsssssshhhhhhhhhh',
-    '.hossosshhhhhhhhhh',
-    '.hhssooshhhhhhhhhh',
-    '..hhssshhhhhhhhhhh',
-    '...hhsshhhhhhhhh..',
-    '..hhwwwwhhhhhhhh..',
-    '..hhwewhhhhhhhhh..',
-    '...hhhhhhhhhhhh...',
-  ],
-};
-
-// OPENCLAW — pixel lobster (transcribed from the supplied logo): red
-// body with a darker outline, lighter claws either side, and two eyes
-// with white glints. 16×16.
-const OPENCLAW: SpriteDef = {
-  palette: {
-    m: '#3a0a0d', // outline
-    r: '#ff4f40', // body
-    c: '#ff775f', // claws
-    e: '#081016', // eye
-    w: '#f5fbff', // eye glint
-  },
-  rows: [
-    '................',
-    '................',
-    '....mmmmmmmm....',
-    '...m.rrrrrr.m...',
-    '..m.rrwrrwrr.m..',
-    '.mcrrrerrerrrcm.',
-    '.ccrrrrrrrrrrcc.',
-    '.mcrrrrrrrrrrcm.',
-    '..m.rrrrrrrr.m..',
-    '...m.rrrrrr.m...',
-    '....m...........',
-    '.....mmmmmm.....',
-    '....mrrrrrrm....',
-    '...m..rrrr..m...',
-    '.....mmmmmm.....',
-    '................',
-  ],
-};
-
-// ??? — the mystery cartridge.
-const MYSTERY: SpriteDef = {
-  palette: {
-    p: '#a78bfa', // frame purple
-    w: '#efe9ff', // question mark
-  },
-  rows: [
-    'pppppppppppppppp',
-    'pppppppppppppppp',
-    'pp............pp',
-    'pp....wwww....pp',
-    'pp...ww..ww...pp',
-    'pp...ww..ww...pp',
-    'pp......ww....pp',
-    'pp.....ww.....pp',
-    'pp.....ww.....pp',
-    'pp............pp',
-    'pp.....ww.....pp',
-    'pp.....ww.....pp',
-    'pp............pp',
-    'pppppppppppppppp',
-    'pppppppppppppppp',
-  ],
-};
-
-// ── Small icons ──────────────────────────────────────────────────────
-
 // Gold coin (success / unlock moments).
 const COIN: SpriteDef = {
   palette: {
@@ -247,9 +155,6 @@ const HEART: SpriteDef = {
 
 const SPRITES = {
   anton: ANTON,
-  hermes: HERMES,
-  openclaw: OPENCLAW,
-  mystery: MYSTERY,
   coin: COIN,
   scroll: SCROLL,
   wrench: WRENCH,

@@ -12,8 +12,7 @@
  */
 
 // Which account the state in this origin belongs to.
-// deepcode ignore HardcodedNonCryptoSecret: 'anton.lastAccount' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
-const LAST_ACCOUNT_KEY = 'anton.lastAccount';
+const LAST_ACCOUNT_STORAGE_NAME = 'anton.lastAccount';
 
 // Which organization the state in this origin belongs to. Separate from the
 // account marker: one account works in several organizations, and their state
@@ -55,9 +54,42 @@ function isAccountScoped(key: string): boolean {
  */
 export type LegacyStateVerdict = 'keep' | 'purge' | 'undecided';
 
+/** What the shell resolved at preload time, for the session it booted with. */
+export interface ShellAccountSession {
+  accountId: string | null;
+  legacyState: LegacyStateVerdict;
+}
+
+/**
+ * The verdict a caller may use for the account it is purging for.
+ *
+ * The shell resolves its verdict once, in preload, so it describes the session
+ * the DOCUMENT booted with. A sign-in inside that document is a different
+ * session, and carrying a stale `keep` into it stamps this account's name on a
+ * cache nobody has ruled on, which is the one thing that makes the ownership
+ * answer unenforceable afterwards. So a snapshot about anyone else defers, and
+ * the reload that follows the sign-in rules on it properly.
+ *
+ * `null` is the web build: no shell, no shared data root to be ambiguous about,
+ * and an unmarked cache there belongs to this origin's first account as it
+ * always has.
+ */
+export function legacyVerdictForSession(
+  accountId: string | null,
+  shell: ShellAccountSession | null,
+): LegacyStateVerdict {
+  if (!shell) return 'keep';
+  return shell.accountId === accountId ? shell.legacyState : 'undecided';
+}
+
 /**
  * Drop this origin's account-scoped state when it belongs to another account,
  * and record the account. Returns true only when something was removed.
+ *
+ * The verdict is required, and every caller passes the one the shell resolved:
+ * defaulting it to `keep` made a caller that could not know stamp its own name
+ * on an unmarked cache, which is the one thing that makes the ownership answer
+ * unenforceable.
  *
  * Signed out (`null`) is left alone on purpose: the same account usually signs
  * back in, and sign-out has already taken away the credentials this state is
@@ -65,7 +97,7 @@ export type LegacyStateVerdict = 'keep' | 'purge' | 'undecided';
  */
 export function purgeStaleAccountState(
   accountId: string | null,
-  legacyState: LegacyStateVerdict = 'keep',
+  legacyState: LegacyStateVerdict,
 ): boolean {
   if (!accountId) return false;
 
@@ -78,18 +110,24 @@ export function purgeStaleAccountState(
     return false;
   }
 
+  // An unrecognised verdict defers rather than keeping: a caller that cannot
+  // name one has not ruled on an unmarked cache, and the typed signature does
+  // not reach the untyped JS call sites.
+  const verdict: LegacyStateVerdict =
+    legacyState === 'keep' || legacyState === 'purge' ? legacyState : 'undecided';
+
   try {
-    const last = store.getItem(LAST_ACCOUNT_KEY);
+    const last = store.getItem(LAST_ACCOUNT_STORAGE_NAME);
     if (last === accountId) return false;
 
     // Stamping our name on an undecided cache would make it un-purgeable: the
     // reload after the ownership answer would read `last === accountId` and
     // stop here, and the previous user's drafts would be this account's
     // forever.
-    if (last === null && legacyState === 'undecided') return false;
+    if (last === null && verdict === 'undecided') return false;
 
     let removed = 0;
-    if (last !== null || legacyState === 'purge') {
+    if (last !== null || verdict === 'purge') {
       // Collect first: removeItem during the index walk reshuffles the keys.
       const doomed: string[] = [];
       for (let i = 0; i < store.length; i += 1) {
@@ -99,7 +137,7 @@ export function purgeStaleAccountState(
       for (const key of doomed) store.removeItem(key);
       removed = doomed.length;
     }
-    store.setItem(LAST_ACCOUNT_KEY, accountId);
+    store.setItem(LAST_ACCOUNT_STORAGE_NAME, accountId);
     return removed > 0;
   } catch {
     // Unavailable or over quota. Nothing here is recoverable and none of it is
@@ -149,4 +187,26 @@ export function purgeOrganizationScopedState(organizationId: string | null): boo
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a document that has rendered for `lastRendered` must reload now that
+ * the account is `next`.
+ *
+ * `lastRendered` is the last account the document actually rendered for, never
+ * null-in-between, so signing out and back in as someone else reads as the one
+ * change it is rather than two non-changes.
+ *
+ * Clearing storage cannot substitute for this. The composer can already hold
+ * the previous account's draft before the identity resolves, and that draft
+ * lives in a module map and in component state under a home key every account
+ * spells the same way, neither of which storage removal touches.
+ */
+export function shouldReloadForAccountChange(
+  lastRendered: string | null,
+  next: string | null,
+): boolean {
+  // Not the first identity a document resolves, and not a sign-out on its own:
+  // one is no change and the other has no account to show yet.
+  return Boolean(lastRendered && next && lastRendered !== next);
 }

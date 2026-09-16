@@ -2,7 +2,18 @@ import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { claimOrgRoot, clearActiveAccountRecord, readActiveOrg, readOrgClaim, writeActiveAccountSync, writeActiveOrgSync } from './account-data';
+import {
+  claimDefaultRoot,
+  claimOrgRoot,
+  clearActiveAccountRecord,
+  clearInMemorySessionQuarantine,
+  markActiveAccountUnresolved,
+  markSessionUnresolvedInMemory,
+  readActiveOrg,
+  readOrgClaim,
+  writeActiveAccountSync,
+  writeActiveOrgSync,
+} from './account-data';
 import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
 import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
@@ -142,7 +153,9 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
-  recordSignedInAccount(accessToken);
+  recordSignedInAccount(accessToken, refreshToken);
+  // After the account, always: the organization root resolves through whichever
+  // account root the call above just settled.
   recordActiveOrganization(accessToken);
   broadcastAuthChanged(true);
 }
@@ -153,28 +166,69 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 // boot with no network. Writing it here and clearing it in clearTokens keeps the
 // record's lifetime equal to the session's, so "no record" and "no session" are
 // one state rather than two.
-function recordSignedInAccount(accessToken: string): void {
-  const accountId = accountIdFromToken(accessToken);
-  if (!accountId) return;
+function recordSignedInAccount(accessToken: string, refreshToken: string): void {
+  // Both tokens come from the one exchange and name the same account, so an
+  // access token this cannot read is not on its own a reason to give up the
+  // session's identity. Never the STORED refresh token, which may be older
+  // than this exchange and name whoever held the session before it.
+  const accountId = accountIdFromToken(accessToken) ?? accountIdFromToken(refreshToken || null);
+  if (!accountId) {
+    // Both tokens opaque, and the session still authenticates, so the previous
+    // account's record must not be left standing for it.
+    console.warn('[token-store] the signed-in tokens name no account');
+    quarantineSession();
+    return;
+  }
   try {
     writeActiveAccountSync(coworkHome(), accountId);
-  } catch (e) {
-    // NOT best-effort. A lost write does not repair itself: the record still
-    // names the PREVIOUS account, so this account is resolved onto that
-    // account's data root and every check downstream compares against the same
-    // stale record and agrees. Removing it instead leaves the record absent,
-    // which resolves to an empty quarantine root rather than someone else's
-    // data. An empty app is recoverable; a cross-account read is the bug.
-    console.warn('[token-store] could not record the signed-in account', e);
+    // Ownership is settled HERE, beside the record, and no longer only in
+    // commitMindsSignIn. A sign-in whose organization selection fails returns
+    // before that function is ever reached while the session stays
+    // authenticated, so a claim made only there leaves the root unclaimed for
+    // an account that is already reading and writing data. This refuses a root
+    // holding pre-existing data exactly as before; only when it runs changed.
     try {
-      clearActiveAccountRecord(coworkHome());
-    } catch (removeErr) {
-      console.error(
-        '[token-store] could not record OR clear the signed-in account — '
-        + 'this session may resolve onto another account data root',
-        removeErr,
-      );
+      claimDefaultRoot(coworkHome(), accountId);
+    } catch (claimErr) {
+      console.warn('[token-store] could not settle the account data root', claimErr);
     }
+    // The record names this session again, so an earlier held quarantine has
+    // nothing left to protect against. Lifting it here rather than holding it
+    // to the end of the process keeps one transient disk failure from stranding
+    // the rest of the session on an empty root.
+    clearInMemorySessionQuarantine();
+  } catch (e) {
+    console.warn('[token-store] could not record the signed-in account', e);
+    quarantineSession();
+  }
+}
+
+// NOT best-effort, and never a plain return: a record that cannot be made to
+// name THIS session still names the previous account and resolves onto its
+// data. Marked rather than removed, because an absent record reads as "never
+// signed in", which does not always quarantine — see clearActiveAccountRecord.
+function quarantineSession(): void {
+  try {
+    markActiveAccountUnresolved(coworkHome());
+    return;
+  } catch (markErr) {
+    console.warn('[token-store] could not mark the session unresolved', markErr);
+  }
+  // Disk refused, so hold it in memory instead. Without this the session keeps
+  // running on whatever the file still says, and saveTokens has already kept
+  // the new token and broadcast a successful sign-in, so the app is
+  // authenticated as one account while root resolution selects another.
+  markSessionUnresolvedInMemory();
+  // The same disk just refused a write. Removing the record is weaker, and is
+  // here only because a record naming somebody else is weaker still.
+  try {
+    clearActiveAccountRecord(coworkHome());
+  } catch (removeErr) {
+    console.error(
+      '[token-store] could not clear the signed-in account record — '
+      + 'this session may resolve onto another account data root',
+      removeErr,
+    );
   }
 }
 
@@ -253,6 +307,9 @@ export function getRefreshToken(): string | null {
 }
 
 export function clearTokens(): void {
+  // The next session establishes its own identity, and a quarantine held from
+  // the previous one would strand an install whose disk has since recovered.
+  clearInMemorySessionQuarantine();
   _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;
