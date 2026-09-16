@@ -4,6 +4,53 @@ import { mergeMessagePage, reconcilePaginationState } from './mergeMessagePage';
 const m = (id, content) => ({ id, role: 'user', content });
 
 describe('mergeMessagePage', () => {
+  // Hydration appends id-less error/provider_required cards after a failed
+  // turn wherever it sits in history, and the optimistic user row never has
+  // an id of its own until response.created lands. Anything that treats "the
+  // first row without an id" as a structural boundary therefore breaks on
+  // ordinary conversations, not just exotic ones.
+
+  it('is idempotent when the fresh page carries a mid-history error card', () => {
+    const errorCard = { role: 'error', content: 'boom' };
+    const page = [m('u1', 'q1'), m('a1', 'a1'), errorCard, m('u2', 'q2'), m('a2', 'a2')];
+    let state = [...page];
+    for (let i = 0; i < 4; i++) state = mergeMessagePage(state, page);
+    expect(state).toEqual(page);
+  });
+
+  it('keeps older history above the newest page when an error card sits mid-array', () => {
+    const errorCard = { role: 'error', content: 'boom' };
+    const existing = [m('o1', 'o1'), m('o2', 'o2'), errorCard, m('o3', 'o3'), m('n1', 'n1')];
+    const fresh = [m('n1', 'n1')];
+    expect(mergeMessagePage(existing, fresh)).toEqual(existing);
+  });
+
+  it('drops the optimistic user row once the page carries the server copy', () => {
+    // After a stop or a stream error the refetch includes the question that
+    // was only local a moment ago; keeping both renders it twice, and only
+    // the server-backed copy carries a delete affordance.
+    const echo = { role: 'user', content: 'the question I just sent' };
+    const existing = [m('u1', 'q1'), m('a1', 'a1'), echo];
+    const fresh = [m('u1', 'q1'), m('a1', 'a1'), m('u2', 'the question I just sent')];
+    expect(mergeMessagePage(existing, fresh)).toEqual(fresh);
+  });
+
+  it('keeps an optimistic user row the page has not caught up with yet', () => {
+    const echo = { role: 'user', content: 'just typed' };
+    const existing = [m('u1', 'q1'), m('a1', 'a1'), echo];
+    const fresh = [m('u1', 'q1'), m('a1', 'a1')];
+    expect(mergeMessagePage(existing, fresh)).toEqual([...fresh, echo]);
+  });
+
+  it('falls back to the page alone when it shares no row with local state', () => {
+    // Another device advanced the conversation past everything held here.
+    // Splicing the two runs together would render a gap of unknown size as
+    // though it were continuous history.
+    const existing = [m('old-1', 'o1'), m('old-2', 'o2')];
+    const fresh = [m('new-1', 'n1'), m('new-2', 'n2')];
+    expect(mergeMessagePage(existing, fresh)).toEqual(fresh);
+  });
+
   it('replaces empty/placeholder local state with the fresh page', () => {
     expect(mergeMessagePage([], [m('a', 'hi')])).toEqual([m('a', 'hi')]);
   });

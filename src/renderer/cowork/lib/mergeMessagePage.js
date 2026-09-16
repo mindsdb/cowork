@@ -4,33 +4,60 @@
 // back through via "load earlier" — this keeps that older, already-loaded
 // prefix intact and only replaces the tail the fresh page actually covers.
 //
-// `freshPage` always comes from the server, so every element has a real
-// `.id`. `existing` may also hold rows that can never have one: the live
-// `_streaming` stub, an optimistic send, an `error`/`provider_required`
-// card. Those can never be superseded by a fetch and must survive the
-// merge regardless.
+// A fetched page is a contiguous run of the newest server history, and it
+// arrives already hydrated — so it carries its own id-less synthetic rows
+// (an `error`/`provider_required` card after a failed turn) exactly where
+// they belong. `existing` holds the same kind of rows, plus genuinely local
+// ones a fetch cannot know about: the `_streaming` stub and an optimistic
+// send that has not been answered yet.
+//
+// The page is therefore authoritative for everything from its own oldest row
+// onward. Only two things around it survive: whatever sits strictly before
+// that row (an older prefix pulled in by "load earlier"), and whatever sits
+// strictly after the page's newest row (a turn that started after this fetch
+// was kicked off).
+//
+// Position is resolved by the page's own first and last ids, never by
+// "the first row without an id" — id-less rows appear mid-history, so using
+// one as a structural boundary reorders older history below newer, strands a
+// duplicate of the question the page already covers, and re-appends a
+// hydrated error card on every merge.
 export function mergeMessagePage(existing, freshPage) {
   const existingArr = Array.isArray(existing) ? existing : [];
   const freshArr = Array.isArray(freshPage) ? freshPage : [];
   if (freshArr.length === 0) return existingArr;
+  if (existingArr.length === 0) return freshArr;
 
-  const freshIds = new Set(freshArr.filter((m) => m?.id != null).map((m) => m.id));
-  // Drop anything the fresh page also covers -- it supersedes the stale
-  // local copy. An id-less row can never be covered by a fetch, so it
-  // always survives this filter.
-  const nonOverlapping = existingArr.filter((m) => m?.id == null || !freshIds.has(m.id));
+  const withId = freshArr.filter((m) => m?.id != null);
+  // Nothing to anchor against: the page is all synthetic rows, which only
+  // happens when it is empty of real history. Keep what we have.
+  if (withId.length === 0) return existingArr;
 
-  // What's left splits into the older, already-loaded prefix and any
-  // trailing local-only rows the fetch can't know about (e.g. a new turn
-  // that started streaming after this fetch was kicked off). A
-  // once-persisted row never loses its id and a live/local-only row is
-  // always the newest content, so the first id-less row marks that
-  // boundary.
-  const firstLocalIdx = nonOverlapping.findIndex((m) => m?.id == null);
-  const olderPrefix = firstLocalIdx === -1 ? nonOverlapping : nonOverlapping.slice(0, firstLocalIdx);
-  const trailingLocal = firstLocalIdx === -1 ? [] : nonOverlapping.slice(firstLocalIdx);
+  const startIdx = existingArr.findIndex((m) => m?.id === withId[0].id);
+  // No overlap at all. Local state and the page are two disjoint runs with a
+  // gap of unknown size between them, so joining them would render a hole as
+  // though it were continuous history. The page plus its cursor is the
+  // honest state; the gap is reachable again through "load earlier".
+  if (startIdx === -1) return freshArr;
 
-  return [...olderPrefix, ...freshArr, ...trailingLocal];
+  const lastIdIdx = existingArr.reduce((acc, m, i) => (m?.id != null ? i : acc), -1);
+  // Local rows only count as newer than the page when the last row the two
+  // share really is the page's own newest. Otherwise the page already covers
+  // them -- an optimistic user row whose turn the page has since persisted is
+  // the common case, and keeping it would duplicate the question.
+  const trailingLocal = existingArr[lastIdIdx]?.id === withId[withId.length - 1].id
+    ? existingArr.slice(lastIdIdx + 1)
+    : [];
+
+  // The live `_streaming` stub is render state, not history — the stream's
+  // own lifecycle removes it, never a fetch. A refetch landing mid-turn must
+  // not make the row the user is watching disappear, so it survives even when
+  // the page has moved past the row it was trailing.
+  const liveStub = trailingLocal.some((m) => m?.role === '_streaming')
+    ? []
+    : existingArr.filter((m) => m?.role === '_streaming');
+
+  return [...existingArr.slice(0, startIdx), ...freshArr, ...trailingLocal, ...liveStub];
 }
 
 // What a task's hasMoreMessages/messagesCursor should be after merging a
