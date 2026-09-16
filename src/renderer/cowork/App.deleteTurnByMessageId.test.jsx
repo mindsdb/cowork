@@ -13,7 +13,7 @@
 // Mounting pattern copied from App.askUser.send.test.jsx (the streaming
 // helpers) and App.deleteTask.test.jsx (the mock/host boilerplate) — see
 // that file's header note about a shared fixture being worth doing.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -140,7 +140,17 @@ async function deleteTurn(user, deleteButton) {
   await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 }
 
+// performDeleteTurn reports its failure and already-gone paths through a bare
+// alert(), which happy-dom does not define — an unstubbed one surfaces as an
+// unhandled rejection that fails the run even when every test passes.
+let alertSpy;
+const originalAlert = window.alert;
+
+afterEach(() => { window.alert = originalAlert; });
+
 beforeEach(() => {
+  alertSpy = vi.fn();
+  window.alert = alertSpy;
   window.history.replaceState(null, '', '/');
   __resetDraftsForTests();
   streams.length = 0;
@@ -341,6 +351,10 @@ describe('deleting a turn (id-based, local truncation)', () => {
     // Both rows still on screen, and a resync was issued.
     expect(await screen.findByText('Hi there')).toBeTruthy();
     expect(screen.getByText('Hello back')).toBeTruthy();
+    // The user is told, rather than left with a list that silently disagrees
+    // with the server.
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/already gone/i);
   });
 
   it('cuts at the anchor alone when the row before it is not that turn\'s question', async () => {
