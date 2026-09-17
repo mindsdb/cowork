@@ -45,6 +45,7 @@ import {
   countCsvRows,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
+  draftNavigationIsAuthorized,
   draftPreviewErrorMessage,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
@@ -460,24 +461,40 @@ export function ArtifactViewer({
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
-      if (!canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())) {
-        // Embedded (data:/blob:) content makes no network request at all —
-        // there's nothing for a credential to protect. A genuinely
-        // cross-origin absolute URL must never receive the web Keycloak
-        // bearer `authFetch` would attach (the old `src=` navigation never
-        // sent it either). Both keep the pre-fix direct navigation; only a
-        // same-origin API URL is safe to route through the fetch+srcdoc path
-        // below.
+      // Navigate the iframe unless fetch+srcdoc is the only way to carry a
+      // credential. Navigation is the preferred path, not merely an
+      // equivalent one: a `srcdoc` document inherits the shell's CSP, which
+      // blocks the artifact's CDN scripts, web fonts and remote images — the
+      // same file renders completely in a browser (ENG-2818).
+      //
+      // Three cases navigate, and only the third is about authorization —
+      // hence `shouldNavigate` rather than a name claiming all three are
+      // authorized, which the first two are not:
+      //
+      //  - Embedded (data:/blob:) content makes no network request at all, so
+      //    there is nothing for a credential to protect.
+      //  - A genuinely cross-origin absolute URL must never receive the web
+      //    Keycloak bearer `authFetch` would attach (the old `src=`
+      //    navigation never sent it either), so navigating is the only safe
+      //    option rather than an authorized one.
+      //  - Desktop against the local loopback, where the main process already
+      //    injects the bearer into iframe navigations at the network layer,
+      //    so the 401 below cannot occur. See draftNavigationIsAuthorized.
+      const shouldNavigate =
+        !canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())
+        || draftNavigationIsAuthorized(host.isElectron, host.isLocalApiOrigin());
+      if (shouldNavigate) {
         setPreviewUrl(fetchUrl);
         setLoading(false);
         return () => { cancelled = true; };
       }
-      // A plain iframe `src=` navigation cannot carry the Authorization
-      // header the forward-auth ingress in front of the drafts endpoint
-      // requires on staging (see
-      // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md),
-      // so fetch through authFetch (like Edit's source load) and hand the
-      // result to the iframe via srcdoc instead of navigating it directly.
+      // Org deployment: a plain iframe `src=` navigation cannot carry the
+      // Authorization header the forward-auth ingress in front of the drafts
+      // endpoint requires (the ingress `auth-url` reads only
+      // `Authorization: Bearer`), so fetch through authFetch (like Edit's
+      // source load) and hand the result to the iframe via srcdoc instead of
+      // navigating it directly. This path pays the inherited-CSP cost above;
+      // lifting it for Cloud needs an ingress change (ENG-2818).
       // previewUrl/previewDoc were both already reset to '' at the top of
       // this effect, so setting only one of them here is enough to keep them
       // mutually exclusive.
