@@ -686,9 +686,20 @@ export function ArtifactViewer({
   // person would share; the served URL is desktop's local HTTP view; the
   // authenticated draft URL is org mode's route to an artifact nobody has
   // published yet.
-  const browserTabUrl = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
-  // host.openExternal is already right on both deployments: Electron hands the
-  // URL to the OS (a real browser, outside the app), web opens a new tab.
+  const browserTabTarget = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // ...but only `publishedUrl` carries its own origin. The server returns
+  // `serveUrl` and `draftUrl` origin-relative, and an Electron renderer is
+  // loaded from `file://`/`app://`, so a relative URL has no origin to resolve
+  // against: main's `normalizeExternalBrowserUrl` cannot parse it and opens
+  // nothing (ENG-2819). Web never saw this because `window.open` resolves a
+  // relative URL against the page. Absolutizing here is the same step the
+  // draft-preview path takes above, through the same helper.
+  const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
+    ? browserTabTarget
+    : `${host.getApiOrigin()}${browserTabTarget}`;
+  // With an absolute URL, host.openExternal is right on both deployments:
+  // Electron hands it to the OS (a real browser, outside the app), web opens
+  // a new tab.
   const onOpenInBrowserTab = () => {
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
