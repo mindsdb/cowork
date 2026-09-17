@@ -537,6 +537,27 @@ describe('useMindsOrgs on desktop', () => {
     expect(getDraft('new')).toBe('');
   });
 
+  it('reloads even when an organization-change listener throws', async () => {
+    // The reload is the only thing that reconciles this document with the
+    // stores the sidecar has already moved to. A reader that throws must not
+    // be able to strand the document on the previous organization's data.
+    const thrower = vi.fn(() => { throw new Error('a mounted reader blew up'); });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unsubscribeThrower = subscribeOrganizationChanges(thrower);
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+
+    expect(thrower).toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+    // And the listeners after the thrower still hear about it.
+    expect(organizationChanged).toHaveBeenCalledWith('user-1');
+    unsubscribeThrower();
+    errors.mockRestore();
+  });
+
   it('does not take the web reload path', async () => {
     hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
     const { result } = renderHook(() => useMindsOrgs(account('user-1')));

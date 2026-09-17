@@ -135,8 +135,8 @@ export function useMindsOrgs(accountUser) {
          * Desktop takes its own path. `prepareForOrganizationReload` budgets
          * three reloads per 10s and then stays put "refusing tokens", which in
          * a desktop window is simply wedged, and it returns before
-         * `notifyOrganizationChanged` below, cutting off the only in-app
-         * refresh signal mounted readers have.
+         * `notifyOrganizationChanged` below, cutting off the in-app refresh
+         * signal mounted readers have.
          *
          * The reload itself is not optional here: the sidecar has moved to a
          * different database, so module state and component state both still
@@ -158,8 +158,18 @@ export function useMindsOrgs(accountUser) {
             clearDraftsForOrganizationSwitch();
             clearCachedSettings();
           }
-          notifyOrganizationChanged(sub);
+          /**
+           * The reload goes FIRST, and nothing may be put between it and the
+           * cache clear above. It is the only thing that reconciles this
+           * document with the stores the sidecar has already moved to; the
+           * notification below is an in-app refresh signal for mounted readers,
+           * which matters only in the case where the reload does not take.
+           * Ordered the other way round, anything that threw on the way through
+           * the listeners left the document on the previous organization's
+           * data — the reload line simply never ran.
+           */
           globalThis.location?.reload();
+          notifyOrganizationChanged(sub);
           return result;
         }
         prepareForOrganizationReload({
