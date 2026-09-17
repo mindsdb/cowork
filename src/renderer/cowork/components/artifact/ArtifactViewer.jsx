@@ -461,26 +461,29 @@ export function ArtifactViewer({
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
-      // Navigate the iframe whenever the navigation is authorized, and fall
-      // back to fetch+srcdoc only when it is not.
+      // Navigate the iframe unless fetch+srcdoc is the only way to carry a
+      // credential. Navigation is the preferred path, not merely an
+      // equivalent one: a `srcdoc` document inherits the shell's CSP, which
+      // blocks the artifact's CDN scripts, web fonts and remote images — the
+      // same file renders completely in a browser (ENG-2818).
       //
-      // Navigation is the preferred path, not merely an equivalent one: a
-      // `srcdoc` document inherits the shell's CSP, which blocks the
-      // artifact's CDN scripts, web fonts and remote images — the same file
-      // renders completely in a browser (ENG-2818). Three cases navigate:
+      // Three cases navigate, and only the third is about authorization —
+      // hence `shouldNavigate` rather than a name claiming all three are
+      // authorized, which the first two are not:
       //
       //  - Embedded (data:/blob:) content makes no network request at all, so
       //    there is nothing for a credential to protect.
       //  - A genuinely cross-origin absolute URL must never receive the web
       //    Keycloak bearer `authFetch` would attach (the old `src=`
-      //    navigation never sent it either).
+      //    navigation never sent it either), so navigating is the only safe
+      //    option rather than an authorized one.
       //  - Desktop against the local loopback, where the main process already
       //    injects the bearer into iframe navigations at the network layer,
       //    so the 401 below cannot occur. See draftNavigationIsAuthorized.
-      const navigationIsAuthorized =
+      const shouldNavigate =
         !canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())
         || draftNavigationIsAuthorized(host.isElectron, host.isLocalApiOrigin());
-      if (navigationIsAuthorized) {
+      if (shouldNavigate) {
         setPreviewUrl(fetchUrl);
         setLoading(false);
         return () => { cancelled = true; };
