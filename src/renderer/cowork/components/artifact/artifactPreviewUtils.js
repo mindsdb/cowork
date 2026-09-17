@@ -73,6 +73,26 @@ export function canFetchDraftWithCredentials(url, apiOrigin) {
   }
 }
 
+// Whether an iframe *navigation* to a same-origin draft URL is already
+// authorized, so the fetch+srcdoc path is not needed to carry a credential.
+//
+// True only on Desktop against the local loopback server: there the main
+// process injects the server's bearer into every loopback request at the
+// network layer — "images, iframes and their relative sub-resources" included
+// (`src/main/app.ts`, `onBeforeSendHeaders`) — so a plain `src=` navigation
+// arrives authenticated. On an org deployment nothing attaches the Keycloak
+// bearer to a navigation and the forward-auth ingress answers 401, which is
+// the case the srcdoc path exists for.
+//
+// This matters beyond authentication: a `srcdoc` document inherits the
+// shell's CSP (`index.html` / `index-web.html`), which blocks an artifact's
+// CDN scripts, web fonts and remote images, while a navigated document
+// carries its own policy and renders what a browser would (ENG-2818). So
+// navigation is preferred wherever it is authorized.
+export function draftNavigationIsAuthorized(isElectron, isLocalApiOrigin) {
+  return !!isElectron && !!isLocalApiOrigin;
+}
+
 function appendPreviewParam(url, key, value) {
   if (!url || value == null || value === '') return url;
   // blob: and data: URLs are already content-addressed. Adding a query suffix
