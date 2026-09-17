@@ -1873,11 +1873,21 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
       };
     }
     storeOrgPreference(userId, target.id, true);
-    // Asked BEFORE the move, because ensureSidecar... answers the same `true`
-    // for "already correct" and "restarted", and only the second needs a
-    // reload: the renderer's state came from the database that was replaced.
+    // Reload either way, and this is the one path where that is true of a
+    // sidecar needing nothing. Re-picking the organization you are already in
+    // is what a person does when the screen is showing another one's data, and
+    // the screen is the one thing the record and the sidecar cannot speak for:
+    // a document that missed an earlier transition holds its state until it is
+    // replaced. Returning "nothing to do" because the stores are already right
+    // leaves that document exactly as it was, which is the complaint.
+    // `clearTenantState: false` is the whole difference from a real switch. The
+    // organization did not change, so the organization-scoped caches are still
+    // this organization's and unsent text is still worth keeping — throwing it
+    // away here would cost a person real work for nothing. The document is
+    // replaced all the same, because it is the one thing the record and the
+    // sidecar cannot speak for.
     if (sidecarIsOnCurrentStores()) {
-      return { ok: true, activeOrgId: sourceOrgId, orgs };
+      return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: true, clearTenantState: false };
     }
     await ensureSidecarOnCurrentAccountRoot();
     // Reload whether or not the move succeeded. The renderer is holding state

@@ -495,16 +495,23 @@ describe('switchMindsOrg', () => {
     expect(result.reloadRequired).toBe(true);
   });
 
-  it('does nothing when re-picking and the sidecar is already right', async () => {
-    // No database changed under the renderer, so a reload here would throw away
-    // a person's unsent work for nothing.
+  it('still replaces the document when re-picking and the sidecar is right', async () => {
+    // The same repair action, in the case where the stores need nothing. The
+    // document is the one thing the record and the sidecar cannot speak for: a
+    // renderer that missed an earlier transition holds its state until it is
+    // replaced, so answering "nothing to do" left the screen showing the data
+    // the person re-picked the organization to get away from.
     vi.mocked(sidecarIsOnCurrentStores).mockReturnValue(true);
     installRoutedFetch(routesFor({ current: PERSONAL }));
 
     const result = await switchMindsOrg(PERSONAL.id);
 
     expect(result.ok).toBe(true);
-    expect(result.reloadRequired).toBeUndefined();
+    expect(result.reloadRequired).toBe(true);
+    // Nothing is thrown away with it. The organization did not change, so the
+    // organization-scoped caches are still this organization's and unsent text
+    // survives the reload — the distinction a real switch does not get.
+    expect(result.clearTenantState).toBe(false);
     expect(vi.mocked(ensureSidecarOnCurrentAccountRoot)).not.toHaveBeenCalled();
   });
 
