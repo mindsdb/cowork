@@ -3,6 +3,8 @@ import { isElectron, mindshubListOrgs, mindshubSwitchOrg } from '../../platform/
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
 import { purgeOrganizationScopedState } from '../lib/accountLocalState';
+import { clearDraftsForOrganizationSwitch } from '../lib/draftStore';
+import { clearCachedSettings } from '../lib/settingsCache';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -146,6 +148,15 @@ export function useMindsOrgs(accountUser) {
             // organization marker belongs to the one being left. Boot cannot
             // assume that and passes the default.
             purgeOrganizationScopedState(result.activeOrgId ?? organizationId, 'purge');
+            // Removing the keys is not the whole job, which is why the web path
+            // through `prepareForOrganizationReload` does both. A draft typed in
+            // the last 400 ms leaves a flush timer armed, and `pagehide` fires
+            // it during the reload below — writing the organization being LEFT
+            // back to a storage key the next document reads under the
+            // destination's marker. Cancelling the timer is the load-bearing
+            // half; the in-memory clear is what stops the same heap serving it.
+            clearDraftsForOrganizationSwitch();
+            clearCachedSettings();
           }
           notifyOrganizationChanged(sub);
           globalThis.location?.reload();

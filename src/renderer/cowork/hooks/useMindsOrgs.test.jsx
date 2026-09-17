@@ -14,6 +14,7 @@ vi.mock('../lib/organizationTransition', () => transitionMock);
 
 import { useMindsOrgs } from './useMindsOrgs';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
+import { getDraft, setDraft, __resetDraftsForTests } from '../lib/draftStore';
 
 const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
 const PERSONAL = {
@@ -487,6 +488,7 @@ describe('useMindsOrgs on desktop', () => {
     reload = vi.fn();
     vi.stubGlobal('location', { reload });
     localStorage.clear();
+    __resetDraftsForTests();
   });
 
   afterEach(() => {
@@ -514,6 +516,25 @@ describe('useMindsOrgs on desktop', () => {
     expect(localStorage.getItem('anton:conv-turns:c1')).toBeNull();
     expect(organizationChanged).toHaveBeenCalledWith('user-1');
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a pending draft write so pagehide cannot restore it', async () => {
+    // Deleting the key is not enough on its own. Text typed within 400 ms of
+    // the switch leaves a flush timer armed, and pagehide fires it during the
+    // reload — writing the organization being LEFT back to a key the next
+    // document reads under the destination's marker.
+    localStorage.setItem('anton.lastOrganization', ACME.id);
+    setDraft('new', 'unsent text belonging to acme');
+    hostMock.mindshubSwitchOrg.mockResolvedValue(switched());
+    const { result } = renderHook(() => useMindsOrgs(account('user-1')));
+    await waitFor(() => expect(result.current.activeOrg).toEqual(ACME));
+
+    await act(async () => { await result.current.switchOrg(PERSONAL.id); });
+    window.dispatchEvent(new Event('pagehide'));
+
+    const draftKeys = Object.keys(localStorage).filter((k) => k.startsWith('anton.composerDrafts'));
+    expect(draftKeys).toEqual([]);
+    expect(getDraft('new')).toBe('');
   });
 
   it('does not take the web reload path', async () => {
