@@ -142,6 +142,21 @@ export function endMindsCredentialSignOut(): void {
   _mindsCredentialSignOutDepth = Math.max(0, _mindsCredentialSignOutDepth - 1);
 }
 
+// Held across the token exchange an organization switch performs, and only
+// that. Unlike sign-out this fences ONE thing — the push to the sidecar — and
+// it does it because the sidecar is still serving the organization being LEFT
+// at that point: the record has not been rewritten and the stores have not
+// moved. The switch hands the credential over itself once they have.
+let _mindsCredentialOrgMoveDepth = 0;
+
+function beginMindsCredentialOrgMove(): void {
+  _mindsCredentialOrgMoveDepth += 1;
+}
+
+function endMindsCredentialOrgMove(): void {
+  _mindsCredentialOrgMoveDepth = Math.max(0, _mindsCredentialOrgMoveDepth - 1);
+}
+
 export function refreshTokensOnly(): Promise<TokenRefreshResult> {
   if (!_inflightRefresh) {
     _inflightRefresh = doRefreshTokens().finally(() => { _inflightRefresh = null; });
@@ -203,6 +218,10 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
   // Capture this for the full exchange: getRevokeToken has its own deadline,
   // so the request can finish after the enclosing sign-out has returned.
   const suppressCredentialHandoff = _mindsCredentialSignOutDepth > 0;
+  // Captured for the full exchange, like the flag above: an exchange that was
+  // already in flight when the switch began belongs to the source organization
+  // and hands over as usual. Only one started under the fence defers.
+  const deferHandoffUntilStoresMove = _mindsCredentialOrgMoveDepth > 0;
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     settleMindsResumeCredentialGate(false);
@@ -294,6 +313,21 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     if (suppressCredentialHandoff) {
       // Same fence, for an exchange that started after sign-out began.
       return { status: 'ok', token: data.access_token };
+    }
+    if (deferHandoffUntilStoresMove) {
+      // The organization switch's own fence, and it defers exactly one step.
+      // Pushing this token now would leave the sidecar holding a credential
+      // naming the DESTINATION while still serving the SOURCE's database, so a
+      // turn started in that window bills one organization and writes into the
+      // other — the ordering the switch promises a few lines before it moves
+      // the stores, and which this exchange would otherwise get in ahead of.
+      //
+      // `handoff_pending` is the honest status: the tokens are persisted and
+      // the schedule is intact, and only the sidecar is behind. No retry ladder
+      // is armed for it, because the switch performs the hand-over itself once
+      // the stores are correct and would race one.
+      scheduleRefreshAt(expiresAt);
+      return { status: 'handoff_pending', token: data.access_token };
     }
     const refreshedTokenStoreVersion = getTokenStoreVersion();
     // The exchange is not usable by a turn until the sidecar has accepted the
@@ -548,10 +582,18 @@ async function refreshAfterOrgSwitch(): Promise<string | null> {
   // An exchange that started before the org switch cannot contain the new
   // claim. Let it settle, then deliberately start a fresh exchange.
   if (_inflightRefresh) await _inflightRefresh;
-  const result = await refreshTokensOnly();
-  return result.status === 'ok' || result.status === 'handoff_pending'
-    ? result.token
-    : null;
+  // Fenced, because the sidecar is still on the organization being left until
+  // the record is rewritten and the stores are moved further down the switch.
+  // The exchange does everything else; only the hand-over waits.
+  beginMindsCredentialOrgMove();
+  try {
+    const result = await refreshTokensOnly();
+    return result.status === 'ok' || result.status === 'handoff_pending'
+      ? result.token
+      : null;
+  } finally {
+    endMindsCredentialOrgMove();
+  }
 }
 
 // ── The organization pick, on disk ────────────────────────────────

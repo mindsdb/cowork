@@ -419,6 +419,28 @@ describe('switchMindsOrg', () => {
     expect(handOver).toBeGreaterThanOrEqual(callsWhenMoved);
   });
 
+  it('hands no credential over at all before the stores move', async () => {
+    // Ordering the switch's OWN hand-over after the move is not enough on its
+    // own. The refresh that re-rolls the token runs before any of it, and its
+    // ordinary hand-over pushes the DESTINATION's credential to a sidecar still
+    // serving the SOURCE's database — the exact window the move is ordered to
+    // close. The exchange is fenced for that reason; only the switch hands over.
+    const credentialPushes = () =>
+      calls.filter((c) => c.url.includes('/runtime-credential/minds')).length;
+    const calls = installRoutedFetch(routesFor({ current: PERSONAL }));
+    let pushesBeforeMove = -1;
+    vi.mocked(ensureSidecarOnCurrentAccountRoot).mockImplementation(async () => {
+      pushesBeforeMove = credentialPushes();
+      return true;
+    });
+
+    await switchMindsOrg(ACME.id);
+
+    expect(pushesBeforeMove).toBe(0);
+    // And the fence lifts: the switch still hands the re-rolled token over.
+    expect(credentialPushes()).toBeGreaterThan(0);
+  });
+
   it('fails the switch closed when the record cannot be written', async () => {
     // Swallowing this would leave the record naming the organization being
     // left, the restart comparing two stale values and agreeing, and the switch

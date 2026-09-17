@@ -162,7 +162,10 @@ describe('model catalog notifications at auth lifecycle boundaries', () => {
   it('refreshes the catalog on a real org switch, but not when choosing the current org', async () => {
     await expect(auth.switchMindsOrg('org-b')).resolves.toMatchObject({ ok: true, activeOrgId: 'org-b' });
     expectNotifications(1);
-    expect(writes).toHaveLength(2); // Token exchange + explicit switch commit.
+    // One write, not two: the token exchange the switch performs is fenced,
+    // because at that point the sidecar is still serving the organization being
+    // left. The explicit commit after the stores move is the only hand-over.
+    expect(writes).toHaveLength(1);
     await expect(auth.switchMindsOrg('org-b')).resolves.toMatchObject({ ok: true });
     expectNotifications(1);
   });
