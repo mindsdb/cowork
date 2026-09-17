@@ -215,12 +215,25 @@ export function purgeOrganizationScopedState(
  * the previous account's draft before the identity resolves, and that draft
  * lives in a module map and in component state under a home key every account
  * spells the same way, neither of which storage removal touches.
+ *
+ * `displacedAnotherAccount` is the second way in, and it exists because the
+ * first one cannot see the signed-out window. A document that boots signed out
+ * renders the composer while the identity is still unresolved, so the previous
+ * account's cache hydrates into that module map before anyone can say whose it
+ * was; when the identity finally arrives as someone else, this document has
+ * rendered for nobody yet and the account-to-account test above is false. What
+ * is true is that the purge just removed state belonging to another account
+ * while this document was already on screen — which is the same displacement,
+ * observed at the cache rather than at the identity.
  */
 export function shouldReloadForAccountChange(
   lastRendered: string | null,
   next: string | null,
+  displacedAnotherAccount = false,
 ): boolean {
-  // Not the first identity a document resolves, and not a sign-out on its own:
-  // one is no change and the other has no account to show yet.
-  return Boolean(lastRendered && next && lastRendered !== next);
+  // A sign-out on its own has no account to show yet, so neither route applies.
+  if (!next) return false;
+  // Not the first identity a document resolves: that one is no change.
+  if (lastRendered && lastRendered !== next) return true;
+  return displacedAnotherAccount;
 }

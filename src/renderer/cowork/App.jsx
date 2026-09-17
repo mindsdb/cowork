@@ -2554,6 +2554,11 @@ function AppCore() {
   // Electron's main.tsx has.
   const accountId = codeAccountUser?.sub ?? null;
   if (purgedAccountRef.current !== accountId) {
+    // `undefined` only on the very first pass, which runs during this
+    // component's own render and therefore BEFORE the composer below it has
+    // mounted and read storage. A purge there displaces nothing that is on
+    // screen; every later one does.
+    const firstPass = purgedAccountRef.current === undefined;
     purgedAccountRef.current = accountId;
     const shellSession = host.accountSessionSync();
     const purgedStaleAccount = purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
@@ -2579,10 +2584,17 @@ function AppCore() {
      * this tracks the last account rendered for rather than the last value
      * seen: signing out and back in as someone else passes through null and is
      * still one change.
+     *
+     * A document that boots SIGNED OUT has rendered for nobody, so that test
+     * cannot catch the sign-in that follows — and the composer has already
+     * hydrated whatever cache was lying there. The purge result is the second
+     * route in: it removed another account's state from under a document that
+     * was already on screen, which is the same displacement seen at the cache.
      */
+    const displacedAnotherAccount = purgedStaleAccount && !firstPass;
     const previous = renderedForAccountRef.current;
     if (accountId) renderedForAccountRef.current = accountId;
-    if (shouldReloadForAccountChange(previous, accountId)) {
+    if (shouldReloadForAccountChange(previous, accountId, displacedAnotherAccount)) {
       globalThis.location?.reload();
     }
   }

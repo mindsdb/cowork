@@ -305,6 +305,16 @@ describe('the chat app purge call', () => {
     expect(source).toMatch(/shouldReloadForAccountChange\([^)]*\)/);
     expect(source).toMatch(/shouldReloadForAccountChange\([\s\S]{0,80}?location\?\.reload\(\)/);
   });
+
+  it('feeds the reload rule the purge result, so a signed-out boot is covered', () => {
+    // The account-to-account test cannot see a document that booted signed
+    // out: it has rendered for nobody, so only the purge knows the composer
+    // was holding someone else's draft. Pinned mechanically alongside the call
+    // above, and for the same reason.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'App.jsx'), 'utf-8');
+    expect(source).toMatch(/const\s+(\w+)\s*=\s*purgedStaleAccount\s*&&\s*!firstPass;/);
+    expect(source).toMatch(/shouldReloadForAccountChange\(\s*previous\s*,\s*accountId\s*,\s*\w+\s*\)/);
+  });
 });
 
 // The shell's snapshot is taken in preload, once per document. Which session it
@@ -408,5 +418,24 @@ describe('shouldReloadForAccountChange', () => {
 
   it('does not reload on a sign-out alone', () => {
     expect(shouldReloadForAccountChange('acct-a', null)).toBe(false);
+  });
+
+  // The signed-out window the account-to-account test cannot see: a document
+  // boots with nobody signed in, the composer hydrates whatever cache was
+  // lying there, and the identity then arrives as someone else. This document
+  // has rendered for nobody, so `lastRendered` is null and the first rule is
+  // silent — but another account's state was just taken out from under it.
+  it('reloads when the purge displaced another account under a live document', () => {
+    expect(shouldReloadForAccountChange(null, 'acct-b', true)).toBe(true);
+  });
+
+  it('still does not reload on a sign-out that displaced a cache', () => {
+    expect(shouldReloadForAccountChange('acct-a', null, true)).toBe(false);
+  });
+
+  it('does not reload when nothing was displaced', () => {
+    // The ordinary boot: storage already names this account, so the purge
+    // removes nothing and there is nothing on screen that belongs elsewhere.
+    expect(shouldReloadForAccountChange(null, 'acct-a', false)).toBe(false);
   });
 });
