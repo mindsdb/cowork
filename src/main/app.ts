@@ -630,6 +630,7 @@ function mindsSignOutDeps(): SignOutDeps {
     isServerStarting,
     getServerPort,
     httpRequest,
+    getAuthHeader: authHeader,
     scrubEnvCredentials,
     getAntonEnvPath,
     clearStoredProviderState,
