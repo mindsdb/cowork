@@ -8,6 +8,7 @@ import {
   clearActiveAccountRecord,
   clearInMemorySessionQuarantine,
   markActiveAccountUnresolved,
+  markOrganizationUnresolvedInMemory,
   markSessionUnresolvedInMemory,
   readActiveOrg,
   readOrgClaim,
@@ -279,6 +280,12 @@ function recordActiveOrganization(accessToken: string): void {
     try {
       writeActiveOrgSync(root, null);
     } catch (removeErr) {
+      // Both writes refused, so the file still names the organization being
+      // left. Hold it in memory instead, the same way the account record does:
+      // saveTokens has already kept the new token and broadcast a successful
+      // transition, so without this the session operates as one organization
+      // while every store resolution agrees with the record and picks another.
+      markOrganizationUnresolvedInMemory();
       console.error(
         '[token-store] could not record OR clear the active organization — '
         + 'this session may read another organization\'s data',

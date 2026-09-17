@@ -578,10 +578,38 @@ export function sidecarEnvForSession(home: string, active: ActiveAccount): Recor
   return { COWORK_HOME: root };
 }
 
+// The organization half of `_sessionUnresolved`, and it exists for the same
+// failure: a disk that refuses both the rewrite and the removal leaves a record
+// naming the organization being LEFT while the token names the one being
+// entered. Null alone is not enough to fail closed here — an unclaimed,
+// unpartitioned root resolves null straight back to itself — so `orgStoreRoot`
+// consults this directly rather than inferring it from the value.
+//
+// Lifted by the next record that lands, like the account one: a session that
+// can say who it is again has nothing left to protect against.
+let _organizationUnresolved = false;
+
+/** Quarantine this session's ORGANIZATION for as long as the disk refuses to
+ *  record it. Called only when the record could neither be rewritten nor
+ *  removed, so nothing read from it names this session's organization. */
+export function markOrganizationUnresolvedInMemory(): void {
+  _organizationUnresolved = true;
+}
+
+/** Test seam and sign-out reset; the ordinary lift happens on the next write. */
+export function clearOrganizationQuarantine(): void {
+  _organizationUnresolved = false;
+}
+
 /** The organization this account root is operating as, or null if none is
  *  recorded. Null resolves to the account root while nothing has partitioned,
  *  which is what keeps an upgraded install on its own data. */
 export function readActiveOrg(accountRoot: string): string | null {
+  // Ahead of the file, for the same reason the account record has an in-memory
+  // quarantine: when the record can neither be rewritten nor removed it still
+  // names the PREVIOUS organization, and every check downstream compares
+  // against it and agrees, so the sidecar is never moved off those stores.
+  if (_organizationUnresolved) return null;
   try {
     const parsed = JSON.parse(
       fs.readFileSync(path.join(accountRoot, ACTIVE_ORG_FILE), 'utf-8'),
@@ -618,6 +646,9 @@ export function writeActiveOrgSync(accountRoot: string, orgId: string | null): v
   try {
     fs.writeFileSync(tmp, JSON.stringify({ orgId }) + '\n', { encoding: 'utf-8', mode: 0o600 });
     fs.renameSync(tmp, target);
+    // The record names this session's organization again, so a held quarantine
+    // has nothing left to protect against.
+    _organizationUnresolved = false;
   } finally {
     try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
   }
@@ -687,6 +718,11 @@ export function listOrgSegments(accountRoot: string): string[] {
  */
 export function orgStoreRoot(accountRoot: string, orgId: string | null): string {
   const quarantine = () => path.join(accountRoot, ORGS_DIR, QUARANTINE_ACCOUNT);
+  // Before anything derived from the record, because the record is exactly what
+  // cannot be trusted here. Null would otherwise resolve to the account root
+  // on an unclaimed, unpartitioned install — the stores of whoever was already
+  // there, which is the outcome the quarantine exists to prevent.
+  if (_organizationUnresolved) return quarantine();
   const claim = readOrgClaim(accountRoot);
   const partitioned = knownOrgRoots(accountRoot).length > 0;
 

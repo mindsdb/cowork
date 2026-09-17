@@ -294,6 +294,55 @@ describe('recording the active organization', () => {
       errors.mockRestore();
     }
   });
+
+  it('quarantines the stores in memory when it can neither write nor clear', async () => {
+    // Saying so loudly is not enough on its own. The record still names the
+    // organization being LEFT, saveTokens has already kept the new token, and
+    // every store resolution downstream compares against that record and
+    // agrees — so the session operates as one organization while reading and
+    // writing another's database. Same protection the account record has.
+    const store = await loadStore('linux');
+    const { orgStoreRoot, readActiveOrg } = await import('./account-data');
+    store.saveTokens(tokenFor('org-p'), 3600, 'rt');
+    expect(orgStoreRoot(h.home, readActiveOrg(h.home))).toBe(h.home);
+
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fs.chmodSync(h.home, 0o500);
+    try {
+      store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    } finally {
+      fs.chmodSync(h.home, 0o700);
+      errors.mockRestore();
+    }
+
+    expect(readRecord()).toBe('org-p');
+    expect(readActiveOrg(h.home)).toBeNull();
+    // Null alone would not have been enough: on a root nobody has claimed it
+    // resolves straight back to the root itself.
+    expect(orgStoreRoot(h.home, readActiveOrg(h.home))).toMatch(/orgs[/\\]_unresolved-/);
+  });
+
+  it('lifts the held organization quarantine once a record can be written again', async () => {
+    // A transient refusal must not strand the session on an empty root for the
+    // rest of the process when the disk has since recovered.
+    const store = await loadStore('linux');
+    const { orgStoreRoot, readActiveOrg } = await import('./account-data');
+    store.saveTokens(tokenFor('org-p'), 3600, 'rt');
+
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fs.chmodSync(h.home, 0o500);
+    try {
+      store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    } finally {
+      fs.chmodSync(h.home, 0o700);
+      errors.mockRestore();
+    }
+    expect(readActiveOrg(h.home)).toBeNull();
+
+    store.saveTokens(tokenFor('org-c'), 3600, 'rt');
+    expect(readActiveOrg(h.home)).toBe('org-c');
+    expect(orgStoreRoot(h.home, readActiveOrg(h.home))).toBe(path.join(h.home, 'orgs', 'org-c'));
+  });
 });
 
 // ─── The record every account's data root is resolved from ───────────
