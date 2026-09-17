@@ -79,7 +79,7 @@ export function canFetchDraftWithCredentials(url, apiOrigin) {
 // True only on Desktop against the local loopback server: there the main
 // process injects the server's bearer into every loopback request at the
 // network layer — "images, iframes and their relative sub-resources" included
-// (`src/main/index.ts`, `onBeforeSendHeaders`) — so a plain `src=` navigation
+// (`src/main/app.ts`, `onBeforeSendHeaders`) — so a plain `src=` navigation
 // arrives authenticated. On an org deployment nothing attaches the Keycloak
 // bearer to a navigation and the forward-auth ingress answers 401, which is
 // the case the srcdoc path exists for.
