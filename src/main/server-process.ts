@@ -1007,6 +1007,20 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
+    // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
+    // has certainly written its dotenv by the time it answers /health. Drop the
+    // cache HERE, where "a server is now running" is the fact, rather than only
+    // where one is deliberately restarted.
+    //
+    // The restart sites cover the window between a stop and a start. What they
+    // could not cover is a FIRST start, and there are two of those. A fresh
+    // install reads a dotenv that does not exist yet, latches "no token", and
+    // then sends every request unauthenticated for the life of the process —
+    // which is every request refused, now that the server requires auth by
+    // default. And a sign-in whose sidecar is not running starts one on the new
+    // account's root, whose dotenv holds a different token, while the cache
+    // still holds the previous account's.
+    resetServerAuthTokenCache();
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a

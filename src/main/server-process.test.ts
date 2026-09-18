@@ -827,6 +827,44 @@ describe('the sidecar account root', () => {
     expect(sidecarIsOnCurrentStores()).toBe(true);
   });
 
+  it('picks up a token the FIRST start generated, with no restart to hang it on', async () => {
+    // The fresh-install shape, and the one the restart sites cannot reach. The
+    // dotenv does not exist when the app first reads it, so the cache latches
+    // "no token" — and with the server requiring auth by default that is every
+    // authenticated request refused for the life of the process, with only
+    // /health answering.
+    accountState.root = null;
+    envState.authToken = null;
+    expect(getServerAuthToken()).toBeNull();
+
+    // The server generates one during startup and writes it to the dotenv it
+    // has certainly written by the time it answers /health.
+    envState.authToken = 'token-the-server-generated';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(getServerAuthToken()).toBe('token-the-server-generated');
+  });
+
+  it('picks up the new root token when a sign-in STARTS a sidecar rather than moving one', async () => {
+    // Sign-in only resets around a sidecar it restarts. When none is running it
+    // starts one instead, on the new account's root — whose dotenv holds a
+    // different token — and that path reaches no reset site at all.
+    accountState.root = null;
+    envState.authToken = 'token-for-the-shared-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+
+    await stopServer();
+    accountState.root = 'accounts/second-account';
+    envState.authToken = 'token-for-the-second-root';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+  });
+
   it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
     accountState.root = 'accounts/second-account';
     envState.authToken = 'token-for-the-second-root';
