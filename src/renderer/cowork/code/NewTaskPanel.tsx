@@ -8,7 +8,8 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
-import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
+import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem, TaskMode } from './api';
+import './task-control.css';
 import { effortOptions } from './reasoning';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
@@ -19,6 +20,8 @@ import { SkillDetailModal } from './SkillDetailModal';
 import { TaskSourceLinks } from './TaskSourceLinks';
 import { TaskExecutionControls } from './TaskExecutionControls';
 import { useNewTaskDraft } from './useNewTaskDraft';
+import { ComposerAddMenu } from './ComposerAddMenu';
+import { planModeCommand } from './planModeCommand';
 import type { CodingCatalog } from './useCodingCatalog';
 
 export function NewTaskPanel({
@@ -59,9 +62,11 @@ export function NewTaskPanel({
   catalog?: CodingCatalog;
 }) {
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [taskMode, setTaskMode] = useState<TaskMode>('build');
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
-    projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate, catalog,
+    projects, selectedProjectId, onProjectChange, onOpenProjectSettings,
+    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), catalog,
   });
   const {
     prompt, setPrompt, catalogError,
@@ -74,11 +79,14 @@ export function NewTaskPanel({
     projectResources, resourceIds, setResourceIds, resourceStates,
     computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
   } = draft;
+  const localTarget = !computerId || allComputers.find(computer => computer.id === computerId)?.is_local === true;
+  const canPlan = localTarget && draft.supportsPlanning;
+  useEffect(() => { if (!localTarget || !draft.supportsPlanning) setTaskMode('build'); }, [localTarget, draft.supportsPlanning]);
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const paletteItems = useCodePaletteItems({
-    commands: engineCommands.filter((command) => command.action !== 'client'),
+    commands: [...(canPlan ? [planModeCommand(taskMode === 'plan')] : []), ...engineCommands.filter((command) => command.action !== 'client' && command.name !== 'plan')],
     query: commandQuery,
     projectId: selectedProjectId,
   });
@@ -90,8 +98,21 @@ export function NewTaskPanel({
       ? Ico.folder(12)
       : Ico.lock(12);
   const choosePaletteItem = (item: CodePaletteItem) => {
-    setPrompt(item.kind === 'skill' ? `${item.invocation} ` : `${item.invocation}${item.argumentHint ? ' ' : ''}`);
+    if (item.kind === 'command' && item.command.name === 'plan') {
+      setTaskMode(mode => mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+    } else {
+      setPrompt(item.kind === 'skill' ? `${item.invocation} ` : `${item.invocation}${item.argumentHint ? ' ' : ''}`);
+    }
     requestAnimationFrame(() => promptRef.current?.focus());
+  };
+  const start = () => {
+    if (prompt.trim() === '/plan' && canPlan) {
+      setTaskMode(mode => mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+      return;
+    }
+    void handleStart();
   };
 
   return (
@@ -222,6 +243,7 @@ export function NewTaskPanel({
               }
             }}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+              if (event.nativeEvent.isComposing) return;
               if (commandQuery != null && paletteItems.length > 0) {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault();
@@ -246,7 +268,7 @@ export function NewTaskPanel({
               }
               if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) return;
               event.preventDefault();
-              void handleStart();
+              start();
             }}
           />
 
@@ -279,16 +301,8 @@ export function NewTaskPanel({
                 event.target.value = '';
               }}
             />
-            <Button
-              icon
-              variant="subtle"
-              size="sm"
-              disabled={busy}
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files or images"
-            >
-              {Ico.attach(14)}
-            </Button>
+            <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
+              planMode={taskMode === 'plan'} onPlanChange={canPlan ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
             <PermissionSelect
               value={permissionMode}
               onValueChange={setPermissionMode}
@@ -339,11 +353,11 @@ export function NewTaskPanel({
               size="sm"
               className="code-start-task-button"
               disabled={startUnavailable}
-              onClick={() => void handleStart()}
+              onClick={start}
               aria-describedby={readinessText ? 'code-start-readiness' : undefined}
             >
               {busy ? <Spinner className="text-sm" /> : Ico.send(14)}
-              {busy ? 'Starting…' : 'Start task'}
+              {busy ? 'Starting…' : taskMode === 'plan' ? 'Start planning' : 'Start task'}
             </Button>
           </div>
         </section>

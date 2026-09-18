@@ -5,6 +5,9 @@ import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
+import { QuestionCard } from './QuestionCard';
+import { PlanDecision } from './PlanDecision';
+import { TaskAttentionBar } from './TaskAttentionBar';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
@@ -67,6 +70,7 @@ export default function CodeView({
   active = true,
   onSessionsChange,
   onSelectionChange,
+  onAttentionSelect,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
@@ -90,6 +94,7 @@ export default function CodeView({
   active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
+  onAttentionSelect?: (sessionId: string) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
@@ -116,6 +121,7 @@ export default function CodeView({
   const draftSuspended = connectorsOpen && connectorReturn?.destination === 'task';
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
+  const [resolvingQuestionId, setResolvingQuestionId] = useState<string | null>(null);
   const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryComputerId, setRecoveryComputerId] = useState('');
@@ -202,6 +208,7 @@ export default function CodeView({
     setExtensionsOpen(false);
     setRenameOpen(false);
     setResolvingApprovalId(null);
+    setResolvingQuestionId(null);
     setRecoveringTaskId(null);
     setRecoveryPlan(null);
     setRecoveryComputerId('');
@@ -290,6 +297,7 @@ export default function CodeView({
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
       <div className="code-page">
+        <TaskAttentionBar sessions={sessions} selectedId={newTask ? null : selectedId} active={active} scopeKey={skillScopeKey} onSelect={id => onAttentionSelect ? onAttentionSelect(id) : onSelectionChange(id, false)} />
         <DeliveryAutomationMonitor
           sessions={sessions}
           onSessionsChange={onSessionsChange}
@@ -453,7 +461,26 @@ export default function CodeView({
                   void openCodeExternalUrl(MINDS_BILLING_URL);
                 }}
               />
-              {approval && (
+              {session.pending_question && <QuestionCard
+                key={session.pending_question.id}
+                pending={session.pending_question}
+                busy={resolvingQuestionId === session.pending_question.id}
+                onAnswer={async answers => {
+                  // An input request can arrive while a steer RPC is waiting
+                  // on Codex's reader. Answering must remain independently usable.
+                  const questionId = session.pending_question!.id;
+                  setResolvingQuestionId(questionId);
+                  try { await runAction(() => codingApi.answerQuestion(session.id, questionId, answers), true, true); }
+                  finally { setResolvingQuestionId(current => current === questionId ? null : current); }
+                }}
+              />}
+              {session.task_mode === 'plan' && session.status === 'completed' && <PlanDecision
+                key={`plan-${session.id}`}
+                busy={busy}
+                onBuild={() => runAction(() => codingApi.modeTurn(session.id, 'Implement the plan we just reviewed. Verify the result and report what changed.', 'build', session.event_count), true, true)}
+                onRevise={changes => runAction(() => codingApi.turn(session.id, changes), true, true)}
+              />}
+              {approval && !session.pending_question && (
                 <ApprovalCard
                   approval={approval}
                   busy={!!resolvingApprovalId}
@@ -474,6 +501,10 @@ export default function CodeView({
                 key={`composer-${session.id}`}
                 session={session}
                 busy={busy}
+                supportsPlanning={session.computer_is_local !== false && catalog.engines.find(engine => engine.id === session.engine_id)?.features?.planning === 'supported'}
+                onModeSend={(prompt, mode, attachments) => runAction(
+                  () => codingApi.modeTurn(session.id, prompt, mode, session.event_count, attachments), true, true,
+                )}
                 onSend={(prompt, delivery, attachments) => runAction(
                   () => delivery === 'steer'
                     ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)

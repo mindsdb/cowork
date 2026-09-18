@@ -1,9 +1,10 @@
-import type { InputReference } from './api';
+import type { InputReference, TaskMode } from './api';
 
 
 export interface ComposerDraft {
   prompt: string;
   attachments: InputReference[];
+  taskMode?: TaskMode;
 }
 
 // Selecting another task remounts the composer (it is keyed by task id), so
@@ -19,7 +20,7 @@ export function readComposerDraft(sessionId: string): ComposerDraft | undefined 
 
 
 export function writeComposerDraft(sessionId: string, draft: ComposerDraft): void {
-  if (!draft.prompt && !draft.attachments.length) {
+  if (!draft.prompt && !draft.attachments.length && !draft.taskMode) {
     drafts.delete(sessionId);
     return;
   }

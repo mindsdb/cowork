@@ -24,10 +24,13 @@ const RUN_STATUS: Record<TaskRunStatus, { label: string; tone: 'neutral' | 'acce
   recovering: { label: 'Reopening', tone: 'accent' },
 };
 
-export function codingSessionStatus(session: Pick<CodingSession, 'status' | 'run_status' | 'computer_status'>) {
+export function codingSessionStatus(session: Pick<CodingSession, 'status' | 'run_status' | 'computer_status' | 'pending_question' | 'task_mode'>) {
   if (session.computer_status === 'offline' && session.run_status && !['completed', 'cancelled', 'failed'].includes(session.run_status)) {
     return { label: 'Computer offline', tone: 'warning' as const };
   }
+  if (session.pending_question && session.status === 'awaiting_approval') return { label: 'Answer needed', tone: 'warning' as const };
+  if (session.task_mode === 'plan' && session.status === 'completed') return { label: 'Review plan', tone: 'warning' as const };
+  if (session.task_mode === 'plan' && session.status === 'running') return { label: 'Planning', tone: 'accent' as const };
   return session.run_status ? RUN_STATUS[session.run_status] : CODE_STATUS[session.status];
 }
 

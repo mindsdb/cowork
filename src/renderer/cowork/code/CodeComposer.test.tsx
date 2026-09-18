@@ -39,18 +39,21 @@ afterEach(() => {
   resetComposerDrafts();
 });
 
-function renderComposer(session: CodingSession = baseSession, history: string[] = [], referenceRequest: { id: number; item: InputReference } | null = null) {
+function renderComposer(session: CodingSession = baseSession, history: string[] = [], referenceRequest: { id: number; item: InputReference } | null = null, supportsPlanning = false) {
   const onSend = vi.fn(async () => {});
+  const onModeSend = vi.fn(async () => {});
   const onStop = vi.fn(async () => {});
   const onClientCommand = vi.fn();
   const onPermissionChange = vi.fn(async () => {});
   const onSteerQueued = vi.fn(async () => {});
   const onRemoveQueued = vi.fn(async () => {});
-  const { unmount } = render(
+  const element = (
     <CodeComposer
       session={session}
       busy={false}
       onSend={onSend}
+      onModeSend={onModeSend}
+      supportsPlanning={supportsPlanning}
       onStop={onStop}
       commands={commands}
       onClientCommand={onClientCommand}
@@ -59,13 +62,92 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
       onRemoveQueued={onRemoveQueued}
       history={history}
       referenceRequest={referenceRequest}
-    />,
+    />
   );
-  return { onSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued, unmount };
+  const { unmount, container, rerender } = render(element);
+  return { onSend, onModeSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued, unmount, container,
+    rerenderSession: (next: CodingSession, nextModeSend = onModeSend) => rerender(<CodeComposer {...element.props} session={next} onModeSend={nextModeSend} />),
+  };
 }
 
 
 describe('CodeComposer', () => {
+  it('uses the latest idle revision callback without losing the draft during a poll', async () => {
+    const user = userEvent.setup();
+    const idle = { ...baseSession, status: 'completed' as const };
+    const view = renderComposer(idle, [], null, true);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(input, '/plan{Enter}Keep the layout');
+    const latest = vi.fn(async () => {});
+    view.rerenderSession({ ...idle, event_count: 25 }, latest);
+    expect(input).toHaveValue('Keep the layout');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(latest).toHaveBeenCalledWith('Keep the layout', 'plan', []));
+    expect(view.onModeSend).not.toHaveBeenCalled();
+  });
+
+  it('clears a draft mode change if another window starts a turn', async () => {
+    const user = userEvent.setup();
+    const view = renderComposer({ ...baseSession, status: 'completed' }, [], null, true);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(input, '/plan{Enter}Keep the layout');
+    view.rerenderSession(baseSession);
+    expect(screen.queryByRole('button', { name: 'Turn plan mode off' })).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(view.onSend).toHaveBeenCalledWith('Keep the layout', 'queue', []));
+    expect(view.onModeSend).not.toHaveBeenCalled();
+  });
+
+  it('uses /plan as a local toggle, then sends the chosen mode and attachments atomically', async () => {
+    const user = userEvent.setup();
+    const attachment: InputReference = { kind: 'mention', name: 'notes.md', path: '/repo/notes.md' };
+    const { onSend, onModeSend } = renderComposer({ ...baseSession, status: 'completed' }, [], { id: 1, item: attachment }, true);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(input, '/plan');
+    await user.keyboard('{Enter}');
+    expect(input).toHaveValue('');
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onModeSend).not.toHaveBeenCalled();
+    await user.type(input, 'Plan the change');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onModeSend).toHaveBeenCalledWith('Plan the change', 'plan', [attachment]));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('retains mode, draft and references if a mode turn fails', async () => {
+    const user = userEvent.setup();
+    const attachment: InputReference = { kind: 'mention', name: 'notes.md', path: '/repo/notes.md' };
+    const { onModeSend } = renderComposer({ ...baseSession, status: 'completed' }, [], { id: 1, item: attachment }, true);
+    onModeSend.mockRejectedValue(new Error('Task changed'));
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(input, 'Plan the change');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(input).toHaveValue('Plan the change'));
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
+  });
+
+  it('preserves an unsent mode choice when returning to a task', async () => {
+    const user = userEvent.setup();
+    const first = renderComposer({ ...baseSession, status: 'completed' }, [], null, true);
+    await user.type(screen.getByRole('textbox', { name: 'Follow-up instruction' }), '/plan{Enter}');
+    first.unmount();
+    renderComposer({ ...baseSession, status: 'completed' }, [], null, true);
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+  });
+
+  it('keeps Files and folders wired to the file input', async () => {
+    const user = userEvent.setup();
+    const { container } = renderComposer();
+    const input = container.querySelector('input[type=file]') as HTMLInputElement;
+    const click = vi.spyOn(input, 'click');
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Files and folders' }));
+    expect(click).toHaveBeenCalledOnce();
+  });
+
   it('puts searchable MindsHub skills ahead of agent commands', async () => {
     vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
       sources: [],
@@ -200,11 +282,10 @@ describe('CodeComposer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('Run the integration suite after this refactor', 'queue', []));
-    expect(screen.queryByText('Guide now')).not.toBeInTheDocument();
     expect(screen.queryByText('Queue next')).not.toBeInTheDocument();
   });
 
-  it('swaps the primary action between Stop and Queue as a draft is entered', () => {
+  it('keeps Stop available while a follow-up is being composed', () => {
     renderComposer();
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
 
@@ -212,11 +293,32 @@ describe('CodeComposer', () => {
     expect(screen.queryByRole('button', { name: 'Queue instruction' })).not.toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: 'Check the Windows build next' } });
-    expect(screen.queryByRole('button', { name: 'Stop coding agent' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Queue instruction' })).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: '' } });
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeInTheDocument();
+  });
+
+  it('lets the user explicitly steer the current turn', async () => {
+    const user = userEvent.setup();
+    const { onSend } = renderComposer();
+    await user.type(screen.getByRole('textbox', { name: 'Follow-up instruction' }), 'Keep the UI compact');
+    await user.click(screen.getByRole('combobox', { name: 'Instruction delivery' }));
+    await user.click(screen.getByRole('option', { name: 'Steer' }));
+    expect(screen.getByRole('button', { name: 'Steer current turn' })).toHaveTextContent('Steer');
+    expect(screen.queryByText(/Guide now|Guide the active turn/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Steer current turn' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('Keep the UI compact', 'steer', []));
+  });
+
+  it('queues follow-ups during a question instead of treating them as an answer', async () => {
+    const { onSend } = renderComposer({ ...baseSession, status: 'awaiting_approval', pending_question: { id: 'question-1', questions: [] } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'Add a README afterwards' } });
+    expect(screen.getByRole('combobox', { name: 'Instruction delivery' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('Add a README afterwards', 'queue', []));
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
   it('shows persisted queued work and lets the user remove it', () => {
