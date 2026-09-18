@@ -44,6 +44,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget } from '../lib/artifactActions';
+import { artifactIdentity } from '../lib/artifactIdentity';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
@@ -1613,6 +1614,16 @@ export default function ChatView({
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewArt(artifact);
   };
+  // The viewer's publish refresh reports its result even when it lands after
+  // the modal closed, and applying that re-opened what the user just dismissed.
+  const handleArtifactChange = (updated) => {
+    setPreviewArt((cur) => {
+      if (!cur) return cur;
+      const open = artifactIdentity(cur);
+      const same = open ? open === artifactIdentity(updated) : cur.path === updated.path;
+      return same ? updated : cur;
+    });
+  };
   // Task settings menu (kebab in header).
   const settingsBtnRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2848,7 +2859,7 @@ export default function ChatView({
         open={!!previewArt}
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
-        onChange={(updated) => setPreviewArt(updated)}
+        onChange={handleArtifactChange}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
