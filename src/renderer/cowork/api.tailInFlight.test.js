@@ -140,6 +140,24 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     expect(result.event?.code).toBe('reconnect_error');
   });
 
+  it('reports interrupted instead of onDone when the connection closes with no terminal event', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        onDone: () => resolve({ kind: 'done' }),
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event?.code).toBe('interrupted');
+  });
+
   it('keeps the tail alive while real producer frames keep arriving past the idle window', async () => {
     // The mirror of the keepalive test: a producer that keeps emitting real
     // progress frames must NOT be reaped, even well past a single idle window.

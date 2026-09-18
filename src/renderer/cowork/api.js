@@ -62,22 +62,24 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-// Bounds every plain JSON request so a dead server (a proxy holding the
-// socket open with nothing behind it) can't hang a caller forever — Stop,
-// health checks, and history reloads all go through req()/rootReq(). The
-// streaming calls use authFetch directly and manage their own longer-lived
-// idle timeout instead (see _streamResponse/tailInFlight).
-const REQUEST_TIMEOUT_MS = 10_000;
+// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+// the socket open with nothing behind it) can't hang a caller forever. Only
+// callers on the "server may be dead" path opt in (Stop's cancelResponse,
+// the history reload after Stop/error) — everything else stays unbounded,
+// since some endpoints have their own longer server-side budget (e.g.
+// connector validation allows 15s). Streaming calls use authFetch directly
+// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
-function _timeoutSignal(existingSignal) {
-  if (existingSignal) return { signal: existingSignal, cancel: () => {} };
+function _timeoutSignal(existingSignal, timeoutMs) {
+  if (existingSignal || !timeoutMs) return { signal: existingSignal, cancel: () => {} };
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   return { signal: ctrl.signal, cancel: () => clearTimeout(timer) };
 }
 
-async function req(path, options = {}) {
-  const { signal, cancel } = _timeoutSignal(options.signal);
+async function req(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
   try {
     const res = await authFetch(BASE + path, {
       ...options,
@@ -106,8 +108,8 @@ async function req(path, options = {}) {
   }
 }
 
-async function rootReq(path, options = {}) {
-  const { signal, cancel } = _timeoutSignal(options.signal);
+async function rootReq(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
   try {
     const res = await authFetch(ROOT_BASE + path, {
       ...options,
@@ -442,11 +444,11 @@ export async function fetchSessions({ onItems } = {}) {
     .filter(Boolean);
 }
 
-export async function fetchSession(id) {
+export async function fetchSession(id, { timeoutMs } = {}) {
   try {
     const [meta, msgs] = await Promise.all([
-      req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/items`).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}/items`, { timeoutMs }).catch(() => null),
     ]);
     if (!meta) return null;
     return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
@@ -797,7 +799,9 @@ export function tailInFlight(conversationId, {
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed — same as _streamResponse's
+      // main stream: the tail must not report a partial answer as finished.
+      onError?.('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
       // An idle-timeout abort surfaces as an AbortError too, but unlike a
       // caller-initiated abort (a new send or navigation) it must release the
@@ -929,6 +933,7 @@ export async function cancelResponse(conversationId) {
     const res = await req('/responses/cancel', {
       method: 'POST',
       body: JSON.stringify({ conversation_id: conversationId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };
   } catch (err) {

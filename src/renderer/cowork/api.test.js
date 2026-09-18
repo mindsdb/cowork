@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -887,6 +887,49 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+// The 10s bound is opt-in, not a blanket default — some endpoints have their
+// own longer server-side budget (e.g. connector validation allows 15s), and a
+// global client timeout would abort a call the server was about to fulfill.
+// Honors an abort signal like a real fetch would — resolves at delayMs, or
+// rejects earlier if the caller's signal fires first. Without this, a mock
+// that ignores `signal` can't tell a real no-timeout pass from a mutant that
+// silently reintroduced the global default (both just "resolve after delayMs").
+function _abortAwareFetch(delayMs, body) {
+  return vi.fn((_url, options) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(jsonRes(body)), delayMs);
+    options?.signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  }));
+}
+
+describe('req() timeout scoping', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('does not time out a request that opts out (past the short-timeout window)', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(12_000, { connected: true }));
+
+    const resultPromise = validateAndSaveConnector('github', { token: 'x' });
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    expect(await resultPromise).toEqual({ connected: true });
+  });
+
+  it('fetchSession does not time out by default either', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(12_000, { id: 'c1' }));
+
+    const resultPromise = fetchSession('c1');
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    expect(await resultPromise).not.toBeNull();
   });
 });
 
