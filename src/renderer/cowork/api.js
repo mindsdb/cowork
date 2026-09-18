@@ -62,40 +62,68 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-async function req(path, options = {}) {
-  const res = await authFetch(BASE + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const data = await res.json();
-      const raw = data?.detail;
-      detail = Array.isArray(raw)
-        ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-        : (raw || data?.message || '');
-    } catch {
-      detail = await res.text().catch(() => '');
-    }
-    const err = new Error(detail || `API ${path} returned ${res.status}`);
-    err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
-    throw err;
-  }
-  if (res.status === 204) return { ok: true };
-  return res.json();
+// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+// the socket open with nothing behind it) can't hang a caller forever. Only
+// callers on the "server may be dead" path opt in (Stop's cancelResponse,
+// the history reload after Stop/error) — everything else stays unbounded,
+// since some endpoints have their own longer server-side budget (e.g.
+// connector validation allows 15s). Streaming calls use authFetch directly
+// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
+
+function _timeoutSignal(existingSignal, timeoutMs) {
+  if (existingSignal || !timeoutMs) return { signal: existingSignal, cancel: () => {} };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return { signal: ctrl.signal, cancel: () => clearTimeout(timer) };
 }
 
-async function rootReq(path, options = {}) {
-  const res = await authFetch(ROOT_BASE + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (!res.ok) {
-    throw new Error(`API ${path} returned ${res.status}`);
+async function req(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const data = await res.json();
+        const raw = data?.detail;
+        detail = Array.isArray(raw)
+          ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
+          : (raw || data?.message || '');
+      } catch {
+        detail = await res.text().catch(() => '');
+      }
+      const err = new Error(detail || `API ${path} returned ${res.status}`);
+      err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
+      throw err;
+    }
+    if (res.status === 204) return { ok: true };
+    return res.json();
+  } finally {
+    cancel();
   }
-  if (res.status === 204) return { ok: true };
-  return res.json();
+}
+
+async function rootReq(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(ROOT_BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    if (!res.ok) {
+      throw new Error(`API ${path} returned ${res.status}`);
+    }
+    if (res.status === 204) return { ok: true };
+    return res.json();
+  } finally {
+    cancel();
+  }
 }
 
 // In-flight single-flight cache. When several call sites ask for
@@ -416,11 +444,11 @@ export async function fetchSessions({ onItems } = {}) {
     .filter(Boolean);
 }
 
-export async function fetchSession(id) {
+export async function fetchSession(id, { timeoutMs } = {}) {
   try {
     const [meta, msgs] = await Promise.all([
-      req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/items`).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}/items`, { timeoutMs }).catch(() => null),
     ]);
     if (!meta) return null;
     return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
@@ -488,14 +516,29 @@ export function allocateConversationId() {
   return `${Date.now().toString(36)}-${(typeof performance !== 'undefined' ? Math.floor(performance.now() * 1e6) : 0).toString(36)}`;
 }
 
+// No real producer frame for this long (a wedged sidecar, or a proxy holding
+// a dead connection open) aborts rather than hangs forever. Shared with
+// tailInFlight; timed against producer frames, not raw keepalive bytes.
+const STREAM_IDLE_TIMEOUT_MS = 300_000;
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
+  let cid = conversationId || null;
+  // Same idle timer as tailInFlight — a fresh turn stuck behind a dead
+  // proxy connection had none before this.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const res = await authFetch(`${BASE}/responses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -539,7 +582,6 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buffer = '';
-      let cid = conversationId || null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -555,6 +597,10 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
+          bumpIdle();
 
           // Raw passthrough — used by the streamAdapter to build a
           // structured ThinkingStep[] for the UI. Fires before the
@@ -599,11 +645,24 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed — onDone here used to render
+      // partial text as a finished answer. Distinct from stream_error below:
+      // that's a drop mid-read, this is a clean close with no terminal.
+      onError?.('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
-      // Distinct code from tailInFlight's reconnect_error: this is a dropped
-      // connection on the initial send, not a reconnect attempt.
-      if (err.name !== 'AbortError') onError?.(err.message, { code: 'stream_error' });
+      // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
+      // as an AbortError too, so check idledOut first to tell it apart from
+      // a caller-initiated cancel (Stop button, new send, navigation).
+      if (idledOut) {
+        cancelResponse(cid);
+        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+      } else if (err.name !== 'AbortError') {
+        // Distinct code from tailInFlight's reconnect_error: this is a dropped
+        // connection on the initial send, not a reconnect attempt.
+        onError?.(err.message, { code: 'stream_error' });
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;
@@ -648,21 +707,10 @@ export async function fetchInFlightList() {
   }
 }
 
-// A live tail whose producer emits no real frame for this long is treated as
-// dead — the producer is wedged or the sidecar stopped answering, no terminal is
-// coming — so we abort and release the shared stream slot rather than hold it
-// forever. Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s).
-//
-// Timed against producer frames, NOT raw bytes: the server emits a `: keepalive`
-// comment every 20s while a producer is silent, so a byte-level timer would
-// never fire for the hung-producer case this exists to catch. Keepalive blocks
-// carry no `data:` line, so they never parse to an event and never bump the timer.
-const TAIL_IDLE_TIMEOUT_MS = 300_000;
-
 export function tailInFlight(conversationId, {
   fromSeq = 0,
   model = 'anton',
-  idleTimeoutMs = TAIL_IDLE_TIMEOUT_MS,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
@@ -751,7 +799,9 @@ export function tailInFlight(conversationId, {
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed — same as _streamResponse's
+      // main stream: the tail must not report a partial answer as finished.
+      onError?.('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
       // An idle-timeout abort surfaces as an AbortError too, but unlike a
       // caller-initiated abort (a new send or navigation) it must release the
@@ -883,6 +933,7 @@ export async function cancelResponse(conversationId) {
     const res = await req('/responses/cancel', {
       method: 'POST',
       body: JSON.stringify({ conversation_id: conversationId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };
   } catch (err) {

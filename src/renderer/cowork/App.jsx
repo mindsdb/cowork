@@ -76,7 +76,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -470,13 +470,13 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
-    const fresh = await fetchSession(cid);
+    const fresh = await fetchSession(cid, { timeoutMs });
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
@@ -1119,7 +1119,9 @@ function AppCore() {
     if (silent || !cidToCancel) return;
 
     try {
-      const loaded = await loadSessionMessagesWithRetry(cidToCancel, { skipLocalSidecar: true });
+      const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
+        skipLocalSidecar: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+      });
       if (loaded) {
         setTasks((prev) => prev.map((t) =>
           t.id === cidToCancel
@@ -1156,7 +1158,9 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
-    const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    const loaded = cid
+      ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
+      : null;
     // A stream that merely dropped mid-answer can still have finished on the
     // server — the reload then carries no error message. Gating on the same
     // check the UI uses means a turn the user actually saw succeed doesn't
