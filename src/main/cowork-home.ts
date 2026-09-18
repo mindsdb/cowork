@@ -210,8 +210,11 @@ export function coworkStatePath(): string {
 }
 
 export function readEnvFile(): Record<string, string> {
+  return readEnvFileAt(coworkEnvPath());
+}
+
+export function readEnvFileAt(envPath: string): Record<string, string> {
   const vars: Record<string, string> = {};
-  const envPath = coworkEnvPath();
   if (!fs.existsSync(envPath)) return vars;
   const content = fs.readFileSync(envPath, 'utf-8');
   for (const line of content.split('\n')) {
@@ -221,6 +224,53 @@ export function readEnvFile(): Record<string, string> {
     if (eqIdx > 0) vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
   }
   return vars;
+}
+
+/**
+ * What a root the SAME account is starting fresh on inherits from the root it
+ * just disclaimed.
+ *
+ * Only the terms answer, and only when the destination has none. Everything
+ * else about a fresh root should be fresh — that is what the person asked for —
+ * but consent is about the human, not the storage location, and this is the one
+ * account that gave it, minutes earlier, in this session. Re-asking here is
+ * indistinguishable from having been signed out, which is not what the dialog
+ * offered.
+ *
+ * Deliberately NOT the general rule for a new account root: a SECOND account is
+ * a second person and accepts terms itself. See `coworkEnvPath`.
+ */
+export function termsConsentToCarry(
+  disclaimed: Record<string, string>,
+  destination: Record<string, string>,
+): Record<string, string> {
+  if (destination.ANTON_TERMS_CONSENT) return {};
+  return disclaimed.ANTON_TERMS_CONSENT === 'true' ? { ANTON_TERMS_CONSENT: 'true' } : {};
+}
+
+/**
+ * Carry that answer onto the account's own root. Best-effort: a consent that
+ * cannot be copied costs one extra screen, where failing the decision would
+ * cost the person the answer they just gave.
+ */
+export function carryTermsConsentToFreshRoot(disclaimedHome: string): void {
+  try {
+    const envPath = path.join(ensureAccountDataRoot(), '.env');
+    const carry = termsConsentToCarry(
+      readEnvFileAt(path.join(disclaimedHome, '.env')),
+      readEnvFileAt(envPath),
+    );
+    const entries = Object.entries(carry);
+    if (!entries.length) return;
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+    fs.appendFileSync(envPath, prefix + entries.map(([k, v]) => `${k}=${v}`).join('\n') + '\n', {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+  } catch (err) {
+    console.warn('[cowork-home] could not carry the terms answer onto the fresh root', err);
+  }
 }
 
 // Copy the legacy `~/.anton/.env` and `~/.anton/cowork/state.json` to the

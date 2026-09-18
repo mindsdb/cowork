@@ -61,7 +61,7 @@ import {
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -1292,6 +1292,14 @@ function setupIPC() {
       // stays for whoever owns it — but a sidecar started before the record
       // named this account may still be serving the default root, so it has to
       // be moved off the data the person just disclaimed.
+      //
+      // The terms answer comes with them. A fresh root is fresh in every other
+      // respect, which is what was asked for, but the dotenv is per-account and
+      // consent lives in it, so without this the reload below lands on the
+      // terms screen — the same account being asked again, minutes after
+      // answering, in a way that reads as having been signed out rather than as
+      // having started fresh.
+      carryTermsConsentToFreshRoot(home);
       settleOwnership(home);
       await ensureSidecarOnCurrentAccountRoot();
       return { ok: true, keptExisting: false };

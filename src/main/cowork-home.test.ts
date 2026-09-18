@@ -26,6 +26,7 @@ vi.mock('electron', () => ({
 import {
   accountDataRoot,
   buildKindStrict,
+  termsConsentToCarry,
   coworkEnvPath,
   coworkHome,
   coworkStatePath,
@@ -349,5 +350,51 @@ describe('the account data root', () => {
     record({ accountId: ACCOUNT_B, lastAccountId: ACCOUNT_B });
     expect(coworkHome()).toBe(home);
     expect(accountDataRoot()).not.toBe(home);
+  });
+});
+
+// Starting fresh puts the SAME account on its own root, and the dotenv that
+// carries terms consent is per-account — so without this the answer the person
+// just gave is followed by the terms screen, which reads as a sign-out rather
+// than a fresh start.
+describe('termsConsentToCarry', () => {
+  it('carries an accepted answer onto a destination that has none', () => {
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'true' }, {}))
+      .toEqual({ ANTON_TERMS_CONSENT: 'true' });
+  });
+
+  it('carries nothing else, however much the disclaimed root held', () => {
+    // A fresh root is fresh in every other respect: that is what was asked for.
+    expect(termsConsentToCarry(
+      {
+        ANTON_TERMS_CONSENT: 'true',
+        ANTON_MINDS_API_KEY: 'mdb_secret',
+        ANTON_PLANNING_PROVIDER: 'minds_cloud',
+        COWORK_AUTH_TOKEN: 'not-this-roots-token',
+      },
+      {},
+    )).toEqual({ ANTON_TERMS_CONSENT: 'true' });
+  });
+
+  it('leaves a destination that already answered alone', () => {
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'true' }, { ANTON_TERMS_CONSENT: 'false' }))
+      .toEqual({});
+  });
+
+  it('carries nothing when the disclaimed root never accepted', () => {
+    expect(termsConsentToCarry({}, {})).toEqual({});
+    expect(termsConsentToCarry({ ANTON_TERMS_CONSENT: 'false' }, {})).toEqual({});
+  });
+});
+
+describe('the start-fresh answer', () => {
+  it('carries the terms answer before it settles ownership', () => {
+    // Pinned mechanically, like the renderer's purge/reload wiring: the carry
+    // has to happen while the decision is still being applied, and a handler
+    // that dropped the call would look identical from the outside.
+    const source = fs.readFileSync(path.join(__dirname, 'app.ts'), 'utf-8');
+    const branch = source.slice(source.indexOf('if (!keepExisting) {'));
+    expect(branch.indexOf('carryTermsConsentToFreshRoot(home)'))
+      .toBeLessThan(branch.indexOf('settleOwnership(home)'));
   });
 });
