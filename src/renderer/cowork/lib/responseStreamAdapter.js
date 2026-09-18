@@ -62,6 +62,17 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
+    /** Persisted assistant Message's id, off `response.completed`/
+     *  `response.failed`'s root (same placement as conversation_id/harness
+     *  on `response.created` — see _inject_created/_inject_completion_id
+     *  server-side). Null when the turn persisted nothing (an empty turn,
+     *  or a probe turn that never reached the point of saving one). */
+    assistantMessageId: null,
+    /** Persisted user Message's id, off `response.created`'s root. The
+     *  client appends the user's row optimistically on send, so this is the
+     *  only thing that gives that row a real id during its own turn. Null on
+     *  a producer that persists no user row (the probe path). */
+    userMessageId: null,
   };
 }
 
@@ -261,6 +272,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       responseId: event.response?.id ?? state.responseId,
       conversationId: event.conversation_id ?? state.conversationId,
       harness: event.harness ?? state.harness,
+      userMessageId: event.user_message_id ?? state.userMessageId,
       startedAt: state.startedAt ?? now(),
       status: 'thinking',
     };
@@ -272,6 +284,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
       currentThought: null,
+      assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
     };
   }
 
@@ -317,6 +330,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
       currentThought: null,
+      // Present only when a partial assistant row was persisted before the
+      // failure — absent otherwise, not null-vs-unset here since
+      // the wire frame itself omits the field in that case.
+      assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
     };
   }
 

@@ -15,8 +15,17 @@ import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 
-function turnsCount(task) {
+export function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;
+  // hasMoreMessages === true means `messages` is only the task's most
+  // recent PAGE (a partially-loaded, paginated conversation) — that count
+  // is not the total, so hide it rather than assert a wrong one.
+  // hasMoreMessages is simply absent (not false) for a task that's never
+  // been fetched via /items at all — a brand-new chat, or one that's only
+  // ever streamed this session — and for that task `messages` already IS
+  // the complete history (nothing else could have added to it), so it's
+  // safe to count directly rather than hiding it too.
+  if (task.hasMoreMessages === true) return null;
   // Length-checked, not just shape-checked: since ENG-2246 a task can carry an
   // empty `messages` before its transcript is warmed, and an existing
   // conversation never really has zero user turns — so [] means "unknown", and

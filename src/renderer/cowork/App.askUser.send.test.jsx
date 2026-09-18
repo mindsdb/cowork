@@ -1188,6 +1188,53 @@ describe('a requested conversation id not present locally (ENG-1233 Major 4)', (
   });
 });
 
+describe('a sidebar-known task whose messages have not loaded yet', () => {
+  // fetchSessions has no global reset (only fetchSessionResult/fetchSession
+  // do, in the top-level beforeEach) — restore the file's own default shape
+  // so a later test in this file doesn't inherit messagesStatus: 'loading'
+  // rows and get stuck showing the loading state instead of its ChatView.
+  afterEach(() => {
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+    ]);
+  });
+
+  it('shows the loading state instead of an empty transcript, then clears once messages arrive', async () => {
+    const user = userEvent.setup();
+    // Every sidebar-listed task is already in `tasks` (messages: [],
+    // messagesStatus: 'loading') before its own transcript fetch resolves —
+    // the bug this fixes: a gate keyed only on "task known locally" flips
+    // to ready the instant the row is clicked, showing an empty transcript
+    // for however long that fetch takes.
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+      { id: 'conv-b', title: 'Beta task', messages: [], messagesStatus: 'loading', status: 'idle', projectName: 'general' },
+    ]);
+    let resolveFetch;
+    spies.fetchSessionResult.mockImplementationOnce(() => new Promise((resolve) => { resolveFetch = resolve; }));
+
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+    // Not the wrong/empty ChatView rendered underneath at the same time.
+    expect(screen.queryByPlaceholderText(/message/i)).not.toBeInTheDocument();
+
+    resolveFetch({
+      status: 'ok',
+      task: {
+        id: 'conv-a', title: 'Alpha task', status: 'idle', projectName: 'general',
+        messages: [{ role: 'user', content: 'hello from the loaded page' }],
+        messagesStatus: 'loaded',
+      },
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('conversation-loading')).not.toBeInTheDocument());
+    expect(await screen.findByText('hello from the loaded page')).toBeInTheDocument();
+  });
+});
+
 // ─── ENG-2246: a server refresh must not blank the open transcript ──────────
 //
 // fetchSessions now resolves on the conversation LIST alone, so every row it

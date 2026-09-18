@@ -105,10 +105,10 @@ describe('deleteConversationTurn', () => {
   it('still maps a 404 to gone rather than an error', async () => {
     global.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
 
-    await expect(deleteConversationTurn('conv-a', 2)).resolves.toEqual({
+    await expect(deleteConversationTurn('conv-a', 'msg-2')).resolves.toEqual({
       status: 'gone',
       id: 'conv-a',
-      turnIndex: 2,
+      messageId: 'msg-2',
     });
     expect(vi.getTimerCount()).toBe(0);
   });

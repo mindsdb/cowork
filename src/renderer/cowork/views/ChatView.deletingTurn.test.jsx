@@ -1,7 +1,7 @@
 // A turn delete takes seconds on the hosted path, so the exchange has to read
 // as in flight for that whole wait. The first test closes the seam between
-// App and ChatView: the index ChatView hands to onDeleteTurn is the same index
-// it must accept back as deletingTurnIndex. Neither side's own test can catch
+// App and ChatView: the anchor id ChatView hands to onDeleteTurn is the same
+// id it must accept back as deletingTurnMessageId. Neither side's own test can catch
 // a mismatch there — App's mocks ChatView, and .jsx is in no typecheck program.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -28,11 +28,13 @@ const taskWith = (messages) => ({
   messages,
 });
 
+// A turn's anchor is its assistant reply, so these are `a1` and `a2`. Rows
+// need ids at all now: one without an id offers no delete affordance.
 const twoExchanges = [
-  { role: 'user', content: 'first question' },
-  { role: 'assistant', content: 'first answer' },
-  { role: 'user', content: 'second question' },
-  { role: 'assistant', content: 'second answer' },
+  { role: 'user', id: 'u1', content: 'first question' },
+  { role: 'assistant', id: 'a1', content: 'first answer' },
+  { role: 'user', id: 'u2', content: 'second question' },
+  { role: 'assistant', id: 'a2', content: 'second answer' },
 ];
 
 const busyAround = (text) => screen.getByText(text).closest('[aria-busy="true"]');
@@ -45,19 +47,18 @@ describe('a turn being deleted', () => {
       <ChatView task={taskWith(twoExchanges)} onDeleteTurn={onDeleteTurn} />,
     );
 
-    // Take the index from the component rather than assuming it: index 0 is
-    // also falsy, so a truthiness check anywhere in the chain would pass every
-    // other test and break the single-exchange task.
+    // Take the anchor from the component rather than assuming it: this is the
+    // seam where App and ChatView have to agree on what identifies a turn.
     await user.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
     expect(onDeleteTurn).toHaveBeenCalledTimes(1);
     const emitted = onDeleteTurn.mock.calls[0][0];
-    expect(emitted).toBe(0);
+    expect(emitted).toBe('a1');
 
     rerender(
       <ChatView
         task={taskWith(twoExchanges)}
         onDeleteTurn={onDeleteTurn}
-        deletingTurnIndex={emitted}
+        deletingTurnMessageId={emitted}
       />,
     );
 
@@ -74,7 +75,7 @@ describe('a turn being deleted', () => {
       <ChatView
         task={taskWith(twoExchanges)}
         onDeleteTurn={vi.fn()}
-        deletingTurnIndex={0}
+        deletingTurnMessageId="a1"
       />,
     );
 
@@ -85,12 +86,12 @@ describe('a turn being deleted', () => {
 
   it('restores the affordance once the delete is no longer in flight', () => {
     const { rerender } = render(
-      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnMessageId="a1" />,
     );
     expect(screen.queryByText('Deleting…')).toBeInTheDocument();
 
     rerender(
-      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={null} />,
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnMessageId={null} />,
     );
     expect(screen.queryByText('Deleting…')).not.toBeInTheDocument();
     expect(busyAround('first question')).toBeNull();
@@ -100,7 +101,7 @@ describe('a turn being deleted', () => {
   it('marks an orphan user turn, which has no answer bubble to carry the label', async () => {
     const user = userEvent.setup();
     const onDeleteTurn = vi.fn();
-    const orphan = [{ role: 'user', content: 'stopped before any answer' }];
+    const orphan = [{ role: 'user', id: 'u1', content: 'stopped before any answer' }];
     const { rerender } = render(
       <ChatView task={taskWith(orphan)} onDeleteTurn={onDeleteTurn} />,
     );
@@ -109,7 +110,7 @@ describe('a turn being deleted', () => {
     const emitted = onDeleteTurn.mock.calls[0][0];
 
     rerender(
-      <ChatView task={taskWith(orphan)} onDeleteTurn={onDeleteTurn} deletingTurnIndex={emitted} />,
+      <ChatView task={taskWith(orphan)} onDeleteTurn={onDeleteTurn} deletingTurnMessageId={emitted} />,
     );
     expect(busyAround('stopped before any answer')).not.toBeNull();
     expect(screen.getByText('Deleting…')).toBeInTheDocument();
@@ -130,7 +131,7 @@ describe('a turn being deleted', () => {
     expect(live.closest('[aria-busy="true"]')).toBeNull();
 
     rerender(
-      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnMessageId="a1" />,
     );
     const liveAfter = screen.getByTestId('delete-turn-status');
     expect(liveAfter.textContent).toMatch(/deleting/i);
@@ -139,11 +140,11 @@ describe('a turn being deleted', () => {
 
   it('marks a carded failure, not only the generic error bubble', () => {
     const rateLimited = [
-      { role: 'user', content: 'ask me' },
+      { role: 'user', id: 'u1', content: 'ask me' },
       { role: 'error', content: 'Too many requests', code: 'rate_limited' },
     ];
     render(
-      <ChatView task={taskWith(rateLimited)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+      <ChatView task={taskWith(rateLimited)} onDeleteTurn={vi.fn()} deletingTurnMessageId="u1" />,
     );
 
     // A failed exchange is a likely delete target, and its answer half is a
@@ -154,7 +155,7 @@ describe('a turn being deleted', () => {
 
   it('leaves no action toolbar on the turn being deleted', () => {
     render(
-      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+      <ChatView task={taskWith(twoExchanges)} onDeleteTurn={vi.fn()} deletingTurnMessageId="a1" />,
     );
 
     // Copy goes too: the exchange is on its way out, so its toolbar is not
@@ -170,11 +171,11 @@ describe('a turn being deleted', () => {
 
   it('marks both halves of a failed exchange, not just the question', () => {
     const failed = [
-      { role: 'user', content: 'draw me a chart' },
+      { role: 'user', id: 'u1', content: 'draw me a chart' },
       { role: 'error', content: 'The turn failed before it produced anything.', code: 'server_error' },
     ];
     render(
-      <ChatView task={taskWith(failed)} onDeleteTurn={vi.fn()} deletingTurnIndex={0} />,
+      <ChatView task={taskWith(failed)} onDeleteTurn={vi.fn()} deletingTurnMessageId="u1" />,
     );
 
     expect(busyAround('draw me a chart')).not.toBeNull();
