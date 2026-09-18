@@ -70,7 +70,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
-import { normalizeExternalBrowserUrl } from './external-url';
+import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -553,6 +553,11 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     // Allow dev server reloads
     if (!app.isPackaged && url.startsWith('http://localhost')) return;
+    // And a packaged document reloading ITSELF, which arrives here too: the
+    // account switch, the organization switch and the sign-out all replace the
+    // document rather than trying to scrub it, and blocking that is silent —
+    // the URL is our own, so nothing opens in a browser and nothing is logged.
+    if (isSelfReload(url, mainWindow?.webContents.getURL())) return;
     // Block navigation and open in OS browser
     event.preventDefault();
     const browserUrl = normalizeExternalBrowserUrl(url);
