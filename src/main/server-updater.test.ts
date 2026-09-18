@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import * as http from 'http';
 import * as https from 'https';
 import { EventEmitter } from 'events';
 
@@ -19,8 +20,12 @@ vi.mock('./server-process', () => ({
 // buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
 // without a packaged app (mirrors server-source.test.ts).
 vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
+// authHeader reaches cowork-home's readEnvFile in turn; mocked at this
+// boundary instead so this file doesn't have to also stub that.
+vi.mock('./server-auth', () => ({ authHeader: vi.fn(() => ({})) }));
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('http');
 vi.mock('https');
 
 import { startServer } from './server-process';
@@ -49,6 +54,24 @@ function mockPypi(bodyFor: (url: string) => string | null) {
     return req as never;
   }) as never);
 }
+
+/** Stub http.request for probeAuthMismatch's GET /conversations/ check. A
+ *  200 (the default) means "not a mismatch"; mockAuthMismatch below flips it
+ *  to 401 for the tests that exercise that path specifically. */
+function mockAuthProbe(statusCode: number) {
+  vi.mocked(http.request).mockImplementation(((_opts: unknown, cb: (r: unknown) => void) => {
+    const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
+    res.statusCode = statusCode;
+    res.resume = () => {};
+    setTimeout(() => cb(res), 0);
+    const req = { on: () => req, end: () => {}, destroy: () => {} };
+    return req as never;
+  }) as never);
+}
+
+beforeEach(() => {
+  mockAuthProbe(200);
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -169,6 +192,64 @@ describe('maybeUpdateServer (orchestration)', () => {
     ).toBe(true);
 
     // And the rolled-back server was started again (recovery, not a dead app).
+    expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+  });
+
+  /*
+   * ENG-2852: /health is exempt from auth by design, so a passing health
+   * check alone can't tell an auth-mismatched sidecar (COWORK_REQUIRE_AUTH
+   * on, this shell holding no matching token — e.g. a shell old enough to
+   * predate server-auth.ts) from a genuinely healthy one. Before this fix,
+   * startServer() resolving {ok: true} was the update's only signal, so this
+   * exact case reported success while every route but /health then 401'd.
+   */
+  it('rolls back when the update answers /health but 401s on an authenticated route', async () => {
+    const OLD_COWORK = 'a'.repeat(40);
+    const OLD_ANTON = 'b'.repeat(40);
+    const NEW_COWORK = 'c'.repeat(40);
+
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      'cowork_server-0.1.12.dist-info',
+      'anton_agent-1.0.0.dist-info',
+    ] as never);
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) =>
+      JSON.stringify({
+        vcs_info: {
+          commit_id: String(p).includes('cowork_server-') ? OLD_COWORK : OLD_ANTON,
+          requested_revision: 'main',
+        },
+      })) as never);
+
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (cmd === 'git') {
+        const sha = args[1].includes('cowork-server.git') ? NEW_COWORK : OLD_ANTON;
+        cb(null, `${sha}\trefs/heads/main\n`, '');
+      } else {
+        cb(null, '', '');
+      }
+      return {} as never;
+    }) as never);
+
+    // Both the updated server AND the rolled-back one answer /health fine —
+    // the mismatch has to be caught by the authenticated probe, not by
+    // startServer() failing outright. The probe only runs on the freshly
+    // updated server, not again after rollback, so a single 401 stub covers
+    // the whole test.
+    vi.mocked(startServer).mockResolvedValue({ ok: true, port: 26866 } as never);
+    mockAuthProbe(401);
+
+    const result = await maybeUpdateServer();
+
+    expect(result.updated).toBe(false);
+    expect(result.error).toContain('auth mismatch');
+    // The rollback path ran: prior commits reinstalled, server started twice.
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
   });
 });

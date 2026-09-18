@@ -4,9 +4,9 @@ import { render } from '@testing-library/react';
 // MarkdownContent pulls in the platform host bridge, the skills store, and
 // the code/table renderers. None are relevant to math rendering, so stub
 // them to keep the test focused on the remark-math + rehype-katex pipeline.
-vi.mock('../../../platform/host', () => ({
-  host: { openExternal: vi.fn() },
-}));
+// The host bridge is stubbed once, below, together with the `isWeb` gate.
+// Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
+// and the loser taking `isWeb` with it fails every web case in this file.
 vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
@@ -23,10 +23,14 @@ vi.mock('./MarkdownTable', () => ({
 // Flippable surface: the plugin passes `host.isWeb` into isArtifactLocalPath,
 // and the two ENG-2421 end-to-end cases below need to prove BOTH sides of that
 // gate — with a hard-coded value, dropping the flag pass would stay green.
+// The `openExternal` stub lives here too, so this stays the only host mock.
 const hostState = vi.hoisted(() => ({ isWeb: false }));
 vi.mock('../../../platform/host', async (importOriginal) => {
   const mod = await importOriginal();
-  return { ...mod, host: { ...mod.host, get isWeb() { return hostState.isWeb; } } };
+  return {
+    ...mod,
+    host: { ...mod.host, openExternal: vi.fn(), get isWeb() { return hostState.isWeb; } },
+  };
 });
 
 import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';

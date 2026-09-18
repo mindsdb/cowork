@@ -100,14 +100,14 @@ uv run cowork-server
 
 FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
 
-**Optional bearer-token authentication** — off by default. Set in `~/.cowork/.env`:
+**Bearer-token authentication** — on by default in local/desktop tenancy. Off by default in org mode, where `COWORK_REQUIRE_AUTH=true` isn't supported at all — the token would be mirrored into shared storage every org can read; org's own ingress is the auth boundary there. To pin a fixed token or opt out in local mode, set in `~/.cowork/.env`:
 
 ```
-COWORK_REQUIRE_AUTH=true
+COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
 COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
 ```
 
-When `COWORK_REQUIRE_AUTH=true` and `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
+When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
 
 #### Install source & channel
 
@@ -149,7 +149,7 @@ python3 -c "import ast; ast.parse(open('server/anton_api/<file>.py').read())"
 Electron main (Node/TS)
   ├── spawns cowork-server subprocess (src/main/server-process.ts)
   ├── manages OAuth PKCE loopback (src/main/oauth-service.ts)
-  ├── handles IPC from renderer (src/main/index.ts)
+  ├── handles IPC from renderer (src/main/app.ts)
   └── exposes bridge via contextBridge (src/main/preload.ts → window.antontron)
 
 Electron renderer (React/TS, sandboxed)

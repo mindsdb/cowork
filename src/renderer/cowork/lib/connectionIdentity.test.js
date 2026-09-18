@@ -150,6 +150,54 @@ describe('connectionIdentity — subtitle', () => {
     expect(b.subtitle).toBe('Work · github-bbb222');
   });
 
+  it('does not repeat the identity when its own global-uniqueness counter is the only difference', () => {
+    // ensure_unique_user_label() (anton/utils/datasources.py) enforces
+    // user_label uniqueness GLOBALLY, across every engine — not scoped to
+    // one. Connecting the same Google account to both Gmail and Drive gives
+    // both connections the same email as their default label; the second
+    // one collides and gets " 2" appended purely to stay globally unique.
+    // Seen live: Drive's tile showed "martyna@mindsdb.com 2 ·
+    // martyna@mindsdb.com" instead of just the email.
+    expect(connectionIdentity({
+      engine: 'google_drive', name: 'google_drive-abc123', label: 'Google Drive',
+      user_label: 'martyna@mindsdb.com 2', display_name: 'martyna@mindsdb.com',
+    })).toEqual({ title: 'Google Drive', subtitle: 'martyna@mindsdb.com' });
+  });
+
+  it('does not repeat an org name when a same-named org on a different connector took the plain label first', () => {
+    // Same mechanism as above, but for org-based connectors: a Linear
+    // workspace named "MindsDB" and a PostHog organization also named
+    // "MindsDB" collide on the global label, so PostHog (connected second)
+    // gets "MindsDB 2" as its stored user_label.
+    expect(connectionIdentity({
+      engine: 'posthog', name: 'posthog-abc123', label: 'PostHog',
+      user_label: 'MindsDB 2', display_name: 'MindsDB',
+    })).toEqual({ title: 'PostHog', subtitle: 'MindsDB' });
+  });
+
+  it('keeps a genuinely distinct user_label that merely ends in a number', () => {
+    // Guards against over-stripping: a real, human-chosen label ending in a
+    // digit that is NOT a disambiguation counter (i.e. it doesn't match the
+    // identity once stripped) must still show alongside the identity.
+    expect(connectionIdentity({
+      engine: 'github', name: 'github-abc123', label: 'GitHub',
+      user_label: 'Team 2', display_name: 'octocat',
+    })).toEqual({ title: 'GitHub', subtitle: 'Team 2 · octocat' });
+  });
+
+  it('does not repeat the title when a bare-engine-id label picked up a global-uniqueness counter', () => {
+    // Same mechanism as the identity-again cases above, but for the
+    // title-again path: a connection with no identity at all (the account
+    // lookup returned nothing) whose user_label is the bare engine id plus
+    // a counter — e.g. a second Google Drive connection whose account_name
+    // AND account_email both failed to resolve — must still read as "the
+    // title, again," not a meaningful second value.
+    expect(connectionIdentity({
+      engine: 'google_drive', name: 'google_drive-abc123', label: 'Google Drive',
+      user_label: 'google_drive 2',
+    })).toEqual({ title: 'Google Drive', subtitle: 'google_drive-abc123' });
+  });
+
   it('does not throw when user_label or display_name is a non-string truthy value', () => {
     expect(() => connectionIdentity({
       engine: 'github', name: 'github-46461b', label: 'GitHub', user_label: 42, display_name: true,

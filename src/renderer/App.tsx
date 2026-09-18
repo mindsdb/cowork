@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
-import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
+import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host } from './platform/host';
+import { host, type AccountOwnershipQuestion } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
@@ -15,7 +15,6 @@ import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
-import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
 // Onboarding flow:
@@ -27,7 +26,6 @@ type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
-const COWORKER_KEY = 'anton.coworker';
 // Minimum time the welcome orb stays up so it doesn't flash on fast boots.
 // The boot veil only briefly masks the window-show moment (~140ms + ~260ms
 // fade), so the animated orb is on screen almost immediately and stays for
@@ -51,17 +49,6 @@ function hasLocalTermsConsent(): boolean {
 
 function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
-}
-
-// Agent defaults to Anton (no picker in onboarding). A previously-selected
-// coworker in localStorage is still honored if present.
-function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
-  let id = 'anton';
-  try { id = window.localStorage.getItem(COWORKER_KEY) || 'anton'; } catch {}
-  const cw = COWORKERS.find((c) => c.id === id && !c.locked);
-  return cw
-    ? { id: cw.id, label: cw.name, sprite: cw.sprite }
-    : { id: 'anton', label: 'ANTON', sprite: 'anton' };
 }
 
 // Map skin + theme → the onboarding shell's look. arcade.css reads
@@ -89,7 +76,6 @@ export default function App() {
   // first-run/auth routing so interrupted, approval, failure, dense, and
   // responsive states stay deterministic even on a clean local profile.
   const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
-  const [coworker] = useState(recallCoworker);
   // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
   // setup/install screen (server wasn't up to take the DB write). Consumed once
   // by handlePostAuth after install. A ref (not state) — it drives a one-shot
@@ -301,6 +287,45 @@ export default function App() {
     await handlePostAuth();
   };
 
+  // Who owns the data already on this machine, when nothing on disk can say.
+  //
+  // Mounted HERE, in the shell, rather than inside CoworkApp: an account that has
+  // been resolved onto its own empty root has no credentials in that root, so
+  // config_ready is false and boot routes to 'auth'. A dialog living on the
+  // 'terminal' route would be unreachable in exactly the state that needs it.
+  const [ownership, setOwnership] = useState<AccountOwnershipQuestion | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    host.accountOwnershipPending()
+      .then((question) => { if (!cancelled) setOwnership(question); })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, [page]);
+
+  const [ownershipError, setOwnershipError] = useState<string | null>(null);
+  const decideOwnership = useCallback(async (keepExisting: boolean) => {
+    if (!ownership) return;
+    const { ok, reason } = await host.decideAccountOwnership(ownership.accountId, keepExisting);
+    if (!ok) {
+      // The claim can fail to write or lose a race to another launch. Closing
+      // the dialog here would leave the person on an empty app having just said
+      // the history was theirs, with nothing said about why it is not.
+      setOwnershipError(
+        reason === 'account-changed'
+          ? 'The signed-in account changed. Sign in again to answer this.'
+          : 'Could not take that data. Nothing was changed — try again.',
+      );
+      return;
+    }
+    setOwnershipError(null);
+    setOwnership(null);
+    // Reload on BOTH answers. Taking the data restarted the sidecar onto it;
+    // declining moved the sidecar off it. Either way everything already on
+    // screen, and the conversation caches behind it, came from the other
+    // database.
+    window.location.reload();
+  }, [ownership]);
+
   const isMac = host.isMac();
   const isArcadePage = page !== 'terminal';
 
@@ -308,6 +333,16 @@ export default function App() {
     <>
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
+
+      {ownership && (
+        <AccountOwnershipModal
+          open
+          accountLabel={ownership.accountLabel}
+          error={ownershipError}
+          onDecide={decideOwnership}
+          onDismiss={() => { setOwnershipError(null); setOwnership(null); }}
+        />
+      )}
 
       {page === 'loading' && (
         <div
@@ -327,7 +362,7 @@ export default function App() {
       )}
 
       {page === 'auth' && (
-        <OnboardingScreen coworker={coworker} onComplete={handleAuthComplete} />
+        <OnboardingScreen onComplete={handleAuthComplete} />
       )}
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}

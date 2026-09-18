@@ -355,7 +355,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 ### Provider validation is answered in main, not proxied to the sidecar
 
 `settings:validate` is handled entirely in the main process. The IPC handler is in
-`src/main/index.ts` and the validators it calls (`validateMinds`,
+`src/main/app.ts` and the validators it calls (`validateMinds`,
 `validateOpenAICompatible`, `validateAnthropic`) live in
 `src/main/provider-validation.ts`. It never reaches the Python sidecar. The same
 logic also lives in the sidecar (`cowork-server/cowork/services/providers.py`), and
@@ -438,7 +438,7 @@ Four consequences worth knowing:
   over-the-air update and its rollback, the sidebar's stop/start, and the
   installer's first start on a fresh machine. Wiring the push into each of those
   is how one gets missed, so it hangs off the single function they all call.
-  `src/main/index.ts` registers `handOffMindsCredentialToStartedSidecar` with
+  `src/main/app.ts` registers `handOffMindsCredentialToStartedSidecar` with
   `setServerStartedHook`, and `startServer` awaits it after every successful
   start (`src/main/server-process.ts`). That hook also releases the wake barrier
   below, because a sidecar restarting mid-hand-over is exactly when a turn is
@@ -889,7 +889,7 @@ How it works:
 
 The Electron **shell** (`src/main/`, preload, native deps) can't hot-swap itself while running, so it updates one of two ways:
 
-- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on both **stable** and **prod** (stable led the rollout ring); `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
+- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h — and every 30 minutes once a build is downloaded and waiting for a restart, so the pending installer can't go stale while the feed moves on — downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on both **stable** and **prod** (stable led the rollout ring); `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
 - **Manual notice (ENG-849)** — a `prod`-only fallback (also shown when auto-update is disabled or has failed): the poll compares the installed shell CalVer against `shellVersion` in `latest.json` and, if newer, shows a dismissible "New version available — Download" banner (per-version dismissal) linking to the installer on `downloads.mindshub.ai`. **Detection only** — it never downloads or installs.
 
 Both surface in the sidebar and in Settings → Updates. See `src/main/shell-auto-update-runtime.ts` (auto-update state machine) and `checkForShellUpdate()` in `src/main/updater.ts` (manual notice).

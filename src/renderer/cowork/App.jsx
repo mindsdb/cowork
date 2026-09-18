@@ -50,6 +50,8 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
+import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
+import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -1275,13 +1277,8 @@ function AppCore() {
     // the server falls back to this one (providers.build_llm_client), so the
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
-    // Account-wide harness toggle (web-only Settings → Agent Harness) —
-    // EffortSelect needs this outside coding mode, where Composer's own
-    // harness state is hardcoded 'anton' and can't say whether Hermes is
-    // actually configured account-wide.
-    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, settings.harness, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2532,6 +2529,76 @@ function AppCore() {
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
+  // undefined (never a real accountId or the null of "signed out") so the
+  // very first render always runs the check below at least once.
+  const purgedAccountRef = useRef(undefined);
+  // The last account this document actually rendered for. Separate from the
+  // purge ref, which tracks nulls too: a sign-out and a sign-in are two steps
+  // through null, and the pair is still one account change to this document.
+  const renderedForAccountRef = useRef(null);
+
+  // Drop the previous account's browser-local caches once we know who is signed
+  // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
+  // has its own epoch, and only a change of ACCOUNT invalidates this state.
+  //
+  // This handles a MARKED cache naming another account. An unmarked one is the
+  // shell's ruling to make, and its snapshot is resolved in preload, so it
+  // applies only while it is about this same account: a sign-in inside this
+  // document is a session the snapshot predates (see legacyVerdictForSession).
+  //
+  // Adopted during render, not from an effect, for the same reason `useDraft`
+  // adopts a changed key during render rather than an effect: a descendant
+  // (the composer) seeds its state from this same storage on ITS first
+  // render, which happens before an effect registered here would ever run —
+  // on web there is no earlier, pre-mount purge to catch it first the way
+  // Electron's main.tsx has.
+  const accountId = codeAccountUser?.sub ?? null;
+  if (purgedAccountRef.current !== accountId) {
+    // `undefined` only on the very first pass, which runs during this
+    // component's own render and therefore BEFORE the composer below it has
+    // mounted and read storage. A purge there displaces nothing that is on
+    // screen; every later one does.
+    const firstPass = purgedAccountRef.current === undefined;
+    purgedAccountRef.current = accountId;
+    const shellSession = host.accountSessionSync();
+    const purgedStaleAccount = purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
+    // See main.tsx for why this has to run alongside the purge: onboardingStore
+    // caches its localStorage keys into a module-level variable at import
+    // time, so removing the keys alone leaves that snapshot stale.
+    if (purgedStaleAccount) resetOnboardingProgress();
+
+    /**
+     * A document that has already rendered for another account reloads rather
+     * than trying to scrub itself.
+     *
+     * Clearing storage is not enough and cannot be made enough by adding
+     * resets: `useAccountUser` resolves asynchronously, so the composer can
+     * already hold the previous account's draft before this runs, and that
+     * draft lives in `draftStore`'s module map and in `useDraft`'s state under
+     * a home key every account spells the same way. `resetOnboardingProgress`
+     * above is the same problem solved once by hand; a reload solves the whole
+     * class by construction, including the stores nobody has thought of yet.
+     *
+     * Only a change BETWEEN accounts reloads. The first identity of a document
+     * is not a change, and a sign-out on its own is not either, which is why
+     * this tracks the last account rendered for rather than the last value
+     * seen: signing out and back in as someone else passes through null and is
+     * still one change.
+     *
+     * A document that boots SIGNED OUT has rendered for nobody, so that test
+     * cannot catch the sign-in that follows — and the composer has already
+     * hydrated whatever cache was lying there. The purge result is the second
+     * route in: it removed another account's state from under a document that
+     * was already on screen, which is the same displacement seen at the cache.
+     */
+    const displacedAnotherAccount = purgedStaleAccount && !firstPass;
+    const previous = renderedForAccountRef.current;
+    if (accountId) renderedForAccountRef.current = accountId;
+    if (shouldReloadForAccountChange(previous, accountId, displacedAnotherAccount)) {
+      globalThis.location?.reload();
+    }
+  }
+
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
   // and Settings → Usage read it through HubUsageContext. Re-read when a turn
   // finishes too, so a task that just spent the last free tokens flips the
@@ -2914,8 +2981,8 @@ function AppCore() {
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       reasoningEffort: selectedEffort ?? null,
-      // The composer's harness pick (ENG-1656 follow-up) — Anton or
-      // Hermes here; 'claude-code' never reaches this function (the top
+      // The composer's harness pick — Anton here;
+      // 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
       harness: meta?.harness || null,
       attachments: sendingAttachments,
@@ -4030,85 +4097,185 @@ function AppCore() {
   // hit the API and re-hydrate the chat from the truncated history.
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
-  const handleDeleteTurnRequest = (taskId, turnIndex) => {
+  // Turn index currently being deleted, per conversation id. Keyed rather than
+  // a single slot because a delete may be in flight in more than one
+  // conversation at once, and each has to clear only its own.
+  const [deletingTurns, setDeletingTurns] = useState({});
+
+  // Conversations holding a list the server has not vouched for since the last
+  // delete. Nothing the client does can bound when a delete it gave up on
+  // commits, so the guarantee is narrower than it looks: the next delete only
+  // goes out against a list fetched after the user was told about this one.
+  const [unconfirmedDeletes, setUnconfirmedDeletes] = useState({});
+  const refreshingAfterDeleteRef = useRef(new Set());
+
+  /**
+   * Replaces a conversation's messages with the server's, so a delete keyed by
+   * position aims at the exchange the user is looking at. Returns false when
+   * the server could not be asked; the list on screen then stays unvouched for.
+   */
+  const resyncConversationAfterDelete = async (taskId) => {
+    try {
+      // fetchSessionResult, not fetchSession: that one turns a failed `/items`
+      // into `messages: []`, blanking the transcript and reading as a re-sync.
+      const res = await fetchSessionResult(taskId);
+      if (res?.status !== 'ok' || !Array.isArray(res.task?.messages)) {
+        // eslint-disable-next-line no-console
+        console.error('[resyncConversationAfterDelete] no transcript returned', res?.status);
+        return false;
+      }
+      const fresh = res.task;
+      setTasks((prev) => prev.map((t) =>
+        t.id === taskId
+          ? {
+            ...t,
+            messages: applySessionMessages(taskId, fresh.messages),
+            // What survived says how many turns are left. Counted from the
+            // refetch, since the server resolves `turnIndex` its own way.
+            usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
+          }
+          : t,
+      ));
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[resyncConversationAfterDelete] refetch failed', e);
+      return false;
+    }
+  };
+
+  const handleDeleteTurnRequest = async (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
+    // A second delete in the same conversation would carry a stale index: the
+    // server reindexes what survives, so it would remove the wrong exchange.
+    // Another conversation is unaffected and stays deletable.
+    if (deletingTurns[taskId] != null) return;
+    if (unconfirmedDeletes[taskId]) {
+      if (refreshingAfterDeleteRef.current.has(taskId)) return;
+      refreshingAfterDeleteRef.current.add(taskId);
+      // Said before the fetch, not after it: the click has to register at once,
+      // and this spends it on a refresh rather than on `turnIndex`, which was
+      // read off the very list being replaced.
+      alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
+      try {
+        if (await resyncConversationAfterDelete(taskId)) {
+          setUnconfirmedDeletes((prev) => {
+            if (!prev[taskId]) return prev;
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        } else {
+          alert('This conversation could not be refreshed. Reload it before deleting anything else in it.');
+        }
+      } finally {
+        refreshingAfterDeleteRef.current.delete(taskId);
+      }
+      return;
+    }
     setPendingDeleteTurn({ taskId, turnIndex });
   };
 
   const performDeleteTurn = async (taskId, turnIndex) => {
     if (!taskId || typeof turnIndex !== 'number') return;
-    // If anton is actively streaming a response to the turn being
-    // deleted, stop the stream first so the SSE connection doesn't
-    // keep producing events for a turn that no longer exists. The
-    // silent flag skips the post-cancel session refetch.
-    if (activeStreamingTaskIdRef.current === taskId) {
-      try { await handleStopStream({ silent: true }); } catch {}
-    }
-    if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
-      // No server-side history yet — drop the local pair only.
-      setTasks((prev) => prev.map((t) => {
-        if (t.id !== taskId) return t;
-        let assistantSeen = -1;
-        let dropFromUserAt = -1;
-        let dropEnd = (t.messages || []).length;
-        for (let i = 0; i < (t.messages || []).length; i++) {
-          const m = t.messages[i];
-          if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
-            dropFromUserAt = i;
-          }
-          if (m.role === 'assistant') {
-            assistantSeen += 1;
-            if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
-              dropEnd = i;
-              break;
-            }
-          }
-        }
-        if (dropFromUserAt === -1) return t;
-        // Read off the cut, not off `turnIndex`: the walk above counts assistant
-        // rows while the caller counts user ones, so it can take extra turns.
-        const cut = t.messages.slice(dropFromUserAt, dropEnd);
-        return {
-          ...t,
-          usageNotices: removeNoticeTurns(
-            t.usageNotices,
-            userTurnCount(t.messages.slice(0, dropFromUserAt)),
-            userTurnCount(cut),
-          ),
-          messages: [
-            ...t.messages.slice(0, dropFromUserAt),
-            ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
-          ],
-        };
-      }));
-      return;
+    const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
+    // Raised before the stop-stream branch, not after it: cancelling a live
+    // stream is itself two network calls, and the turn has to read as in
+    // flight for that wait too. The local-only path never sets it.
+    if (!isLocalOnly) {
+      setDeletingTurns((prev) => ({ ...prev, [taskId]: turnIndex }));
     }
     try {
-      await deleteConversationTurn(taskId, turnIndex);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[performDeleteTurn] server delete failed', e);
-      alert(`Could not delete this exchange: ${e?.message || e}`);
-      return;
-    }
-    // Re-fetch the conversation so `tasks[].messages` reflects the
-    // truncated server history (and any reindexed events sidecar).
-    try {
-      const fresh = await fetchSession(taskId);
-      if (fresh && Array.isArray(fresh.messages)) {
-        setTasks((prev) => prev.map((t) =>
-          t.id === taskId
-            ? {
-              ...t,
-              messages: applySessionMessages(taskId, fresh.messages),
-              // What survived says how many turns are left. Counted from the
-              // refetch, since the server resolves `turnIndex` its own way.
-              usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
-            }
-            : t,
-        ));
+      // If anton is actively streaming a response to the turn being
+      // deleted, stop the stream first so the SSE connection doesn't
+      // keep producing events for a turn that no longer exists. The
+      // silent flag skips the post-cancel session refetch.
+      if (activeStreamingTaskIdRef.current === taskId) {
+        try { await handleStopStream({ silent: true }); } catch {}
       }
-    } catch {}
+      if (isLocalOnly) {
+        // No server-side history yet — drop the local pair only.
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t;
+          let assistantSeen = -1;
+          let dropFromUserAt = -1;
+          let dropEnd = (t.messages || []).length;
+          for (let i = 0; i < (t.messages || []).length; i++) {
+            const m = t.messages[i];
+            if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
+              dropFromUserAt = i;
+            }
+            if (m.role === 'assistant') {
+              assistantSeen += 1;
+              if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
+                dropEnd = i;
+                break;
+              }
+            }
+          }
+          if (dropFromUserAt === -1) return t;
+          // Read off the cut, not off `turnIndex`: the walk above counts assistant
+          // rows while the caller counts user ones, so it can take extra turns.
+          const cut = t.messages.slice(dropFromUserAt, dropEnd);
+          return {
+            ...t,
+            usageNotices: removeNoticeTurns(
+              t.usageNotices,
+              userTurnCount(t.messages.slice(0, dropFromUserAt)),
+              userTurnCount(cut),
+            ),
+            messages: [
+              ...t.messages.slice(0, dropFromUserAt),
+              ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
+            ],
+          };
+        }));
+        return;
+      }
+      let failure = null;
+      try {
+        await deleteConversationTurn(taskId, turnIndex);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[performDeleteTurn] server delete failed', e);
+        failure = e;
+      }
+      // Re-fetch whatever happened above, not just on success. A delete we did
+      // not see confirmed may still have landed, and the server reindexes what
+      // survives, so handing the delete affordances back against the old list
+      // would aim the next one at a different exchange than the user sees.
+      const resynced = await resyncConversationAfterDelete(taskId);
+      // Only a 4xx is the server saying it did not do this. Our own timeout, a
+      // gateway 5xx and no response at all all leave a delete that may still
+      // commit, which a re-sync read before it does cannot show.
+      const refused = failure?.status >= 400 && failure.status < 500;
+      if (!resynced || (failure && !refused)) {
+        setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: true }));
+      }
+      if (!resynced) {
+        // The quiet version of this is the one that loses data: the exchange
+        // may be gone on the server while the list still shows it, and the
+        // next delete is keyed by position in that list.
+        alert(failure
+          ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
+          : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
+      } else if (failure && !refused) {
+        alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
+      } else if (failure) {
+        alert(`Could not delete this exchange: ${failure?.message || failure}`);
+      }
+    } finally {
+      // Cleared in the same continuation that truncates the list, so the turn
+      // never un-dims back into a list that still shows it.
+      if (!isLocalOnly) {
+        setDeletingTurns((prev) => {
+          if (prev[taskId] == null) return prev;
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      }
+    }
   };
 
   const handleDeleteProject = (project) => {
@@ -4654,7 +4821,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
@@ -4678,7 +4844,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -4721,6 +4886,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
+            deletingTurnIndex={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
@@ -4849,7 +5015,6 @@ function AppCore() {
             onOpenSettings={openSettings}
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
-            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}

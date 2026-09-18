@@ -45,6 +45,11 @@ vi.mock('./api', () => ({
 import type { CodeProject, SkillLibraryPage } from './api';
 import { CodeSkillsView } from './CodeSkillsView';
 import { SkillScopeContext, resetSkillLibraryCache } from './useSkillLibrary';
+import { personalSkillsApi } from './personalSkillsApi';
+
+vi.mock('./personalSkillsApi', () => ({ personalSkillsApi: {
+  get: vi.fn(), create: vi.fn(), import: vi.fn(), update: vi.fn(), remove: vi.fn(),
+} }));
 
 const projects: CodeProject[] = [
   {
@@ -152,6 +157,32 @@ describe('CodeSkillsView', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'release');
     expect(screen.getByText('Prepare a release.')).toBeInTheDocument();
     expect(screen.queryByText('Review code against team standards.')).not.toBeInTheDocument();
+  });
+
+  it('shows the new personal skill immediately even when the library was filtered', async () => {
+    const user = userEvent.setup();
+    renderSkills();
+    await screen.findByText('Prepare a release.');
+    await user.click(screen.getByRole('button', { name: 'Team' }));
+    await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'different');
+    await user.click(screen.getByRole('button', { name: 'Add personal skill' }));
+    await user.type(screen.getByLabelText('Name'), 'New review');
+    await user.type(screen.getByLabelText('When to use it'), 'Review my work');
+    await user.type(screen.getByLabelText('Instructions'), 'Check the changed files');
+    vi.mocked(personalSkillsApi.create).mockResolvedValue({ id: 'new-review', name: 'New review', description: 'Review my work', instructions: 'Check the changed files', enabled: true, projects: [] });
+    skillLibrary.mockResolvedValue({ ...library, items: [...library.items, { id: 'personal:new-review', name: 'New review', description: 'Review my work', origin: 'personal', source_name: 'Yours', path: 'new-review', enabled: true, kind: 'skill', enabled_project_ids: [] }] });
+    await user.click(screen.getByRole('button', { name: 'Add skill' }));
+    expect(await screen.findByRole('button', { name: 'Edit New review' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Yours' })).toHaveClass('is-active');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('offers personal editing but not editing team or built-in skills', async () => {
+    renderSkills();
+    expect(await screen.findByRole('button', { name: 'Edit Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Review' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Edit / })).toHaveLength(1);
   });
 
   it('opens a readable skill document from the library row', async () => {

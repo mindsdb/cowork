@@ -101,6 +101,101 @@ describe('createShellAutoUpdater', () => {
     await Promise.all([first, second]);
   });
 
+  it('refreshes a pending install and downloads only a strictly newer build', async () => {
+    const { adapter, updater } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+    expect(updater.getSnapshot()).toMatchObject({ phase: 'ready-to-install', targetVersion: '2.1.0' });
+
+    // Feed hasn't moved: the armed download is left alone.
+    await updater.check('periodic');
+    expect(updater.getSnapshot()).toMatchObject({ refreshing: true });
+    adapter.emit('available', '2.1.0');
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: undefined,
+    });
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
+
+    // Feed moved on: supersede and fetch the newer build instead.
+    await updater.check('periodic');
+    adapter.emit('available', '2.2.0');
+    await vi.waitFor(() => expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2));
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'downloading',
+      targetVersion: '2.2.0',
+    });
+  });
+
+  it('leaves a pending install armed when the refresh finds nothing', async () => {
+    const { adapter, updater } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    await updater.check('periodic');
+    adapter.emit('none');
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: undefined,
+    });
+    expect(updater.quitAndInstall()).toBe(true);
+  });
+
+  it('settles a failed refresh once, however many times it is reported', async () => {
+    const { adapter, updater, failures } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    // electron-updater reports one check fault TWICE: it emits `error` and then
+    // rejects checkForUpdates(). Both reach fail(). The second must not see a
+    // refresh whose flag has already been cleared and tear the install down.
+    adapter.checkForUpdates.mockImplementationOnce(async () => {
+      adapter.emit('updater-error', new Error('feed unreachable'));
+      throw new Error('feed unreachable');
+    });
+    await updater.check('periodic');
+
+    expect(updater.getSnapshot()).toMatchObject({
+      phase: 'ready-to-install',
+      targetVersion: '2.1.0',
+      refreshing: undefined,
+    });
+    expect(updater.getSnapshot()).not.toHaveProperty('errorCode');
+    expect(failures).toHaveLength(1);
+    expect(updater.quitAndInstall()).toBe(true);
+  });
+
+  it('ignores a refresh failure that lands after the install has started', async () => {
+    const { adapter, updater, failures } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('downloaded', '2.1.0');
+
+    let rejectCheck!: (error: Error) => void;
+    adapter.checkForUpdates.mockReturnValueOnce(
+      new Promise<undefined>((_, reject) => { rejectCheck = reject; }),
+    );
+    const refresh = updater.check('periodic');
+    expect(updater.getSnapshot()).toMatchObject({ refreshing: true });
+
+    // The user restarts while the refresh is still out on the network.
+    expect(updater.quitAndInstall()).toBe(true);
+    expect(updater.getSnapshot().phase).toBe('installing');
+
+    const error = new Error('feed unreachable');
+    adapter.emit('updater-error', error);
+    rejectCheck(error);
+    await refresh;
+
+    expect(updater.getSnapshot().phase).toBe('installing');
+    expect(failures).toHaveLength(1);
+  });
+
   it('publishes progress and only installs from ready-to-install', async () => {
     const { adapter, updater } = setup();
     await updater.check('boot');

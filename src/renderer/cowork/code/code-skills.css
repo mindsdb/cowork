@@ -2,6 +2,8 @@
 .code-skills-view__header { width: min(900px, 100%); margin: 0 auto 22px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .code-skills-view__header h1 { margin: 0; color: var(--text-strong); font: 600 28px/1.15 var(--font-display); letter-spacing: -.012em; }
 .code-skills-view__header p { margin: 7px 0 0; color: var(--ink-3); font-size: 12.5px; }
+.code-skills-view__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-shrink: 0; }
+.code-skill-row__personal { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .code-skills-toolbar { width: min(900px, 100%); margin: 0 auto 22px; display: flex; align-items: center; gap: 10px; }
 .code-skills-toolbar > label { position: relative; min-width: 220px; flex: 1; }
 .code-skills-toolbar > label > span { position: absolute; z-index: 1; top: 50%; left: 11px; display: inline-flex; color: var(--ink-4); transform: translateY(-50%); pointer-events: none; }
