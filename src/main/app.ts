@@ -71,6 +71,7 @@ import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
+import { registerRendererPermissions } from './renderer-permissions';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -527,21 +528,7 @@ function createWindow() {
     Menu.buildFromTemplate(template).popup({ window: mainWindow! });
   });
 
-  // Grant the renderer access to the microphone so the Web Speech API
-  // (composer voice input) can capture audio. Other permissions stay
-  // denied. Pair with NSMicrophoneUsageDescription in Info.plist and
-  // the audio-input entitlement so the OS prompt actually fires.
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    // 'audioCapture' isn't in Electron's Permission union but some
-    // Chromium builds emit it for the Web Speech API. Cast through
-    // string for the comparison so TS doesn't narrow it away.
-    const perm = permission as string;
-    if (perm === 'media' || perm === 'audioCapture') {
-      callback(true);
-      return;
-    }
-    callback(false);
-  });
+  registerRendererPermissions(mainWindow.webContents);
 
   // Open external links in the OS default browser instead of navigating Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

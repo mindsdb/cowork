@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   turn: vi.fn(),
   runQueued: vi.fn(),
   approve: vi.fn(),
+  answerQuestion: vi.fn(),
+  modeTurn: vi.fn(),
   steerQueued: vi.fn(),
   cancel: vi.fn(),
   runProjectAction: vi.fn(),
@@ -41,6 +43,8 @@ vi.mock('./api', () => ({
     turn: mocks.turn,
     runQueued: mocks.runQueued,
     approve: mocks.approve,
+    answerQuestion: mocks.answerQuestion,
+    modeTurn: mocks.modeTurn,
     steerQueued: mocks.steerQueued,
     cancel: mocks.cancel,
     runProjectAction: mocks.runProjectAction,
@@ -386,13 +390,16 @@ describe('CodeView session-list reconciliation', () => {
       queued_instructions: [{ id: 'queued-1', prompt: 'Also add a README', created_at: '2026-08-21T09:01:00Z' }],
     };
     mocks.steerQueued.mockReturnValueOnce(pending.promise);
-    mocks.useCodingSession.mockReturnValue({
-      session: awaiting, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+    let current: CodingSession = { ...awaiting, status: 'running', pending_approval: null };
+    mocks.useCodingSession.mockImplementation(() => ({
+      session: current, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
-    });
+    }));
 
-    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    const view = renderCode({ sessions: [current], selectedId: current.id });
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    current = awaiting;
+    view.rerender(<CodeView {...view.props} sessions={[current]} />);
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
 
     expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
@@ -414,13 +421,16 @@ describe('CodeView session-list reconciliation', () => {
     };
     mocks.steerQueued.mockReturnValueOnce(steer.promise);
     mocks.approve.mockReturnValueOnce(approval.promise);
-    mocks.useCodingSession.mockReturnValue({
-      session: awaiting, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+    let current: CodingSession = { ...awaiting, status: 'running', pending_approval: null };
+    mocks.useCodingSession.mockImplementation(() => ({
+      session: current, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
       refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
-    });
+    }));
 
-    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    const view = renderCode({ sessions: [current], selectedId: current.id });
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    current = awaiting;
+    view.rerender(<CodeView {...view.props} sessions={[current]} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
 
@@ -430,6 +440,44 @@ describe('CodeView session-list reconciliation', () => {
 
     await act(async () => { steer.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+  });
+
+  it('can answer a question that arrives while a steer RPC is still pending', async () => {
+    const steer = deferred<CodingSession>();
+    let current: CodingSession = { ...session('question'), status: 'running', queued_instructions: [{ id: 'queued-1', prompt: 'Keep it small', created_at: '2026-09-18T09:00:00Z' }] };
+    mocks.steerQueued.mockReturnValueOnce(steer.promise);
+    mocks.answerQuestion.mockResolvedValue(current);
+    mocks.useCodingSession.mockImplementation(() => ({
+      session: current, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    }));
+    const view = renderCode({ sessions: [current], selectedId: current.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    current = { ...current, status: 'awaiting_approval', pending_question: { id: 'q1', questions: [{ id: 'layout', header: 'Layout', question: 'Which layout?', isOther: true, isSecret: false }] } };
+    view.rerender(<CodeView {...view.props} sessions={[current]} />);
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Compact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(mocks.answerQuestion).toHaveBeenCalledWith(current.id, 'q1', { layout: ['Compact'] }));
+    await act(async () => { steer.resolve(current); });
+  });
+
+  it('approves the displayed plan revision and preserves edits through session polling', async () => {
+    let current: CodingSession = { ...session('plan'), task_mode: 'plan', event_count: 20 };
+    mocks.modeTurn.mockResolvedValue(current);
+    mocks.useCodingSession.mockImplementation(() => ({
+      session: current, events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    }));
+    const view = renderCode({ sessions: [current], selectedId: current.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Revise plan' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Changes to the plan' }), { target: { value: 'Keyboard controls' } });
+    current = { ...current, event_count: 21 };
+    view.rerender(<CodeView {...view.props} sessions={[current]} />);
+    expect(screen.getByRole('textbox', { name: 'Changes to the plan' })).toHaveValue('Keyboard controls');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel revision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build from plan' }));
+    await waitFor(() => expect(mocks.modeTurn).toHaveBeenCalledWith(current.id, expect.any(String), 'build', 21));
   });
 
   it('re-enables the composer and reports the failure when a steer never answers', async () => {
@@ -798,4 +846,3 @@ describe('CodeView connector return flow', () => {
     expect(mocks.updateProject).not.toHaveBeenCalled();
   });
 });
-

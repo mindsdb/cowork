@@ -51,7 +51,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
     && previousEvent?.type === event.type
     && previousEvent.item_id === event.item_id
     && previousEvent.turn_id === event.turn_id
-    && ['agent_message', 'reasoning', 'command', 'file_change', 'child_work'].includes(event.type);
+    && ['agent_message', 'reasoning', 'command', 'file_change', 'child_work', 'plan'].includes(event.type);
   if (canMerge && previousEvent && previousItem) {
     const merged = {
       ...previousEvent,
@@ -229,7 +229,7 @@ function PlanEvent({ event }: { event: CodingEvent }) {
             <span>{typeof step.step === 'string' ? step.step : 'Plan step'}</span>
           </div>
         );
-      }) : <div className="code-event__text">{event.text || 'The agent updated its plan.'}</div>}
+      }) : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
     </section>
   );
 }
@@ -325,6 +325,7 @@ function TaskOutcome({
   onAddCredits: () => void;
 }) {
   const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  if (session.task_mode === 'plan' && session.status === 'completed') return null;
   const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
@@ -443,7 +444,7 @@ export const EventTimeline = memo(function EventTimeline({
           return <TimelineEvent key={key} event={item.event} />;
         })}
         {session.status === 'running' && (
-          <div className="code-running-indicator"><Spinner className="text-sm" /><span>The coding agent is working…</span></div>
+          <div className="code-running-indicator"><Spinner className="text-sm" /><span>{session.task_mode === 'plan' ? 'Exploring and preparing a plan…' : 'The coding agent is working…'}</span></div>
         )}
         <TaskOutcome
           session={session}
@@ -462,6 +463,7 @@ export const EventTimeline = memo(function EventTimeline({
   left.events === right.events
   && left.latestEvents === right.latestEvents
   && left.session.status === right.session.status
+  && left.session.task_mode === right.session.task_mode
   && left.session.run_status === right.session.run_status
   && left.session.computer_status === right.session.computer_status
   && left.session.last_error === right.session.last_error
