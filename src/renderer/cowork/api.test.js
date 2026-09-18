@@ -632,6 +632,30 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
+// The connection can close cleanly (no thrown error) with no
+// response.completed/failed — that used to fire onDone, rendering a
+// partial answer as finished.
+describe('streamNewSession — stream closes without a terminal event', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports an interrupted error instead of onDone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ message, event }) });
+    });
+
+    expect(result.done).toBeUndefined();
+    expect(result.event?.code).toBe('interrupted');
+  });
+});
+
 // The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
 // than from its five call sites precisely so a sixth added later cannot
 // silently stop reporting it — and that only holds while fetchHealth performs
@@ -802,7 +826,30 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
 // did not actually reach the server — otherwise the UI shows a stopped task
 // that is still running (and still spending tokens) on the remote worker.
 describe('cancelResponse', () => {
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('gives up instead of hanging forever on a connection that never settles', async () => {
+    // The Stop button awaits this before any local cleanup — a hung fetch
+    // (a proxy holding the socket open with the backend dead) used to make
+    // Stop do nothing at all, forever.
+    vi.useFakeTimers();
+    let signal;
+    vi.stubGlobal('fetch', vi.fn((_url, options) => {
+      signal = options?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    }));
+
+    const resultPromise = cancelResponse('conv-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'error', conversation_id: 'conv-a' });
+  });
 
   it('reports ok when the server accepts the cancel', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
