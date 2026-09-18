@@ -1,24 +1,29 @@
-// The URL the "open in a browser tab" control hands to the OS (ENG-2819).
+// What the "open in a browser tab" control actually opens (ENG-2819).
 //
-// ArtifactViewerHeader.browserTab.test.jsx already covers whether the control
-// is offered and whether a click reaches its handler. It cannot cover this:
-// it renders the header with a stubbed callback, so the URL the viewer derives
-// never appears in it. That gap is the whole bug — the button was wired
-// correctly and emitted a URL Electron cannot open.
+// ArtifactViewerHeader.browserTab.test.jsx covers whether the control is
+// offered and whether a click reaches its handler. It renders the header with
+// a stubbed callback, so what the viewer *does* with that click never appears
+// in it — which is the gap the bug lived in.
 //
-// `serveUrl` and `draftUrl` arrive origin-relative from the server. Web
-// survived that because `window.open` resolves against the page; an Electron
-// renderer is loaded from file://, so main's URL parse throws and it opens
-// nothing. So every assertion here is about the URL being absolute.
+// The rule these assertions encode: on desktop an unpublished artifact must go
+// to the OS as a local file, never over the served URL. The loopback server
+// requires a bearer token that main injects into the app window's own session,
+// and `shell.openExternal` launches a separate browser process that carries no
+// such header — so the served URL answers 401 there however well-formed it is.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 
-const API_ORIGIN = 'http://127.0.0.1:26866';
+const LOOPBACK = 'http://127.0.0.1:26866';
+const WEB_ORIGIN = 'https://cowork.example';
 
 const openExternal = vi.hoisted(() => vi.fn(async () => {}));
+const openPath = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const publishState = vi.hoisted(() => ({ publishedUrl: '' }));
 const headerProps = vi.hoisted(() => ({ current: null }));
+const bodyProps = vi.hoisted(() => ({ current: null }));
+// Mutable so one file can exercise both shells; `vi.mock` is hoisted once.
+const shell = vi.hoisted(() => ({ electron: true }));
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -46,7 +51,11 @@ vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   // Resolves rather than returning undefined: an artifact with a local path
   // mounts a preview on open, and the viewer chains off this directly.
-  mountArtifactPreview: vi.fn(async () => ({ kind: 'file', url: '', artifactDir: '' })),
+  mountArtifactPreview: vi.fn(async () => ({
+    kind: 'file',
+    url: `${LOOPBACK}/api/v1/artifacts/serve/launch/index.html`,
+    artifactDir: '/Users/someone/projects/launch/.anton/artifacts/launch',
+  })),
   previewArtifact: vi.fn(async () => ({ content: '' })),
   unpublishArtifact: vi.fn(),
   artifactServeUrl: vi.fn(),
@@ -61,16 +70,16 @@ vi.mock('../../lib/artifactWorkspaceApi', () => ({
     isHtml: true,
   })),
 }));
-// Desktop: this is the shell where a relative URL cannot resolve.
 vi.mock('../../../platform/host', () => ({
   host: {
-    isElectron: true,
-    isWeb: false,
+    get isElectron() { return shell.electron; },
+    get isWeb() { return !shell.electron; },
     isMac: () => false,
-    isLocalApiOrigin: () => true,
-    getApiOrigin: () => API_ORIGIN,
+    // Desktop always addresses loopback; the web shell never does.
+    isLocalApiOrigin: () => shell.electron,
+    getApiOrigin: () => (shell.electron ? LOOPBACK : WEB_ORIGIN),
     openExternal,
-    openPath: vi.fn(async () => ({ ok: true })),
+    openPath,
   },
 }));
 vi.mock('./publish/usePublish', () => ({
@@ -103,10 +112,18 @@ vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => nul
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
 // Capture the props rather than render the real header: the assertions are
-// about the URL the viewer derives, not about the chrome around it.
+// about what the viewer does with the click, not the chrome around it.
 vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: (props) => {
     headerProps.current = props;
+    return null;
+  },
+}));
+// The viewer's error state reaches the reader through the body's `preview`
+// prop; capture it rather than hunt for the rendered string.
+vi.mock('./ArtifactViewerBody', () => ({
+  ArtifactViewerBody: (props) => {
+    bodyProps.current = props;
     return null;
   },
 }));
@@ -115,75 +132,100 @@ vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
 
+const LOCAL_PATH = '/Users/someone/projects/launch/.anton/artifacts/launch/index.html';
+const SERVE_PATH = '/api/v1/artifacts/serve/launch/index.html';
+const DRAFT_PATH =
+  '/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/index.html';
+
 const baseArtifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
   title: 'Launch brief',
   type: 'document',
   ext: '.html',
-  path: '/artifacts/launch/index.html',
-  canonicalPath: '/artifacts/launch/index.html',
+  path: LOCAL_PATH,
+  canonicalPath: LOCAL_PATH,
   capabilities: { role: 'owner', canEdit: true },
 };
 
-const SERVE_PATH = '/api/v1/artifacts/serve/launch/index.html';
-const DRAFT_PATH =
-  '/api/v1/artifacts/drafts/proj-1/aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa/index.html';
-
 // Render, then fire the control's own handler through the captured props.
-function openInBrowserTab(artifact) {
+function clickBrowserTab(artifact) {
   render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
   const actions = headerProps.current?.actions;
   expect(actions?.canOpenInBrowserTab).toBe(true);
-  actions.onOpenInBrowserTab();
-  return openExternal.mock.calls.at(-1)?.[0];
+  return actions.onOpenInBrowserTab();
 }
 
-describe('open in a browser tab — the URL handed to the OS', () => {
-  beforeEach(() => {
-    openExternal.mockClear();
-    headerProps.current = null;
-    publishState.publishedUrl = '';
+beforeEach(() => {
+  openExternal.mockClear();
+  openPath.mockClear();
+  openPath.mockResolvedValue({ ok: true });
+  headerProps.current = null;
+  bodyProps.current = null;
+  publishState.publishedUrl = '';
+  shell.electron = true;
+  // The viewer fetches a draft preview on open; keep it off the network.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })));
+});
+
+describe('open in a browser tab — desktop', () => {
+  it('hands an unpublished artifact to the OS as a local file, not over the served URL', async () => {
+    // AC1. Fails before the fix: called openExternal with the served URL,
+    // which an external browser cannot authenticate against (401).
+    await clickBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
+
+    expect(openPath).toHaveBeenCalledWith(LOCAL_PATH);
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it('absolutizes a relative serveUrl', () => {
-    // Fails before the fix: emits the bare '/api/v1/...' path, which main
-    // cannot parse, so nothing opens and no error is raised.
-    const url = openInBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
-
-    expect(url).toBe(`${API_ORIGIN}${SERVE_PATH}`);
-  });
-
-  it('absolutizes a relative draftUrl when there is no serveUrl', () => {
-    const url = openInBrowserTab({ ...baseArtifact, draftUrl: DRAFT_PATH });
-
-    expect(url).toBe(`${API_ORIGIN}${DRAFT_PATH}`);
-  });
-
-  it('leaves a published URL alone — it already carries its own origin', () => {
-    // Regression guard for ENG-2321's Cloud behaviour, and for the artifact
-    // this ticket does not cover: a published URL must not be re-prefixed.
+  it('still opens the public link for a published artifact', async () => {
+    // Regression guard: published URLs are absolute, public, and need no
+    // credential — the one case that always worked must keep working.
     publishState.publishedUrl = 'https://artifacts.mindshub.ai/a/launch';
 
-    const url = openInBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
+    await clickBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
 
-    expect(url).toBe('https://artifacts.mindshub.ai/a/launch');
+    expect(openExternal).toHaveBeenCalledWith('https://artifacts.mindshub.ai/a/launch');
+    expect(openPath).not.toHaveBeenCalled();
   });
 
-  it('does not double-prefix a serveUrl that is already absolute', () => {
-    const absolute = 'https://cowork.example/api/v1/artifacts/serve/launch/index.html';
+  it('surfaces an error when the OS refuses the file', async () => {
+    openPath.mockResolvedValue({ ok: false, reason: 'No application knows how to open this.' });
 
-    const url = openInBrowserTab({ ...baseArtifact, serveUrl: absolute });
+    await clickBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
 
-    expect(url).toBe(absolute);
+    await waitFor(() => {
+      expect(bodyProps.current?.preview?.error).toBe('No application knows how to open this.');
+    });
   });
+});
 
-  it('emits a URL the main process can actually parse', () => {
-    // The assertion the original test could not make. `new URL(value)` with no
-    // base is exactly what src/main/external-url.ts does before handing the
-    // value to shell.openExternal; it throwing is the bug, in one line.
-    const url = openInBrowserTab({ ...baseArtifact, serveUrl: SERVE_PATH });
+describe('open in a browser tab — web / org', () => {
+  beforeEach(() => { shell.electron = false; });
 
+  it('opens an unpublished artifact at an absolute draft URL', async () => {
+    // No local file exists on this shell, so the URL is the only route.
+    // `serveUrl` is always empty in org mode, so the draft URL is what remains.
+    await clickBrowserTab({ ...baseArtifact, draftUrl: DRAFT_PATH });
+
+    expect(openPath).not.toHaveBeenCalled();
+    const url = openExternal.mock.calls.at(-1)?.[0];
+    expect(url).toBe(`${WEB_ORIGIN}${DRAFT_PATH}`);
     expect(() => new URL(url)).not.toThrow();
-    expect(new URL(url).protocol).toBe('http:');
+  });
+
+  it('still opens the public link for a published artifact', async () => {
+    publishState.publishedUrl = 'https://artifacts.mindshub.ai/a/launch';
+
+    await clickBrowserTab({ ...baseArtifact, draftUrl: DRAFT_PATH });
+
+    expect(openExternal).toHaveBeenCalledWith('https://artifacts.mindshub.ai/a/launch');
+  });
+
+  it('does not double-prefix a URL that already carries an origin', async () => {
+    const absolute = `${WEB_ORIGIN}${DRAFT_PATH}`;
+
+    await clickBrowserTab({ ...baseArtifact, draftUrl: absolute });
+
+    expect(openExternal).toHaveBeenCalledWith(absolute);
   });
 });
