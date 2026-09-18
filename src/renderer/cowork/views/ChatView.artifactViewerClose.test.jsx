@@ -16,6 +16,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const loadArtifactAccess = vi.hoisted(() => vi.fn());
+const viewer = vi.hoisted(() => ({ props: null }));
 const loadArtifactDraftText = vi.hoisted(() => vi.fn(async () => ({ content: '', truncated: false })));
 const loadArtifactDraftDocument = vi.hoisted(() => vi.fn(async () => ({ content: '' })));
 
@@ -96,16 +97,28 @@ vi.mock('../components/artifact/workspace/useArtifactWorkspace', () => ({
   }),
 }));
 
-// The artifact's content is not what this test is about, and rendering it
-// drags in the iframe and the markdown pipeline.
+// The artifact's content and chrome are not what this test is about, and
+// rendering them drags in the iframe, the markdown pipeline and the publish menu.
 vi.mock('../components/artifact/ArtifactViewerBody', () => ({
-  ArtifactViewerBody: () => <div data-testid="viewer-body" />,
+  ArtifactViewerBody: () => null,
 }));
-// Kept only as a probe for which artifact the viewer is holding: the title it
-// renders is the one the real viewer resolved from its `artifact` prop.
 vi.mock('../components/artifact/ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ title }) => <div data-testid="viewer-title">{title}</div>,
+  ArtifactViewerHeader: () => null,
 }));
+
+// Wraps, never replaces: the real viewer renders and the real publish hook
+// runs. This only records what ChatView handed down, which is the thing under
+// test and is not otherwise observable through the viewer's own chrome.
+vi.mock('../components/artifact', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ArtifactViewer: (props) => {
+      viewer.props = props;
+      return <actual.ArtifactViewer {...props} />;
+    },
+  };
+});
 
 import ChatView from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
@@ -146,14 +159,17 @@ const taskWith = (...steps) => ({
   ],
 });
 
-// The access read the viewer fires on open, held open so the test decides when
-// it lands. This is the whole point: the response has to arrive after the close.
-const deferredAccess = () => {
-  let settle;
-  const pending = new Promise((resolve) => { settle = resolve; });
-  loadArtifactAccess.mockReturnValue(pending);
-  return (payload) => act(async () => { settle(payload); });
+// One deferred per read the viewer fires, so a test can land them out of order.
+// A single shared promise fixes the resolution order to the order the reads
+// started, which is exactly what the swap case below has to be able to break.
+const pendingReads = [];
+const captureReads = () => {
+  pendingReads.length = 0;
+  loadArtifactAccess.mockImplementation(() => new Promise((resolve) => {
+    pendingReads.push(resolve);
+  }));
 };
+const land = (index, payload) => act(async () => { pendingReads[index](payload); });
 
 const ACCESS = {
   accessMode: 'restricted',
@@ -164,13 +180,14 @@ const ACCESS = {
 
 beforeEach(() => {
   loadArtifactAccess.mockReset();
+  viewer.props = null;
+  captureReads();
   setOrgMode(true);
 });
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact viewer, closing', () => {
   it('stays closed when the access read lands after the user closed it', async () => {
-    const land = deferredAccess();
     const user = userEvent.setup();
     render(<ChatView task={taskWith(artifactStep())} />);
 
@@ -185,13 +202,12 @@ describe('inline artifact viewer, closing', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
-    await land(ACCESS);
+    await land(0, ACCESS);
 
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('applies the access read that lands while the viewer is still open', async () => {
-    const land = deferredAccess();
     const user = userEvent.setup();
     render(<ChatView task={taskWith(artifactStep())} />);
 
@@ -199,16 +215,19 @@ describe('inline artifact viewer, closing', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     await waitFor(() => expect(loadArtifactAccess).toHaveBeenCalled());
 
-    await land(ACCESS);
+    await land(0, ACCESS);
 
-    // A guard that drops every late change would pass the test above just as
-    // well, so the open viewer has to keep receiving them.
+    // The fields the server just answered with have to reach the artifact the
+    // viewer holds. usePublish re-seeds its own state from this prop, so a
+    // parent that drops the update makes the hook clobber the list it loaded.
+    expect(viewer.props.artifact).toMatchObject({
+      accessMode: 'restricted',
+      accessEmails: ['someone@example.com'],
+    });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('viewer-body')).toBeInTheDocument();
   });
 
   it('does not swap the open artifact for one whose read lands late', async () => {
-    const land = deferredAccess();
     const user = userEvent.setup();
     render(<ChatView task={taskWith(
       artifactStep(),
@@ -218,17 +237,22 @@ describe('inline artifact viewer, closing', () => {
     const [first, second] = screen.getAllByRole('button', { name: 'Preview' });
     await user.click(first);
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    await waitFor(() => expect(loadArtifactAccess).toHaveBeenCalled());
+    await waitFor(() => expect(loadArtifactAccess).toHaveBeenCalledTimes(1));
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
     await user.click(second);
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(loadArtifactAccess).toHaveBeenCalledTimes(2));
 
-    await land(ACCESS);
+    // The open artifact's read lands first and the dismissed one's last, so the
+    // stale write is the final one. Only the identity comparison can keep the
+    // artifact the user is actually looking at on screen.
+    await land(1, ACCESS);
+    await land(0, ACCESS);
 
-    const open = screen.getByRole('dialog');
-    expect(within(open).getByTestId('viewer-title')).toHaveTextContent('Weekly report');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(viewer.props.artifact.title).toBe('Weekly report');
   });
 });
