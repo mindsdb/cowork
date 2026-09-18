@@ -294,9 +294,14 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={vi.fn()}
       />
     );
-    // The OTA "Update ready" pill never stacks under the shell banner anymore.
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /App update ready/ })).toBeInTheDocument();
+    // Exactly one pill, and it is the shell's. Both ready banners now read
+    // "Update ready" (ENG-2764), so the discriminator is the action label —
+    // shell offers "Restart now", OTA a bare "Restart" — plus the absence of the
+    // OTA version the stacked pill used to carry.
+    const pills = screen.getAllByRole('button', { name: /Update ready/ });
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent(/Restart now/);
+    expect(pills[0]).not.toHaveTextContent('1.2.3');
   });
 
   it('surfaces a labelled retry when an OTA apply failed (does not go silent)', () => {
@@ -325,7 +330,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={onUpdateAction}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Update ready.*Restart now/ }));
     expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
   });
 
