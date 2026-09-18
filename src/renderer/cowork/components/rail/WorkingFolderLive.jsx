@@ -174,7 +174,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     setPreviewArt((cur) => {
       if (!cur) return cur;
       const open = artifactIdentity(cur);
-      const same = open ? open === artifactIdentity(updated) : cur.path === updated.path;
+      const same = open ? open === artifactIdentity(updated) : !!cur.path && cur.path === updated?.path;
       return same ? updated : cur;
     });
   };
