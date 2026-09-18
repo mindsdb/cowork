@@ -155,10 +155,14 @@ describe('inline artifact banner in org mode', () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it('keeps the shared page one click away beside the preview', async () => {
+  it('keeps the shared page one click away beside the preview, and only that', async () => {
     /*
      * The published URL is the address a collaborator gets, and the chat turn
      * is where the artifact was just made.
+     *
+     * The card is click-activated as a whole, so every button in its action row
+     * depends on SmallBtn stopping the click from reaching the card. Lose that
+     * and this one click both opens the shared page and opens the preview.
      */
     setOrgMode(true);
     const user = userEvent.setup();
@@ -167,6 +171,7 @@ describe('inline artifact banner in org mode', () => {
     await user.click(screen.getByRole('button', { name: 'Shared link' }));
 
     expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
   it('previews before the artifact is shared at all', async () => {
