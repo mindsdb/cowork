@@ -189,13 +189,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     if (!spec) return;
     setError('');
 
-    // Success branch — two intents:
+    // Nothing left to submit branch — two intents:
     //   • view_connectors → route to the Connect Apps and Data page,
     //     then clear the panel
     //   • dismiss / cancel → just clear the panel
-    // The connection is already in the vault either way; nothing
-    // to dispatch back to anton.
-    if (spec._is_success) {
+    // The connection is already stored either way; nothing to dispatch back
+    // to anton. A pending cloud database belongs here too: its credential is
+    // in auth and a separate check decides the rest, so routing these buttons
+    // through the generic paths would send a chat message on Close and
+    // attempt a duplicate create on View connections.
+    if (spec._is_success || spec._datasource_pending) {
       if (id === 'view_connectors') {
         onNavigateToConnectors?.();
       }

@@ -22,6 +22,7 @@ import {
 } from '../api';
 import { useOrgMode } from '../../lib/orgMode';
 import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import { usePendingDatasourceRefresh } from '../hooks/usePendingDatasourceRefresh';
 import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
@@ -467,6 +468,16 @@ export default function CustomizeView({
       .catch(() => {});
   };
   useEffect(() => { refreshDatasources.current(); }, [orgMode]);
+  // Connecting, editing or removing a database happens in the chat panel too,
+  // and this page can be open while it does.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasources.current(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, []);
+  // A row captured moments ago is still being checked, and this page is where
+  // its result is meant to appear.
+  usePendingDatasourceRefresh(datasources, () => refreshDatasources.current(), orgMode);
 
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.

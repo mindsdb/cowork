@@ -56,6 +56,7 @@ import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccount
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
+import { usePendingDatasourceRefresh } from './hooks/usePendingDatasourceRefresh';
 import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
@@ -1347,6 +1348,10 @@ function AppCore() {
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
   }, [refreshDatasourceConnectors]);
+  // That one refresh lands while a fresh connection can still be pending, and
+  // the composer offers verified connections only, so without this a database
+  // that passes its check a moment later stays absent until a reload.
+  usePendingDatasourceRefresh(datasourceConnectors, refreshDatasourceConnectors, orgMode);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
