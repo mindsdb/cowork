@@ -10,7 +10,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { Alert, Button, EmptyState } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import {
+  CONNECTIONS_VAULT_KEEP,
+  deleteDatasource,
+  deleteDatasourceConnection,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  listDatasourceConnections,
+  retryDatasourceValidation,
+} from '../api';
+import { useOrgMode } from '../../lib/orgMode';
+import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -413,15 +425,23 @@ export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  /** Opens the cloud connect form against an existing database connection. */
+  onEditDatasource,
   onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
   agentLabel = 'the agent',
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
+  // Cloud database connections, kept apart from `list`. That array is the
+  // OAuth one and every refresh of it replaces the whole thing, so merging
+  // these into it would drop them the next time an OAuth sync ran.
+  const [datasources, setDatasources] = useState([]);
+  const orgMode = useOrgMode();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [selectedConn, setSelectedConn] = useState(null);
+  const [selectedDatasource, setSelectedDatasource] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -437,6 +457,16 @@ export default function CustomizeView({
       })
       .catch(() => {});
   }, []);
+
+  // Cloud only: the relay's routes answer 404 anywhere else by design.
+  const refreshDatasources = useRef(() => {});
+  refreshDatasources.current = () => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasources(toDatasourceRows(rows)))
+      .catch(() => {});
+  };
+  useEffect(() => { refreshDatasources.current(); }, [orgMode]);
 
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
@@ -489,8 +519,21 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  const handleRetryValidation = async (connection) => {
+    await retryDatasourceValidation(connection.datasourceId);
+    await refreshDatasources.current();
+  };
+
   const handleDelete = async (connection, savedDetail) => {
     try {
+      // A database connection lives behind the relay, not the OAuth vault:
+      // the OAuth delete route would not find it.
+      if (isDatasourceRow(connection)) {
+        await deleteDatasourceConnection(connection.datasourceId);
+        await refreshDatasources.current();
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        return;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -524,7 +567,11 @@ export default function CustomizeView({
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = (list || []).map((connection) => ({ connection, identity: connectionIdentity(connection) }));
+    // One grid: the OAuth connections this page has always shown, plus the
+    // cloud database ones. They are separate state (see above) and joined only
+    // for display, search and sort.
+    const all = [...(list || []), ...datasources];
+    let out = all.map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
       out = out.filter(({ connection, identity }) =>
         [connection.name, connection.engine, identity.title, identity.subtitle]
@@ -545,9 +592,9 @@ export default function CustomizeView({
       }
     });
     return out.map(({ connection }) => connection);
-  }, [list, search, sort]);
+  }, [list, datasources, search, sort]);
 
-  const total = list.length;
+  const total = list.length + datasources.length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -592,7 +639,7 @@ export default function CustomizeView({
               key={`${c.engine}-${c.name}`}
               connection={c}
               onDelete={handleDelete}
-              onModify={setSelectedConn}
+              onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn}
             />
           ))}
           {/* Trailing dashed "New connection" card — appears only
@@ -601,6 +648,29 @@ export default function CustomizeView({
               own larger CTA). Mirrors the Projects pattern. */}
           <NewConnectionCard onClick={handleConnectNew} />
         </div>
+      )}
+
+      {selectedDatasource && (
+        <DatasourceDetailPanel
+          connection={selectedDatasource}
+          onClose={() => setSelectedDatasource(null)}
+          onRetry={async (connection) => {
+            await handleRetryValidation(connection);
+            setSelectedDatasource(null);
+          }}
+          onRemove={async (connection) => {
+            await handleDelete(connection);
+            setSelectedDatasource(null);
+          }}
+          onEdit={(connection) => {
+            setSelectedDatasource(null);
+            // The relay requires the password on every edit and nothing here
+            // can pre-fill it, so an edit re-opens the connect form — carrying
+            // the connection, so the form patches that one instead of creating
+            // a second connection under a new name.
+            onEditDatasource?.(connection);
+          }}
+        />
       )}
 
       {selectedConn && (

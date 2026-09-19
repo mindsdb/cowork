@@ -24,7 +24,8 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
@@ -599,6 +600,43 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }
         delete submissionValues.posthog_project_choice;
       }
+      // Cloud datasource: straight to the relay, never through the chat
+      // submission stream. The credential belongs to auth and this form is
+      // dedicated entry kept out of the conversation, so nothing about it is
+      // narrated into a turn. The relay answers with the connection, and its
+      // status decides what the user sees: auth creates one `pending` and
+      // only the gateway's probe completion moves it to verified or failed.
+      if (spec._cloud_datasource) {
+        const payload = buildDatasourcePayload({
+          spec,
+          method: wireMethodId || spec.selected_method || null,
+          values: submissionValues,
+          name: connectionName || userLabel,
+        });
+        const edit = spec._datasource_edit;
+        const connection = edit
+          ? await editDatasourceConnection(edit.id, payload, edit.expectedVersion)
+          : await createDatasourceConnection(payload);
+        const state = describeConnectionState(connection);
+        patchForm(conversationId, {
+          _is_probing: false,
+          status_text: '',
+          form_error: state.kind === 'failed' ? (state.detail || state.title) : '',
+          ...(state.kind === 'verified'
+            ? { _is_success: true, title: state.title, subtitle: `${connection.name} is ready to use in this workspace.` }
+            : {}),
+          ...(state.kind === 'pending'
+            ? { _datasource_pending: true, title: state.title, subtitle: state.detail }
+            : {}),
+          _datasource_connection_id: connection?.id ?? null,
+        });
+        if (state.kind === 'verified') trackDataSourceConnected(spec._connector_id || spec.engine || 'datasource');
+        // The connections page and the composer's per-conversation toggles
+        // both hold their own copy of this list; this is how they learn.
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        setBusy(false);
+        return;
+      }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
       // stream against /v1/datavault/submissions and pipes the
@@ -648,7 +686,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }));
       }
     } catch (e) {
-      setError(e?.message || 'Could not submit form');
+      // The relay names this one, and only this one, as a conflict: the
+      // connection moved on while this form was open, so the version the form
+      // carries is no longer the one to edit.
+      setError(
+        e?.code === 'stale_version'
+          ? 'This connection changed since you opened it. Close this and open it again to edit the current version.'
+          : (e?.message || 'Could not submit form'),
+      );
     } finally {
       setBusy(false);
     }
