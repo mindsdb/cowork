@@ -24,7 +24,8 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { createDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
@@ -598,6 +599,38 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           submissionValues.project_id = submissionValues.posthog_project_choice;
         }
         delete submissionValues.posthog_project_choice;
+      }
+      // Cloud datasource: straight to the relay, never through the chat
+      // submission stream. The credential belongs to auth and this form is
+      // dedicated entry kept out of the conversation, so nothing about it is
+      // narrated into a turn. The relay answers with the connection, and its
+      // status decides what the user sees: auth creates one `pending` and
+      // only the gateway's probe completion moves it to verified or failed.
+      if (spec._cloud_datasource) {
+        const connection = await createDatasourceConnection(
+          buildDatasourcePayload({
+            spec,
+            method: wireMethodId || spec.selected_method || null,
+            values: submissionValues,
+            name: connectionName || userLabel,
+          }),
+        );
+        const state = describeConnectionState(connection);
+        patchForm(conversationId, {
+          _is_probing: false,
+          status_text: '',
+          form_error: state.kind === 'failed' ? (state.detail || state.title) : '',
+          ...(state.kind === 'verified'
+            ? { _is_success: true, title: state.title, subtitle: `${connection.name} is ready to use in this workspace.` }
+            : {}),
+          ...(state.kind === 'pending'
+            ? { _datasource_pending: true, title: state.title, subtitle: state.detail }
+            : {}),
+          _datasource_connection_id: connection?.id ?? null,
+        });
+        if (state.kind === 'verified') trackDataSourceConnected(spec._connector_id || spec.engine || 'datasource');
+        setBusy(false);
+        return;
       }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
