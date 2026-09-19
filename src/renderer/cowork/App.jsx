@@ -4,6 +4,7 @@ import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -77,7 +78,8 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey,
+         listDatasourceConnections} from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -603,6 +605,11 @@ function AppCore() {
   } = useSchedules();
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
+  // Cloud database connections, held apart from `connectors`. That array is
+  // the OAuth one and several paths replace it wholesale, so a datasource
+  // merged into it would vanish the next time one ran — including on a visit
+  // to the connections page.
+  const [datasourceConnectors, setDatasourceConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
@@ -1313,6 +1320,13 @@ function AppCore() {
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
+  // One list for the composer's per-conversation toggles: the OAuth
+  // connections and the cloud database ones, each keyed by (engine, name),
+  // which is the pair the server filters a turn's grants on.
+  const composerConnectors = useMemo(
+    () => [...connectors, ...datasourceConnectors],
+    [connectors, datasourceConnectors],
+  );
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1664,6 +1678,11 @@ function AppCore() {
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
+    if (orgMode) {
+      listDatasourceConnections()
+        .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
+        .catch(() => setDatasourceConnectors([]));
+    }
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
@@ -4815,7 +4834,7 @@ function AppCore() {
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
@@ -4879,7 +4898,7 @@ function AppCore() {
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
@@ -5002,7 +5021,7 @@ function AppCore() {
             onDeleteProject={handleDeleteProject}
             deletingProjectKeys={deletingProjectKeys}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
@@ -5130,7 +5149,7 @@ function AppCore() {
 
         {route === 'customize' && (
           <CustomizeView
-            connectors={connectors}
+            connectors={composerConnectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}
