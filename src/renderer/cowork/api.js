@@ -69,17 +69,28 @@ async function req(path, options = {}) {
   });
   if (!res.ok) {
     let detail = '';
+    let code = '';
     try {
       const data = await res.json();
       const raw = data?.detail;
-      detail = Array.isArray(raw)
-        ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-        : (raw || data?.message || '');
+      if (Array.isArray(raw)) {
+        detail = raw.map((e) => e.msg || JSON.stringify(e)).join(', ');
+      } else if (raw && typeof raw === 'object') {
+        // The datasource relay answers `{code, message}` so a refusal can be
+        // shown as itself and branched on: a stale-version conflict is only
+        // distinguishable by the code. Without this the string cast below
+        // would render "[object Object]" to the user.
+        code = typeof raw.code === 'string' ? raw.code : '';
+        detail = typeof raw.message === 'string' ? raw.message : '';
+      } else {
+        detail = (raw || data?.message || '');
+      }
     } catch {
       detail = await res.text().catch(() => '');
     }
     const err = new Error(detail || `API ${path} returned ${res.status}`);
     err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
+    if (code) err.code = code;
     throw err;
   }
   if (res.status === 204) return { ok: true };
@@ -1717,6 +1728,61 @@ export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedVersion` is the credential version the form was opened against.
+// The relay refuses with code `stale_version` when it has moved, which is the
+// only way a caller can tell a conflict from any other refusal.
+export async function editDatasourceConnection(connectionId, payload, expectedVersion) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_version: expectedVersion }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
