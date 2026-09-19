@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { toCloudSpec } from './lib/cloudConnectorSpec';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -2453,7 +2454,12 @@ function AppCore() {
       // OAuth (and any other auth shape) submits through the
       // connector-aware save endpoint instead of the legacy
       // datasources path.
-      const connectSpec = {
+      // In cloud a connector whose methods carry a `cloud` block is shaped to
+      // it: that block replaces the desktop fields and copy whole, and a
+      // method without one is not offered, because the relay supports exactly
+      // one method per database connector and refuses the rest. Everything
+      // else, which is every OAuth connector, passes through untouched.
+      const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
         // (datavault_agent: "Trying to connect to **<engine>**…",
@@ -2466,6 +2472,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
+      const connectSpec = orgMode ? toCloudSpec(baseSpec) : baseSpec;
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
