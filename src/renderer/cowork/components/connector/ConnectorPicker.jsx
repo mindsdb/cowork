@@ -188,6 +188,13 @@ const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 // subset — it is the whole of what works here.
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
+// Above this many, the cloud side groups by category instead of showing one
+// flat block. The flat block was right while cloud ran a handful of OAuth
+// connectors of one kind; databases add a second kind, and a mixed list is
+// what makes a growing set hard to sort through. Below it, sections would
+// hold a tile each, which reads worse than no sections at all.
+const CLOUD_GROUPING_THRESHOLD = 5;
+
 export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }) {
   const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
@@ -413,18 +420,28 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
                   <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                 ))}
             </div>
-          ) : orgMode ? (
-            // Cloud runs only a handful of connectors — too few to be worth
-            // splitting across category sections, where each section would
-            // hold one tile and the same connector would also appear under
-            // Featured. Show all of them as one block instead; the desktop
-            // catalogue below is what gives the directory its body.
+          ) : orgMode && available.length <= CLOUD_GROUPING_THRESHOLD ? (
+            // Few enough to read at a glance: one block, no sections holding a
+            // tile each. The desktop catalogue below gives the directory its body.
             <ConnectorSection
               title={CLOUD_AVAILABLE_TITLE}
               connectors={available}
               onPick={onPick}
               className="mb-6"
             />
+          ) : orgMode ? (
+            // Enough to sort through: the same category sections desktop uses,
+            // without Featured, which on cloud would duplicate tiles out of a
+            // set small enough to see whole.
+            groupByCategory(available).map(([cat, list]) => (
+              <ConnectorSection
+                key={cat}
+                title={categoryLabel(cat)}
+                count={list.length}
+                connectors={list}
+                onPick={onPick}
+              />
+            ))
           ) : (
             // Desktop: Featured on top, then every category. A featured
             // connector intentionally appears in both — with ~213 connectors
