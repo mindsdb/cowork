@@ -357,14 +357,16 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose }
           />
         </div>
 
-        {/* This deployment's server already scopes the /connectors/specs/
-            response to what auth's catalogue authorizes (currently Google
-            Drive + Gmail) — this note just explains the short list rather
-            than doing any filtering of its own. */}
-        {orgMode && (
+        {/* The server scopes the /connectors/specs/ response to what this
+            deployment can actually run, and the desktop-only catalogue is
+            listed below under its own heading. This note points at where the
+            rest of them work; it does no filtering of its own, and it says
+            "the rest" rather than "all", because what runs here is no longer
+            a token subset. */}
+        {orgMode && desktopOnly.length > 0 && (
           <div className="px-4 pb-3 bg-surface shrink-0">
             <Alert variant="info">
-              The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
+              More connectors are on the way here. The rest of them work today in the{' '}
               <button
                 type="button"
                 onClick={() => host.openExternal('https://mindshub.ai/download')}
