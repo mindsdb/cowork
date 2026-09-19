@@ -69,6 +69,38 @@ describe('buildDatasourcePayload', () => {
     expect(payload.port).toBeNull();
   });
 
+  it('refuses an oversized certificate here, naming the limit, rather than after a round trip', () => {
+    const tooBig = `-----BEGIN CERTIFICATE-----\n${'A'.repeat(64 * 1024)}\n-----END CERTIFICATE-----`;
+
+    expect(() => buildDatasourcePayload({
+      spec: SPEC,
+      method: 'host-port',
+      values: { ...VALUES, tls_mode: 'custom_ca', ca_pem: tooBig },
+      name: 'Analytics',
+    })).toThrow(/64 KiB/);
+  });
+
+  it('refuses custom trust with nothing pasted', () => {
+    expect(() => buildDatasourcePayload({
+      spec: SPEC,
+      method: 'host-port',
+      values: { ...VALUES, tls_mode: 'custom_ca', ca_pem: '' },
+      name: 'Analytics',
+    })).toThrow(/CA certificate/i);
+  });
+
+  it('accepts a certificate inside the limit', () => {
+    const fine = `-----BEGIN CERTIFICATE-----\n${'A'.repeat(1000)}\n-----END CERTIFICATE-----`;
+    const payload = buildDatasourcePayload({
+      spec: SPEC,
+      method: 'host-port',
+      values: { ...VALUES, tls_mode: 'custom_ca', ca_pem: fine },
+      name: 'Analytics',
+    });
+
+    expect(payload.tls.ca_pem).toBe(fine);
+  });
+
   it('refuses to build without a name, which the relay requires', () => {
     expect(() => buildDatasourcePayload({ spec: SPEC, method: 'host-port', values: VALUES, name: '  ' }))
       .toThrow(/name/i);

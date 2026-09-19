@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 
 const api = vi.hoisted(() => ({
   createDatasourceConnection: vi.fn(),
+  editDatasourceConnection: vi.fn(),
   discoverPostHogProjects: vi.fn(),
   saveConnector: vi.fn(),
   fetchDatasources: vi.fn(async () => []),
@@ -99,19 +100,22 @@ describe('submitting a cloud datasource form', () => {
     expect(api.submitDataVaultForm).not.toHaveBeenCalled();
   });
 
-  it('waits in a pending state rather than claiming success', async () => {
+  it('shows a waiting state rather than claiming success, and takes the fields away with it', async () => {
     await submitTheForm();
 
-    await waitFor(() => expect(getForm(CID)?._datasource_pending).toBe(true));
-    expect(getForm(CID)?._is_success).toBeFalsy();
-    expect(getForm(CID)?.form_error).toBeFalsy();
+    // The rendered surface, not a flag: the typed password must leave the page
+    // and a second submit must not be possible.
+    expect(await screen.findByText(/checking the connection/i)).toBeInTheDocument();
+    expect(screen.getByText(/result shows up on Connect Apps and Data/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
   });
 
   it('reports a verified connection as connected', async () => {
     api.createDatasourceConnection.mockResolvedValue({ ...CONNECTION, status: 'verified' });
     await submitTheForm();
 
-    await waitFor(() => expect(getForm(CID)?._is_success).toBe(true));
+    expect(await screen.findByText(/^Connected$/i)).toBeInTheDocument();
   });
 
   it('shows the reason auth recorded when the check failed', async () => {
@@ -120,8 +124,7 @@ describe('submitting a cloud datasource form', () => {
     });
     await submitTheForm();
 
-    await waitFor(() => expect(getForm(CID)?.form_error).toBe('password authentication failed'));
-    expect(getForm(CID)?._is_success).toBeFalsy();
+    expect(await screen.findByText('password authentication failed')).toBeInTheDocument();
   });
 
   it('shows the relay refusal as its own message', async () => {
@@ -132,5 +135,40 @@ describe('submitting a cloud datasource form', () => {
     await submitTheForm();
 
     expect(await screen.findByText('host must be reachable from the internet')).toBeInTheDocument();
+  });
+});
+
+describe('editing an existing connection', () => {
+  const EDIT_SPEC = {
+    ...SPEC,
+    _datasource_edit: { id: 7, expectedVersion: 3 },
+    name: 'Analytics',
+    user_label: 'Analytics',
+  };
+
+  it('patches the connection it was opened against, with the version it saw', async () => {
+    setForm(CID, { ...EDIT_SPEC });
+    api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, credential_version: 4 });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
+
+    await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
+    const [id, payload, expectedVersion] = api.editDatasourceConnection.mock.calls[0];
+    expect(id).toBe(7);
+    expect(expectedVersion).toBe(3);
+    expect(payload.password).toBe('secret');
+    expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+  });
+
+  it('says what a version conflict means instead of showing the raw refusal', async () => {
+    setForm(CID, { ...EDIT_SPEC });
+    const conflict = new Error('stale version');
+    conflict.code = 'stale_version';
+    conflict.status = 409;
+    api.editDatasourceConnection.mockRejectedValue(conflict);
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText(/changed since you opened it/i)).toBeInTheDocument();
   });
 });

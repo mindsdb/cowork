@@ -86,6 +86,17 @@ describe('toCloudSpec', () => {
     expect(JSON.stringify(method.fields)).not.toContain('disable');
   });
 
+  it('shows no copy at all when a cloud block omits it, rather than desktop copy', () => {
+    const noCopy = {
+      ...POSTGRES,
+      methods: POSTGRES.methods.map((m) => (m.cloud ? { ...m, cloud: { available: true, fields: [] } } : m)),
+    };
+    const [method] = toCloudSpec(noCopy).methods;
+
+    expect(method.description).toBeNull();
+    expect(method.how_to).toBeNull();
+  });
+
   it('marks the form so the chat layer keeps its values out of the conversation', () => {
     expect(toCloudSpec(POSTGRES)._cloud_datasource).toBe(true);
   });
@@ -97,5 +108,45 @@ describe('toCloudSpec', () => {
     };
 
     expect(toCloudSpec(notYet).methods).toEqual([]);
+  });
+});
+
+describe('opening the form against an existing connection', () => {
+  const CONNECTION = {
+    datasourceId: 7,
+    credentialVersion: 3,
+    name: 'Analytics',
+    engine: 'postgres',
+    hostMasked: 'db.example.com',
+    port: 5432,
+    database: 'analytics',
+    username: 'readonly',
+    tlsMode: 'system',
+  };
+
+  it('carries the id and the version the server checks the edit against', () => {
+    const shaped = toCloudSpec(POSTGRES, CONNECTION);
+
+    expect(shaped._datasource_edit).toEqual({ id: 7, expectedVersion: 3 });
+    expect(shaped.name).toBe('Analytics');
+  });
+
+  it('pre-fills what it knows and never the password, which only auth holds', () => {
+    const [method] = toCloudSpec(POSTGRES, CONNECTION).methods;
+    const byName = Object.fromEntries(method.fields.map((f) => [f.name, f]));
+
+    expect(byName.host.default).toBe('db.example.com');
+    expect(byName.password.default).toBeUndefined();
+  });
+
+  it('leaves a masked host empty rather than pre-filling the mask', () => {
+    const [method] = toCloudSpec(POSTGRES, { ...CONNECTION, hostMasked: 'db.***.example.com' }).methods;
+    const host = method.fields.find((f) => f.name === 'host');
+
+    expect(host.default).toBeUndefined();
+  });
+
+  it('creates rather than edits when no connection is given', () => {
+    expect(toCloudSpec(POSTGRES)._datasource_edit).toBeUndefined();
   });
 });

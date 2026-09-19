@@ -17,7 +17,12 @@ export function isCloudDatasourceSpec(spec) {
   return methods.some((m) => m && m.cloud);
 }
 
-export function toCloudSpec(spec) {
+// An edit re-opens this form: the relay requires the password on every edit,
+// and nothing on the connections page can pre-fill it, so the user retypes it
+// beside the values they are changing. The connection's id and the version
+// they opened travel with the spec; the version is what lets the server tell
+// this edit from one made somewhere else in the meantime.
+export function toCloudSpec(spec, connection = null) {
   if (!isCloudDatasourceSpec(spec)) return spec;
 
   const methods = spec.methods
@@ -27,10 +32,37 @@ export function toCloudSpec(spec) {
       return {
         ...rest,
         fields: Array.isArray(cloud.fields) ? cloud.fields : [],
-        ...(cloud.description ? { description: cloud.description } : {}),
-        ...(cloud.how_to ? { how_to: cloud.how_to } : {}),
+        // Unconditional, because the block is a replacement: a cloud method
+        // that omits its copy shows none, rather than inheriting desktop text
+        // that documents optional TLS and a local server.
+        description: cloud.description ?? null,
+        how_to: cloud.how_to ?? null,
       };
     });
+
+  const editing = connection
+    ? {
+        _datasource_edit: { id: connection.datasourceId, expectedVersion: connection.credentialVersion },
+        // Everything but the password, which only auth holds.
+        name: connection.name,
+        user_label: connection.name,
+        title: `Edit ${connection.name}`,
+        methods: methods.map((m) => ({
+          ...m,
+          fields: (m.fields || []).map((f) => {
+            if (f.secret || f.type === 'password') return f;
+            const prior = {
+              host: connection.hostMasked?.includes('*') ? '' : connection.hostMasked,
+              port: connection.port,
+              database: connection.database,
+              username: connection.username,
+              tls_mode: connection.tlsMode,
+            }[f.name];
+            return prior == null || prior === '' ? f : { ...f, default: String(prior) };
+          }),
+        })),
+      }
+    : {};
 
   return {
     ...spec,
@@ -38,5 +70,6 @@ export function toCloudSpec(spec) {
     // Read by the form: this one publishes no snapshot of its values, because
     // the chat layer appends that snapshot to the next message the user sends.
     _cloud_datasource: true,
+    ...editing,
   };
 }

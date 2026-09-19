@@ -346,6 +346,45 @@ export function DataVaultForm({
 
   if (!spec) return null;
 
+  // Pending state — a cloud database connection is created `pending`: the
+  // server holds the credential encrypted and a separate check decides
+  // whether it works. Replacing the field surface is the point, not just the
+  // message: it takes the typed password off the page and stops a second
+  // submit, which would only earn a duplicate-name refusal.
+  if (spec._datasource_pending) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <div className="flex items-start gap-3">
+          <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row"
+            style={{
+              background: 'color-mix(in srgb, var(--ink-4) 14%, var(--surface))',
+              color: 'var(--ink-2)',
+              border: '1px solid var(--line)',
+            }}
+          >{Ico.link(18)}</span>
+          <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
+            <div className="s-h3">{spec.title || 'Checking the connection'}</div>
+            <div className="text-sm text-ink-3 leading-[1.5]">
+              {spec.subtitle || 'Your credentials are stored encrypted.'}
+            </div>
+          </div>
+        </div>
+        <Alert variant="info">
+          This can take a moment. The result shows up on Connect Apps and Data, where you can retry it if the
+          check does not succeed.
+        </Alert>
+        <div className="flex justify-end gap-2">
+          <Button variant="default" onClick={() => onAction?.({ id: 'cancel', kind: 'cancel', values: {}, skipped: [] })}>
+            Close
+          </Button>
+          <Button variant="primary" onClick={() => onAction?.({ id: 'view_connectors', kind: 'primary', values: {}, skipped: [] })}>
+            View connections
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // Success state — the agent endpoint flips `_is_success` after a
   // save. Replace the noisy fields/actions surface with a green
   // check + the title/subtitle. The user can dismiss via the panel's

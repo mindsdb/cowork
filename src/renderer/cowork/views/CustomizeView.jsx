@@ -425,6 +425,8 @@ export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  /** Opens the cloud connect form against an existing database connection. */
+  onEditDatasource,
   onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
@@ -663,8 +665,10 @@ export default function CustomizeView({
           onEdit={(connection) => {
             setSelectedDatasource(null);
             // The relay requires the password on every edit and nothing here
-            // can pre-fill it, so an edit re-opens the connect form.
-            onReconnect?.({ id: connection.engine, label: connection.engine });
+            // can pre-fill it, so an edit re-opens the connect form — carrying
+            // the connection, so the form patches that one instead of creating
+            // a second connection under a new name.
+            onEditDatasource?.(connection);
           }}
         />
       )}

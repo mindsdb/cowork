@@ -57,6 +57,16 @@ describe('the connections page in cloud', () => {
     expect(screen.getByRole('button', { name: /Manage Postgres/i })).toBeInTheDocument();
   });
 
+  it('shows one card per connection, with the props App really passes', async () => {
+    // App gives this page the OAuth list; the page fetches databases itself.
+    // Handing it both would render every database twice.
+    api.fetchDatasources.mockResolvedValue({ connections: [{ engine: 'gmail', name: 'work', status: 'connected' }] });
+    render(<CustomizeView connectors={[{ engine: 'gmail', name: 'work', status: 'connected' }]} />);
+
+    expect(await screen.findAllByRole('button', { name: /Manage Postgres: Analytics/i })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Manage Gmail/i })).toHaveLength(1);
+  });
+
   it('does not ask the relay on desktop, where its routes do not exist', async () => {
     setOrgMode(false);
     render(<CustomizeView connectors={[]} />);

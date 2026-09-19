@@ -1324,9 +1324,29 @@ function AppCore() {
   // connections and the cloud database ones, each keyed by (engine, name),
   // which is the pair the server filters a turn's grants on.
   const composerConnectors = useMemo(
-    () => [...connectors, ...datasourceConnectors],
+    // Only a verified database is offered here: the producer grants exactly
+    // those, so listing a pending or failed one with its toggle on would say a
+    // chat can use something it cannot.
+    () => [...connectors, ...datasourceConnectors.filter((c) => c.status === 'connected')],
     [connectors, datasourceConnectors],
   );
+  const refreshDatasourceConnectors = useCallback(() => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
+      .catch(() => setDatasourceConnectors([]));
+  }, [orgMode]);
+  // Connecting or removing a database happens in two other places — the
+  // connect form's panel and the connections page — and both already announce
+  // it with this event, which is also what the project Context card listens
+  // to. Without this the composer's toggles would keep the boot-time list for
+  // the rest of the session: a connection made now would never appear, and a
+  // removed one would never leave.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasourceConnectors(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, [refreshDatasourceConnectors]);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1678,11 +1698,7 @@ function AppCore() {
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
-    if (orgMode) {
-      listDatasourceConnections()
-        .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
-        .catch(() => setDatasourceConnectors([]));
-    }
+    refreshDatasourceConnectors();
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
@@ -2405,7 +2421,7 @@ function AppCore() {
     }
   };
 
-  const handleConnectorPicked = async (connector) => {
+  const handleConnectorPicked = async (connector, editingConnection = null) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
     // Snapshot the origin now, before we switch into the connect task below.
@@ -2491,7 +2507,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
-      const connectSpec = orgMode ? toCloudSpec(baseSpec) : baseSpec;
+      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -5149,7 +5165,9 @@ function AppCore() {
 
         {route === 'customize' && (
           <CustomizeView
-            connectors={composerConnectors}
+            connectors={connectors}
+            onEditDatasource={(connection) =>
+              handleConnectorPicked({ id: connection.engine, label: connection.engine }, connection)}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}

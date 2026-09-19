@@ -7,6 +7,11 @@
 // port, a certificate that parses); this builds the shape and lets the
 // server's own message come back when it refuses.
 
+// The server's own bound, mirrored so an oversized paste is refused at the
+// field instead of after a round trip. Bytes, not characters: a certificate
+// chain is ASCII but the check upstream counts encoded length.
+export const MAX_CA_PEM_BYTES = 64 * 1024;
+
 const CONNECTED_STATUSES = new Set(['verified']);
 const FAILED_STATUSES = new Set(['failed']);
 
@@ -24,6 +29,15 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   const port = field('port');
   const mode = field('tls_mode') === 'custom_ca' ? 'custom_ca' : 'system';
   const caPem = field('ca_pem');
+
+  if (mode === 'custom_ca') {
+    if (!caPem) {
+      throw new Error('Paste the CA certificate, or choose public certificate authorities.');
+    }
+    if (new TextEncoder().encode(caPem).length > MAX_CA_PEM_BYTES) {
+      throw new Error('That CA certificate is larger than the 64 KiB limit. Paste only the chain this server needs.');
+    }
+  }
 
   return {
     connector_id: spec?._connector_id || spec?.engine || '',
