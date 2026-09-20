@@ -622,9 +622,19 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           : await createDatasourceConnection(payload);
         const state = describeConnectionState(connection);
         patchForm(conversationId, {
+          // Without the form id the store treats this as a different form and
+          // replaces the spec outright, which leaves a failed capture looking
+          // at an empty form with its fields and values gone.
+          form_id: spec.form_id,
           _is_probing: false,
           status_text: '',
-          form_error: state.kind === 'failed' ? (state.detail || state.title) : '',
+          form_error: state.kind === 'failed' ? [state.detail || state.title, state.hint].filter(Boolean).join(' ') : '',
+          // A failed connection is already stored, so submitting the corrected
+          // form again has to edit that one. Creating a second would earn a
+          // duplicate-name refusal and leave the first sitting there failed.
+          ...(state.kind === 'failed' && connection?.id
+            ? { _datasource_edit: { id: connection.id, expectedVersion: connection.credential_version } }
+            : {}),
           ...(state.kind === 'verified'
             ? { _is_success: true, title: state.title, subtitle: `${connection.name} is ready to use in this workspace.` }
             : {}),

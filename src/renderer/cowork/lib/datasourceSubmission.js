@@ -57,6 +57,23 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   };
 }
 
+// What a user can do about a refusal, by the gateway's own code. Only the ones
+// with an answer appear: a code with no useful advice is better shown as the
+// plain failure than dressed up in a guess.
+const HINTS = {
+  tls_failed:
+    "The server's certificate could not be verified. A self-hosted database usually presents the "
+    + 'certificate it generated for itself, which no client can check. If that is this server, set '
+    + 'Certificate trust to "Encrypt, but do not check the certificate", or to "No encryption" if it '
+    + 'offers none.',
+  destination_forbidden:
+    'That address cannot be reached from here. The database has to be on a public address, not a '
+    + 'private or local one.',
+  authentication_failed: 'The server refused the username or password.',
+  connection_failed:
+    'The server did not answer. Check the host and port, and that your firewall allows the connection.',
+};
+
 // auth creates a connection `pending` and only the gateway's probe completion
 // moves it on, so pending is a real state the user waits in, and anything
 // unrecognised is treated as pending rather than as success.
@@ -78,6 +95,10 @@ export function describeConnectionState(connection) {
       canRetry: true,
       title: 'Could not connect',
       detail: connection?.validation_error || '',
+      // The server stores that validation failed, not why; the gateway's own
+      // code rides along on the three routes that run a check, and it is the
+      // only thing here that can tell the user what to change.
+      hint: HINTS[connection?.validation_code] || '',
     };
   }
 

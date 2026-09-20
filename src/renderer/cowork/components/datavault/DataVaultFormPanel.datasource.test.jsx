@@ -77,6 +77,52 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe('a capture the gateway refused', () => {
+  it('names what to change and turns the next submit into an edit', async () => {
+    api.createDatasourceConnection.mockResolvedValue({
+      ...CONNECTION,
+      status: 'failed',
+      validation_error: 'validation failed',
+      validation_code: 'tls_failed',
+      credential_version: 1,
+    });
+    api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, status: 'verified', credential_version: 2 });
+
+    await submitTheForm();
+
+    // The reason auth stores says nothing actionable; the gateway's code does.
+    const shown = await screen.findByText(/certificate could not be verified/i);
+    expect(shown.textContent).toMatch(/Certificate trust/);
+
+    // Back to the form, where the trust choice can be changed, and submitting
+    // again edits the connection that already exists rather than creating a
+    // second one, which auth would refuse on the name.
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    // The shared retry patch drops the method's own action label, so the
+    // primary button reads as the default here. Pre-existing and cosmetic:
+    // the action id and kind are unchanged, which is what submitting uses.
+    await userEvent.click(await screen.findByRole('button', { name: /submit|connect/i }));
+    await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
+    expect(api.editDatasourceConnection.mock.calls[0][0]).toBe(7);
+    expect(api.editDatasourceConnection.mock.calls[0][2]).toBe(1);
+    expect(api.createDatasourceConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('says only what the server said when the code carries no advice', async () => {
+    api.createDatasourceConnection.mockResolvedValue({
+      ...CONNECTION,
+      status: 'failed',
+      validation_error: 'validation failed',
+      validation_code: 'something_new',
+    });
+
+    await submitTheForm();
+
+    expect(await screen.findByText(/validation failed/i)).toBeTruthy();
+    expect(screen.queryByText(/Certificate trust/)).toBeNull();
+  });
+});
+
 describe('submitting a cloud datasource form', () => {
   it('posts the structured body to the relay and not to the chat stream', async () => {
     const onSubmit = vi.fn();
