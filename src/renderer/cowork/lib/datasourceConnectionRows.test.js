@@ -48,6 +48,14 @@ describe('toDatasourceRows', () => {
     expect(row.tlsMode).toBe('system');
   });
 
+  it('carries the schema when the connection names one', () => {
+    const [named] = toDatasourceRows([{ ...VERIFIED, schema: 'sales_ops' }]);
+    const [unnamed] = toDatasourceRows([VERIFIED]);
+
+    expect(named.dbSchema).toBe('sales_ops');
+    expect(unnamed.dbSchema).toBe('');
+  });
+
   it('never carries a secret, because the relay never sends one', () => {
     const [row] = toDatasourceRows([{ ...VERIFIED, password: 'leaked' }]);
 

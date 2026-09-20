@@ -106,6 +106,24 @@ describe('the connections page in cloud', () => {
     expect(within(panel).queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
+  it('shows the schema a connection reads, and no row when it reads any', async () => {
+    api.listDatasourceConnections.mockResolvedValue([{ ...POSTGRES, schema: 'sales_ops' }]);
+    const named = render(<CustomizeView connectors={[]} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));
+
+    const panel = await screen.findByRole('dialog', { name: /Analytics connection/i });
+    expect(within(panel).getByText('Schema')).toBeInTheDocument();
+    expect(within(panel).getByText('sales_ops')).toBeInTheDocument();
+    named.unmount();
+
+    api.listDatasourceConnections.mockResolvedValue([POSTGRES]);
+    render(<CustomizeView connectors={[]} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));
+
+    const plain = await screen.findByRole('dialog', { name: /Analytics connection/i });
+    expect(within(plain).queryByText('Schema')).toBeNull();
+  });
+
   it('never shows a credential, only what the relay returns', async () => {
     render(<CustomizeView connectors={[]} />);
     await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));

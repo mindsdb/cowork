@@ -34,6 +34,9 @@ export function toDatasourceRows(connections) {
       hostMasked: c.host_masked || '',
       port: c.port ?? null,
       database: c.database || '',
+      // PostgreSQL only, and optional there: absent means the role's own
+      // search path decides what the connection sees.
+      dbSchema: c.schema || '',
       username: c.username || '',
       tlsMode: c.tls_mode || '',
       updatedAt: c.updated_at || c.created_at || null,

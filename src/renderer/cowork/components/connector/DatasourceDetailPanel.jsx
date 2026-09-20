@@ -101,6 +101,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
           <Row label="Host" value={connection.hostMasked} />
           <Row label="Port" value={connection.port} />
           <Row label="Database" value={connection.database} />
+          <Row label="Schema" value={connection.dbSchema} />
           <Row label="Username" value={connection.username} />
           <Row label="Certificate trust" value={TRUST_LABELS[connection.tlsMode] || connection.tlsMode || '—'} />
         </div>

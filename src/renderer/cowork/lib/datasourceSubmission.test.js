@@ -39,6 +39,26 @@ describe('buildDatasourcePayload', () => {
     });
   });
 
+  it('sends a schema only when the form has one', () => {
+    const named = buildDatasourcePayload({
+      spec: SPEC,
+      method: 'host-port',
+      values: { ...VALUES, schema: '  sales_ops  ' },
+      name: 'Analytics',
+    });
+    expect(named.schema).toBe('sales_ops');
+
+    // An empty field is left out, so the server reads it as no schema rather
+    // than as a name of nothing.
+    const blank = buildDatasourcePayload({
+      spec: SPEC,
+      method: 'host-port',
+      values: { ...VALUES, schema: '   ' },
+      name: 'Analytics',
+    });
+    expect('schema' in blank).toBe(false);
+  });
+
   it('carries a pasted certificate only when custom trust is chosen', () => {
     const withCa = buildDatasourcePayload({
       spec: SPEC,

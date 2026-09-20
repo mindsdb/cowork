@@ -63,6 +63,9 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
     // port it accepts anyway; inventing one here would just move the refusal.
     port: port === '' || port == null ? null : Number(port),
     database: field('database') || '',
+    // Optional, and only PostgreSQL asks: an empty field is left out so the
+    // server reads it as no schema rather than as an empty name.
+    ...(field('schema') ? { schema: field('schema') } : {}),
     username: field('username') || '',
     password: values?.password ?? '',
     // Only when something chose one. The chosen trust wins over a certificate

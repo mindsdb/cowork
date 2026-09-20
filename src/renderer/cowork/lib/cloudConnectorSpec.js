@@ -55,6 +55,7 @@ export function toCloudSpec(spec, connection = null) {
               host: connection.hostMasked?.includes('*') ? '' : connection.hostMasked,
               port: connection.port,
               database: connection.database,
+              schema: connection.dbSchema,
               username: connection.username,
               tls_mode: connection.tlsMode,
             }[f.name];
