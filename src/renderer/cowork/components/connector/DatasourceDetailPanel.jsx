@@ -111,7 +111,9 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
         </p>
       </div>
 
-      <div className="flex justify-end gap-2 px-5 py-4 border-t border-line">
+      {/* Left-aligned: the window's own controls sit in the bottom right corner
+          and covered the last button here. */}
+      <div className="flex justify-start gap-2 px-5 py-4 border-t border-line">
         {failed && (
           <Button variant="default" disabled={busy} onClick={() => run(() => onRetry?.(connection))}>
             {busy ? 'Working…' : 'Try again'}
