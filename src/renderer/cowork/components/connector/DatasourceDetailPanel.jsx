@@ -26,6 +26,7 @@ function Row({ label, value }) {
 // custom CA as the public trust store would tell the owner of an unverified
 // connection the opposite of the truth.
 const TRUST_LABELS = {
+  prefer: 'Encrypted when the server offers it',
   system: 'Public certificate authorities',
   custom_ca: 'A CA certificate you provided',
   encrypted: 'Encrypted, certificate not checked',
@@ -33,6 +34,8 @@ const TRUST_LABELS = {
 };
 
 const TRUST_NOTES = {
+  prefer: 'The connection is encrypted when the server supports it, and the server is not identified, so '
+    + 'the credentials could reach whoever answered for that address.',
   system: 'The connection is encrypted and the server\'s certificate and hostname are checked.',
   custom_ca: 'The connection is encrypted and checked against the certificate authority you provided.',
   encrypted: 'The connection is encrypted, but the server is not identified, so the credentials could reach '
@@ -104,7 +107,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
 
         <p className="mt-4 text-[12px] text-ink-4 leading-[1.6]">
           The password is held encrypted by the server and is never shown again. Queries run read only.
-          {' '}{TRUST_NOTES[connection.tlsMode] || TRUST_NOTES.system}
+          {' '}{TRUST_NOTES[connection.tlsMode] || TRUST_NOTES.prefer}
         </p>
       </div>
 

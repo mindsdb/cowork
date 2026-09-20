@@ -158,6 +158,14 @@ describe('the trust choice the user made', () => {
     expect(payload.tls).toEqual({ mode: 'custom_ca', ca_pem: 'PEM' });
   });
 
+  it('sends no trust block when the form did not ask', () => {
+    // What every connection captured through the cloud form now looks like:
+    // the server applies its own default rather than the page inventing one.
+    const payload = buildDatasourcePayload({ spec, method: 'host-port', values: base, name: 'A' });
+
+    expect('tls' in payload).toBe(false);
+  });
+
   it('refuses a value the server would not accept instead of substituting one', () => {
     expect(() => buildDatasourcePayload({
       spec, method: 'host-port', values: { ...base, tls_mode: 'verify-full' }, name: 'A',

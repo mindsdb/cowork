@@ -16,7 +16,7 @@ export const MAX_CA_PEM_BYTES = 64 * 1024;
 // Collapsing an unrecognised one into `system` would be worse than refusing it:
 // the connection would be stored stricter than the user chose, fail its check,
 // and say nothing about why.
-export const TLS_MODES = ['system', 'custom_ca', 'encrypted', 'disabled'];
+export const TLS_MODES = ['system', 'custom_ca', 'encrypted', 'disabled', 'prefer'];
 
 const CONNECTED_STATUSES = new Set(['verified']);
 const FAILED_STATUSES = new Set(['failed']);
@@ -33,8 +33,13 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   };
 
   const port = field('port');
-  const mode = field('tls_mode') || 'system';
-  if (!TLS_MODES.includes(mode)) {
+  // The cloud form does not ask about certificates, so most connections carry
+  // no choice at all and the server applies its own: encryption where the
+  // database offers it, no check on who answered. A value only appears when
+  // something deliberately set one, such as re-opening a connection that was
+  // stored with a verified mode.
+  const mode = field('tls_mode') || '';
+  if (mode && !TLS_MODES.includes(mode)) {
     throw new Error('Choose how this server\'s certificate should be checked.');
   }
   const caPem = field('ca_pem');
@@ -60,9 +65,10 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
     database: field('database') || '',
     username: field('username') || '',
     password: values?.password ?? '',
-    // The chosen trust wins: a certificate left behind by a previous choice
-    // must not travel with a system-trust connection.
-    tls: { mode, ca_pem: mode === 'custom_ca' ? (caPem || null) : null },
+    // Only when something chose one. The chosen trust wins over a certificate
+    // left behind by a previous choice, and no choice leaves the decision with
+    // the server rather than inventing one here.
+    ...(mode ? { tls: { mode, ca_pem: mode === 'custom_ca' ? (caPem || null) : null } } : {}),
   };
 }
 
