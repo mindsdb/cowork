@@ -137,3 +137,30 @@ describe('describeConnectionState', () => {
     expect(describeConnectionState(null).kind).toBe('pending');
   });
 });
+
+describe('the trust choice the user made', () => {
+  const spec = { _connector_id: 'postgres' };
+  const base = { host: 'db.example.com', database: 'appdb', username: 'u', password: 'p' };
+
+  it.each(['system', 'encrypted', 'disabled'])('travels as %s rather than being collapsed', (mode) => {
+    const payload = buildDatasourcePayload({
+      spec, method: 'host-port', values: { ...base, tls_mode: mode }, name: 'A',
+    });
+
+    expect(payload.tls).toEqual({ mode, ca_pem: null });
+  });
+
+  it('carries a pasted bundle only with custom trust', () => {
+    const payload = buildDatasourcePayload({
+      spec, method: 'host-port', values: { ...base, tls_mode: 'custom_ca', ca_pem: 'PEM' }, name: 'A',
+    });
+
+    expect(payload.tls).toEqual({ mode: 'custom_ca', ca_pem: 'PEM' });
+  });
+
+  it('refuses a value the server would not accept instead of substituting one', () => {
+    expect(() => buildDatasourcePayload({
+      spec, method: 'host-port', values: { ...base, tls_mode: 'verify-full' }, name: 'A',
+    })).toThrow(/certificate should be checked/i);
+  });
+});

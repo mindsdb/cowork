@@ -26,6 +26,10 @@ export function toDatasourceRows(connections) {
       // read as itself, never as connected.
       status: c.status === 'verified' ? 'connected' : c.status,
       validationError: c.validation_error || '',
+      // The server stores that validation failed, not why. The gateway's code
+      // rides along on create, edit and retry, and it is what turns a refusal
+      // into something the owner can act on here as well as in the chat form.
+      validationCode: c.validation_code || '',
       credentialVersion: c.credential_version,
       hostMasked: c.host_masked || '',
       port: c.port ?? null,

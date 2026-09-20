@@ -12,6 +12,12 @@
 // chain is ASCII but the check upstream counts encoded length.
 export const MAX_CA_PEM_BYTES = 64 * 1024;
 
+// Every trust choice the form offers, and the only values the server accepts.
+// Collapsing an unrecognised one into `system` would be worse than refusing it:
+// the connection would be stored stricter than the user chose, fail its check,
+// and say nothing about why.
+export const TLS_MODES = ['system', 'custom_ca', 'encrypted', 'disabled'];
+
 const CONNECTED_STATUSES = new Set(['verified']);
 const FAILED_STATUSES = new Set(['failed']);
 
@@ -27,7 +33,10 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   };
 
   const port = field('port');
-  const mode = field('tls_mode') === 'custom_ca' ? 'custom_ca' : 'system';
+  const mode = field('tls_mode') || 'system';
+  if (!TLS_MODES.includes(mode)) {
+    throw new Error('Choose how this server\'s certificate should be checked.');
+  }
   const caPem = field('ca_pem');
 
   if (mode === 'custom_ca') {
@@ -98,7 +107,7 @@ export function describeConnectionState(connection) {
       // The server stores that validation failed, not why; the gateway's own
       // code rides along on the three routes that run a check, and it is the
       // only thing here that can tell the user what to change.
-      hint: HINTS[connection?.validation_code] || '',
+      hint: HINTS[connection?.validation_code || connection?.validationCode] || '',
     };
   }
 

@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button } from '../ui';
+import { describeConnectionState } from '../../lib/datasourceSubmission';
 
 function Row({ label, value }) {
   if (!value && value !== 0) return null;
@@ -19,6 +20,26 @@ function Row({ label, value }) {
     </div>
   );
 }
+
+// The same words the connect form offers, because this is where someone comes
+// to check what a connection actually does. Showing every mode that is not a
+// custom CA as the public trust store would tell the owner of an unverified
+// connection the opposite of the truth.
+const TRUST_LABELS = {
+  system: 'Public certificate authorities',
+  custom_ca: 'A CA certificate you provided',
+  encrypted: 'Encrypted, certificate not checked',
+  disabled: 'No encryption',
+};
+
+const TRUST_NOTES = {
+  system: 'The connection is encrypted and the server\'s certificate and hostname are checked.',
+  custom_ca: 'The connection is encrypted and checked against the certificate authority you provided.',
+  encrypted: 'The connection is encrypted, but the server is not identified, so the credentials could reach '
+    + 'whoever answered for that address.',
+  disabled: 'The connection is not encrypted: the credentials, the queries and the rows they return travel '
+    + 'in clear text and can be read by anyone on the path.',
+};
 
 export default function DatasourceDetailPanel({ connection, onClose, onRetry, onRemove, onEdit }) {
   const [busy, setBusy] = useState(false);
@@ -64,6 +85,11 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
         {failed && (
           <Alert variant="danger" title="Could not connect">
             {connection.validationError || 'The last check did not succeed.'}
+            {describeConnectionState({ status: 'failed', validation_code: connection.validationCode }).hint && (
+              <div className="text-sm text-ink-2 leading-[1.55] mt-[6px]">
+                {describeConnectionState({ status: 'failed', validation_code: connection.validationCode }).hint}
+              </div>
+            )}
           </Alert>
         )}
         {error && <Alert variant="danger">{error}</Alert>}
@@ -73,15 +99,12 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
           <Row label="Port" value={connection.port} />
           <Row label="Database" value={connection.database} />
           <Row label="Username" value={connection.username} />
-          <Row
-            label="Certificate trust"
-            value={connection.tlsMode === 'custom_ca' ? 'Custom CA certificate' : 'Public certificate authorities'}
-          />
+          <Row label="Certificate trust" value={TRUST_LABELS[connection.tlsMode] || connection.tlsMode || '—'} />
         </div>
 
         <p className="mt-4 text-[12px] text-ink-4 leading-[1.6]">
-          The password is held encrypted by the server and is never shown again. Queries run read only over a
-          verified TLS connection; the certificate chain and the hostname are always checked.
+          The password is held encrypted by the server and is never shown again. Queries run read only.
+          {' '}{TRUST_NOTES[connection.tlsMode] || TRUST_NOTES.system}
         </p>
       </div>
 

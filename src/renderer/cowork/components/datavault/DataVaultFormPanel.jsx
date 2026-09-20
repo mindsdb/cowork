@@ -633,7 +633,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // form again has to edit that one. Creating a second would earn a
           // duplicate-name refusal and leave the first sitting there failed.
           ...(state.kind === 'failed' && connection?.id
-            ? { _datasource_edit: { id: connection.id, expectedVersion: connection.credential_version } }
+            ? {
+              _datasource_edit: { id: connection.id, expectedVersion: connection.credential_version },
+              // The error card replaces the form, so returning to it starts
+              // from an empty one. Saying so beats letting someone press
+              // Connect on a blank password and read a second refusal.
+              subtitle: 'Try again reopens the form. The password has to be entered once more.',
+            }
             : {}),
           ...(state.kind === 'verified'
             ? { _is_success: true, title: state.title, subtitle: `${connection.name} is ready to use in this workspace.` }

@@ -31,6 +31,7 @@ import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, getForm, setForm } from './formStore';
 
 const CID = 'conv-datasource-submit';
+const TYPED_SECRET = 'typed-not-the-default';
 
 const SPEC = {
   form_id: 'postgres-connector',
@@ -48,7 +49,12 @@ const SPEC = {
       { name: 'username', label: 'Username', type: 'text', required: true, default: 'readonly' },
       { name: 'password', label: 'Password', type: 'password', secret: true, required: true, default: 'secret' },
       { name: 'tls_mode', label: 'Certificate trust', type: 'select', required: true, default: 'system',
-        options: [{ value: 'system', label: 'Public certificate authorities' }, { value: 'custom_ca', label: 'Custom CA certificate' }] },
+        options: [
+          { value: 'system', label: 'Public certificate authorities' },
+          { value: 'custom_ca', label: 'A CA certificate I provide' },
+          { value: 'encrypted', label: 'Encrypt, but do not check the certificate' },
+          { value: 'disabled', label: 'No encryption' },
+        ] },
     ],
     actions: [{ id: 'submit', label: 'Connect', kind: 'primary' }],
   }],
@@ -88,7 +94,12 @@ describe('a capture the gateway refused', () => {
     });
     api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, status: 'verified', credential_version: 2 });
 
-    await submitTheForm();
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    const password = await screen.findByLabelText(/^Password$/i);
+    await userEvent.clear(password);
+    await userEvent.type(password, TYPED_SECRET);
+    await userEvent.type(await screen.findByLabelText(/^Label$/i), 'Analytics');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
 
     // The reason auth stores says nothing actionable; the gateway's code does.
     const shown = await screen.findByText(/certificate could not be verified/i);
@@ -101,10 +112,23 @@ describe('a capture the gateway refused', () => {
     // The shared retry patch drops the method's own action label, so the
     // primary button reads as the default here. Pre-existing and cosmetic:
     // the action id and kind are unchanged, which is what submitting uses.
+    // Returning to the form starts from an empty one, which the card says, so
+    // the password goes in again along with the trust choice the hint named.
+    const reopened = await screen.findByLabelText(/^Password$/i);
+    await userEvent.clear(reopened);
+    await userEvent.type(reopened, TYPED_SECRET);
+    await userEvent.click(await screen.findByRole('combobox', { name: /certificate trust/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /do not check the certificate/i }));
     await userEvent.click(await screen.findByRole('button', { name: /submit|connect/i }));
+
     await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
-    expect(api.editDatasourceConnection.mock.calls[0][0]).toBe(7);
-    expect(api.editDatasourceConnection.mock.calls[0][2]).toBe(1);
+    const [id, body, version] = api.editDatasourceConnection.mock.calls[0];
+    expect(id).toBe(7);
+    expect(version).toBe(1);
+    // Every other field in this fixture defaults to what a user would type, so
+    // the password is the only one that shows what the second submit carried.
+    expect(body.password).toBe(TYPED_SECRET);
+    expect(body.tls).toEqual({ mode: 'encrypted', ca_pem: null });
     expect(api.createDatasourceConnection).toHaveBeenCalledTimes(1);
   });
 
