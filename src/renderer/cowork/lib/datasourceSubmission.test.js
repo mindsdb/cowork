@@ -152,6 +152,15 @@ describe('describeConnectionState', () => {
     expect(state.detail).toBe('password authentication failed');
   });
 
+  it('tells a user what to change when the account cannot read the schema', () => {
+    // Auth stores only that validation failed, so without the gateway's code
+    // a mistyped or unreadable schema reads as a plain "could not connect".
+    const state = describeConnectionState({ status: 'failed', validation_code: 'insufficient_privileges' });
+
+    expect(state.hint).toMatch(/schema/i);
+    expect(state.hint).toMatch(/capitals|case/i);
+  });
+
   it('never claims success for a status it does not recognise', () => {
     expect(describeConnectionState({ status: 'something_new' }).kind).toBe('pending');
     expect(describeConnectionState(null).kind).toBe('pending');

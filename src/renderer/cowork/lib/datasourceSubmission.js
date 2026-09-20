@@ -88,6 +88,11 @@ const HINTS = {
     'That address cannot be reached from here. The database has to be on a public address, not a '
     + 'private or local one.',
   authentication_failed: 'The server refused the username or password.',
+  insufficient_privileges:
+    'The account cannot read anything the connection points at. If you named a schema, check the '
+    + 'spelling and its capitals, which PostgreSQL treats as part of the name, and that the account '
+    + 'has USAGE on that schema as well as SELECT on its tables. An account that can write is '
+    + 'refused too: queries run read only.',
   connection_failed:
     'The server did not answer. Check the host and port, and that your firewall allows the connection.',
 };
