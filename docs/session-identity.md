@@ -22,10 +22,9 @@ either shows the wrong account's data or refuses to work at all.
 
 ## 2. What is true today
 
-ENG-548 gave each MindsHub account its own
-data root. It meets the isolation requirement. It maintains the invariant by **ordered
-writes and compensating rollbacks across many mutable places**, rather than by
-construction.
+The per-account data root work gave each MindsHub account its own root. It meets
+the isolation requirement. It maintains the invariant by **ordered writes and
+compensating rollbacks across many mutable places**, rather than by construction.
 
 The identity of a session currently lives in:
 
@@ -143,7 +142,7 @@ runtime path.
 
 ## 8. Constraints
 
-- The isolation guarantee ENG-548 established does not weaken. Unproven ownership still
+- The isolation guarantee the per-account roots established does not weaken. Unproven ownership still
   resolves away from the default root, never onto it.
 - No data moves. An existing single-account install keeps its root exactly where it is.
 - A generation swap is visible to the user as a reload. It must not cost unsent work.
