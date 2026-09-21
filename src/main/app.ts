@@ -788,6 +788,13 @@ function setupIPC() {
     if (o.engine && !o.authUrl) {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
+      // A connector's own non-OAuth required fields declared alongside
+      // browser_oauth_builtin (e.g. Google Ads' developer_token) — the
+      // renderer collects them via the form and forwards them here, same
+      // shape the web redirect flow already sends as extraFields to
+      // startConnectorOAuth. Merged into the saved values below, after the
+      // OAuth-derived fields, so a same-named spec field can never shadow one.
+      const extraFields: Record<string, string> = (o.extraFields && typeof o.extraFields === 'object') ? o.extraFields : {};
       if (!OAUTH_CREDENTIALS[engine]) {
         return {
           ok: false,
@@ -887,6 +894,7 @@ function setupIPC() {
             name: labelName,
             replace_existing: Boolean(labelName),
             values: {
+              ...extraFields,
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
