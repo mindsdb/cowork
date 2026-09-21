@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as cp from 'child_process';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
@@ -58,6 +59,15 @@ vi.mock('./account-data', async (importOriginal) => ({
   orgStoreEnv: () => accountState.orgEnv,
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
+/** The install's own random token. Fixed and distinct here: `fs` is automocked
+ *  in this file (readFileSync answers every path with the owner secret), so the
+ *  real read-or-create cannot tell its own file from anyone else's. Its
+ *  randomness and file mode are covered against a real filesystem in
+ *  loopback-token.test.ts; what these cover is which value reaches the spawn. */
+vi.mock('./loopback-token', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./loopback-token')>()),
+  readOrCreateInstallToken: () => 'install-loopback-token',
+}));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
 const uvState = vi.hoisted(() => ({ resolveUv: '/usr/bin/uv' as string | null }));
 vi.mock('./uv-paths', () => ({
@@ -842,6 +852,23 @@ describe('the sidecar account root', () => {
     expect(spawnedEnv().COWORK_AUTH_TOKEN).toBe(getServerAuthToken());
   });
 
+  it('never hands over a token that can be reconstructed from /health', async () => {
+    // /health publishes COWORK_SERVER_OWNER unauthenticated, and for a session
+    // on the default root that value IS the install's owner secret. A bearer
+    // derived from it is computable by any local OS user, and binding the port
+    // to loopback is not an OS-user boundary.
+    accountState.root = null;
+    envState.authToken = null;
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    const { COWORK_AUTH_TOKEN: bearer, COWORK_SERVER_OWNER: owner } = spawnedEnv();
+    expect(bearer).not.toBe(owner);
+    expect(bearer).not.toBe(
+      crypto.createHmac('sha256', owner).update('cowork-loopback-auth').digest('hex'),
+    );
+  });
+
   it('keeps one token when the sidecar moves to another account root', async () => {
     // The regression. The token used to live in the account's own dotenv, so
     // root resolution moving under a running sidecar left the shell sending a
@@ -873,7 +900,7 @@ describe('the sidecar account root', () => {
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
-    expect(getServerAuthToken()).toMatch(/^[0-9a-f]{64}$/);
+    expect(getServerAuthToken()).toBe('install-loopback-token');
   });
 
   it('honours a token an older build already wrote to the dotenv', async () => {
@@ -891,7 +918,9 @@ describe('the sidecar account root', () => {
   it('replaces an orphan that will not take our token instead of adopting it', async () => {
     // /health is exempt from auth, so an orphan we cannot talk to looks exactly
     // like one we can. Adopting it is how a launch ends up with a sidecar that
-    // refuses every request.
+    // refuses every request for the life of the process, with only a relaunch
+    // to clear it. This is the reproduction of that failure: before the token
+    // was handed over at spawn, the second half of this test adopted.
     accountState.root = null;
     envState.authToken = null;
     spawnHealthy();
