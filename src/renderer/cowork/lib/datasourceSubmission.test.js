@@ -187,6 +187,23 @@ describe('the trust choice the user made', () => {
     expect(payload.tls).toEqual({ mode: 'custom_ca', ca_pem: 'PEM' });
   });
 
+  it('asks for verification when the box is checked', () => {
+    const payload = buildDatasourcePayload({
+      spec, method: 'host-port', values: { ...base, tls_verify: true }, name: 'A',
+    });
+
+    expect(payload.tls).toEqual({ mode: 'system', ca_pem: null });
+  });
+
+  it('leaves the choice to the server when the box is not checked', () => {
+    for (const tls_verify of [false, undefined]) {
+      const payload = buildDatasourcePayload({
+        spec, method: 'host-port', values: { ...base, tls_verify }, name: 'A',
+      });
+      expect('tls' in payload).toBe(false);
+    }
+  });
+
   it('sends no trust block when the form did not ask', () => {
     // What every connection captured through the cloud form now looks like:
     // the server applies its own default rather than the page inventing one.

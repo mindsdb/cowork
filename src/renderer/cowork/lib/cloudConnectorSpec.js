@@ -58,6 +58,10 @@ export function toCloudSpec(spec, connection = null) {
               schema: connection.dbSchema,
               username: connection.username,
               tls_mode: connection.tlsMode,
+              // A boolean field takes its state from `default`, and the line
+              // below skips an empty one, so an unverified connection simply
+              // leaves the box as it starts: unchecked.
+              tls_verify: connection.tlsMode === 'system' ? true : '',
             }[f.name];
             return prior == null || prior === '' ? f : { ...f, default: String(prior) };
           }),

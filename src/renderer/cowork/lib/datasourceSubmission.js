@@ -33,12 +33,12 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   };
 
   const port = field('port');
-  // The cloud form does not ask about certificates, so most connections carry
-  // no choice at all and the server applies its own: encryption where the
-  // database offers it, no check on who answered. A value only appears when
-  // something deliberately set one, such as re-opening a connection that was
-  // stored with a verified mode.
-  const mode = field('tls_mode') || '';
+  // The form asks one yes-or-no question about trust: verify the certificate
+  // against the public authorities, or leave it to the server's own default,
+  // which encrypts where the database offers it and checks nothing. A named
+  // mode still wins, which is how a connection stored with a pasted CA
+  // re-opens as itself.
+  const mode = field('tls_mode') || (values?.tls_verify === true ? 'system' : '');
   if (mode && !TLS_MODES.includes(mode)) {
     throw new Error('Choose how this server\'s certificate should be checked.');
   }

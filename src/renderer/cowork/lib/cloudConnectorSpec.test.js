@@ -43,6 +43,7 @@ const POSTGRES = {
           { name: 'schema', label: 'Schema', type: 'text' },
           { name: 'password', label: 'Password', type: 'password', secret: true, required: true },
           { name: 'tls_mode', label: 'Certificate trust', type: 'select', required: true, default: 'system' },
+          { name: 'tls_verify', label: 'Certificate', type: 'boolean' },
         ],
       },
     },
@@ -79,7 +80,7 @@ describe('toCloudSpec', () => {
   it('replaces the desktop fields and copy with the cloud ones, whole', () => {
     const [method] = toCloudSpec(POSTGRES).methods;
 
-    expect(method.fields.map((f) => f.name)).toEqual(['host', 'schema', 'password', 'tls_mode']);
+    expect(method.fields.map((f) => f.name)).toEqual(['host', 'schema', 'password', 'tls_mode', 'tls_verify']);
     expect(method.description).toBe('Cloud copy: the chain and hostname are always verified.');
     expect(method.how_to).toBe('Cloud how-to');
     // The desktop list documented an SSL mode that can be disabled; it must
@@ -146,6 +147,16 @@ describe('opening the form against an existing connection', () => {
 
     expect(named.fields.find((f) => f.name === 'schema').default).toBe('sales_ops');
     expect(unnamed.fields.find((f) => f.name === 'schema').default).toBeUndefined();
+  });
+
+  it('checks the verification box only for a connection stored as verified', () => {
+    const verified = toCloudSpec(POSTGRES, { ...CONNECTION, tlsMode: 'system' }).methods[0];
+    const unverified = toCloudSpec(POSTGRES, { ...CONNECTION, tlsMode: 'prefer' }).methods[0];
+
+    expect(verified.fields.find((f) => f.name === 'tls_verify').default).toBe('true');
+    // Left alone rather than defaulted to `"false"`, which a checkbox reads as
+    // checked.
+    expect(unverified.fields.find((f) => f.name === 'tls_verify').default).toBeUndefined();
   });
 
   it('leaves a masked host empty rather than pre-filling the mask', () => {
