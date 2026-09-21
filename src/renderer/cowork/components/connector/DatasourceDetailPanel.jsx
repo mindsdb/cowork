@@ -56,6 +56,9 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
   if (!connection) return null;
 
   const failed = connection.status === 'failed';
+  // Auth stores only that validation failed; the gateway's code is what turns
+  // that into something to act on.
+  const failedState = describeConnectionState({ status: 'failed', validation_code: connection.validationCode });
   const pending = connection.status === 'pending';
 
   const run = async (action) => {
@@ -106,12 +109,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
           )}
           {failed && (
             <Alert variant="danger" title="Could not connect">
-              {connection.validationError || 'The last check did not succeed.'}
-              {describeConnectionState({ status: 'failed', validation_code: connection.validationCode }).hint && (
-                <div className="text-sm text-ink-2 leading-[1.55] mt-[6px]">
-                  {describeConnectionState({ status: 'failed', validation_code: connection.validationCode }).hint}
-                </div>
-              )}
+              {failedState.hint || connection.validationError || 'The last check did not succeed.'}
             </Alert>
           )}
           {error && <Alert variant="danger">{error}</Alert>}

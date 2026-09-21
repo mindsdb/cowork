@@ -89,10 +89,11 @@ const HINTS = {
     + 'private or local one.',
   authentication_failed: 'The server refused the username or password.',
   insufficient_privileges:
-    'The account cannot read anything the connection points at. If you named a schema, check the '
+    'The account cannot read anything this connection points at. If you named a schema, check its '
     + 'spelling and its capitals, which PostgreSQL treats as part of the name, and that the account '
-    + 'has USAGE on that schema as well as SELECT on its tables. An account that can write is '
-    + 'refused too: queries run read only.',
+    + 'has USAGE on that schema as well as SELECT on its tables. An account that can also write is '
+    + 'fine; one with superuser rights, or that can read server files, is refused, because those '
+    + 'reach past your database.',
   connection_failed:
     'The server did not answer. Check the host and port, and that your firewall allows the connection.',
 };

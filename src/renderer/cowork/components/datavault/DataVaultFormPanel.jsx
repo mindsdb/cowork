@@ -628,7 +628,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           form_id: spec.form_id,
           _is_probing: false,
           status_text: '',
-          form_error: state.kind === 'failed' ? [state.detail || state.title, state.hint].filter(Boolean).join(' ') : '',
+          // `state.detail` is auth's own "validation failed", which is all it
+          // stores; the hint is the only text that tells anyone what to change.
+          form_error: state.kind === 'failed' ? (state.hint || state.detail || state.title) : '',
           // A failed connection is already stored, so submitting the corrected
           // form again has to edit that one. Creating a second would earn a
           // duplicate-name refusal and leave the first sitting there failed.

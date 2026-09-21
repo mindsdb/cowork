@@ -104,6 +104,9 @@ describe('a capture the gateway refused', () => {
     // The reason auth stores says nothing actionable; the gateway's code does.
     const shown = await screen.findByText(/certificate could not be verified/i);
     expect(shown.textContent).toMatch(/Certificate trust/);
+    // And only the gateway's: auth's fixed "validation failed" in front of it
+    // reads like a second, emptier sentence.
+    expect(shown.textContent).not.toMatch(/validation failed/i);
 
     // Back to the form, where the trust choice can be changed, and submitting
     // again edits the connection that already exists rather than creating a
