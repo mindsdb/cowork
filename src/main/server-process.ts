@@ -27,10 +27,11 @@ import {
   ACCOUNTS_DIR,
   listOrgSegments,
 } from './account-data';
-import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
+import { accountDataRoot, coworkHome, buildKind, readEnvFileAt } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
-import { authHeader, resetServerAuthTokenCache } from './server-auth';
+import { authHeader, probeAuthMismatch, setServerAuthToken } from './server-auth';
+import { resolveLoopbackToken } from './loopback-token';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
@@ -94,6 +95,25 @@ function serverOwnerToken(accountId?: string | null, orgSegment?: string | null)
   const base = accountOwnerToken(serverOwnerSecret(), accountId ?? null);
   if (!orgSegment) return base;
   return crypto.createHmac('sha256', base).update(orgSegment).digest('hex');
+}
+
+/**
+ * Settle the loopback bearer token for a sidecar on `root`, and pin it.
+ *
+ * Called on the spawn path before the child exists and on the adoption path
+ * before the first authenticated request, so the value the shell sends is
+ * always the value the sidecar was given. The dotenv is read here, ONCE, and
+ * only to honour a token an operator pinned or a build that predates this
+ * generated; nothing re-reads it while the server runs.
+ */
+function settleLoopbackToken(root: string): string {
+  const token = resolveLoopbackToken({
+    processEnv: process.env.COWORK_AUTH_TOKEN,
+    dotenv: readEnvFileAt(path.join(root, '.env'))['COWORK_AUTH_TOKEN'],
+    ownerSecret: serverOwnerSecret(),
+  });
+  setServerAuthToken(token);
+  return token;
 }
 
 // Which organization subtree the session's stores sit in, or null when they are
@@ -235,9 +255,9 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   console.log('[server] running on another account data root — restarting');
   try {
     await stopServer();
-    // The bearer token lives in the account's own dotenv, so a cached one from
-    // the previous root would be sent to the new server and refused.
-    resetServerAuthTokenCache();
+    // The token does not move with the root any more — the replacement sidecar
+    // is handed the one the shell already holds — so there is nothing to drop
+    // here. startServer settles and pins it either way.
     const result = await startServer();
     return result.ok && sidecarIsOnCurrentStores();
   } catch (err) {
@@ -673,10 +693,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     if (!_adoptedExternal) return { ok: true, port: serverPort };
     const probe = await probeHealthOnce(serverPort, 700);
     if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
-      return { ok: true, port: serverPort };
+      if (!(await probeAuthMismatch(serverPort))) return { ok: true, port: serverPort };
+      console.warn(`[server] adopted instance on port ${serverPort} refuses our token; starting a replacement`);
+      await stopServerUnlocked();
+    } else {
+      console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
+      await stopServerUnlocked();
     }
-    console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
-    await stopServerUnlocked();
   }
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
@@ -699,17 +722,27 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
     if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
-      serverStarted = true;
-      _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
       // the account, so an adopted server is on this session's root by definition.
-      _runningAccountRoot = currentAccountRoot();
-      _runningOrgStoreRoot = currentOrgStoreRoot();
-      lastStartError = null;
-      lastStartErrorKind = null;
-      lastPortHolderPid = null;
-      console.log(`[server] adopted our own existing instance on port ${serverPort}`);
-      return { ok: true, port: serverPort };
+      // Settle the bearer token against that root before anything authenticates
+      // to it, then check the orphan actually takes it: /health is auth-exempt,
+      // so a server we cannot talk to answers this probe exactly like one we can.
+      // Adopting one anyway is how every request 401s for the life of the
+      // process with nothing to show for it.
+      settleLoopbackToken(accountDataRoot());
+      if (await probeAuthMismatch(serverPort)) {
+        console.warn(`[server] an orphan on port ${serverPort} refuses our token; replacing it`);
+      } else {
+        serverStarted = true;
+        _adoptedExternal = true;
+        _runningAccountRoot = currentAccountRoot();
+        _runningOrgStoreRoot = currentOrgStoreRoot();
+        lastStartError = null;
+        lastStartErrorKind = null;
+        lastPortHolderPid = null;
+        console.log(`[server] adopted our own existing instance on port ${serverPort}`);
+        return { ok: true, port: serverPort };
+      }
     }
   }
 
@@ -863,6 +896,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
       COWORK_SERVER_OWNER: serverOwnerToken(account, orgSegmentAtSpawn),
+      // The shell decides the loopback bearer token and hands it over here,
+      // rather than letting the sidecar generate one and reading it back out
+      // of a dotenv both processes write. Settled against the root this child
+      // is being given, so the value the shell sends is the value this server
+      // will accept, for as long as it runs.
+      COWORK_AUTH_TOKEN: settleLoopbackToken(accountEnv.COWORK_HOME ?? dataHome),
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
       // build points at. Only set when the build is baked for a non-prod env
@@ -1007,20 +1046,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
-    // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
-    // has certainly written its dotenv by the time it answers /health. Drop the
-    // cache HERE, where "a server is now running" is the fact, rather than only
-    // where one is deliberately restarted.
-    //
-    // The restart sites cover the window between a stop and a start. What they
-    // could not cover is a FIRST start, and there are two of those. A fresh
-    // install reads a dotenv that does not exist yet, latches "no token", and
-    // then sends every request unauthenticated for the life of the process —
-    // which is every request refused, now that the server requires auth by
-    // default. And a sign-in whose sidecar is not running starts one on the new
-    // account's root, whose dotenv holds a different token, while the cache
-    // still holds the previous account's.
-    resetServerAuthTokenCache();
+    // The bearer token was settled and pinned before this child was spawned
+    // (settleLoopbackToken), so a server that is up is already serving the
+    // token the shell holds. Nothing to re-read.
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a

@@ -30,6 +30,10 @@ vi.mock('./cowork-home', () => ({
   accountDataRoot: () => accountState.dataRoot,
   buildKind: () => 'prod',
   readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
+  // The loopback token is settled from the dotenv of the root being spawned on,
+  // once, at spawn. Same source as readEnvFile here — the tests drive it through
+  // envState either way.
+  readEnvFileAt: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
 }));
 /** Only the root resolution is faked; the rest of account-data stays real so
  *  the owner token every other test in this file depends on is unchanged. */
@@ -118,6 +122,9 @@ let healthOwner: string | null = null;
 /** Capabilities advertised by /health. Code Mode must not adopt a sidecar
  *  merely because it is healthy when the coding routes are absent. */
 let healthCapabilities: string[] = ['coding'];
+/** What an authenticated route answers the shell. 200 means the server takes
+ *  the token we hold; 401 is the auth-mismatched sidecar /health cannot see. */
+let authProbeStatus = 200;
 
 /** Records every execFile call and lets a test decide what each one returns. */
 let execCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -186,6 +193,19 @@ beforeEach(() => {
   // starts. A test opts into a healthy backend by flipping `healthOwner`.
   healthOwner = null;
   healthCapabilities = ['coding'];
+  authProbeStatus = 200;
+  // The authenticated probe the adoption path runs before trusting a server it
+  // did not spawn (http.request, as opposed to the health probe's http.get).
+  vi.mocked(http.request).mockImplementation(((_opts: unknown, cb: unknown) => {
+    if (typeof cb === 'function') {
+      const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
+      res.statusCode = authProbeStatus;
+      res.resume = () => {};
+      setTimeout(() => (cb as (r: unknown) => void)(res), 0);
+    }
+    const req = { on: () => req, destroy: () => {}, end: () => {} };
+    return req as never;
+  }) as never);
   vi.mocked(http.get).mockImplementation(((_opts: unknown, cb: unknown) => {
     const owner = healthOwner;
     if (owner !== null && typeof cb === 'function') {
@@ -807,69 +827,102 @@ describe('the sidecar account root', () => {
     }) as never);
   }
 
-  it('drops the cached bearer token when it moves the sidecar to another root', async () => {
-    // The token lives in the account's own dotenv, so a root change changes
-    // which token is valid. Nothing else clears this cache: it is main-process
-    // module state, so the renderer reload that follows a root change does not
-    // touch it, and every request would carry a token the new sidecar refuses.
+  const spawnedEnv = (): Record<string, string> =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+
+  it('hands the sidecar the token it will later be asked for', async () => {
+    // The shell decides the token and gives it to the child. Nothing reads it
+    // back, so the two cannot end up holding different values.
     accountState.root = null;
-    envState.authToken = 'token-for-the-shared-root';
+    envState.authToken = null;
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
-    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+
+    expect(getServerAuthToken()).toBeTruthy();
+    expect(spawnedEnv().COWORK_AUTH_TOKEN).toBe(getServerAuthToken());
+  });
+
+  it('keeps one token when the sidecar moves to another account root', async () => {
+    // The regression. The token used to live in the account's own dotenv, so
+    // root resolution moving under a running sidecar left the shell sending a
+    // token that sidecar refuses — every authenticated request 401ing for the
+    // life of the process while /health, which is exempt, went on answering.
+    accountState.root = null;
+    envState.authToken = null;
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const onFirstRoot = getServerAuthToken();
 
     accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
     spawnHealthy();
     await ensureSidecarOnCurrentAccountRoot();
 
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe(onFirstRoot);
+    expect(spawnedEnv().COWORK_AUTH_TOKEN).toBe(onFirstRoot);
     expect(sidecarIsOnCurrentStores()).toBe(true);
   });
 
-  it('picks up a token the FIRST start generated, with no restart to hang it on', async () => {
-    // The fresh-install shape, and the one the restart sites cannot reach. The
-    // dotenv does not exist when the app first reads it, so the cache latches
-    // "no token" — and with the server requiring auth by default that is every
-    // authenticated request refused for the life of the process, with only
-    // /health answering.
+  it('settles a token on a first start with no dotenv to read', async () => {
+    // The fresh-install shape. Reading a dotenv that does not exist yet used to
+    // latch "no token", and with auth required by default that is every request
+    // refused for the life of the process.
     accountState.root = null;
     envState.authToken = null;
     expect(getServerAuthToken()).toBeNull();
 
-    // The server generates one during startup and writes it to the dotenv it
-    // has certainly written by the time it answers /health.
-    envState.authToken = 'token-the-server-generated';
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
-    expect(getServerAuthToken()).toBe('token-the-server-generated');
+    expect(getServerAuthToken()).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('picks up the new root token when a sign-in STARTS a sidecar rather than moving one', async () => {
-    // Sign-in only resets around a sidecar it restarts. When none is running it
-    // starts one instead, on the new account's root — whose dotenv holds a
-    // different token — and that path reaches no reset site at all.
+  it('honours a token an older build already wrote to the dotenv', async () => {
+    // That build's sidecar generated the value and accepts nothing else, so an
+    // install upgrading into this change keeps working.
     accountState.root = null;
-    envState.authToken = 'token-for-the-shared-root';
-    spawnHealthy();
-    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
-    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
-
-    await stopServer();
-    accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
+    envState.authToken = 'generated-by-an-older-build';
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe('generated-by-an-older-build');
+    expect(spawnedEnv().COWORK_AUTH_TOKEN).toBe('generated-by-an-older-build');
   });
 
-  it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
-    accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
+  it('replaces an orphan that will not take our token instead of adopting it', async () => {
+    // /health is exempt from auth, so an orphan we cannot talk to looks exactly
+    // like one we can. Adopting it is how a launch ends up with a sidecar that
+    // refuses every request.
+    accountState.root = null;
+    envState.authToken = null;
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const ourOwner = spawnedEnv().COWORK_SERVER_OWNER;
+    await stopServer();
+
+    // An orphan of ours is on the port and takes our token: adopt it, no spawn.
+    healthOwner = ourOwner;
+    authProbeStatus = 200;
+    let spawnsBefore = vi.mocked(cp.spawn).mock.calls.length;
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(vi.mocked(cp.spawn).mock.calls.length).toBe(spawnsBefore);
+    await stopServer();
+
+    // Same orphan, but it refuses the token: replace it rather than adopt it.
+    healthOwner = ourOwner;
+    authProbeStatus = 401;
+    spawnsBefore = vi.mocked(cp.spawn).mock.calls.length;
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(vi.mocked(cp.spawn).mock.calls.length).toBe(spawnsBefore + 1);
+  });
+
+  it('leaves a running sidecar and its token alone when the root has not moved', async () => {
+    accountState.root = 'accounts/second-account';
+    envState.authToken = null;
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const settled = getServerAuthToken();
 
     // A restart here would kill a live turn for nothing.
     vi.mocked(cp.spawn).mockImplementation((() => {
@@ -877,7 +930,7 @@ describe('the sidecar account root', () => {
     }) as never);
 
     await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe(settled);
   });
 });
 

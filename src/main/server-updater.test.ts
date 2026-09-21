@@ -22,7 +22,10 @@ vi.mock('./server-process', () => ({
 vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
 // authHeader reaches cowork-home's readEnvFile in turn; mocked at this
 // boundary instead so this file doesn't have to also stub that.
-vi.mock('./server-auth', () => ({ authHeader: vi.fn(() => ({})) }));
+vi.mock('./server-auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./server-auth')>()),
+  authHeader: vi.fn(() => ({})),
+}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
