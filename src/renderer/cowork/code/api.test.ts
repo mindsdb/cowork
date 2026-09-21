@@ -21,6 +21,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it('sends the displayed revision and attachments with an explicit mode change', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const attachments = [{ kind: 'mention' as const, name: 'notes.md', path: '/repo/notes.md' }];
+    await codingApi.modeTurn('task/1', 'Plan the change', 'plan', 42, attachments);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:26866/api/v1/coding/sessions/task%2F1/mode-turns', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ prompt: 'Plan the change', task_mode: 'plan', expected_event_count: 42, attachments }),
+    }));
+  });
   it.each([null, 'project/1'])('routes source discovery and reads for project %s', async (projectId) => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
     vi.stubGlobal('fetch', fetchMock);

@@ -36,8 +36,22 @@ export type CodingStatus =
 
 export type PermissionMode = 'read_only' | 'supervised' | 'workspace' | 'full_access';
 export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
+export type TaskMode = 'build' | 'plan';
+
+export interface PendingQuestion {
+  id: string;
+  questions: Array<{
+    id: string;
+    header: string;
+    question: string;
+    options?: Array<{ label: string; description: string }> | null;
+    isOther: boolean;
+    isSecret: boolean;
+  }>;
+}
 
 export interface SessionCreateBody {
+  task_mode?: TaskMode;
   path?: string;
   project_id?: string;
   resource_ids?: string[];
@@ -58,6 +72,7 @@ export interface SessionCreateBody {
 }
 
 interface CreateCodeTaskBase {
+  taskMode?: TaskMode;
   prompt: string;
   engineId: string;
   model: string;
@@ -195,6 +210,8 @@ export interface CodingSession {
   engine_session_id?: string | null;
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
+  pending_question?: PendingQuestion | null;
+  task_mode?: TaskMode;
   queued_instructions?: QueuedInstruction[];
   pinned?: boolean;
   archived?: boolean;
@@ -840,6 +857,10 @@ const liveCodingApi = {
     requestJson<CodingSession>('/sessions', { method: 'POST', body: JSON.stringify(body) }),
   turn: (id: string, prompt: string, attachments: InputReference[] = []) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/turns`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
+  modeTurn: (id: string, prompt: string, taskMode: TaskMode, expectedEventCount: number, attachments: InputReference[] = []) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/mode-turns`, { method: 'POST', body: JSON.stringify({ prompt, task_mode: taskMode, expected_event_count: expectedEventCount, attachments }) }),
+  answerQuestion: (id: string, questionId: string, answers: Record<string, string[]>) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/questions/${encodeURIComponent(questionId)}`, { method: 'POST', body: JSON.stringify({ answers }) }),
   steer: (id: string, prompt: string, attachments: InputReference[] = []) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/steer`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
   queue: (id: string, prompt: string, attachments: InputReference[] = []) =>

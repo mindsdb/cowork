@@ -6,6 +6,8 @@ import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 function sidebarProjectionChanged(previous: CodingSession, next: CodingSession): boolean {
   return previous.title !== next.title
     || previous.status !== next.status
+    || previous.task_mode !== next.task_mode
+    || previous.pending_question?.id !== next.pending_question?.id
     || previous.run_status !== next.run_status
     || previous.computer_status !== next.computer_status
     || previous.project_name !== next.project_name
