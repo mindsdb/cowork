@@ -390,6 +390,10 @@ function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   const devMode = getDevMode();
+  // Set only when the renderer is actually served from Vite (dev/live modes) —
+  // used below so the loopback-token webRequest hook can also cover API calls
+  // proxied through Vite's own port, not just direct calls to the sidecar port.
+  const viteDevPort = devMode === 'live' || isDev ? process.env.VITE_RENDERER_PORT || '5173' : null;
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -444,7 +448,16 @@ function createWindow() {
         const token = getServerAuthToken();
         if (token) {
           try {
-            if (new URL(details.url).port === String(getServerPort())) {
+            const url = new URL(details.url);
+            const isDirectServerCall = url.port === String(getServerPort());
+            // Dev mode (DEV_MODE=live / VITE_DEV=1) loads the renderer from Vite,
+            // so API calls resolve same-origin to Vite's own port and get proxied
+            // to the real sidecar server-side — this hook never sees the final
+            // 127.0.0.1:<serverPort> request to attach the header to. Scoped to
+            // /api/ so static asset/module requests through Vite aren't touched.
+            const isViteProxiedApiCall =
+              viteDevPort !== null && url.port === viteDevPort && url.pathname.startsWith('/api/');
+            if (isDirectServerCall || isViteProxiedApiCall) {
               details.requestHeaders['Authorization'] = `Bearer ${token}`;
             }
           } catch {
