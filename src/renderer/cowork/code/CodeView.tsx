@@ -502,6 +502,7 @@ export default function CodeView({
                 session={session}
                 busy={busy}
                 supportsPlanning={session.computer_is_local !== false && catalog.engines.find(engine => engine.id === session.engine_id)?.features?.planning === 'supported'}
+                planningLoading={session.computer_is_local !== false && catalog.enginesLoading}
                 onModeSend={(prompt, mode, attachments) => runAction(
                   () => codingApi.modeTurn(session.id, prompt, mode, session.event_count, attachments), true, true,
                 )}

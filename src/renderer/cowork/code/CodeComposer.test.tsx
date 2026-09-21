@@ -67,11 +67,49 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
   const { unmount, container, rerender } = render(element);
   return { onSend, onModeSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued, unmount, container,
     rerenderSession: (next: CodingSession, nextModeSend = onModeSend) => rerender(<CodeComposer {...element.props} session={next} onModeSend={nextModeSend} />),
+    rerenderPlanning: (supported: boolean, loading: boolean) => rerender(<CodeComposer {...element.props} supportsPlanning={supported} planningLoading={loading} />),
   };
 }
 
 
 describe('CodeComposer', () => {
+  it('keeps a Plan draft and attachments while capabilities reload or become unavailable', async () => {
+    const user = userEvent.setup();
+    const attachment: InputReference = { kind: 'mention', name: 'notes.md', path: '/repo/notes.md' };
+    const view = renderComposer({ ...baseSession, status: 'completed' }, [], { id: 1, item: attachment }, true);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    await user.type(input, '/plan{Enter}Review the design');
+    view.rerenderPlanning(false, true);
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send follow-up' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(view.onSend).not.toHaveBeenCalled();
+    expect(view.onModeSend).not.toHaveBeenCalled();
+    expect(input).toHaveValue('Review the design');
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
+
+    view.rerenderPlanning(false, false);
+    expect(screen.getByRole('status')).toHaveTextContent('This task mode is unavailable');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(view.onSend).not.toHaveBeenCalled();
+    view.rerenderPlanning(true, false);
+    fireEvent.click(screen.getByRole('button', { name: 'Send follow-up' }));
+    await waitFor(() => expect(view.onModeSend).toHaveBeenCalledWith('Review the design', 'plan', [attachment]));
+  });
+
+  it('requires an explicit choice to leave an unavailable Plan draft', async () => {
+    const user = userEvent.setup();
+    const view = renderComposer({ ...baseSession, status: 'completed' }, [], null, true);
+    await user.type(screen.getByRole('textbox', { name: 'Follow-up instruction' }), '/plan{Enter}Keep the draft');
+    view.unmount();
+    const restored = renderComposer({ ...baseSession, status: 'completed' });
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send follow-up' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Turn plan mode off' }));
+    await user.click(screen.getByRole('button', { name: 'Send follow-up' }));
+    expect(restored.onSend).toHaveBeenCalledWith('Keep the draft', 'turn', []);
+  });
+
   it('uses the latest idle revision callback without losing the draft during a poll', async () => {
     const user = userEvent.setup();
     const idle = { ...baseSession, status: 'completed' as const };
@@ -319,6 +357,25 @@ describe('CodeComposer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('Add a README afterwards', 'queue', []));
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
+  });
+
+  it.each(['approval', 'question'] as const)('keeps queued work removable but not steerable during a pending %s', async kind => {
+    const pending = kind === 'approval'
+      ? { pending_approval: { id: 'a1', kind: 'command', title: 'Run tests', detail: 'npm test', risk: '', scope: '', allow_session: false } }
+      : { pending_question: { id: 'q1', questions: [] } };
+    const queued = [{ id: 'queued-1', prompt: 'Check Windows next', created_at: baseSession.created_at }];
+    const view = renderComposer({ ...baseSession, status: 'awaiting_approval', ...pending, queued_instructions: queued });
+    expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove queued instruction 1' }));
+    expect(view.onRemoveQueued).toHaveBeenCalledWith('queued-1');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'Then document it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
+    await waitFor(() => expect(view.onSend).toHaveBeenCalledWith('Then document it', 'queue', []));
+    expect(view.onSteerQueued).not.toHaveBeenCalled();
+    view.rerenderSession({ ...baseSession, queued_instructions: queued });
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    expect(view.onSteerQueued).toHaveBeenCalledWith('queued-1');
   });
 
   it('shows persisted queued work and lets the user remove it', () => {

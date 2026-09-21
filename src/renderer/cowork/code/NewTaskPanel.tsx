@@ -81,7 +81,7 @@ export function NewTaskPanel({
   } = draft;
   const localTarget = !computerId || allComputers.find(computer => computer.id === computerId)?.is_local === true;
   const canPlan = localTarget && draft.supportsPlanning;
-  useEffect(() => { if (!localTarget || !draft.supportsPlanning) setTaskMode('build'); }, [localTarget, draft.supportsPlanning]);
+  const planUnavailable = taskMode === 'plan' && !canPlan;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
@@ -91,7 +91,8 @@ export function NewTaskPanel({
     projectId: selectedProjectId,
   });
   useEffect(() => setPaletteIndex(0), [commandQuery]);
-  const readinessText = sourceLoading ? 'Loading issue or PR…' : readinessMessage;
+  const readinessText = sourceLoading ? 'Loading issue or PR…' : planUnavailable && !engineLoading && !catalogError
+    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.' : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -107,6 +108,7 @@ export function NewTaskPanel({
     requestAnimationFrame(() => promptRef.current?.focus());
   };
   const start = () => {
+    if (planUnavailable) return;
     if (prompt.trim() === '/plan' && canPlan) {
       setTaskMode(mode => mode === 'plan' ? 'build' : 'plan');
       setPrompt('');
@@ -302,7 +304,7 @@ export function NewTaskPanel({
               }}
             />
             <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
-              planMode={taskMode === 'plan'} onPlanChange={canPlan ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
+              planMode={taskMode === 'plan'} onPlanChange={canPlan || taskMode === 'plan' ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
             <PermissionSelect
               value={permissionMode}
               onValueChange={setPermissionMode}
@@ -352,7 +354,7 @@ export function NewTaskPanel({
               variant="primary"
               size="sm"
               className="code-start-task-button"
-              disabled={startUnavailable}
+              disabled={startUnavailable || planUnavailable}
               onClick={start}
               aria-describedby={readinessText ? 'code-start-readiness' : undefined}
             >
@@ -365,7 +367,7 @@ export function NewTaskPanel({
           {readinessText && (
             <div
               id="code-start-readiness"
-              className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
+              className={`code-start-readiness${planUnavailable ? ' is-attention' : taskReady ? ' is-ready' : ''}`}
               role="status"
               aria-live="polite"
             >
