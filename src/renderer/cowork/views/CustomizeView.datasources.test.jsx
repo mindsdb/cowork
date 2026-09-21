@@ -37,7 +37,6 @@ const FAILED = { ...POSTGRES, id: 8, name: 'Reporting', status: 'failed', valida
 beforeEach(() => {
   setOrgMode(true);
   api.listDatasourceConnections.mockResolvedValue([POSTGRES]);
-  vi.stubGlobal('confirm', vi.fn(() => true));
 });
 
 afterEach(() => {
@@ -80,10 +79,29 @@ describe('the connections page in cloud', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));
 
     const panel = await screen.findByRole('dialog', { name: /Analytics connection/i });
-    await userEvent.click(within(panel).getByRole('button', { name: /remove/i }));
+    await userEvent.click(within(panel).getByRole('button', { name: /^remove$/i }));
+
+    // The removal is behind a confirmation, so nothing is deleted on the click
+    // that opens it.
+    const confirm = await screen.findByRole('dialog', { name: /Remove Analytics\?/i });
+    expect(api.deleteDatasourceConnection).not.toHaveBeenCalled();
+    await userEvent.click(within(confirm).getByRole('button', { name: /^remove$/i }));
 
     await waitFor(() => expect(api.deleteDatasourceConnection).toHaveBeenCalledWith(7));
     expect(api.deleteDatasource).not.toHaveBeenCalled();
+  });
+
+  it('keeps the connection when the confirmation is cancelled', async () => {
+    render(<CustomizeView connectors={[]} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));
+
+    const panel = await screen.findByRole('dialog', { name: /Analytics connection/i });
+    await userEvent.click(within(panel).getByRole('button', { name: /^remove$/i }));
+
+    const confirm = await screen.findByRole('dialog', { name: /Remove Analytics\?/i });
+    await userEvent.click(within(confirm).getByRole('button', { name: /cancel/i }));
+
+    expect(api.deleteDatasourceConnection).not.toHaveBeenCalled();
   });
 
   it('offers a retry only for a failed check, and says why it failed', async () => {

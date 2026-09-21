@@ -36,6 +36,7 @@ import {
 import { cn } from '../lib/cn';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard from '../components/connector/ConnectionCard';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -112,6 +113,9 @@ function MetaRow({ label, value }) {
 }
 
 function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+  //: 'reconnect' | 'disconnect' | null. One dialog serves both, because only
+  //: one of the two buttons can be answered at a time.
+  const [confirming, setConfirming] = useState(null);
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -391,12 +395,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           {spec && (
             <Button
               variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
-                onReconnect?.(connection, spec);
-              }}
+              onClick={() => setConfirming('reconnect')}
               className="w-full justify-center"
             >
               Reconnect
@@ -405,17 +404,32 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           <Button
             variant="danger"
             block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection, saved);
-              onClose();
-            }}
+            onClick={() => setConfirming('disconnect')}
           >
             {Ico.trash(14)}
             Remove
           </Button>
         </div>
       </div>
+      <ConfirmModal
+        open={confirming !== null}
+        title={confirming === 'disconnect' ? `Disconnect ${connection.name}?` : 'Connect this again from scratch?'}
+        message={confirming === 'disconnect'
+          ? `The saved ${connection.engine} connection is removed. You can connect it again later.`
+          : `The existing ${spec?.label || connection.engine} connection is removed first, then you connect it again.`}
+        confirmLabel={confirming === 'disconnect' ? 'Disconnect' : 'Reconnect'}
+        destructive={confirming === 'disconnect'}
+        onConfirm={() => {
+          if (confirming === 'disconnect') {
+            onDisconnect?.(connection, saved);
+            onClose();
+            return;
+          }
+          onReconnect?.(connection, spec);
+          setConfirming(null);
+        }}
+        onClose={() => setConfirming(null)}
+      />
     </>
   );
 }
@@ -572,7 +586,9 @@ export default function CustomizeView({
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      // Rethrown, not alerted: the card's confirmation dialog is still open and
+      // answers there, where the person is looking.
+      throw e;
     }
   };
 
