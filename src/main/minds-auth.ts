@@ -1510,9 +1510,8 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     diagnostic("main.minds-auth", "INFO", "minds_auth_account_data_root_changed_restarting_the_sidecar", '[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();
-    // No token to drop: the replacement sidecar is handed the one the shell
-    // already holds. Clearing it here would only leave the shell unable to
-    // authenticate if that start then failed.
+    // No token to drop: the replacement is handed the one the shell already
+    // holds. Clearing it would only strand the shell if this start then failed.
     await startServer();
   } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();

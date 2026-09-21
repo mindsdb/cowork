@@ -357,8 +357,7 @@ describe('commitMindsSignIn — the account-switch restart', () => {
   it('keeps the token the shell holds across the account-switch restart', async () => {
     // The replacement sidecar is handed the token the shell already holds, so
     // the sign-in has nothing to re-read and must not blank it. Blanking it
-    // here is how every later main-process request goes out unauthenticated,
-    // which the sidecar refuses once auth is on.
+    // sends every later request out unauthenticated, which the sidecar refuses.
     homeHolder.antonInstalled = true;
     serverState.running = true;
     serverState.onCurrentRoot = false;
