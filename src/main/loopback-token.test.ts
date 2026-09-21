@@ -96,10 +96,9 @@ describe('readOrCreateInstallToken', () => {
 
   it('is random, not derived from anything the server publishes', () => {
     // The security boundary. /health echoes the server-owner value
-    // unauthenticated, and for a session on the default root that value IS the
-    // install's owner secret — so a bearer derived from it can be recomputed by
-    // any local OS user, and loopback binding is not an OS-user boundary.
-    // Two installs must not be able to produce each other's token.
+    // unauthenticated, and for a session on the default root that value is the
+    // install's owner secret, so anything derived from it can be recomputed by
+    // any local OS user. Two installs must not produce each other's token.
     const first = readOrCreateInstallToken(home);
     resetInstallTokenCache();
     const other = fs.mkdtempSync(path.join(os.tmpdir(), 'loopback-token-'));
@@ -111,10 +110,9 @@ describe('readOrCreateInstallToken', () => {
   });
 
   it('is not an HMAC of the owner secret under any label the shell publishes', () => {
-    // Pins the exact regression: the first cut of this change derived the
-    // bearer as HMAC-SHA256(ownerSecret, 'cowork-loopback-auth'), and
-    // accountOwnerToken returns that secret verbatim for a default-root
-    // session, which /health then publishes.
+    // Pins the exact regression. The first cut derived the bearer as
+    // HMAC-SHA256(ownerSecret, 'cowork-loopback-auth'), and accountOwnerToken
+    // returns that secret verbatim for a default-root session.
     const ownerSecret = crypto.randomBytes(16).toString('hex');
     fs.writeFileSync(path.join(home, '.server_owner'), ownerSecret + '\n');
     const token = readOrCreateInstallToken(home);
@@ -127,7 +125,7 @@ describe('readOrCreateInstallToken', () => {
   });
 
   it('still yields a usable token when the home cannot be written', () => {
-    // The sidecar is handed this same value at spawn, so the session works; it
+    // The sidecar is handed this same value at spawn, so the session works. It
     // just will not survive the process, and the next launch replaces that
     // sidecar rather than adopting it.
     const unwritable = path.join(home, 'file-not-a-dir', 'home');

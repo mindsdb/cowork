@@ -3,15 +3,13 @@ import * as http from 'http';
 // The bearer token for the loopback API when the server runs with
 // COWORK_REQUIRE_AUTH=true.
 //
-// The shell DECIDES this value and hands it to the sidecar at spawn, so the two
-// cannot disagree. It is pinned for the sidecar's lifetime; nothing re-reads it
-// while a server is running. See loopback-token.ts for why it is not read back
-// out of a dotenv any more.
+// The shell decides it and hands it to the sidecar at spawn, so the two cannot
+// disagree. Pinned for that sidecar's lifetime; see loopback-token.ts for why
+// it is no longer read back out of a dotenv.
 //
 // Renderer requests get it injected at the network layer by the webRequest hook
-// in app.ts's createWindow(). Main-process fetches (OAuth connect/revoke/
-// refresh, orphan-loop resume) never pass through that hook, so they must call
-// authHeader() themselves.
+// in app.ts's createWindow(). Main-process fetches never pass through that hook,
+// so they must call authHeader() themselves.
 //
 // `null` means no server has been started or adopted in this process yet.
 let pinnedToken: string | null = null;
@@ -37,13 +35,11 @@ export function resetServerAuthTokenCache(): void {
 /**
  * Whether the server on this port refuses the token we hold.
  *
- * /health is exempt from auth by design, so a health check alone cannot tell an
- * auth-mismatched sidecar from a working one. Every other route 401s while
- * /health answers 200, and the app looks up.
+ * /health is exempt from auth, so it answers 200 from a sidecar whose every
+ * other route 401s. Only a health check cannot tell those apart.
  *
- * Only an explicit 401 counts. A network error or a timeout is not proof of a
- * mismatch, and treating it as one would throw away a server that is merely
- * slow.
+ * Only an explicit 401 counts as a mismatch. A network error or a timeout would
+ * throw away a server that is merely slow.
  */
 export function probeAuthMismatch(port: number, timeoutMs = 3000): Promise<boolean> {
   return new Promise((resolve) => {
