@@ -19,13 +19,12 @@
 // COWORK_SERVER_DISABLE_AUTOUPDATE=1. Never throws.
 
 import { execFile } from 'child_process';
-import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { buildKind } from './cowork-home';
-import { authHeader } from './server-auth';
+import { authHeader, probeAuthMismatch } from './server-auth';
 import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
@@ -681,26 +680,6 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
     _notify?.({ phase: 'error', error: err.message });
     return { updated: false, error: err.message };
   }
-}
-
-/**
- * /health is exempt from auth by design, so startServer()'s health check
- * alone can't tell an auth-mismatched sidecar (COWORK_REQUIRE_AUTH on, this
- * shell's authHeader() holding no token that matches) from a genuinely
- * healthy one — every other route still 401s (ENG-2852). Only an explicit
- * 401 counts as a mismatch: a network error or timeout here isn't proof of
- * one and must not roll back an update the health check already passed.
- */
-function probeAuthMismatch(port: number, timeoutMs = 3000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const req = http.request(
-      { hostname: '127.0.0.1', port, path: '/api/v1/conversations/', timeout: timeoutMs, headers: authHeader() },
-      (res) => { res.resume(); resolve(res.statusCode === 401); },
-    );
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.end();
-  });
 }
 
 // ---- git channel ----------------------------------------------------------

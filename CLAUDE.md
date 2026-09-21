@@ -107,7 +107,7 @@ COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
 COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
 ```
 
-When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
+The desktop app **decides** the token and hands it to the sidecar in its spawn environment ([src/main/loopback-token.ts](src/main/loopback-token.ts)), so the two cannot disagree: a pinned `COWORK_AUTH_TOKEN` wins, then a token already in the dotenv of the root being spawned on (what keeps an orphan from an older build adoptable), then a value derived from the install's `.server_owner` secret. It is settled once per sidecar and never re-read while one runs — it used to be read back out of the account's dotenv, which moved with the account root and left the shell sending a token its own sidecar refused. The server still mirrors the effective token into `<cowork_home>/.env` for other local readers. Outside the desktop app (bare `cowork-server`), the server generates one itself when none is set. The `/api/v1/health/` endpoint is always exempt, so an auth mismatch is invisible to a health check — the adoption path probes an authenticated route before trusting a server it did not spawn.
 
 #### Install source & channel
 
