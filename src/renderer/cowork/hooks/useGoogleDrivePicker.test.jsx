@@ -20,6 +20,7 @@ vi.mock('../api', () => apiMock);
 const hostMock = vi.hoisted(() => ({
   oauthConnect: vi.fn(),
   pickDriveFiles: vi.fn(),
+  openExternal: vi.fn(),
   isWeb: false,
 }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
@@ -43,6 +44,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   hostMock.isWeb = false;
 });
+
+// A minimal stand-in for the popup window.open('', '_blank') returns —
+// just enough to observe the redirect (location.href) and the close() call.
+function fakePopup() {
+  return { location: { href: '' }, close: vi.fn() };
+}
 
 describe('useGoogleDrivePicker — connect flow (not yet connected)', () => {
   it('fires oauthConnect directly and opens the picker on success — no connector-setup task involved', async () => {
@@ -114,7 +121,8 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
 
   it('drives the server-side redirect OAuth flow instead of host.oauthConnect, and opens the picker once the poll reports success', async () => {
     vi.useFakeTimers();
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const popup = fakePopup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(popup);
     apiMock.fetchDatasources
       .mockResolvedValueOnce(NOT_CONNECTED) // handleAddGoogleDriveFiles's initial check
       .mockResolvedValueOnce(CONNECTED);    // addGoogleDriveFiles's post-connect lookup
@@ -135,13 +143,51 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
       });
       await vi.waitUntil(() => result.current.driveConnectPrompt !== null);
       act(() => { result.current.confirmDriveConnect(); });
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(3000);
       await addPromise;
 
       expect(hostMock.oauthConnect).not.toHaveBeenCalled();
       expect(apiMock.fetchConnector).toHaveBeenCalledWith('google_drive');
       expect(apiMock.startConnectorOAuth).toHaveBeenCalledWith('google-drive', {});
-      expect(openSpy).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/auth', '_blank');
+      // Popup opened blank, synchronously, before either network call —
+      // the real URL only lands via location.href once it's known.
+      expect(openSpy).toHaveBeenCalledWith('', '_blank');
+      expect(popup.location.href).toBe('https://accounts.google.com/o/oauth2/auth');
+      expect(popup.close).toHaveBeenCalledTimes(1);
+      expect(hostMock.pickDriveFiles).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to host.openExternal when the popup is blocked', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    hostMock.openExternal.mockResolvedValueOnce(undefined);
+    apiMock.fetchDatasources
+      .mockResolvedValueOnce(NOT_CONNECTED)
+      .mockResolvedValueOnce(CONNECTED);
+    apiMock.fetchConnector.mockResolvedValueOnce({
+      methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }],
+    });
+    apiMock.startConnectorOAuth.mockResolvedValueOnce({ authUrl: 'https://accounts.google.com/o/oauth2/auth', state: 'abc123' });
+    apiMock.pollConnectorOAuth.mockResolvedValueOnce({ status: 'success' });
+    apiMock.fetchSavedConnection.mockResolvedValueOnce({ fields: { account_email: 'user@gmail.com' } });
+    hostMock.pickDriveFiles.mockResolvedValueOnce({ ok: true, files: [], newFiles: [] });
+
+    try {
+      const { result } = setup();
+
+      let addPromise;
+      act(() => {
+        addPromise = result.current.handleAddGoogleDriveFiles('general');
+      });
+      await vi.waitUntil(() => result.current.driveConnectPrompt !== null);
+      act(() => { result.current.confirmDriveConnect(); });
+      await vi.advanceTimersByTimeAsync(3000);
+      await addPromise;
+
+      expect(hostMock.openExternal).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/auth');
       expect(hostMock.pickDriveFiles).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -189,7 +235,7 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
       // Attach the rejection expectation before advancing timers so the
       // promise is never unobserved between rejecting and being asserted on.
       const expectation = expect(addPromise).rejects.toThrow('Consent denied.');
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(3000);
       await expectation;
       expect(hostMock.pickDriveFiles).not.toHaveBeenCalled();
     } finally {

@@ -7,18 +7,39 @@ import { host } from '../../platform/host';
 // the same server-side redirect flow DataVaultFormPanel's browser_oauth_builtin
 // branch uses for the Connect button, trimmed to this hook's simpler
 // "connect, then run a callback" shape (no form/patchForm involved here).
-const OAUTH_POLL_MS = 2000;
-const OAUTH_MAX_POLLS = 90; // ~3 min, matches DataVaultFormPanel's BROWSER_OAUTH_TIMEOUT_MS budget
+// Poll budget kept identical to DataVaultFormPanel's BROWSER_OAUTH_POLL_MS/
+// BROWSER_OAUTH_TIMEOUT_MS (not just similar) so the two never silently drift.
+const OAUTH_POLL_MS = 3000;
+const OAUTH_MAX_POLLS = 40; // 40 * 3000ms = 2 min
 
 async function connectGoogleDriveViaWebRedirect() {
+  // Opened synchronously, inside the click gesture, BEFORE any await —
+  // otherwise two chained network round-trips (fetchConnector,
+  // startConnectorOAuth) can lose the click's transient user-activation
+  // and the popup gets silently blocked (seen on Safari), leaving the user
+  // staring at nothing for the full poll timeout with no clue why. Mirrors
+  // DataVaultFormPanel's oauth_launch branch. Redirected to the real auth
+  // URL once it's known; falls back to host.openExternal if blocked.
+  let popup = null;
+  try { popup = window.open('', '_blank'); } catch { popup = null; }
+
   const spec = await fetchConnector('google_drive');
   const serviceId = spec?.methods?.find((m) => m.id === 'browser_oauth_builtin')?.oauth?.service_id;
-  if (!serviceId) throw new Error('No OAuth configuration for Google Drive.');
+  if (!serviceId) {
+    if (popup) { try { popup.close(); } catch { /* best effort */ } }
+    throw new Error('No OAuth configuration for Google Drive.');
+  }
   const started = await startConnectorOAuth(serviceId, {});
   if (!started?.authUrl || !started?.state) {
+    if (popup) { try { popup.close(); } catch { /* best effort */ } }
     throw new Error('Could not start Google Drive sign-in. Is the server running?');
   }
-  window.open(started.authUrl, '_blank');
+  if (popup) {
+    try { popup.location.href = started.authUrl; }
+    catch { await host.openExternal(started.authUrl); }
+  } else {
+    await host.openExternal(started.authUrl);
+  }
   for (let i = 0; i < OAUTH_MAX_POLLS; i++) {
     await new Promise((resolve) => setTimeout(resolve, OAUTH_POLL_MS));
     let status;
@@ -28,6 +49,7 @@ async function connectGoogleDriveViaWebRedirect() {
       continue; // transient — keep polling
     }
     if (status?.status === 'success') {
+      if (popup) { try { popup.close(); } catch { /* best effort */ } }
       try { window.focus(); } catch { /* best effort */ }
       return;
     }
