@@ -31,7 +31,7 @@ import { accountDataRoot, coworkHome, buildKind, readEnvFileAt } from './cowork-
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, probeAuthMismatch, setServerAuthToken } from './server-auth';
-import { resolveLoopbackToken } from './loopback-token';
+import { readOrCreateInstallToken, resolveLoopbackToken } from './loopback-token';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
@@ -110,7 +110,11 @@ function settleLoopbackToken(root: string): string {
   const token = resolveLoopbackToken({
     processEnv: process.env.COWORK_AUTH_TOKEN,
     dotenv: readEnvFileAt(path.join(root, '.env'))['COWORK_AUTH_TOKEN'],
-    ownerSecret: serverOwnerSecret(),
+    // The install's own random token, NOT anything derived from the server-owner
+    // secret: /health publishes that secret as `owner` for a session on the
+    // default root, unauthenticated, so a bearer derived from it is computable
+    // by any local OS user.
+    persisted: () => readOrCreateInstallToken(coworkHome()),
   });
   setServerAuthToken(token);
   return token;
