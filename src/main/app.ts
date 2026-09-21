@@ -15,6 +15,7 @@ import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { filterExtraFields } from './oauth-extra-fields';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -813,6 +814,7 @@ function setupIPC() {
       }
 
       let oauthBlock: Record<string, any>;
+      let declaredFieldNames: string[] = [];
       try {
         const specRes = await fetch(
           `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
@@ -825,9 +827,21 @@ function setupIPC() {
         if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
           return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
         }
+        declaredFieldNames = (builtinMethod?.fields || [])
+          .map((f: any) => f?.name)
+          .filter((name: unknown): name is string => typeof name === 'string');
       } catch {
         return { ok: false, reason: `Could not load connector spec for "${engine}".` };
       }
+      // A connector's own non-OAuth required fields declared alongside
+      // browser_oauth_builtin (e.g. Google Ads' developer_token) — the
+      // renderer collects them via the form and forwards them here, same
+      // shape the web redirect flow already sends as extraFields to
+      // startConnectorOAuth. Restricted to this connector's own declared
+      // field names (see filterExtraFields) and merged into the saved
+      // values below, after the OAuth-derived fields, so neither an
+      // unrelated key nor a same-named spec field can shadow one.
+      const extraFields = filterExtraFields(o.extraFields, declaredFieldNames);
 
       // supports_refresh defaults true (matches the server-side schema
       // default) when a spec doesn't declare it explicitly.
@@ -882,6 +896,7 @@ function setupIPC() {
             name: labelName,
             replace_existing: Boolean(labelName),
             values: {
+              ...extraFields,
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
