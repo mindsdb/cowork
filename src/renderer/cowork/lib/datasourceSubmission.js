@@ -84,10 +84,6 @@ const HINTS = {
     + 'certificate it generated for itself, which no client can check. If that is this server, set '
     + 'Certificate trust to "Encrypt, but do not check the certificate", or to "No encryption" if it '
     + 'offers none.',
-  port_not_approved:
-    'This deployment only dials the ports an administrator has approved, which are the databases\' '
-    + 'own defaults: 5432 for PostgreSQL and 3306 for MySQL. A managed database on another port, such '
-    + 'as 4000, needs that port approved before it can be connected.',
   destination_forbidden:
     'That address cannot be reached from here. The database has to be on a public address, not a '
     + 'private or local one.',
