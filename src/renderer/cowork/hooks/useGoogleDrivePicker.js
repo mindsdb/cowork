@@ -24,7 +24,13 @@ async function connectGoogleDriveViaWebRedirect() {
   try { popup = window.open('', '_blank'); } catch { popup = null; }
 
   const spec = await fetchConnector('google_drive');
-  const serviceId = spec?.methods?.find((m) => m.id === 'browser_oauth_builtin')?.oauth?.service_id;
+  // Methods live under spec.form.methods on this endpoint's real response
+  // shape (ConnectorSpecResponse, cowork-server/cowork/schemas/connectors.py)
+  // — same as app.ts's desktop OAUTH_CONNECT handler reads from the identical
+  // /connectors/specs/{id} endpoint. NOT spec.methods directly, which is only
+  // the shape of DataVaultFormPanel's separately-flattened chat-embedded
+  // form spec, a different object entirely.
+  const serviceId = spec?.form?.methods?.find((m) => m.id === 'browser_oauth_builtin')?.oauth?.service_id;
   if (!serviceId) {
     if (popup) { try { popup.close(); } catch { /* best effort */ } }
     throw new Error('No OAuth configuration for Google Drive.');

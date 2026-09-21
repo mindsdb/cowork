@@ -127,7 +127,7 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
       .mockResolvedValueOnce(NOT_CONNECTED) // handleAddGoogleDriveFiles's initial check
       .mockResolvedValueOnce(CONNECTED);    // addGoogleDriveFiles's post-connect lookup
     apiMock.fetchConnector.mockResolvedValueOnce({
-      methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }],
+      form: { methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }] },
     });
     apiMock.startConnectorOAuth.mockResolvedValueOnce({ authUrl: 'https://accounts.google.com/o/oauth2/auth', state: 'abc123' });
     apiMock.pollConnectorOAuth.mockResolvedValueOnce({ status: 'success' });
@@ -168,7 +168,7 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
       .mockResolvedValueOnce(NOT_CONNECTED)
       .mockResolvedValueOnce(CONNECTED);
     apiMock.fetchConnector.mockResolvedValueOnce({
-      methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }],
+      form: { methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }] },
     });
     apiMock.startConnectorOAuth.mockResolvedValueOnce({ authUrl: 'https://accounts.google.com/o/oauth2/auth', state: 'abc123' });
     apiMock.pollConnectorOAuth.mockResolvedValueOnce({ status: 'success' });
@@ -196,7 +196,7 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
 
   it('throws (and never opens the picker) when the connector spec has no browser_oauth_builtin service_id', async () => {
     apiMock.fetchDatasources.mockResolvedValueOnce(NOT_CONNECTED);
-    apiMock.fetchConnector.mockResolvedValueOnce({ methods: [] });
+    apiMock.fetchConnector.mockResolvedValueOnce({ form: { methods: [] } });
 
     const { result } = setup();
 
@@ -218,7 +218,7 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
     vi.spyOn(window, 'open').mockReturnValue(null);
     apiMock.fetchDatasources.mockResolvedValueOnce(NOT_CONNECTED);
     apiMock.fetchConnector.mockResolvedValueOnce({
-      methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }],
+      form: { methods: [{ id: 'browser_oauth_builtin', oauth: { service_id: 'google-drive' } }] },
     });
     apiMock.startConnectorOAuth.mockResolvedValueOnce({ authUrl: 'https://accounts.google.com/o/oauth2/auth', state: 'abc123' });
     apiMock.pollConnectorOAuth.mockResolvedValueOnce({ status: 'error', error: 'Consent denied.' });
