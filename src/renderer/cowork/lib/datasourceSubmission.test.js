@@ -161,6 +161,15 @@ describe('describeConnectionState', () => {
     expect(state.hint).toMatch(/capitals|case/i);
   });
 
+  it('explains a port the deployment will not dial', () => {
+    // Auth records this one as failed without ever probing, so the code is the
+    // only thing that can say why the check never happened.
+    const state = describeConnectionState({ status: 'failed', validation_code: 'port_not_approved' });
+
+    expect(state.hint).toMatch(/5432/);
+    expect(state.hint).toMatch(/3306/);
+  });
+
   it('never claims success for a status it does not recognise', () => {
     expect(describeConnectionState({ status: 'something_new' }).kind).toBe('pending');
     expect(describeConnectionState(null).kind).toBe('pending');
