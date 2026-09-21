@@ -133,7 +133,7 @@ vi.mock('./server-process', () => ({
 import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
 import { saveTokens, clearTokens } from './token-store';
 import { observePreExistingData } from './account-data';
-import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
+import { getServerAuthToken, resetServerAuthTokenCache, setServerAuthToken } from './server-auth';
 
 let dir: string;
 let target: string;
@@ -354,21 +354,21 @@ describe('commitMindsSignIn — the account-switch restart', () => {
     expect(result.dataRootChanged).toBe(true);
   });
 
-  it('drops the cached bearer token late enough to read the new sidecar\'s own', async () => {
-    // Ordering, not just the call: stopServer's shutdown checkpoint re-reads the
-    // token, so a reset before it re-latches the cache on a root with none yet.
+  it('keeps the token the shell holds across the account-switch restart', async () => {
+    // The replacement sidecar is handed the token the shell already holds, so
+    // the sign-in has nothing to re-read and must not blank it. Blanking it
+    // here is how every later main-process request goes out unauthenticated,
+    // which the sidecar refuses once auth is on.
     homeHolder.antonInstalled = true;
     serverState.running = true;
     serverState.onCurrentRoot = false;
-    serverState.tokenOnStart = 'token-for-the-new-root';
     resetServerAuthTokenCache();
+    setServerAuthToken('settled-when-the-sidecar-started');
     asAccount(ACCOUNT_A);
 
     await commitMindsSignIn();
 
-    // What every later main-process request carries. Null here is the bug: the
-    // new sidecar refuses an unauthenticated call once COWORK_REQUIRE_AUTH is on.
-    expect(getServerAuthToken()).toBe('token-for-the-new-root');
+    expect(getServerAuthToken()).toBe('settled-when-the-sidecar-started');
   });
 
   it('leaves a running sidecar alone when it is already on the right root', async () => {
