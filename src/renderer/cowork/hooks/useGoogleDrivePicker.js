@@ -1,6 +1,42 @@
 import { useState, useCallback } from 'react';
-import { fetchDatasources, fetchSavedConnection, deletePickedFile } from '../api';
+import { fetchDatasources, fetchSavedConnection, deletePickedFile, fetchConnector, startConnectorOAuth, pollConnectorOAuth } from '../api';
 import { host } from '../../platform/host';
+
+// Web has no Electron main process to run the loopback PKCE flow, so
+// host.oauthConnect() is a stub there (see platform/host.ts) — this drives
+// the same server-side redirect flow DataVaultFormPanel's browser_oauth_builtin
+// branch uses for the Connect button, trimmed to this hook's simpler
+// "connect, then run a callback" shape (no form/patchForm involved here).
+const OAUTH_POLL_MS = 2000;
+const OAUTH_MAX_POLLS = 90; // ~3 min, matches DataVaultFormPanel's BROWSER_OAUTH_TIMEOUT_MS budget
+
+async function connectGoogleDriveViaWebRedirect() {
+  const spec = await fetchConnector('google_drive');
+  const serviceId = spec?.methods?.find((m) => m.id === 'browser_oauth_builtin')?.oauth?.service_id;
+  if (!serviceId) throw new Error('No OAuth configuration for Google Drive.');
+  const started = await startConnectorOAuth(serviceId, {});
+  if (!started?.authUrl || !started?.state) {
+    throw new Error('Could not start Google Drive sign-in. Is the server running?');
+  }
+  window.open(started.authUrl, '_blank');
+  for (let i = 0; i < OAUTH_MAX_POLLS; i++) {
+    await new Promise((resolve) => setTimeout(resolve, OAUTH_POLL_MS));
+    let status;
+    try {
+      status = await pollConnectorOAuth(started.state);
+    } catch {
+      continue; // transient — keep polling
+    }
+    if (status?.status === 'success') {
+      try { window.focus(); } catch { /* best effort */ }
+      return;
+    }
+    if (status?.status === 'error') throw new Error(status.error || 'Could not connect Google Drive.');
+    if (status?.status === 'expired') throw new Error('The sign-in expired before it completed. Try again.');
+    // 'pending' → keep waiting.
+  }
+  throw new Error('Timed out waiting for the Google Drive sign-in to complete.');
+}
 
 // All Google Drive picker/connect orchestration used by the composer's "+"
 // menu and the Project files (Context card) "+" menu. Owns the two modal
@@ -218,6 +254,11 @@ export function useGoogleDrivePicker({
   const connectGoogleDriveThenRun = useCallback(async (onConnected) => {
     const confirmed = await new Promise((resolve) => setDriveConnectPrompt({ resolve }));
     if (!confirmed) return;
+    if (host.isWeb) {
+      await connectGoogleDriveViaWebRedirect();
+      await onConnected();
+      return;
+    }
     const result = await host.oauthConnect({ engine: 'google_drive', name: '' });
     if (!result?.ok) {
       throw new Error(result?.reason || 'Could not connect Google Drive.');
