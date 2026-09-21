@@ -31,9 +31,8 @@ vi.mock('./cowork-home', () => ({
   accountDataRoot: () => accountState.dataRoot,
   buildKind: () => 'prod',
   readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
-  // The loopback token is settled from the dotenv of the root being spawned on,
-  // once, at spawn. Same source as readEnvFile here — the tests drive it through
-  // envState either way.
+  // The loopback token is settled once, from the dotenv of the root being
+  // spawned on. Same source as readEnvFile here: envState drives both.
   readEnvFileAt: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
 }));
 /** Only the root resolution is faked; the rest of account-data stays real so
@@ -854,9 +853,9 @@ describe('the sidecar account root', () => {
 
   it('never hands over a token that can be reconstructed from /health', async () => {
     // /health publishes COWORK_SERVER_OWNER unauthenticated, and for a session
-    // on the default root that value IS the install's owner secret. A bearer
-    // derived from it is computable by any local OS user, and binding the port
-    // to loopback is not an OS-user boundary.
+    // on the default root that value is the install's owner secret. A bearer
+    // derived from it is computable by any local OS user, and loopback binding
+    // is not an OS-user boundary.
     accountState.root = null;
     envState.authToken = null;
     spawnHealthy();
@@ -872,8 +871,8 @@ describe('the sidecar account root', () => {
   it('keeps one token when the sidecar moves to another account root', async () => {
     // The regression. The token used to live in the account's own dotenv, so
     // root resolution moving under a running sidecar left the shell sending a
-    // token that sidecar refuses — every authenticated request 401ing for the
-    // life of the process while /health, which is exempt, went on answering.
+    // token that sidecar refuses. /health is exempt, so the app looked healthy
+    // while every authenticated request 401'd for the life of the process.
     accountState.root = null;
     envState.authToken = null;
     spawnHealthy();
@@ -891,8 +890,8 @@ describe('the sidecar account root', () => {
 
   it('settles a token on a first start with no dotenv to read', async () => {
     // The fresh-install shape. Reading a dotenv that does not exist yet used to
-    // latch "no token", and with auth required by default that is every request
-    // refused for the life of the process.
+    // latch "no token", which is every request refused for the life of the
+    // process once auth is on.
     accountState.root = null;
     envState.authToken = null;
     expect(getServerAuthToken()).toBeNull();
@@ -917,10 +916,9 @@ describe('the sidecar account root', () => {
 
   it('replaces an orphan that will not take our token instead of adopting it', async () => {
     // /health is exempt from auth, so an orphan we cannot talk to looks exactly
-    // like one we can. Adopting it is how a launch ends up with a sidecar that
-    // refuses every request for the life of the process, with only a relaunch
-    // to clear it. This is the reproduction of that failure: before the token
-    // was handed over at spawn, the second half of this test adopted.
+    // like one we can, and adopting it leaves every request refused until the
+    // app is relaunched. This is the reproduction: before the token was handed
+    // over at spawn, the second half of this test adopted.
     accountState.root = null;
     envState.authToken = null;
     spawnHealthy();

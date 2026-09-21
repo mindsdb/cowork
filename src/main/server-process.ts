@@ -100,20 +100,15 @@ function serverOwnerToken(accountId?: string | null, orgSegment?: string | null)
 /**
  * Settle the loopback bearer token for a sidecar on `root`, and pin it.
  *
- * Called on the spawn path before the child exists and on the adoption path
- * before the first authenticated request, so the value the shell sends is
- * always the value the sidecar was given. The dotenv is read here, ONCE, and
- * only to honour a token an operator pinned or a build that predates this
- * generated; nothing re-reads it while the server runs.
+ * Runs on the spawn path before the child exists, and on the adoption path
+ * before anything authenticates, so the shell always sends the value that
+ * sidecar was given. The dotenv is read here once and never again while the
+ * server runs.
  */
 function settleLoopbackToken(root: string): string {
   const token = resolveLoopbackToken({
     processEnv: process.env.COWORK_AUTH_TOKEN,
     dotenv: readEnvFileAt(path.join(root, '.env'))['COWORK_AUTH_TOKEN'],
-    // The install's own random token, NOT anything derived from the server-owner
-    // secret: /health publishes that secret as `owner` for a session on the
-    // default root, unauthenticated, so a bearer derived from it is computable
-    // by any local OS user.
     persisted: () => readOrCreateInstallToken(coworkHome()),
   });
   setServerAuthToken(token);
@@ -259,9 +254,8 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   console.log('[server] running on another account data root — restarting');
   try {
     await stopServer();
-    // The token does not move with the root any more — the replacement sidecar
-    // is handed the one the shell already holds — so there is nothing to drop
-    // here. startServer settles and pins it either way.
+    // Nothing to drop: the replacement is handed the token the shell holds, and
+    // startServer settles and pins it.
     const result = await startServer();
     return result.ok && sidecarIsOnCurrentStores();
   } catch (err) {
@@ -726,13 +720,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
     if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
-      // Adoption only happens on an owner-token match, and the token is bound to
-      // the account, so an adopted server is on this session's root by definition.
-      // Settle the bearer token against that root before anything authenticates
-      // to it, then check the orphan actually takes it: /health is auth-exempt,
-      // so a server we cannot talk to answers this probe exactly like one we can.
-      // Adopting one anyway is how every request 401s for the life of the
-      // process with nothing to show for it.
+      // The owner token is bound to the account, so an adopted server is on this
+      // session's root by definition. Settle the bearer against that root, then
+      // check the orphan takes it: /health is auth-exempt, so one we cannot talk
+      // to answers the probe above exactly like one we can, and adopting it is
+      // how every request 401s until the app is relaunched.
       settleLoopbackToken(accountDataRoot());
       if (await probeAuthMismatch(serverPort)) {
         console.warn(`[server] an orphan on port ${serverPort} refuses our token; replacing it`);
@@ -900,11 +892,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
       COWORK_SERVER_OWNER: serverOwnerToken(account, orgSegmentAtSpawn),
-      // The shell decides the loopback bearer token and hands it over here,
-      // rather than letting the sidecar generate one and reading it back out
-      // of a dotenv both processes write. Settled against the root this child
-      // is being given, so the value the shell sends is the value this server
-      // will accept, for as long as it runs.
+      // Settled against the root this child is given, so the value the shell
+      // sends is the value this server accepts for as long as it runs.
       COWORK_AUTH_TOKEN: settleLoopbackToken(accountEnv.COWORK_HOME ?? dataHome),
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
@@ -1050,9 +1039,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     serverStarted = true;
     _runningAccountRoot = account;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
-    // The bearer token was settled and pinned before this child was spawned
-    // (settleLoopbackToken), so a server that is up is already serving the
-    // token the shell holds. Nothing to re-read.
+    // The bearer was settled and pinned before this child was spawned, so a
+    // server that is up already serves the token the shell holds.
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it the
     // same way as a server we adopted, so isServerRunning() doesn't call a
