@@ -35,6 +35,9 @@ export function ConfirmModal({
   note,
   busyLabel,
   error,
+  // 'system' for a confirm opened from inside another modal: both sit on the
+  // default layer otherwise and the order is left to the DOM.
+  layer,
   onConfirm,
   onClose,
 }) {
@@ -53,6 +56,7 @@ export function ConfirmModal({
       open={open}
       onClose={onClose}
       size="sm"
+      layer={layer}
       // Confirm dialogs are deliberately narrow — keep the prior 420px.
       width="min(420px, 92vw)"
       labelledBy="confirm-modal-title"

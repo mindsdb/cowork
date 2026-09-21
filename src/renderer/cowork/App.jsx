@@ -624,6 +624,9 @@ function AppCore() {
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
+  const [pendingDisconnect, setPendingDisconnect] = useState(null);
+  const [disconnectBusy, setDisconnectBusy] = useState(false);
+  const [disconnectError, setDisconnectError] = useState('');
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
@@ -2360,17 +2363,27 @@ function AppCore() {
   // this is destructive and easy to mis-click. After success the
   // user lands back on the Connect Apps grid where they'd expect
   // to see the connection gone.
-  const handleDisconnectFromModify = async (taskId, engine, name) => {
+  const handleDisconnectFromModify = (taskId, engine, name) => {
     if (!engine || !name) return;
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    setPendingDisconnect({ taskId, engine, name });
+  };
+
+  const performDisconnect = async ({ taskId, engine, name }) => {
+    setDisconnectError('');
+    setDisconnectBusy(true);
     try {
       await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[connectors] disconnect failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      // Answered in the dialog, which stays open: the connection is still
+      // there and the next thing the person does is try again or give up.
+      setDisconnectError(e?.message || String(e));
+      setDisconnectBusy(false);
       return;
     }
+    setDisconnectBusy(false);
+    setPendingDisconnect(null);
     if (taskId) {
       deletedTaskIdsRef.current.add(taskId);
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
@@ -5372,6 +5385,19 @@ function AppCore() {
         onStop={handleServerStop}
       />
       )}
+
+      <ConfirmModal
+        open={pendingDisconnect != null}
+        title={`Disconnect ${pendingDisconnect?.name || 'this connection'}?`}
+        message={`The saved ${pendingDisconnect?.engine || ''} connection and its stored credentials are deleted. You can connect it again later.`}
+        confirmLabel="Disconnect"
+        busyLabel="Disconnecting…"
+        destructive
+        busy={disconnectBusy}
+        error={disconnectError}
+        onClose={() => { setPendingDisconnect(null); setDisconnectError(''); }}
+        onConfirm={() => performDisconnect(pendingDisconnect)}
+      />
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}

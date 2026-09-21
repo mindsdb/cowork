@@ -31,6 +31,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { Modal } from '../ui/Modal';
+import { ConfirmModal } from '../ConfirmModal';
 import {
   readProjectFile,
   writeProjectFile,
@@ -179,6 +180,7 @@ export default function ContextFileModal({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Which render branch the modal is in:
   //   'text'   — Markdown / plain text, the original editable view.
   //   'html'   — load as an iframe via projects preview-mount (parity
@@ -398,10 +400,14 @@ export default function ContextFileModal({
   */
   const deleteAllowed = isAnton ? deletable === true : (deletable ?? true);
 
+  const askToDelete = () => {
+    if (!deleteApplicable || !deleteAllowed) return;
+    setConfirmingDelete(true);
+  };
+
   const handleDelete = async () => {
     if (!deleteApplicable || !deleteAllowed) return;
-    const confirmTarget = title || filePath || 'this file';
-    if (!window.confirm(`Delete ${confirmTarget}? This can't be undone.`)) return;
+    setConfirmingDelete(false);
     setBusy(true);
     setError('');
     try {
@@ -562,7 +568,7 @@ export default function ContextFileModal({
             {deleteApplicable && !editing && !loading && (
               <Button
                 variant="danger"
-                onClick={handleDelete}
+                onClick={askToDelete}
                 disabled={busy || !deleteAllowed}
                 title={!deleteAllowed ? 'You do not have permission to delete this shared resource.' : undefined}
               >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
@@ -599,6 +605,17 @@ export default function ContextFileModal({
             )}
           </div>
         </div>
+      <ConfirmModal
+        open={confirmingDelete}
+        title={`Delete ${title || filePath || 'this file'}?`}
+        message="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        // Opened from inside this modal, so it needs the layer above it.
+        layer="system"
+        onConfirm={handleDelete}
+        onClose={() => setConfirmingDelete(false)}
+      />
     </Modal>
   );
 }

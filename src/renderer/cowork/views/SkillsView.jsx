@@ -3,6 +3,7 @@ import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -351,6 +352,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
+  const [pendingRemove, setPendingRemove] = useState(null);
   // Skills come from the shared store so saves/deletes here sync the composer
   // "/" menu (and skill-card saves sync back to this page) with no reload.
   const { skills, reload }            = useSkills();
@@ -405,9 +407,18 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     onSkillSaved(saved);
   };
 
-  const remove = async (skill) => {
+  const remove = (skill) => {
     if (!canUseSharedResource(skill, 'canDelete')) return;
-    if (!window.confirm(`Remove skill "${skill.label}"?`)) return;
+    setPendingRemove(skill);
+  };
+
+  // Closes first, then deletes: the outcome is a toast, and a dialog held
+  // open would trap the page behind a removal that can outlast the reason to
+  // wait for it.
+  const confirmRemove = async () => {
+    const skill = pendingRemove;
+    setPendingRemove(null);
+    if (!skill) return;
     try {
       await deleteSkillAndSync(skill.label);
       setSelected((current) => (
@@ -624,6 +635,15 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onError={showToast}
         initial={modalSkill ?? null}
         projects={projects}
+      />
+      <ConfirmModal
+        open={pendingRemove !== null}
+        title={`Remove ${pendingRemove?.label || 'this skill'}?`}
+        message="The skill and its instructions are deleted. Conversations that used it keep what they already wrote."
+        confirmLabel="Remove"
+        destructive
+        onConfirm={confirmRemove}
+        onClose={() => setPendingRemove(null)}
       />
     </div>
   );
