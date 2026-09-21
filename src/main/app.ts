@@ -262,12 +262,11 @@ function serverPhaseToUiStatus(
 
 function httpRequest(
   url: string,
-  options: { method: string; headers: Record<string, string>; body?: string; rejectUnauthorized?: boolean }
+  options: { method: string; headers: Record<string, string>; body?: string }
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const mod = parsed.protocol === 'https:' ? https : http;
-    const rejectUnauth = options.rejectUnauthorized !== false;
     const reqOptions: any = {
       hostname: parsed.hostname,
       port: parsed.port || undefined,
@@ -275,10 +274,6 @@ function httpRequest(
       method: options.method,
       headers: options.headers,
     };
-    if (!rejectUnauth && parsed.protocol === 'https:') {
-      // codeql[js/disabling-certificate-validation]
-      reqOptions.agent = new https.Agent({ rejectUnauthorized: false });
-    }
     const req = mod.request(
       reqOptions,
       (res) => {
