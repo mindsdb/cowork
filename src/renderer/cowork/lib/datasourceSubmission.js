@@ -38,7 +38,10 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
   // which encrypts where the database offers it and checks nothing. A named
   // mode still wins, which is how a connection stored with a pasted CA
   // re-opens as itself.
-  const mode = field('tls_mode') || (values?.tls_verify === true ? 'system' : '');
+  // `'true'` as well as `true`: a spec's own `default` arrives as JSON, so the
+  // checked box can hold either, and only one of them may mean verified.
+  const verifyRequested = values?.tls_verify === true || values?.tls_verify === 'true';
+  const mode = field('tls_mode') || (verifyRequested ? 'system' : '');
   if (mode && !TLS_MODES.includes(mode)) {
     throw new Error('Choose how this server\'s certificate should be checked.');
   }

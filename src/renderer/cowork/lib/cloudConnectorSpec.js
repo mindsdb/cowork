@@ -63,7 +63,10 @@ export function toCloudSpec(spec, connection = null) {
               // leaves the box as it starts: unchecked.
               tls_verify: connection.tlsMode === 'system' ? true : '',
             }[f.name];
-            return prior == null || prior === '' ? f : { ...f, default: String(prior) };
+            if (prior == null || prior === '') return f;
+            // A boolean keeps its type: stringifying it renders the box
+            // checked while the submitted value no longer reads as true.
+            return { ...f, default: typeof prior === 'boolean' ? prior : String(prior) };
           }),
         })),
       }

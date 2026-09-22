@@ -29,6 +29,7 @@ vi.mock('../../lib/analytics', () => ({ trackDataSourceConnected: vi.fn() }));
 
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, getForm, setForm } from './formStore';
+import { toCloudSpec } from '../../lib/cloudConnectorSpec';
 
 const CID = 'conv-datasource-submit';
 const TYPED_SECRET = 'typed-not-the-default';
@@ -243,5 +244,65 @@ describe('editing an existing connection', () => {
     await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
 
     expect(await screen.findByText(/changed since you opened it/i)).toBeInTheDocument();
+  });
+});
+
+// The spec the server actually ships for a cloud database: one boolean asking
+// whether to verify the certificate, and no tls_mode field to fall back on.
+// Built through toCloudSpec so the prefill under test is the real one.
+describe('re-saving a connection that was stored verified', () => {
+  const CLOUD_SPEC = {
+    form_id: 'postgres-connector',
+    title: 'Connect PostgreSQL',
+    engine: 'postgres',
+    _connector_id: 'postgres',
+    selected_method: 'host-port',
+    methods: [{
+      id: 'host-port',
+      label: 'Host and port',
+      cloud: {
+        available: true,
+        description: 'A database reachable from the internet.',
+        fields: [
+          { name: 'host', label: 'Host', type: 'text', required: true },
+          { name: 'port', label: 'Port', type: 'text', default: '5432' },
+          { name: 'database', label: 'Database', type: 'text', required: true },
+          { name: 'username', label: 'Username', type: 'text', required: true },
+          { name: 'password', label: 'Password', type: 'password', secret: true, required: true },
+          { name: 'tls_verify', label: 'Verify the certificate', type: 'boolean' },
+        ],
+      },
+      actions: [{ id: 'submit', label: 'Connect', kind: 'primary' }],
+    }],
+  };
+
+  const VERIFIED = {
+    datasourceId: 7,
+    credentialVersion: 3,
+    name: 'Analytics',
+    hostMasked: 'db.example.com',
+    port: 5432,
+    database: 'analytics',
+    username: 'readonly',
+    tlsMode: 'system',
+  };
+
+  it('keeps the verification the user can see on the box', async () => {
+    setForm(CID, toCloudSpec(CLOUD_SPEC, VERIFIED));
+    api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, status: 'verified', credential_version: 4 });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+
+    // The box reports the stored connection as verified before anything is
+    // touched; the payload below has to agree with it.
+    expect(await screen.findByRole('checkbox', { name: /verify the certificate/i })).toBeChecked();
+
+    // Auth holds the password, so an edit always retypes it. Nothing else is
+    // touched, which is the path that dropped the mode.
+    await userEvent.type(await screen.findByLabelText(/^Password$/i), TYPED_SECRET);
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
+    const [, payload] = api.editDatasourceConnection.mock.calls[0];
+    expect(payload.tls).toEqual({ mode: 'system', ca_pem: null });
   });
 });

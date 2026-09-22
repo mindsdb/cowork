@@ -153,8 +153,10 @@ describe('opening the form against an existing connection', () => {
     const verified = toCloudSpec(POSTGRES, { ...CONNECTION, tlsMode: 'system' }).methods[0];
     const unverified = toCloudSpec(POSTGRES, { ...CONNECTION, tlsMode: 'prefer' }).methods[0];
 
-    expect(verified.fields.find((f) => f.name === 'tls_verify').default).toBe('true');
-    // Left alone rather than defaulted to `"false"`, which a checkbox reads as
+    // A boolean, not the string: the submitted value is compared to `true`,
+    // so `'true'` would render the box checked and still submit unverified.
+    expect(verified.fields.find((f) => f.name === 'tls_verify').default).toBe(true);
+    // Left alone rather than defaulted to `'false'`, which a checkbox reads as
     // checked.
     expect(unverified.fields.find((f) => f.name === 'tls_verify').default).toBeUndefined();
   });
