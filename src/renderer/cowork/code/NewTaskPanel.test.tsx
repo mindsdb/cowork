@@ -70,6 +70,7 @@ vi.mock('./api', () => ({
 }));
 
 import { NewTaskPanel } from './NewTaskPanel';
+import { codingApi } from './api';
 import { useCodingCatalog } from './useCodingCatalog';
 
 function CatalogTaskPanel({ source, ...props }: ComponentProps<typeof NewTaskPanel> & { source: string }) {
@@ -145,6 +146,7 @@ const projectProps = {
 
 describe('NewTaskPanel', () => {
   beforeEach(() => {
+    vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
     pickCodeFolder.mockReset();
     pickCodeFolder.mockResolvedValue({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' });
     inspectFolder.mockReset();
@@ -176,6 +178,92 @@ describe('NewTaskPanel', () => {
     updateProject.mockImplementation(async (id: string, body: object) => ({ ...project, id, ...body }));
     searchWorkItems.mockReset();
     searchWorkItems.mockResolvedValue({ items: [], incomplete: false });
+  });
+
+  it('starts a plan explicitly and preserves the selected build permissions', async () => {
+    vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' } }]);
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.click(await screen.findByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Plan a timer');
+    await user.click(screen.getByRole('button', { name: 'Start planning' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Plan a timer', taskMode: 'plan', permissionMode: 'supervised' })));
+  });
+
+  it('does not offer planning on a runtime that has not advertised it', async () => {
+    const user = userEvent.setup();
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={vi.fn(async () => {})} />);
+    await screen.findByRole('combobox', { name: 'Choose model' });
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    expect(screen.queryByRole('menuitem', { name: /Plan mode/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Files and folders' })).toBeInTheDocument();
+  });
+
+  it.each(['local', 'shared'])('preserves explicit Plan mode through a %s credential refresh', async source => {
+    const engines = [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' as const } }];
+    vi.mocked(codingApi.engines).mockResolvedValue(engines);
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<CatalogTaskPanel source={source} busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    const input = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(input, 'Plan without changing files');
+    let resolve!: (value: typeof engines) => void;
+    vi.mocked(codingApi.engines).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    act(() => credentialListeners.forEach(listener => listener()));
+    expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start planning' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(input).toHaveValue('Plan without changing files');
+    await act(async () => { resolve(engines); });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start planning' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Start planning' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ taskMode: 'plan', prompt: 'Plan without changing files' }));
+  });
+
+  it('keeps Plan explicit when the refreshed engine no longer supports planning', async () => {
+    vi.mocked(codingApi.engines).mockResolvedValueOnce([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' } }]);
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    const input = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(input, 'Keep my instructions');
+    act(() => credentialListeners.forEach(listener => listener()));
+    await screen.findByText('Plan mode is unavailable here. Turn it off or choose a computer that supports it.');
+    expect(screen.getByRole('button', { name: 'Start planning' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    expect(onCreate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Turn plan mode off' }));
+    await user.click(screen.getByRole('button', { name: 'Start task' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Keep my instructions' }));
+  });
+
+  it('invokes /plan locally without starting a task and can turn it back off', async () => {
+    vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true, features: { planning: 'supported' } }]);
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async (_input: unknown) => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    const input = screen.getByRole('textbox', { name: 'Coding task' });
+    await user.type(input, '/plan');
+    await screen.findByRole('option', { name: /Plan mode/ });
+    await user.keyboard('{Enter}');
+    expect(input).toHaveValue('');
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('group', { name: 'Task approach' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Turn plan mode off' }));
+    await user.type(input, 'Build a timer');
+    await user.click(screen.getByRole('button', { name: 'Start task' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalled());
+    expect(onCreate.mock.calls[0][0]).not.toHaveProperty('taskMode');
   });
 
   it('defaults to GPT-5.6 Sol without exposing secondary folder access in task creation', async () => {

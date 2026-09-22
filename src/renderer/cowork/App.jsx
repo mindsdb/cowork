@@ -5235,6 +5235,7 @@ function AppCore() {
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
+              onAttentionSelect={selectCodingSession}
             />
           </div>
         )}
