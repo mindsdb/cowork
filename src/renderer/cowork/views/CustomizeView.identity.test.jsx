@@ -150,4 +150,18 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(5));
     expect(onConnectionsSynced).toHaveBeenLastCalledWith(CONNECTIONS.slice(1));
   });
+
+  it('keeps the detail panel open and says why when its disconnect fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
+    render(<CustomizeView connectors={CONNECTIONS} />);
+    const card = screen.getAllByRole('article')[0];
+    await userEvent.click(within(card).getByRole('button', { name: /^Manage / }));
+    await userEvent.click(await screen.findByRole('button', { name: /Remove/ }));
+
+    const confirm = await screen.findByRole('dialog', { name: /^Disconnect / });
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Disconnect' }));
+    expect(await within(confirm).findByText('Connection is unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove/, hidden: true })).toBeInTheDocument();
+  });
 });

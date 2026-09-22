@@ -116,6 +116,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   //: 'reconnect' | 'disconnect' | null. One dialog serves both, because only
   //: one of the two buttons can be answered at a time.
   const [confirming, setConfirming] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -418,17 +420,31 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           ? `The saved ${connection.engine} connection is removed. You can connect it again later.`
           : `The existing ${spec?.label || connection.engine} connection is removed first, then you connect it again.`}
         confirmLabel={confirming === 'disconnect' ? 'Disconnect' : 'Reconnect'}
+        busyLabel={confirming === 'disconnect' ? 'Disconnecting…' : 'Reconnecting…'}
         destructive={confirming === 'disconnect'}
-        onConfirm={() => {
-          if (confirming === 'disconnect') {
-            onDisconnect?.(connection, saved);
-            onClose();
-            return;
+        busy={confirmBusy}
+        error={confirmError}
+        onConfirm={async () => {
+          setConfirmBusy(true);
+          setConfirmError('');
+          try {
+            // Both remove the connection first, so both wait for it: closing
+            // before the delete answers leaves a failure unhandled and the
+            // connection on screen with nothing said about it.
+            if (confirming === 'disconnect') {
+              await onDisconnect?.(connection, saved);
+              onClose();
+              return;
+            }
+            await onReconnect?.(connection, spec);
+            setConfirming(null);
+          } catch (e) {
+            setConfirmError(e?.message || 'That connection could not be removed.');
+          } finally {
+            setConfirmBusy(false);
           }
-          onReconnect?.(connection, spec);
-          setConfirming(null);
         }}
-        onClose={() => setConfirming(null)}
+        onClose={() => { setConfirming(null); setConfirmError(''); }}
       />
     </>
   );
