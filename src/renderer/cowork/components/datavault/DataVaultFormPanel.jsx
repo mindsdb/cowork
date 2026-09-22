@@ -614,7 +614,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           spec,
           method: wireMethodId || spec.selected_method || null,
           values: submissionValues,
-          name: connectionName || userLabel,
+          // The label field is the name, on an edit too: the relay renames a
+          // connection it is sent a new name for, so the stored name is only
+          // the fallback for a label left empty.
+          name: userLabel || connectionName,
         });
         const edit = spec._datasource_edit;
         const connection = edit
