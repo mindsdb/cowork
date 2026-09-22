@@ -2367,6 +2367,34 @@ export default function ChatView({
                     />
                   );
                 }
+                // An image the provider refused as too LARGE
+                // (`content_too_large`, ENG-2689). Deliberately NOT the
+                // `content_recovery` card above: that one says "fixed, keep
+                // going", which is true for a serialization mismatch we
+                // caused and false here. The server has stripped the image
+                // either way, so the conversation is unstuck — but what the
+                // user asked for still hasn't happened, and only they can fix
+                // it by attaching something smaller.
+                //
+                // No Retry button, on purpose. Resending the same text now
+                // that the image is gone would run a turn that answers a
+                // question about an image the model can no longer see — a
+                // confidently wrong answer is worse than no answer. The body
+                // is the server's message rather than fixed copy because it
+                // carries the provider's own limit and remedy, which is more
+                // specific than anything hardcoded here.
+                if (m.code === 'content_too_large') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="That image is too large"
+                      body={m.content}
+                    />
+                  );
+                }
                 // Transient billing/policy outage at the gateway
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
