@@ -931,7 +931,7 @@ export default function ArtifactsView({
     >
       <PageHeader
         title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
+        subtitle={`Documents, dashboards, and code ${agentLabel} produces. To get a web link for a page or document, open it and choose Share.`}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
