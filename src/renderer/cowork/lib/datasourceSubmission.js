@@ -84,9 +84,8 @@ export function buildDatasourcePayload({ spec, method, values, name }) {
 const HINTS = {
   tls_failed:
     "The server's certificate could not be verified. A self-hosted database usually presents the "
-    + 'certificate it generated for itself, which no client can check. If that is this server, set '
-    + 'Certificate trust to "Encrypt, but do not check the certificate", or to "No encryption" if it '
-    + 'offers none.',
+    + 'certificate it generated for itself, which no client can check. If that is this server, turn '
+    + 'off "Only connect if the certificate is signed by a public authority".',
   destination_forbidden:
     'That address cannot be reached from here. The database has to be on a public address, not a '
     + 'private or local one.',

@@ -104,7 +104,7 @@ describe('a capture the gateway refused', () => {
 
     // The reason auth stores says nothing actionable; the gateway's code does.
     const shown = await screen.findByText(/certificate could not be verified/i);
-    expect(shown.textContent).toMatch(/Certificate trust/);
+    expect(shown.textContent).toMatch(/signed by a public authority/);
     // And only the gateway's: auth's fixed "validation failed" in front of it
     // reads like a second, emptier sentence.
     expect(shown.textContent).not.toMatch(/validation failed/i);
@@ -232,6 +232,20 @@ describe('editing an existing connection', () => {
     expect(expectedVersion).toBe(3);
     expect(payload.password).toBe('secret');
     expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+  });
+
+  it('sends the label the user edited, which is how a connection is renamed', async () => {
+    setForm(CID, { ...EDIT_SPEC });
+    api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, name: 'Warehouse', credential_version: 4 });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    const label = await screen.findByLabelText(/^Label$/i);
+    await userEvent.clear(label);
+    await userEvent.type(label, 'Warehouse');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
+    const [, payload] = api.editDatasourceConnection.mock.calls[0];
+    expect(payload.name).toBe('Warehouse');
   });
 
   it('says what a version conflict means instead of showing the raw refusal', async () => {
