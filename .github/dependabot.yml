@@ -1,0 +1,23 @@
+# Keep base image tags current so an OS-level CVE arrives as a pull request
+# rather than as a red scan on a release.
+version: 2
+updates:
+  # Two root Dockerfiles, three image families: the nginx-unprivileged runtime,
+  # plus python:3.12-slim and node:22-slim builder stages.
+  - package-ecosystem: docker
+    directory: /
+    # A push to main here is the prod pipeline — the CalVer release, both signed
+    # installers and the OTA bundle — so base image bumps soak on staging first.
+    target-branch: staging
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      docker:
+        patterns:
+          - "*"
