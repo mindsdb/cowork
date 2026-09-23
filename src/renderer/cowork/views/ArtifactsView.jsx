@@ -52,6 +52,7 @@ import {
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
+import { surfaceCopy } from '../lib/surface';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
@@ -965,7 +966,14 @@ export default function ArtifactsView({
         <EmptyState
           icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
           title="No artifacts yet"
-          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+          // Second line (ENG-2169): the two apps keep separate artifacts, so
+          // someone looking for work made in the other one is told where it is.
+          description={(
+            <>
+              {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+            </>
+          )}
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
