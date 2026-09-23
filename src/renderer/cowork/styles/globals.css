@@ -4269,7 +4269,20 @@ body[data-theme="dark"] .mshell__drawer-title {
    more" toggle (Claude pattern) so a big pasted prompt doesn't dominate the
    viewport before the answer. The fade and toggle appear only when the
    content actually overflows the clamp (measured in UserTurn). */
-.user-turn-clamp { overflow: hidden; }
+.user-turn-clamp {
+  overflow: hidden;
+  /* Load-bearing, not cosmetic: `overflow: hidden` only clips descendants
+     whose containing block sits inside this box. The markdown pipeline emits
+     absolutely positioned visually-hidden spans — a link's "(opens in new
+     window)" label, a code block's copy label — and without a containing
+     block here they resolve against `.user-turn-inner` instead, keeping the
+     static position they'd have at the message's FULL height. Those escaped
+     boxes still count towards the transcript's scrollable area, so a clamped
+     prompt containing a link or a code fence left the reader able to scroll
+     through screens of empty space below the last turn, sized as if the
+     message were expanded. */
+  position: relative;
+}
 .user-turn-clamp--faded {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent);
           mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent);
