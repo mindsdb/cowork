@@ -245,7 +245,7 @@ export function ReviewPanel({
                         ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
                         : results.length
                           ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
-                          : { variant: 'info', text: 'No project checks are configured. Add validation commands in Project settings.' });
+                          : { variant: 'info', text: 'This task has no project checks. New tasks use the commands saved in Project settings.' });
                     }}>Run checks</Button>
                   </section>
                 )}

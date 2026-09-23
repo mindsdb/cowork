@@ -88,7 +88,10 @@ describe('ReviewPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Deliver' }));
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }));
 
-    await waitFor(() => expect(screen.getByText(/No project checks are configured/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/This task has no project checks/)).toBeInTheDocument());
+    // Commands are copied into a task when it starts, so the guidance must not
+    // promise that editing Project settings fixes this task.
+    expect(screen.getByText(/New tasks use the commands saved in Project settings/)).toBeInTheDocument();
   });
 
   it('acknowledges an applied diff and prevents an accidental duplicate handoff', async () => {
