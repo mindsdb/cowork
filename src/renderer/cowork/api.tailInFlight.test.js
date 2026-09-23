@@ -158,6 +158,39 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     expect(result.event?.code).toBe('interrupted');
   });
 
+  it('ends quietly with onDone when the turn was cancelled, even with no local abort', async () => {
+    // A Stop from another tab, device, or teammate: this tail never aborted,
+    // so only the server's cancelled frame tells it apart from a drop.
+    const enc = new TextEncoder();
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode('event: response.cancelled\ndata: {"type":"response.cancelled"}\n\n'),
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => {
+          let i = 0;
+          return {
+            read: async () => (i < frames.length
+              ? { done: false, value: frames[i++] }
+              : { done: true, value: undefined }),
+          };
+        },
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        onDone: () => resolve({ kind: 'done' }),
+        onError: (message, event) => resolve({ kind: 'error', event }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+  });
+
   it('keeps the tail alive while real producer frames keep arriving past the idle window', async () => {
     // The mirror of the keepalive test: a producer that keeps emitting real
     // progress frames must NOT be reaped, even well past a single idle window.

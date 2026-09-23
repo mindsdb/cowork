@@ -654,6 +654,35 @@ describe('streamNewSession — stream closes without a terminal event', () => {
     expect(result.done).toBeUndefined();
     expect(result.event?.code).toBe('interrupted');
   });
+
+  it('ends with onDone, not interrupted, when the server reports a cancel', async () => {
+    // A Stop whose clean close lands while handleStopStream is still awaiting
+    // cancelResponse: no local abort yet, so only the cancelled frame counts.
+    const enc = new TextEncoder();
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode('event: response.cancelled\ndata: {"type":"response.cancelled"}\n\n'),
+    ];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => (i < frames.length
+            ? { done: false, value: frames[i++] }
+            : { done: true, value: undefined }),
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ event }) });
+    });
+
+    expect(result.event?.code).toBeUndefined();
+    expect(result.done).toBe(true);
+  });
 });
 
 // The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
@@ -930,6 +959,34 @@ describe('req() timeout scoping', () => {
     await vi.advanceTimersByTimeAsync(12_000);
 
     expect(await resultPromise).not.toBeNull();
+  });
+
+  it('a scoped timeout still fires when headers arrive but the body stalls', async () => {
+    // Exactly the failure this exists for: a proxy that returns headers
+    // promptly then never delivers the body. `return res.json()` (no await)
+    // inside `try { ... } finally { cancel() }` would clear the abort timer
+    // at header time instead of body time, so this must stay aborted.
+    vi.useFakeTimers();
+    let signal;
+    vi.stubGlobal('fetch', vi.fn((_url, options) => {
+      signal = options?.signal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }),
+      });
+    }));
+
+    const resultPromise = cancelResponse('conv-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'error', conversation_id: 'conv-a' });
   });
 });
 

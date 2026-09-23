@@ -102,7 +102,7 @@ async function req(path, { timeoutMs, ...options } = {}) {
       throw err;
     }
     if (res.status === 204) return { ok: true };
-    return res.json();
+    return await res.json();
   } finally {
     cancel();
   }
@@ -120,7 +120,7 @@ async function rootReq(path, { timeoutMs, ...options } = {}) {
       throw new Error(`API ${path} returned ${res.status}`);
     }
     if (res.status === 204) return { ok: true };
-    return res.json();
+    return await res.json();
   } finally {
     cancel();
   }
@@ -640,6 +640,11 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
             case 'response.failed':
               onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
               return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
+              return;
             default:
               break;
           }
@@ -793,6 +798,11 @@ export function tailInFlight(conversationId, {
               return;
             case 'response.failed':
               onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
               return;
             default:
               break;
