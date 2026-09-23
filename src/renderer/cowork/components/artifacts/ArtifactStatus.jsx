@@ -10,7 +10,8 @@
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
-import { Badge } from '../ui';
+import { Badge, Tooltip } from '../ui';
+import { isOwnerOnlySelection } from '../artifact/publish/AccessChooser';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
 // public artifact gets the green "success" treatment — password/restricted
@@ -36,9 +37,37 @@ const ACCESS_BADGE = {
 // like `constructor`/`__proto__` from yielding a blank inherited-property pill.
 const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
 
-function accessBadge(artifact) {
+function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? mode : null;
+}
+
+function accessBadge(artifact) {
+  const mode = accessMode(artifact);
+  return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+}
+
+/*
+ * One line under each idle label saying what it means for who can open the
+ * artifact (ENG-2177). "Draft" and "Restricted" were shown bare, and nothing
+ * said which state can be shared. Public and Password name their own meaning,
+ * so they get none. The unknown fallback says so rather than naming an
+ * audience it cannot see, for the same fail-closed reason as its badge.
+ */
+export function artifactStatusHint(artifact, publishable = true) {
+  if (!artifact?.publishedUrl) {
+    return publishable
+      ? 'Not shared yet. Open it and choose Share to get a web link.'
+      : 'Not shared. Only web pages and Markdown documents can be shared as a link.';
+  }
+  const mode = accessMode(artifact);
+  if (mode === 'restricted') {
+    return isOwnerOnlySelection(artifact)
+      ? 'Shared, but only you can open the link.'
+      : 'Shared. Only the people you chose can open the link.';
+  }
+  if (!mode) return 'Shared. Who can open the link could not be confirmed, so it is treated as restricted.';
+  return '';
 }
 
 // `inlineChanges` — list view flows the "Unpublished changes" pill inline
@@ -72,7 +101,11 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>;
+    return (
+      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+        <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>
+      </Tooltip>
+    );
   }
   const badge = accessBadge(artifact);
   return (
@@ -80,9 +113,11 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // changes" warning pushed to the right (margin-left:auto). On a tight
     // card it wraps to its own line, still right-aligned there.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
-        {badge.label}
-      </Badge>
+      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+        <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
+          {badge.label}
+        </Badge>
+      </Tooltip>
       {artifact.modified && (
         inlineChanges
           ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
