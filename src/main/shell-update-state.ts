@@ -36,6 +36,19 @@ export interface ShellUpdateSnapshot {
    *  The visible phase stays `ready-to-install` so the banner never flaps back
    *  to "Checking…" under the user. */
   refreshing?: boolean;
+  /** True once this process has actually transferred bytes for the current
+   *  target. electron-updater serves a download cached by an earlier launch
+   *  without emitting a single `download-progress` event (it returns from
+   *  `executeDownload` before the downloading task runs), so the absence of
+   *  progress is a reliable "this update was already on disk" signal.
+   *
+   *  ENG-2764 uses it to tell a *stranded* update — downloaded by a session that
+   *  was force-quit, crashed, or cut off by a reboot, and therefore never
+   *  installed on quit — apart from one downloaded just now. The stranded one is
+   *  safe to install and relaunch at launch. A fresh one is not: relaunching out
+   *  from under someone who has started working is the same surprise this ticket
+   *  removes. Transient, so a new check clears it. */
+  bytesTransferred?: boolean;
 }
 
 export type ShellUpdateEvent =
@@ -57,6 +70,7 @@ function clearTransient(snapshot: ShellUpdateSnapshot): ShellUpdateSnapshot {
     trigger: _trigger,
     targetVersion: _targetVersion,
     progress: _progress,
+    bytesTransferred: _bytesTransferred,
     recoverable: _recoverable,
     errorCode: _errorCode,
     errorMessage: _errorMessage,
@@ -145,7 +159,9 @@ export function transitionShellUpdate(
 
     case 'DOWNLOAD_PROGRESS':
       if (snapshot.phase !== 'downloading') return snapshot;
-      return { ...snapshot, progress: event.progress };
+      // Bytes moved, so this target is being fetched now rather than replayed
+      // from an earlier launch's cache (see `bytesTransferred`).
+      return { ...snapshot, progress: event.progress, bytesTransferred: true };
 
     case 'DOWNLOAD_COMPLETE':
       if (snapshot.phase !== 'downloading') return snapshot;
@@ -164,6 +180,14 @@ export function transitionShellUpdate(
       // Only the caller knows which version is newer, so this event is trusted:
       // it is dispatched solely for a strictly newer build than the pending one.
       if (snapshot.phase !== 'ready-to-install') return snapshot;
+      // `bytesTransferred` deliberately carries over rather than resetting for
+      // the new target. Strictly it is per-target, but the two ways of being
+      // wrong are not symmetric: a stale `true` only costs a missed boot
+      // auto-install (the update still lands on the next quit), while a stale
+      // `false` would relaunch the app on a build this session downloaded. Keep
+      // the benign direction. In practice it cannot bite either way — the boot
+      // auto-install runs once, right after the boot check, and a SUPERSEDED
+      // arrives from a later background refresh.
       return {
         ...snapshot,
         phase: 'downloading',
