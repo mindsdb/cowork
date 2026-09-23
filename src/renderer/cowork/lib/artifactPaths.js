@@ -36,12 +36,14 @@ function joinProjectPath(basePath, parts) {
  */
 const AGENT_OUTPUT_DIRS = new Set(['artifacts', 'output']);
 
-export function friendlyArtifactDisplayPath(value) {
+// `relative` is true only for a stored relative path, the one place the dotless
+// `anton/output` shim applies. In an absolute path `anton/` is a real folder.
+export function friendlyArtifactDisplayPath(value, { relative = false } = {}) {
   const text = textValue(value);
-  const parts = text.replace(/\\/g, '/').split('/').filter(Boolean);
+  const parts = text.replace(/\\/g, '/').replace(/^\.\//, '').split('/').filter(Boolean);
   for (let i = parts.length - 2; i >= 0; i -= 1) {
     const segment = parts[i];
-    if (segment !== '.anton' && !(segment === 'anton' && i === 0)) continue;
+    if (segment !== '.anton' && !(relative && segment === 'anton' && i === 0)) continue;
     const below = parts.slice(i + 1);
     if (below.length > 1 && AGENT_OUTPUT_DIRS.has(below[0])) return below.slice(1).join('/');
     return parts[parts.length - 1];
@@ -85,7 +87,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
     return {
       rawPath: raw,
       canonicalPath: '',
-      displayPath: friendlyArtifactDisplayPath(raw),
+      displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
       actionDisabledReason: 'This artifact path is relative, but the task has no project folder.',
     };
   }
@@ -96,7 +98,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
     return {
       rawPath: raw,
       canonicalPath: '',
-      displayPath: friendlyArtifactDisplayPath(raw),
+      displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
       actionDisabledReason: 'This artifact path points outside the project folder.',
     };
   }
@@ -115,7 +117,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
   return {
     rawPath: raw,
     canonicalPath,
-    displayPath: friendlyArtifactDisplayPath(raw),
+    displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
     actionDisabledReason: '',
   };
 }
