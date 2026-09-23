@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -124,6 +124,66 @@ describe('ReviewPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Applied' })).toBeDisabled());
     expect(onApply).toHaveBeenCalledOnce();
     expect(screen.getByText(/reviewed changes were applied/)).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      reason: new Error('Handoff stopped before changing the source; these files changed outside the task: qa-scope.txt'),
+      message: 'Handoff stopped before changing the source; these files changed outside the task: qa-scope.txt',
+    },
+    { reason: null, message: 'Could not apply changes. Please try again.' },
+  ])('shows apply failures inside the dialog and clears them on reopen and retry: $message', async ({ reason, message }) => {
+    const user = userEvent.setup();
+    let finishApply: (() => void) | undefined;
+    const onApply = vi.fn<() => Promise<void>>()
+      .mockRejectedValueOnce(reason)
+      .mockRejectedValueOnce(reason)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishApply = resolve; }));
+    render(
+      <ReviewPanel
+        open
+        session={projectSession}
+        git={null}
+        files={[{
+          path: 'qa-scope.txt', status: 'M', additions: 1, deletions: 1,
+          patch: '+AGENT_QA_EDIT\n', binary: false,
+        }]}
+        busy={false}
+        error="An unrelated review error"
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={onApply}
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
+    await user.click(screen.getByRole('button', { name: 'Apply locally' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Apply changes to the source folder?' });
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    within(dialog).getByRole('button', { name: 'Apply changes' }).focus();
+    await user.keyboard(' ');
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(message);
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    expect(within(dialog).getByRole('button', { name: 'Apply changes' })).toBeEnabled();
+    expect(onApply).toHaveBeenCalledTimes(1);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Apply locally' }));
+    dialog = await screen.findByRole('dialog', { name: 'Apply changes to the source folder?' });
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Apply changes' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(message);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Apply changes' }));
+    expect(onApply).toHaveBeenCalledTimes(3);
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    finishApply!();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Applied' })).toBeDisabled();
   });
 
   it('offers agent-assisted recovery after a handoff conflict', async () => {
