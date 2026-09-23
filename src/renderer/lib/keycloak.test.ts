@@ -22,6 +22,7 @@ import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 import {
   __resetOrganizationTransitionForTests,
   getAccessToken,
+  isAuthSkipped,
   keycloak,
   listWebOrganizations,
   logout,
@@ -106,6 +107,10 @@ beforeEach(() => {
   lockHeld = false;
   locks.request.mockClear();
   vi.stubGlobal('navigator', { locks });
+  // Pin the local-dev skip off for every test (a VITE_SKIP_AUTH inherited
+  // from the developer's shell must not flip these results); the
+  // VITE_SKIP_AUTH cases re-enable it explicitly.
+  vi.stubEnv('VITE_SKIP_AUTH', '');
   reloadSpy = vi.fn();
   Object.defineProperty(window.location, 'reload', { configurable: true, value: reloadSpy });
   keycloak.authenticated = false;
@@ -121,6 +126,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -138,6 +144,30 @@ describe('keycloak logout()', () => {
     expect(instance.logout).toHaveBeenCalledWith(
       expect.objectContaining({ redirectUri: expect.any(String) }),
     );
+  });
+});
+
+describe('VITE_SKIP_AUTH escape hatch (mindshub#12498)', () => {
+  it('reports whether the local-dev skip is active (true / 1 / unset)', () => {
+    expect(isAuthSkipped()).toBe(false);
+    vi.stubEnv('VITE_SKIP_AUTH', '1');
+    expect(isAuthSkipped()).toBe(true);
+    vi.stubEnv('VITE_SKIP_AUTH', 'true');
+    expect(isAuthSkipped()).toBe(true);
+  });
+
+  it('getAccessToken returns null while auth is skipped, even with a live session', async () => {
+    signedIn();
+    vi.stubEnv('VITE_SKIP_AUTH', 'true');
+    await expect(getAccessToken()).resolves.toBeNull();
+    expect(instance.updateToken).not.toHaveBeenCalled();
+  });
+
+  it('onAuthError does not bounce to the login page while auth is skipped', () => {
+    vi.stubEnv('VITE_SKIP_AUTH', 'true');
+    keycloak.onAuthError?.({ error: 'unauthorized', error_description: 'unauthorized' });
+    expect(instance.clearToken).not.toHaveBeenCalled();
+    expect(instance.login).not.toHaveBeenCalled();
   });
 });
 

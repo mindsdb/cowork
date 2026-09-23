@@ -11,6 +11,7 @@
 //   `!isLegacyTenantHost(window.location.hostname)`  -> 3 fail
 //   `true`                                           -> 2 fail
 //   `false`                                          -> 1 fail
+//   drop `|| isAuthSkipped()` from the gate          -> 1 fail (mindshub#12498)
 //
 // The module runs its work as a top-level side effect, so each case needs a
 // fresh `window.location.hostname` + `vi.resetModules()` before importing it.
@@ -25,6 +26,10 @@ const rendered = {
   identityToken: null as string | null,
   identityReadyAtApp: false,
 };
+
+// The VITE_SKIP_AUTH escape hatch the cases below toggle; read through the
+// mocked ./lib/keycloak at web-main module-eval time (inside each renderOnHost).
+const mocks = vi.hoisted(() => ({ authSkipped: false }));
 
 vi.mock('@react-keycloak/web', () => ({
   ReactKeycloakProvider: ({ children, onTokens }: {
@@ -61,7 +66,10 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // doesn't fully provide, and this test is about the wrapper choice, not the
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
-vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
+vi.mock('./lib/keycloak', () => ({
+  keycloak: { onAuthError: null },
+  isAuthSkipped: () => mocks.authSkipped,
+}));
 vi.mock('./lib/skins', () => ({ loadSkin: () => 'default' }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
@@ -143,5 +151,21 @@ describe('web-main auth wrapper selection', () => {
     expect(r.app).toBe(true);
     expect(r.provider).toBe(false);
     expect(r.identityRequired).toBe(false);
+  });
+
+  // The documented local-dev escape hatch (mindshub#12498): with
+  // VITE_SKIP_AUTH=true set, localhost must render without the provider and
+  // without arming the organization-identity requirement.
+  it('renders WITHOUT the Keycloak provider when VITE_SKIP_AUTH is set (mindshub#12498)', async () => {
+    mocks.authSkipped = true;
+    try {
+      const r = await renderOnHost('localhost');
+      expect(r.app).toBe(true);
+      expect(r.provider).toBe(false);
+      expect(r.identityRequired).toBe(false);
+      expect(r.identityToken).toBeNull();
+    } finally {
+      mocks.authSkipped = false;
+    }
   });
 });

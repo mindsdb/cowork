@@ -234,6 +234,24 @@ canonical). API calls hit the FastAPI sidecar via Vite's
 `/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
+#### Skipping Keycloak auth (local dev)
+
+The web SPA wraps `<App />` in a Keycloak login (`onLoad: 'login-required'`).
+Keycloak only accepts registered redirect URIs, so a localhost port that
+isn't registered bounces with `Invalid parameter: redirect_uri`. To opt out
+for local development, set `VITE_SKIP_AUTH=true` in a repo-root `.env`
+(Vite's `envDir`, see [`.env.example`](.env.example)):
+
+```bash
+echo VITE_SKIP_AUTH=true >> .env
+npm run dev:web
+```
+
+A shell-exported `VITE_SKIP_AUTH=true` works the same way. The app then
+renders without the Keycloak wrapper and boots straight into onboarding.
+Dev-only: it removes the login gate entirely, so never set it in
+production images.
+
 ### Build a production bundle
 
 ```bash
@@ -1280,6 +1298,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
 | `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
+| `VITE_SKIP_AUTH` | Manual | Web dev only: `true`/`1` skips the Keycloak login gate for local dev (see [Skipping Keycloak auth](#skipping-keycloak-auth-local-dev)); never set in production images |
 
 ---
 
