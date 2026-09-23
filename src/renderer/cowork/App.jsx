@@ -50,6 +50,8 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { skillScopeKey } from './lib/accountUser';
+import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
+import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2530,6 +2532,76 @@ function AppCore() {
   });
   const codeAccountUser = useAccountUser(ssoConnected);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
+
+  // undefined (never a real accountId or the null of "signed out") so the
+  // very first render always runs the check below at least once.
+  const purgedAccountRef = useRef(undefined);
+  // The last account this document actually rendered for. Separate from the
+  // purge ref, which tracks nulls too: a sign-out and a sign-in are two steps
+  // through null, and the pair is still one account change to this document.
+  const renderedForAccountRef = useRef(null);
+
+  // Drop the previous account's browser-local caches once we know who is signed
+  // in. Keyed on `sub` alone, not skillScopeKey: an organization switch already
+  // has its own epoch, and only a change of ACCOUNT invalidates this state.
+  //
+  // This handles a MARKED cache naming another account. An unmarked one is the
+  // shell's ruling to make, and its snapshot is resolved in preload, so it
+  // applies only while it is about this same account: a sign-in inside this
+  // document is a session the snapshot predates (see legacyVerdictForSession).
+  //
+  // Adopted during render, not from an effect, for the same reason `useDraft`
+  // adopts a changed key during render rather than an effect: a descendant
+  // (the composer) seeds its state from this same storage on ITS first
+  // render, which happens before an effect registered here would ever run —
+  // on web there is no earlier, pre-mount purge to catch it first the way
+  // Electron's main.tsx has.
+  const accountId = codeAccountUser?.sub ?? null;
+  if (purgedAccountRef.current !== accountId) {
+    // `undefined` only on the very first pass, which runs during this
+    // component's own render and therefore BEFORE the composer below it has
+    // mounted and read storage. A purge there displaces nothing that is on
+    // screen; every later one does.
+    const firstPass = purgedAccountRef.current === undefined;
+    purgedAccountRef.current = accountId;
+    const shellSession = host.accountSessionSync();
+    const purgedStaleAccount = purgeStaleAccountState(accountId, legacyVerdictForSession(accountId, shellSession));
+    // See main.tsx for why this has to run alongside the purge: onboardingStore
+    // caches its localStorage keys into a module-level variable at import
+    // time, so removing the keys alone leaves that snapshot stale.
+    if (purgedStaleAccount) resetOnboardingProgress();
+
+    /**
+     * A document that has already rendered for another account reloads rather
+     * than trying to scrub itself.
+     *
+     * Clearing storage is not enough and cannot be made enough by adding
+     * resets: `useAccountUser` resolves asynchronously, so the composer can
+     * already hold the previous account's draft before this runs, and that
+     * draft lives in `draftStore`'s module map and in `useDraft`'s state under
+     * a home key every account spells the same way. `resetOnboardingProgress`
+     * above is the same problem solved once by hand; a reload solves the whole
+     * class by construction, including the stores nobody has thought of yet.
+     *
+     * Only a change BETWEEN accounts reloads. The first identity of a document
+     * is not a change, and a sign-out on its own is not either, which is why
+     * this tracks the last account rendered for rather than the last value
+     * seen: signing out and back in as someone else passes through null and is
+     * still one change.
+     *
+     * A document that boots SIGNED OUT has rendered for nobody, so that test
+     * cannot catch the sign-in that follows — and the composer has already
+     * hydrated whatever cache was lying there. The purge result is the second
+     * route in: it removed another account's state from under a document that
+     * was already on screen, which is the same displacement seen at the cache.
+     */
+    const displacedAnotherAccount = purgedStaleAccount && !firstPass;
+    const previous = renderedForAccountRef.current;
+    if (accountId) renderedForAccountRef.current = accountId;
+    if (shouldReloadForAccountChange(previous, accountId, displacedAnotherAccount)) {
+      globalThis.location?.reload();
+    }
+  }
 
   // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
   // and Settings → Usage read it through HubUsageContext. Re-read when a turn
@@ -5105,6 +5177,7 @@ function AppCore() {
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
+              onAttentionSelect={selectCodingSession}
             />
           </div>
         )}

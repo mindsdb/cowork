@@ -35,6 +35,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import Menu from './ui/Menu';
+import Spinner from './ui/Spinner';
 import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
@@ -121,8 +122,29 @@ export function UserMenu({ user, onOpenSettings }) {
   // the account so the header is never empty.
   const identity = user.email || user.username || user.name || null;
 
+  /**
+   * Which organization the person is waiting on, so the row they clicked can
+   * say so. Separate from the hook's `switching`, which knows a switch is in
+   * flight but not which row asked for it.
+   *
+   * Progress, never a result: the check stays where it is until the host says
+   * the switch happened. Moving it here would paint the answer on a row that
+   * can still be refused, which is how the app ends up disagreeing with the
+   * organization its requests are scoped to.
+   */
+  const [pendingOrgId, setPendingOrgId] = useState(null);
+
   const pick = async (organizationId) => {
-    const result = await switchOrg(organizationId);
+    setPendingOrgId(organizationId);
+    let result;
+    try {
+      result = await switchOrg(organizationId);
+    } finally {
+      // A committed desktop switch replaces the document, so this state is
+      // about to stop existing either way; clearing it matters for the
+      // refusals, which leave the menu open and the row live again.
+      setPendingOrgId(null);
+    }
     /**
      * A possibly committed web switch reloads immediately. Do not paint an
      * error into the old tenant while navigation is tearing that UI down.
@@ -139,6 +161,14 @@ export function UserMenu({ user, onOpenSettings }) {
   );
 
   const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+  // Same slot as the check, so the row acknowledges the click in the place the
+  // answer will appear. Labelled for screen readers, which the check is not:
+  // the check reads from the row it sits on, where this reports a state.
+  const pendingRowHint = (
+    <span role="status" aria-label="Changing organization">
+      <Spinner className="text-ink-3" />
+    </span>
+  );
 
   /**
    * One row per organization, the active one checked. Shown for a single
@@ -149,14 +179,24 @@ export function UserMenu({ user, onOpenSettings }) {
    */
   const listedOrgRows = orgs.map((org) => {
     const isActive = org.id === activeOrg?.id;
+    const isPending = org.id === pendingOrgId;
     const label = organizationLabel(org);
     return {
       id: `organization-${org.id}`,
       label,
       // Long names truncate in the row, so hover carries the whole one.
       title: label,
-      hint: isActive ? activeRowHint : undefined,
+      hint: isPending ? pendingRowHint : (isActive ? activeRowHint : undefined),
       disabled: isActive || switching,
+      /**
+       * Held open for the whole switch. A desktop switch takes a second or
+       * more — a Keycloak round trip, a token exchange and a sidecar restart
+       * onto the new stores — and dismissing the menu on the click left that
+       * second looking like nothing had happened at all, so people clicked
+       * again. The spinner is only visible if the surface it sits on survives
+       * long enough to show it.
+       */
+      keepOpen: true,
       onClick: isActive ? undefined : () => pick(org.id),
     };
   });

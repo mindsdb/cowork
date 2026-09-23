@@ -126,14 +126,30 @@ export async function setGenerationMarker(generation: string): Promise<void> {
 // scanner and a person, and it was inaccurate besides: no key is in this file.
 const MINDS_ACCOUNT = '__minds__';
 
-export async function getMindsApiKey(): Promise<string | null> {
-  return getPassword(SERVICE_NAME, MINDS_ACCOUNT);
+// A DIFFERENT account switched into on the same machine, once `resolveAccountRoot`
+// (account-data.ts) has moved it onto its own data root. Distinct prefix, so it
+// can never collide with `MINDS_ACCOUNT`, `GENERATION_ACCOUNT_KEY`, or a
+// connector's `engine:accountEmail` shape (no connector engine is named `minds`).
+function mindsScopedAccountKey(rootScope: string): string {
+  return `minds-account:${rootScope}`;
 }
 
-export async function setMindsApiKey(value: string): Promise<void> {
-  await setPassword(SERVICE_NAME, MINDS_ACCOUNT, value);
+/**
+ * `rootScope` is `resolveAccountRoot`'s result: `null` for the account that
+ * owns the shared default root (the recorded incumbent, or whoever claimed it
+ * first), which keeps reading/writing `MINDS_ACCOUNT` exactly as before this
+ * key existed on more than one account. Any other, non-null scope is a
+ * genuinely different account partitioned onto its own root, and gets its own
+ * entry — so it can never read a key that belongs to somebody else's session.
+ */
+export async function getMindsApiKey(rootScope: string | null): Promise<string | null> {
+  return getPassword(SERVICE_NAME, rootScope ? mindsScopedAccountKey(rootScope) : MINDS_ACCOUNT);
 }
 
-export async function deleteMindsApiKey(): Promise<void> {
-  await deletePassword(SERVICE_NAME, MINDS_ACCOUNT);
+export async function setMindsApiKey(rootScope: string | null, value: string): Promise<void> {
+  await setPassword(SERVICE_NAME, rootScope ? mindsScopedAccountKey(rootScope) : MINDS_ACCOUNT, value);
+}
+
+export async function deleteMindsApiKey(rootScope: string | null): Promise<void> {
+  await deletePassword(SERVICE_NAME, rootScope ? mindsScopedAccountKey(rootScope) : MINDS_ACCOUNT);
 }

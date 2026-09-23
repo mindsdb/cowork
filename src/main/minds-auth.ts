@@ -1,7 +1,10 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
+import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
-import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { claimDefaultRoot, writeActiveOrgSync } from './account-data';
+import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
+import { accountDataRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
@@ -139,6 +142,21 @@ export function endMindsCredentialSignOut(): void {
   _mindsCredentialSignOutDepth = Math.max(0, _mindsCredentialSignOutDepth - 1);
 }
 
+// Held across the token exchange an organization switch performs, and only
+// that. Unlike sign-out this fences ONE thing — the push to the sidecar — and
+// it does it because the sidecar is still serving the organization being LEFT
+// at that point: the record has not been rewritten and the stores have not
+// moved. The switch hands the credential over itself once they have.
+let _mindsCredentialOrgMoveDepth = 0;
+
+function beginMindsCredentialOrgMove(): void {
+  _mindsCredentialOrgMoveDepth += 1;
+}
+
+function endMindsCredentialOrgMove(): void {
+  _mindsCredentialOrgMoveDepth = Math.max(0, _mindsCredentialOrgMoveDepth - 1);
+}
+
 export function refreshTokensOnly(): Promise<TokenRefreshResult> {
   if (!_inflightRefresh) {
     _inflightRefresh = doRefreshTokens().finally(() => { _inflightRefresh = null; });
@@ -200,6 +218,10 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
   // Capture this for the full exchange: getRevokeToken has its own deadline,
   // so the request can finish after the enclosing sign-out has returned.
   const suppressCredentialHandoff = _mindsCredentialSignOutDepth > 0;
+  // Captured for the full exchange, like the flag above: an exchange that was
+  // already in flight when the switch began belongs to the source organization
+  // and hands over as usual. Only one started under the fence defers.
+  const deferHandoffUntilStoresMove = _mindsCredentialOrgMoveDepth > 0;
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     settleMindsResumeCredentialGate(false);
@@ -291,6 +313,21 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     if (suppressCredentialHandoff) {
       // Same fence, for an exchange that started after sign-out began.
       return { status: 'ok', token: data.access_token };
+    }
+    if (deferHandoffUntilStoresMove) {
+      // The organization switch's own fence, and it defers exactly one step.
+      // Pushing this token now would leave the sidecar holding a credential
+      // naming the DESTINATION while still serving the SOURCE's database, so a
+      // turn started in that window bills one organization and writes into the
+      // other — the ordering the switch promises a few lines before it moves
+      // the stores, and which this exchange would otherwise get in ahead of.
+      //
+      // `handoff_pending` is the honest status: the tokens are persisted and
+      // the schedule is intact, and only the sidecar is behind. No retry ladder
+      // is armed for it, because the switch performs the hand-over itself once
+      // the stores are correct and would race one.
+      scheduleRefreshAt(expiresAt);
+      return { status: 'handoff_pending', token: data.access_token };
     }
     const refreshedTokenStoreVersion = getTokenStoreVersion();
     // The exchange is not usable by a turn until the sidecar has accepted the
@@ -406,27 +443,18 @@ interface OrgRef {
   source?: string;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    // Buffer is fine in the main process (Node); base64 → utf8.
-    const decoded = Buffer.from(payload, 'base64').toString('utf-8');
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
+/** The signed-in account, from the token already in hand. */
+export function signedInAccountId(): string | null {
+  return accountIdFromToken(getAccessToken());
 }
 
 function normalizeOrgRef(value: any, source: string): OrgRef | null {
   const raw = value?.organization ?? value;
   if (!raw || typeof raw !== 'object') return null;
-  const id = raw.id ?? raw.keycloak_id ?? raw.organization_id ?? raw.org_id ?? raw.name;
+  const id = orgIdFromClaim(raw);
   if (!id) return null;
   return {
-    id: String(id),
+    id,
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
     slug: raw.name ? String(raw.name) : undefined,
     source,
@@ -434,10 +462,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
 }
 
 function getActiveOrgFromPayload(payload: Record<string, unknown> | null): OrgRef | null {
-  const raw =
-    payload?.active_organization ??
-    payload?.activate_organization ??
-    payload?.organization;
+  const raw = activeOrgClaim(payload);
 
   if (!raw) return null;
   if (typeof raw === 'string') {
@@ -557,10 +582,18 @@ async function refreshAfterOrgSwitch(): Promise<string | null> {
   // An exchange that started before the org switch cannot contain the new
   // claim. Let it settle, then deliberately start a fresh exchange.
   if (_inflightRefresh) await _inflightRefresh;
-  const result = await refreshTokensOnly();
-  return result.status === 'ok' || result.status === 'handoff_pending'
-    ? result.token
-    : null;
+  // Fenced, because the sidecar is still on the organization being left until
+  // the record is rewritten and the stores are moved further down the switch.
+  // The exchange does everything else; only the hand-over waits.
+  beginMindsCredentialOrgMove();
+  try {
+    const result = await refreshTokensOnly();
+    return result.status === 'ok' || result.status === 'handoff_pending'
+      ? result.token
+      : null;
+  } finally {
+    endMindsCredentialOrgMove();
+  }
 }
 
 // ── The organization pick, on disk ────────────────────────────────
@@ -586,7 +619,7 @@ function readStoredOrgPreference(userId: string): StoredOrgPick | null {
 
 function storeOrgPreference(userId: string, orgId: string, chosenByUser: boolean): void {
   try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     const next = writeOrgPreference(readCoworkState(), userId, orgId, chosenByUser);
     fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
   } catch (error) {
@@ -1389,18 +1422,19 @@ export async function writeEnvFileAtomic(
  * `mindsSignInSettingWrites` no longer carries `minds_api_key`, so what this
  * writes is the MindsHub URL and the provider selection.
  *
- * **No restart.** The sidecar used to be stopped and started here so it would
- * re-read `.env`. Nothing needs re-reading now: settings go over loopback and
- * the credential is handed over the same way, so a sign-in no longer kills a
- * running turn.
+ * **No restart, with one exception.** The sidecar used to be stopped and
+ * started here so it would re-read `.env`. Nothing needs re-reading now:
+ * settings go over loopback and the credential is handed over the same way, so
+ * an ordinary sign-in still does not kill a running turn. A sign-in that
+ * CHANGES the account's data root does restart it, because the store paths are
+ * process environment and there is no other way to move a running sidecar off
+ * the previous account's database.
  */
-export async function commitMindsSignIn(): Promise<void> {
-  const homeDir = coworkHome();
-  // ~/.cowork normally exists by the time SSO finalize runs (the server creates
-  // it on boot), but if the server failed to start the write would ENOENT.
-  if (!fs.existsSync(homeDir)) {
-    fs.mkdirSync(homeDir, { recursive: true });
-  }
+export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }> {
+  // The account's own root, not the shared home: on a second account's first
+  // sign-in nothing has created it yet, and writeEnvFileAtomic puts its temp
+  // file beside the target, so writing first would ENOENT and drop the value.
+  ensureAccountDataRoot();
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
@@ -1434,11 +1468,21 @@ export async function commitMindsSignIn(): Promise<void> {
     const mindsEntry = existingProviders.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
     mindsEntry.isDefault = true;
     state.preferences.providers = [mindsEntry];
-    fs.mkdirSync(coworkHome(), { recursive: true });
+    ensureAccountDataRoot();
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
     console.warn('[minds-auth] failed to set provider state', error);
   }
+
+  // Whether this sign-in moved the session onto a different data root. The
+  // renderer has to be reloaded when it did: a sign-in ends by switching page
+  // rather than reloading, so React would seed the composer draft and the
+  // settings cache from the PREVIOUS account during render, and the draft
+  // store's module cache would then re-persist them under this account.
+  // Ownership is settled at the token choke point now, beside the account
+  // record, because a sign-in that never reaches this function still has to own
+  // the root it is already reading.
+  let dataRootChanged = false;
 
   // On a fresh install the server isn't available yet: the setup wizard runs
   // after this and starts it, and that start hands the credential over on its
@@ -1451,17 +1495,32 @@ export async function commitMindsSignIn(): Promise<void> {
     // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
     console.log('[minds-auth] server not installed yet — setup will sync after install');
-    return;
+    return { dataRootChanged };
   }
 
   // A sidecar that died is started rather than restarted: a stop/start would
   // drop a credential a previous push had already established.
-  if (!isServerRunning() && !isServerStarting()) {
+  //
+  // The exception is a changed data root. The store paths are process
+  // environment, so a running sidecar cannot be moved onto this account's
+  // database any other way, and leaving it would show the new account the
+  // previous one's tasks. Safe here specifically because the credential push
+  // below runs after it, and `setServerStartedHook` re-pushes on every start.
+  if ((isServerRunning() || isServerStarting()) && !sidecarIsOnCurrentStores()) {
+    console.log('[minds-auth] account data root changed — restarting the sidecar');
+    dataRootChanged = true;
+    await stopServer();
+    // The bearer token lives in the account's own dotenv, so a cached one from
+    // the previous root would be refused by the new sidecar. Dropped AFTER the
+    // stop: its shutdown checkpoint authenticates, which re-latches the cache.
+    resetServerAuthTokenCache();
+    await startServer();
+  } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
   }
   if (!isServerRunning() && !isServerStarting()) {
     console.warn('[minds-auth] sidecar unavailable — sign-in will sync on its next start');
-    return;
+    return { dataRootChanged };
   }
 
   // The credential goes FIRST, and a failure here ABORTS before the provider
@@ -1472,7 +1531,7 @@ export async function commitMindsSignIn(): Promise<void> {
   // the next sign-in retries the whole sequence.
   if (!(await syncUsableMindsCredential({ invalidateCatalog: true }))) {
     console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
-    return;
+    return { dataRootChanged };
   }
   settleMindsResumeCredentialGate(true);
 
@@ -1514,6 +1573,8 @@ export async function commitMindsSignIn(): Promise<void> {
   } catch (error) {
     console.warn('[minds-auth] health check after sign-in failed:', error);
   }
+
+  return { dataRootChanged };
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;
@@ -1727,6 +1788,12 @@ export interface SwitchMindsOrgResult {
   orgs: MindsOrg[];
   /** A sentence to show. Present only when `ok` is false. */
   error?: string;
+  /** The renderer must reload before it can be trusted: its in-memory state
+   *  belongs to the organization being left. Optional, so an older renderer
+   *  reading this payload is unaffected. */
+  reloadRequired?: boolean;
+  /** Drop organization-scoped local state as part of that reload. */
+  clearTenantState?: boolean;
 }
 
 /**
@@ -1756,6 +1823,20 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
   }
 }
 
+/** Put the record back, reporting whether it landed. writeActiveOrgSync throws
+ *  by contract, and on a rollback path that exception would escape the switch
+ *  with the record still naming the target organization and the session never
+ *  restored. */
+function rollbackActiveOrg(orgId: string | null): boolean {
+  try {
+    writeActiveOrgSync(accountDataRoot(), orgId);
+    return true;
+  } catch (err) {
+    console.warn('[minds-auth] could not put the active organization record back', err);
+    return false;
+  }
+}
+
 async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
   const token = await freshAccessToken();
   if (!token) return { ok: false, activeOrgId: null, orgs: [], error: 'Sign in to change organization.' };
@@ -1777,8 +1858,41 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
   }
   if (target.id === sourceOrgId) {
+    // The action a person takes when they notice the wrong data: re-pick the
+    // organization they are already in. Record and move the sidecar, or the one
+    // thing they try does nothing.
+    try {
+      writeActiveOrgSync(accountDataRoot(), target.id);
+    } catch (err) {
+      console.warn('[minds-auth] could not record the active organization', err);
+      return {
+        ok: false,
+        activeOrgId: sourceOrgId,
+        orgs,
+        error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+      };
+    }
     storeOrgPreference(userId, target.id, true);
-    return { ok: true, activeOrgId: sourceOrgId, orgs };
+    // Reload either way, and this is the one path where that is true of a
+    // sidecar needing nothing. Re-picking the organization you are already in
+    // is what a person does when the screen is showing another one's data, and
+    // the screen is the one thing the record and the sidecar cannot speak for:
+    // a document that missed an earlier transition holds its state until it is
+    // replaced. Returning "nothing to do" because the stores are already right
+    // leaves that document exactly as it was, which is the complaint.
+    // `clearTenantState: false` is the whole difference from a real switch. The
+    // organization did not change, so the organization-scoped caches are still
+    // this organization's and unsent text is still worth keeping — throwing it
+    // away here would cost a person real work for nothing. The document is
+    // replaced all the same, because it is the one thing the record and the
+    // sidecar cannot speak for.
+    if (sidecarIsOnCurrentStores()) {
+      return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: true, clearTenantState: false };
+    }
+    await ensureSidecarOnCurrentAccountRoot();
+    // Reload whether or not the move succeeded. The renderer is holding state
+    // from a database this session is no longer meant to be reading either way.
+    return { ok: true, activeOrgId: sourceOrgId, orgs, reloadRequired: true, clearTenantState: true };
   }
 
   if (!await switchActiveOrg(token, target.id)) {
@@ -1794,12 +1908,69 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   if (!switched) {
     // The switch landed on Keycloak even though this token did not follow it,
     // so the session has genuinely moved and has to be moved back.
-    await restoreActiveOrg(token, sourceOrgId);
+    const restored = await restoreActiveOrg(token, sourceOrgId);
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
-      error: `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: restored
+        ? `Could not refresh the session for ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
+    };
+  }
+
+  // The record decides which stores the sidecar is moved onto, so it goes first.
+  // It throws rather than swallowing: a lost write would leave the record naming
+  // the organization being left, the restart below would compare two stale
+  // values and agree, and the switch would report success having moved nothing.
+  try {
+    writeActiveOrgSync(accountDataRoot(), target.id);
+  } catch (err) {
+    console.warn('[minds-auth] could not record the active organization', err);
+    const restored = await restoreActiveOrg(switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored,
+      clearTenantState: true,
+      error: `Could not switch to ${organizationLabel(target)}. Nothing changed.`,
+    };
+  }
+
+  // Move the sidecar BEFORE handing over the credential. The other way round
+  // leaves it on the previous organization's database holding a token naming
+  // this one, so a turn started in that window bills this organization and
+  // writes into the previous one. The start re-pushes the credential anyway.
+  if (!await ensureSidecarOnCurrentAccountRoot()) {
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
+    // Recovery has to cover both shapes the failure leaves behind, and they
+    // need different calls.
+    //
+    // If the move stopped the sidecar and then could not start it, nothing is
+    // running, and ensureSidecarOnCurrentAccountRoot returns false without
+    // trying anything (it guards on a server being up). The reload below does
+    // not restart the main process, so the backend would stay down until the
+    // app was relaunched. That case needs a start.
+    //
+    // If the move never stopped anything — not running, or a start already in
+    // flight — the sidecar may just be on the wrong stores, which is what the
+    // helper is for.
+    const recovered = (isServerRunning() || isServerStarting())
+      ? await ensureSidecarOnCurrentAccountRoot()
+      : (await startServer()).ok && sidecarIsOnCurrentStores();
+    return {
+      ok: false,
+      activeOrgId: restored ? sourceOrgId : target.id,
+      orgs,
+      reloadRequired: !restored || !recovered,
+      clearTenantState: true,
+      error: restored
+        ? `Could not move the local server to ${organizationLabel(target)}. Nothing changed.`
+        : `Switched to ${organizationLabel(target)} but could not load its data. Reload to continue.`,
     };
   }
 
@@ -1808,15 +1979,26 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // until the next refresh tick, so turns would bill the organization the
   // person just left while the menu said otherwise.
   if (!await syncMindsCredential({ invalidateCatalog: true })) {
-    await restoreActiveOrg(switched, sourceOrgId);
+    const rolledBack = rollbackActiveOrg(sourceOrgId);
+    const restored = (await restoreActiveOrg(switched, sourceOrgId)) && rolledBack;
+    // Captured, like the sibling branch above: if the sidecar cannot be moved
+    // back it is still serving the TARGET organization's database, and
+    // reporting "Nothing changed" there would leave every later read and write
+    // landing in the organization the person believes they left.
+    const recovered = await ensureSidecarOnCurrentAccountRoot();
     return {
       ok: false,
-      activeOrgId: sourceOrgId,
+      activeOrgId: restored ? sourceOrgId : target.id,
       orgs,
+      reloadRequired: !restored || !recovered,
+      clearTenantState: true,
       error: 'Could not hand the new credential to the local server. Nothing changed.',
     };
   }
 
+  // Last, because it is what survives a relaunch: written earlier, a later
+  // failure would leave the next launch moving to an organization this call
+  // reported as unchanged.
   storeOrgPreference(userId, target.id, true);
-  return { ok: true, activeOrgId: target.id, orgs };
+  return { ok: true, activeOrgId: target.id, orgs, reloadRequired: true, clearTenantState: true };
 }

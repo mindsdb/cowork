@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ArtifactStatus } from './ArtifactStatus.jsx';
+import userEvent from '@testing-library/user-event';
+import { ArtifactStatus, artifactStatusHint } from './ArtifactStatus.jsx';
 
 // The Badge success variant (green "available to all" look) is the one that
 // must NEVER appear on a protected artifact — badgeVariants tags it with
@@ -101,5 +102,51 @@ describe('ArtifactStatus access-label visibility (ENG-1475)', () => {
       'utf8',
     );
     expect(css).not.toMatch(/@container\s+(?:artcard|statuscell)\b/);
+  });
+});
+
+// ENG-2177: "Draft" and "Restricted" were shown with no explanation, and
+// nothing said which state can be shared. Each idle label now carries a
+// one-line hint saying what it means for who can open the artifact.
+describe('ArtifactStatus hints (ENG-2177)', () => {
+  const published = { publishedUrl: 'https://x.test/a' };
+
+  it('explains Draft as a file type that cannot become a web link', () => {
+    expect(artifactStatusHint({}, false))
+      .toBe('Not shared. Only web pages and Markdown documents can be shared as a link.');
+  });
+
+  it('tells the user how to share a Not shared artifact', () => {
+    expect(artifactStatusHint({}, true))
+      .toBe('Not shared yet. Open it and choose Share to get a web link.');
+  });
+
+  it('explains Restricted for specific people', () => {
+    expect(artifactStatusHint({ ...published, accessMode: 'restricted', accessEmails: ['a@b.com'] }, true))
+      .toBe('Shared. Only the people you chose can open the link.');
+  });
+
+  it('explains Restricted for an owner-only link', () => {
+    expect(artifactStatusHint({ ...published, accessMode: 'restricted', ownerOnly: true }, true))
+      .toBe('Shared, but only you can open the link.');
+  });
+
+  it('does not claim a known audience when the access mode is unknown', () => {
+    expect(artifactStatusHint({ ...published }, true))
+      .toBe('Shared. Who can open the link could not be confirmed, so it is treated as restricted.');
+    expect(artifactStatusHint({ ...published, accessMode: 'org' }, true))
+      .toBe('Shared. Who can open the link could not be confirmed, so it is treated as restricted.');
+  });
+
+  it('shows the Draft hint on hover', async () => {
+    render(<ArtifactStatus artifact={{}} publishable={false} />);
+    await userEvent.hover(screen.getByText('Draft'));
+    expect(await screen.findByText(/Only web pages and Markdown documents/)).toBeInTheDocument();
+  });
+
+  it('shows the Restricted hint on hover', async () => {
+    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', accessEmails: ['a@b.com'] }} />);
+    await userEvent.hover(screen.getByText('Restricted'));
+    expect(await screen.findByText('Shared. Only the people you chose can open the link.')).toBeInTheDocument();
   });
 });
