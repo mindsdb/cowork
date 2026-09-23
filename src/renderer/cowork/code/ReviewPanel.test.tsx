@@ -90,8 +90,8 @@ describe('ReviewPanel', () => {
 
     await waitFor(() => expect(screen.getByText(/This task has no project checks/)).toBeInTheDocument());
     // Commands are copied into a task when it starts, so the guidance must not
-    // promise that editing Project settings fixes this task.
-    expect(screen.getByText(/New tasks use the commands saved in Project settings/)).toBeInTheDocument();
+    // promise that editing Project settings fixes this task or its forks.
+    expect(screen.getByText(/Tasks started from this project use the commands saved in Project settings/)).toBeInTheDocument();
   });
 
   it('acknowledges an applied diff and prevents an accidental duplicate handoff', async () => {
