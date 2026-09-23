@@ -26,6 +26,17 @@ import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 // environment (prod / staging / dev).
 const keycloakUrl = MINDS_KEYCLOAK_URL;
 
+// Local-dev escape hatch (mindshub#12498): onLoad:'login-required' only
+// accepts registered redirect URIs, so an unregistered localhost port dies on
+// "Invalid parameter: redirect_uri". VITE_SKIP_AUTH=true (repo-root `.env` —
+// vite.config's envDir — or the shell env) makes web-main skip the Keycloak
+// wrapper entirely; the client is then never inited, so no token is ever
+// minted and every consumer must treat "not authenticated" as the normal
+// local-dev state. Read at call time so tests can flip it with vi.stubEnv.
+// Dev-only: never set it in production images (it removes the login gate).
+export const isAuthSkipped = (): boolean =>
+  import.meta.env.VITE_SKIP_AUTH === 'true' || import.meta.env.VITE_SKIP_AUTH === '1';
+
 // Base URL without query params for Keycloak redirect (Keycloak validates strictly)
 const redirectUri = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.host}${window.location.pathname}`
@@ -42,6 +53,7 @@ const keycloak = new Keycloak({
 });
 
 keycloak.onAuthError = () => {
+  if (isAuthSkipped()) return;
   keycloak.clearToken();
   keycloak.login({ redirectUri });
 };
@@ -56,7 +68,7 @@ export const getAccessToken = async (): Promise<string | null> => {
    * window. A definite refusal releases the guard below.
    */
   assertOrganizationTransitionClear();
-  if (!keycloak.authenticated) return null;
+  if (isAuthSkipped() || !keycloak.authenticated) return null;
   if (keycloak.token) expectedOrganizationHeaders(keycloak.token);
   try {
     await keycloak.updateToken(30);

@@ -21,6 +21,14 @@
 // on cw-<id> hosts — restoring their pre-#473 behaviour — until they are
 // migrated onto cowork.<env>.mindshub.ai, at which point delete this branch.
 //
+// LOCAL DEV EXCEPTION — VITE_SKIP_AUTH=true (repo-root `.env`, or the shell
+// env): localhost is never a registered Keycloak redirect URI either, so
+// `npm run dev:web` bounces any unregistered port with the same "Invalid
+// parameter: redirect_uri" dead end (mindshub#12498). Skip the wrapper so
+// local web dev boots straight into onboarding. Dev-only — it removes the
+// login gate entirely; never set it in production images. See .env.example
+// and README "Skipping Keycloak auth (local dev)".
+//
 // Same as main.tsx:
 //   - First-paint theme bootstrap (avoids palette flash).
 //   - Tailwind + cowork tokens loaded in the same order.
@@ -43,7 +51,7 @@ import {
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
-import { keycloak } from './lib/keycloak';
+import { isAuthSkipped, keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
 
@@ -69,7 +77,10 @@ const legacyTenant = isLegacyTenantHost(window.location.hostname);
 // production builds gives visual QA a browser-renderable surface without ever
 // weakening the canonical web app's Keycloak gate.
 const codeFixture = import.meta.env.DEV && new URLSearchParams(window.location.search).has('codeFixture');
-if (!legacyTenant && !codeFixture) requireWebOrganizationCacheIdentity();
+// Local-dev opt-out (LOCAL DEV EXCEPTION above, mindshub#12498): without it,
+// any unregistered localhost port dies on "Invalid parameter: redirect_uri".
+const skipKeycloak = legacyTenant || codeFixture || isAuthSkipped();
+if (!skipKeycloak) requireWebOrganizationCacheIdentity();
 
 function bindOrganizationCacheTokens(tokens: { token?: string }) {
   if (pinWebOrganizationCacheIdentity(tokens.token) === 'changed') {
@@ -81,8 +92,9 @@ const root = document.getElementById('root')!;
 
 createRoot(root).render(
   <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
+    {skipKeycloak ? (
+      // Gated upstream (cw-<id>), visual-QA fixture, or local dev with
+      // VITE_SKIP_AUTH=true: render directly without a Keycloak login.
       <App />
     ) : (
       // LoadingComponent holds the mount until keycloak.init() resolves. Without
