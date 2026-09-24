@@ -143,9 +143,85 @@ export function formatDuration(ms) {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 }
 
-export const VERDICT_LABELS = {
-  a: 'A was better',
-  b: 'B was better',
-  tie: 'About the same',
-  neither: 'Neither did it',
-};
+/**
+ * What each side is called wherever a person picks between them: its model's
+ * name. Letters would make them translate back to models in their head. Two
+ * sides on the same model are told apart by effort, and by letter only when
+ * even that is the same.
+ */
+export function sideNames(a = {}, b = {}) {
+  const nameA = a.name || 'A';
+  const nameB = b.name || 'B';
+  if (nameA !== nameB) return { a: nameA, b: nameB };
+  if (a.effort && b.effort && a.effort !== b.effort) {
+    return { a: `${nameA} · ${a.effort}`, b: `${nameB} · ${b.effort}` };
+  }
+  return { a: `${nameA} (A)`, b: `${nameB} (B)` };
+}
+
+export const VERDICT_ORDER = ['a', 'b', 'tie', 'neither'];
+
+export function verdictLabel(winner, names = { a: 'A', b: 'B' }) {
+  if (winner === 'a' || winner === 'b') return `${names[winner]} was better`;
+  if (winner === 'tie') return 'About the same';
+  if (winner === 'neither') return 'Neither did it';
+  return 'No verdict';
+}
+
+/**
+ * What a side's header says about it, and the tone its status dot takes.
+ * A continued side is no longer part of the comparison, whatever it is doing
+ * in its project now.
+ */
+export function sideStatus(turns = [], { busy = false, continued = false } = {}) {
+  if (continued) return { tone: 'muted', label: 'Continued as a task' };
+  if (busy) return { tone: 'working', label: 'Working' };
+  const last = turns[turns.length - 1];
+  if (!last) return { tone: 'muted', label: 'Waiting' };
+  if (last.reply === 'running') return { tone: 'working', label: 'Working' };
+  if (last.reply === 'done') return { tone: 'done', label: 'Done' };
+  if (last.reply === 'failed') return { tone: 'failed', label: 'Failed' };
+  return { tone: 'muted', label: 'Stopped' };
+}
+
+/**
+ * Why the follow-up composer cannot send right now, or null when it can.
+ * `canSwitch` is true when picking a different target would let the message
+ * go out, so the caller keeps the target picker usable in that case.
+ */
+export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }) {
+  const available = SIDE_LABELS.filter((l) => sides[l] && !sides[l].continued && !sides[l].busy);
+  const wanted = target === 'a' || target === 'b' ? [target] : SIDE_LABELS;
+  const blocked = wanted.filter((l) => !available.includes(l));
+  if (blocked.length === 0) return null;
+  const canSwitch = available.length > 0;
+  const nameOf = (l) => names[l];
+  if (!canSwitch) {
+    const working = SIDE_LABELS.filter((l) => sides[l]?.busy && !sides[l]?.continued);
+    if (working.length === 2) return { message: 'You can follow up when both models finish.', canSwitch };
+    if (working.length === 1) return { message: `You can follow up when ${nameOf(working[0])} finishes.`, canSwitch };
+    return { message: 'Both sides were continued as tasks, so this comparison takes no more messages.', canSwitch };
+  }
+  const [side] = blocked;
+  const other = nameOf(available[0]);
+  if (sides[side]?.continued) {
+    return { message: `${nameOf(side)} was continued as a task. Send to ${other} only.`, canSwitch };
+  }
+  return { message: `${nameOf(side)} is still working. Send to ${other} only, or wait.`, canSwitch };
+}
+
+/** The text of the first user message, or '' when there is none yet. */
+export function firstUserText(messages = []) {
+  const first = (messages || []).find((m) => m?.role === 'user');
+  return typeof first?.content === 'string' ? first.content : '';
+}
+
+/**
+ * The messages with the first user message removed: the comparison's page
+ * shows that prompt once, above both sides, instead of in each pane.
+ */
+export function withoutFirstPrompt(messages = []) {
+  const index = (messages || []).findIndex((m) => m?.role === 'user');
+  if (index === -1) return messages;
+  return [...messages.slice(0, index), ...messages.slice(index + 1)];
+}

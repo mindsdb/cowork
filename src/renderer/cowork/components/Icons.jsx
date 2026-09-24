@@ -15,6 +15,7 @@
 // button design.
 import {
   AppWindow,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -164,6 +165,7 @@ const Ico = {
   globe:    ico(Globe),
   brain:    ico(Brain),
   columns:  ico(Columns2),
+  swap:     ico(ArrowLeftRight),
   database: ico(Database),
   mail:     ico(Mail),
   upload:   ico(Upload),
