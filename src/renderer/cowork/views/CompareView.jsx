@@ -75,6 +75,12 @@ const EMPTY_START = '__empty__';
 // above the pane would show it twice.
 const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled']);
 
+// The logo key for a model, the way the model picker resolves it. A model with
+// no logo of its own gets ProviderIcon's neutral mark.
+function makerOf(id, name) {
+  return modelMaker(id || '', name || '').key;
+}
+
 function modelName(models, id) {
   return models.find((m) => m.id === id)?.name || id;
 }
@@ -240,7 +246,7 @@ const SORTS = [
 function ModelTag({ id, name }) {
   return (
     <span className="inline-flex items-center gap-1.5 min-w-0">
-      <ProviderIcon maker={modelMaker(id || '', name)} size={13} />
+      <ProviderIcon maker={makerOf(id, name)} size={13} />
       <span className="truncate text-[13px] text-ink font-medium">{name}</span>
     </span>
   );
@@ -469,7 +475,7 @@ function ProjectPill({ projects, value, onChange }) {
 
 function SideIcon({ model, name }) {
   return model
-    ? <ProviderIcon maker={modelMaker(model, name)} size={30} />
+    ? <ProviderIcon maker={makerOf(model, name)} size={30} />
     : <span className="text-ink-4 text-lg">?</span>;
 }
 
@@ -554,7 +560,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           </div>
           <div className="text-center">
             <h1 className="m-0 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong">Compare two models</h1>
-            <p className="mt-2 mb-0 text-[14px] text-ink-3">Give the same task to two models and see how each handles it.</p>
+            <p className="mt-2 mb-0 text-[14px] text-ink-3">Give the same task to two models and compare their answers and speed side by side.</p>
           </div>
 
           <div className="composer-wrap w-full">
@@ -1045,7 +1051,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
               }`}
             >
               {selected && <span aria-hidden className="inline-flex">{Ico.check(13)}</span>}
-              {side && <ProviderIcon maker={modelMaker(side.model || '', names[winner])} size={13} />}
+              {side && <ProviderIcon maker={makerOf(side.model, names[winner])} size={13} />}
               <span>{verdictLabel(winner, names)}</span>
             </button>
           );
@@ -1074,7 +1080,7 @@ function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, pr
       aria-label={`Side ${label.toUpperCase()}`}
       className="min-h-0 flex flex-col rounded-[14px] border border-solid border-line bg-surface overflow-hidden"
     >
-      <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-x-0 border-t-0 border-solid border-line">
+      <header className="flex flex-col gap-1 px-4 py-2.5 border-b border-x-0 border-t-0 border-solid border-line">
         <div className="flex items-center gap-2 min-w-0">
           <span
             aria-hidden
@@ -1082,33 +1088,31 @@ function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, pr
           >
             {label.toUpperCase()}
           </span>
-          <ProviderIcon maker={modelMaker(side?.model || '', name)} size={16} />
-          <h2 className="m-0 text-[15px] leading-5 font-semibold text-ink truncate" title={side?.model}>{name}</h2>
-          {side?.reasoningEffort && !name.includes(side.reasoningEffort) && (
-            <span className="text-[11px] text-ink-3 flex-shrink-0">{side.reasoningEffort} effort</span>
-          )}
-        </div>
-        <span className="flex items-center gap-2 flex-shrink-0">
-          <span
-            className="inline-flex items-center gap-1.5 text-[12px] text-ink-3"
-            role="status"
-            aria-label={`Side ${label.toUpperCase()} status`}
-            title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
-          >
-            {status.tone === 'working'
-              ? <span aria-hidden className="inline-flex"><Spinner /></span>
-              : <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status.tone]}`} />}
-            <span>
-              {status.label}
-              {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
-              {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
-              {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
-            </span>
-          </span>
+          <ProviderIcon maker={makerOf(side?.model, name)} size={16} />
+          <h2 className="m-0 flex-1 min-w-0 text-[15px] leading-5 font-semibold text-ink truncate" title={name}>{name}</h2>
           {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
           {!busy && !side?.continuedAt && turns.length > 0 && (
-            <Button size="xs" variant="subtle" onClick={onContinue}>Continue with this model</Button>
+            <Tooltip content="Continue with this model as a normal task">
+              <Button size="xs" variant="subtle" onClick={onContinue}>Continue</Button>
+            </Tooltip>
           )}
+        </div>
+        <span
+          className="flex items-center gap-1.5 pl-7 text-[12px] text-ink-3 min-w-0"
+          role="status"
+          aria-label={`Side ${label.toUpperCase()} status`}
+          title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
+        >
+          {status.tone === 'working'
+            ? <span aria-hidden className="inline-flex"><Spinner /></span>
+            : <span aria-hidden className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[status.tone]}`} />}
+          <span className="truncate">
+            {status.label}
+            {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
+            {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
+            {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
+            {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
+          </span>
         </span>
       </header>
       {error && <div className="px-4 pt-2"><Alert variant="danger">{error}</Alert></div>}
