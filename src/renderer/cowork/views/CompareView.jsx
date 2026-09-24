@@ -22,6 +22,9 @@ import { modelMaker } from '../lib/modelCatalog';
 import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
+import { useHubUsageContext } from '../lib/hubUsageContext';
+import { USAGE_ACTIONS, deriveComposerWarning, usageActionUrl } from '../lib/usageWarnings';
+import { trackBillingOpened } from '../lib/analytics';
 import {
   cancelResponse,
   continueComparisonSide,
@@ -39,8 +42,12 @@ import {
 import {
   SIDE_LABELS,
   VERDICT_ORDER,
+  compareCreditNotice,
   composerBlock,
   divergedAt,
+  isCreditFailure,
+  silentFor,
+  unjudgeableReason,
   formatDuration,
   judgeableTurn,
   firstUserText,
@@ -75,6 +82,42 @@ function namesFor(models, a, b) {
   return sideNames(
     { name: modelName(models, a?.model), effort: a?.reasoningEffort },
     { name: modelName(models, b?.model), effort: b?.reasoningEffort },
+  );
+}
+
+/** The credits notice a model would get on its own, from the shared usage rules. */
+function useCreditNotices(modelIds) {
+  const hubUsage = useHubUsageContext();
+  const usage = hubUsage?.usage ?? null;
+  const providerType = hubUsage?.providerType;
+  const notices = modelIds.map((model) => deriveComposerWarning(usage, { providerType, model: model || null }));
+  return { notices, isBillingOwner: !!usage?.isBillingOwner };
+}
+
+function openBilling(action, isBillingOwner, trigger) {
+  trackBillingOpened(trigger);
+  host.openExternal(usageActionUrl(action, { isBillingOwner }));
+}
+
+const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
+
+function CreditNotice({ notice, isBillingOwner, trigger }) {
+  if (!notice) return null;
+  return (
+    <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="w-full">
+      <div className="flex flex-col gap-2">
+        <span>{notice.body}</span>
+        {notice.actions?.length > 0 && (
+          <span className="flex flex-wrap gap-2">
+            {notice.actions.map((action) => (
+              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger)}>
+                {action.label}
+              </Button>
+            ))}
+          </span>
+        )}
+      </div>
+    </Alert>
   );
 }
 
@@ -378,13 +421,16 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
   const [error, setError] = useState('');
   const fileInput = useRef(null);
 
-  const ready = prompt.trim() && sides.a.model && sides.b.model && !busy;
   const projectOptions = [
     { value: EMPTY_START, label: 'No project files' },
     ...projects.map((p) => ({ value: String(p.id), label: projectLabel(p) })),
   ];
   const nameA = modelName(models, sides.a.model);
   const nameB = modelName(models, sides.b.model);
+  const credits = useCreditNotices([sides.a.model, sides.b.model]);
+  const creditNotice = compareCreditNotice(credits.notices);
+  // A side that could not run at all would stop on its first step.
+  const ready = prompt.trim() && sides.a.model && sides.b.model && !busy && !creditNotice?.blocks;
 
   const start = async () => {
     if (!ready) return;
@@ -486,6 +532,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
             <SidePicker label="b" value={sides.b} onChange={(next) => setSides((prev) => ({ ...prev, b: next }))} models={models} modelMeta={modelMeta} />
           </div>
 
+          <CreditNotice notice={creditNotice} isBillingOwner={credits.isBillingOwner} trigger="compare_start" />
           {error && <Alert variant="danger" className="w-full">{error}</Alert>}
           <Button variant="primary" size="lg" disabled={!ready} onClick={start}>
             {busy ? 'Starting…' : <>Start comparison {Ico.chevRight(14)}</>}
@@ -529,6 +576,7 @@ function useComparisonSides(comparison) {
   const [tasks, setTasks] = useState({});
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
+  const [lastEventAt, setLastEventAt] = useState({});
   const streams = useRef({});
 
   const sideByLabel = useMemo(
@@ -548,6 +596,7 @@ function useComparisonSides(comparison) {
     let state = initialStreamState();
     setBusy((prev) => ({ ...prev, [label]: true }));
     setErrors((prev) => ({ ...prev, [label]: '' }));
+    setLastEventAt((prev) => ({ ...prev, [label]: Date.now() }));
     const finish = (message) => {
       streams.current[label] = null;
       setBusy((prev) => ({ ...prev, [label]: false }));
@@ -556,6 +605,7 @@ function useComparisonSides(comparison) {
     };
     streams.current[label] = open({
       onEvent(ev) {
+        setLastEventAt((prev) => ({ ...prev, [label]: Date.now() }));
         state = reduceStream(state, ev);
         setTasks((prev) => {
           const task = prev[label];
@@ -612,7 +662,7 @@ function useComparisonSides(comparison) {
     if (side) cancelResponse(side.conversationId);
   }, [sideByLabel]);
 
-  return { tasks, busy, errors, send, stop, refresh };
+  return { tasks, busy, errors, lastEventAt, send, stop, refresh };
 }
 
 function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask }) {
@@ -635,7 +685,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 
   useEffect(() => { loadComparison(); }, [loadComparison]);
 
-  const { tasks, busy, errors, send, stop } = useComparisonSides(comparison);
+  const { tasks, busy, errors, lastEventAt, send, stop } = useComparisonSides(comparison);
   const sides = useMemo(
     () => Object.fromEntries((comparison?.sides || []).map((s) => [s.label, s])),
     [comparison],
@@ -689,7 +739,15 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // All or nothing: a message meant for both must not quietly reach only the
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
-  const block = composerBlock(target, sideState, names);
+  const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
+  // A side is held back for credits while its last turn stopped for them and
+  // the account still cannot pay for its model. The next usage refresh (every
+  // 30s, and on window focus) lifts it once funds arrive.
+  const outOfCredits = SIDE_LABELS.filter((l, i) => (
+    isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
+  ));
+  const block = composerBlock(target, sideState, names, { outOfCredits });
+  const cannotJudge = unjudgeableReason(turns.a, turns.b, names);
 
   const submit = () => {
     const text = draft.trim();
@@ -773,6 +831,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             task={tasks[label] ? { ...tasks[label], messages: shownMessages(label) } : null}
             turns={turns[label]}
             busy={!!busy[label]}
+            lastEventAt={lastEventAt[label]}
             error={errors[label]}
             projects={projects}
             agentLabel={agentLabel}
@@ -784,6 +843,11 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         ))}
       </div>
       <div className="px-7 pt-3 pb-5 flex flex-col gap-2 max-w-[1100px] w-full mx-auto">
+        {judgeable === null && cannotJudge && (
+          <div role="status" className="px-4 py-2.5 rounded-[12px] border border-solid border-line bg-surface text-[13px] text-ink-3">
+            {cannotJudge}
+          </div>
+        )}
         {judgeable !== null && (
           <VerdictBar
             turnIndex={judgeable}
@@ -801,8 +865,13 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
               // A message cannot go out right now. Say so where the text box
               // would be, rather than showing a box that looks usable.
               <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
-                {!block.canSwitch && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
-                <span>{block.message}</span>
+                {!block.canSwitch && !block.action && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
+                <span className="flex-1">{block.message}</span>
+                {block.action === 'addFunds' && (
+                  <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
+                    Add funds
+                  </Button>
+                )}
               </div>
             ) : (
               <textarea
@@ -920,13 +989,14 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, busy, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
   const now = useNow(status.tone === 'working');
   const startedAt = last?.userAt ? Date.parse(last.userAt) : NaN;
   const runningFor = Number.isFinite(startedAt) ? Math.max(0, now - startedAt) : null;
+  const silent = busy ? silentFor(lastEventAt, now) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
   return (
     <section
@@ -960,6 +1030,7 @@ function SidePane({ label, name, side, task, turns, busy, error, projects, agent
             <span>
               {status.label}
               {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
+              {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
               {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
             </span>
           </span>

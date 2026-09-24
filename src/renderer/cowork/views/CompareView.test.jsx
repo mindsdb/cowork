@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+const hostMock = vi.hoisted(() => ({
+  isElectron: true,
+  isWeb: false,
+  isMac: () => false,
+  getApiOrigin: () => 'http://localhost:1',
+  openPath: vi.fn(),
+  openExternal: vi.fn(),
+}));
 vi.mock('../../platform/host', () => ({
-  host: {
-    isElectron: true,
-    isWeb: false,
-    isMac: () => false,
-    getApiOrigin: () => 'http://localhost:1',
-    openPath: vi.fn(),
-    openExternal: vi.fn(),
-  },
+  host: hostMock,
   getAccessToken: vi.fn(async () => null),
   isElectron: true,
 }));
@@ -60,8 +61,23 @@ const api = vi.hoisted(() => ({
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
 import CompareView, { filterComparisons } from './CompareView';
+import { HubUsageContext } from '../lib/hubUsageContext';
 
 const models = [{ id: 'kimi', name: 'Kimi' }, { id: 'qwen', name: 'Qwen' }];
+
+const usage = (balance) => ({
+  usage: {
+    reachable: true,
+    isBillingOwner: true,
+    freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: '2099-09-11T12:00:00Z' },
+    balance,
+    autoTopUp: { enabled: false, status: 'ok' },
+  },
+  providerType: 'minds-cloud',
+});
+const EMPTY = { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' };
+const LOW = { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' };
+const withUsage = (value, ui) => <HubUsageContext.Provider value={value}>{ui}</HubUsageContext.Provider>;
 const projects = [{ id: 'p-real', name: 'reports', display_name: 'Reports' }];
 
 function comparison(overrides = {}) {
@@ -98,11 +114,12 @@ function holdStreams() {
   });
 }
 
-async function openDetail(cmp, sessions) {
+async function openDetail(cmp, sessions, hubUsage = null) {
   api.fetchComparisons.mockResolvedValue([cmp]);
   api.fetchComparison.mockResolvedValue(cmp);
   api.fetchSession.mockImplementation(async (id) => sessions[id]);
-  render(<CompareView models={models} projects={projects} />);
+  const view = render(withUsage(hubUsage, <CompareView models={models} projects={projects} />));
+  openDetail.rerender = (next) => view.rerender(withUsage(next, <CompareView models={models} projects={projects} />));
   fireEvent.click(await screen.findByText(cmp.title));
   await screen.findAllByRole('region');
   await waitFor(() => expect(api.fetchSession).toHaveBeenCalledTimes(2));
@@ -110,6 +127,7 @@ async function openDetail(cmp, sessions) {
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
+  hostMock.openExternal.mockReset();
   for (const key of Object.keys(openStreams)) delete openStreams[key];
   api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
   holdStreams();
@@ -155,6 +173,70 @@ describe('CompareView', () => {
       const before = seconds();
       await act(async () => { vi.advanceTimersByTime(3000); });
       expect(seconds()).toBeGreaterThanOrEqual(before + 3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('will not start a comparison a side could not pay for', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    // Both the card's send arrow and the button below it.
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
+    expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+  });
+
+  it('warns that a comparison spends about twice a task on a low balance, and still starts', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    render(withUsage(usage(LOW), <CompareView models={models} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText(/uses about twice the credits of one task/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([false, false]);
+  });
+
+  it('holds follow-ups while a side is out of credits, and lets go once funds arrive', async () => {
+    const ranOut = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'token_limit', content: 'out' }];
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
+    const held = screen.getByRole('status', { name: 'Follow-up message' });
+    expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
+    fireEvent.click(within(held).getByRole('button', { name: 'Add funds' }));
+    expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
+    expect(screen.getByText("Qwen ran out of credits before finishing, so this turn can't be judged.")).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();
+
+    openDetail.rerender(usage({ usd: 25, canConsume: true, hasToppedUp: true, alert: '' }));
+    expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
+  it('says when a working side has gone quiet, without stopping it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.fetchInFlightStatus.mockImplementation(async (id) => ({ in_flight: id === 'conv-a' }));
+      let tail = null;
+      api.tailInFlight.mockImplementation((_id, callbacks) => { tail = callbacks; return { abort: vi.fn() }; });
+      await openDetail(comparison(), {
+        'conv-a': session('conv-a', [{ role: 'user', content: 'p', created_at: new Date().toISOString() }]),
+        'conv-b': session('conv-b', finishedTurn('p')),
+      });
+      const status = await screen.findByRole('status', { name: 'Side A status' });
+      await waitFor(() => expect(tail).not.toBeNull());
+      expect(status.textContent).not.toMatch(/no new activity/);
+      await act(async () => { vi.advanceTimersByTime(125_000); });
+      expect(status.textContent).toMatch(/no new activity for 2m 0\ds$/);
+      expect(api.cancelResponse).not.toHaveBeenCalled();
+      // Any new event restarts the quiet clock.
+      await act(async () => { tail.onEvent({ type: 'response.in_progress', thought_role: 'thought.progress' }); });
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      expect(status.textContent).not.toMatch(/no new activity/);
     } finally {
       vi.useRealTimers();
     }
