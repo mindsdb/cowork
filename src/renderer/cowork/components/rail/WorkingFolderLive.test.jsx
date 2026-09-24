@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -416,5 +416,47 @@ describe('artifacts rail authorship marker', () => {
     expect(screen.getAllByRole('img', { name: 'Another member' })).toHaveLength(1);
     // The owner row keeps the column with an empty, hidden cell.
     expect(rowOf('Weekly Report').children[1].getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // ENG-2979 fix wave (code review): recomputing the column from the raw
+  // top-12 slice on every 3s poll made it — and every row's horizontal
+  // position — jump as a colleague's artifact entered/left the slice.
+  it('keeps the marker column once set, even when a later poll comes back owner-only', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchArtifacts.mockResolvedValueOnce([other()]);
+      const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await screen.findByText('Ops Console');
+      expect(rowOf('Ops Console').className).toContain(FOUR);
+
+      // Simulate the "streaming just ended" poll: it fires once, ~1s after
+      // isStreaming flips back to false, and this time the slice is owner-only.
+      fetchArtifacts.mockResolvedValueOnce([draft()]);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming />);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      await screen.findByText('Weekly Report');
+
+      expect(screen.queryByText('Ops Console')).toBeNull();
+      // Column stays reserved for this project even though nothing in the
+      // current slice needs it any more.
+      expect(rowOf('Weekly Report').className).toContain(FOUR);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the marker column to three when the project changes', async () => {
+    const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };
+    fetchArtifacts.mockResolvedValueOnce([other()]);
+    const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    await screen.findByText('Ops Console');
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+
+    fetchArtifacts.mockResolvedValueOnce([draft()]);
+    rerender(<WorkingFolderLive project={OTHER_PROJECT} isStreaming={false} />);
+    await screen.findByText('Weekly Report');
+
+    expect(rowOf('Weekly Report').className).toContain(THREE);
   });
 });

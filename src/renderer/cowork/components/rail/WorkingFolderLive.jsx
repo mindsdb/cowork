@@ -93,6 +93,13 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   const effectiveProject = project || resolvedProject;
 
   const [rows, setRows] = useState([]);
+  // Sticky per project (ENG-2979 fix wave): once any row in a fetched slice
+  // needed the authorship column, keep reserving it for this project even
+  // once a later poll's top-12 slice happens to be owner-only. Recomputing
+  // straight from `rows` on every 3s poll made the column — and every row's
+  // horizontal position — jump as a colleague's artifact entered/left the
+  // slice. Only the project-switch effect below ever turns it back off.
+  const [markerColumn, setMarkerColumn] = useState(false);
   // Bumped on every project switch / streaming-tick load. The async
   // load checks the version against the latest before applying its
   // result, so a request that finishes after a project switch can't
@@ -108,7 +115,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   const applyArtifacts = (proj, list, ticket) => {
     if (ticket !== loadVersion.current) return;
     const all = Array.isArray(list) ? list : [];
-    setRows(all.slice(0, 12));
+    const sliced = all.slice(0, 12);
+    setRows(sliced);
+    if (sliced.some((r) => artifactAuthorship(r.capabilities))) setMarkerColumn(true);
   };
 
   // Project switch — clear immediately, then load. The clear is
@@ -118,6 +127,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
+    setMarkerColumn(false);
     if (!proj?.name || !(proj?.id || proj?.path)) {
       setRows([]);
       return;
@@ -356,9 +366,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // "Another member" marker column (ENG-2979). Reserved on every row once any
   // row needs it, so the names stay in one column; an owner-only list (always
   // the case on Desktop) keeps its three-column grid. Literal class strings —
-  // Tailwind cannot see interpolated ones.
+  // Tailwind cannot see interpolated ones. `markerColumn` is the sticky flag
+  // set in applyArtifacts; the `||` covers a row set within this same render
+  // before that state commits.
   const authorships = rows.map((r) => artifactAuthorship(r.capabilities));
-  const hasAuthorshipMarker = authorships.some(Boolean);
+  const hasAuthorshipMarker = markerColumn || authorships.some(Boolean);
   const rowGridCols = hasAuthorshipMarker
     ? 'grid-cols-[14px_12px_minmax(0,1fr)_auto]'
     : 'grid-cols-[14px_minmax(0,1fr)_auto]';
