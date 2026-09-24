@@ -1,9 +1,9 @@
 // Errors the previewed artifact reported about itself.
 //
 // The viewer never sees the frame's console, so a page that renders but dies
-// in its first script looks like an agent failure and the agent has nothing to
-// work from — it fixed the wrong thing three times in the trace behind
-// three times in a row. The shim injected by cowork-server
+// in its first script looks like an agent failure, and the agent has nothing
+// to work from: in the trace this came from it repaired the wrong thing three
+// times in a row. The shim injected by cowork-server
 // reports here over postMessage; this hook is the renderer-side half.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
