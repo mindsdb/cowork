@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compareCreditNotice,
   composerBlock,
+  isCreditFailure,
+  silentFor,
+  unjudgeableReason,
   firstUserText,
   withoutFirstPrompt,
   sideNames,
@@ -227,5 +231,82 @@ describe('the first prompt, shown once', () => {
   it('leaves the panes starting on the answer, follow-ups kept', () => {
     expect(withoutFirstPrompt(messages).map((m) => m.content)).toEqual(['ok', 'a follow-up', 'ok']);
     expect(withoutFirstPrompt([reply()])).toHaveLength(1);
+  });
+});
+
+const outOfCredits = { role: 'error', code: 'token_limit' };
+
+describe('credit failures', () => {
+  it('are told apart from other failures', () => {
+    expect(isCreditFailure(turnsOf([user('p'), outOfCredits])[0])).toBe(true);
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'included_allowance_exhausted' }])[0])).toBe(true);
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }])[0])).toBe(false);
+    expect(isCreditFailure(turnsOf([user('p'), reply()])[0])).toBe(false);
+  });
+
+  it('read as out of credits, or rate limited, in the side header', () => {
+    expect(sideStatus(turnsOf([user('p'), outOfCredits])).label).toBe('Out of credits');
+    expect(sideStatus(turnsOf([user('p'), { role: 'error', code: 'rate_limited' }])).label).toBe('Rate limited');
+    expect(sideStatus(turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }])).label).toBe('Failed');
+  });
+
+  it('keep the turn out of the verdict, and say why', () => {
+    const a = turnsOf([user('p'), reply()]);
+    const b = turnsOf([user('p'), outOfCredits]);
+    expect(judgeableTurn(a, b)).toBeNull();
+    expect(unjudgeableReason(a, b, { a: 'Kimi', b: 'Qwen' }))
+      .toBe("Qwen ran out of credits before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(b, b, { a: 'Kimi', b: 'Qwen' })).toMatch(/^Both models ran out/);
+  });
+
+  it('do not hide an earlier turn behind a later judgeable one', () => {
+    const a = turnsOf([user('p'), outOfCredits, user('q'), reply()]);
+    const b = turnsOf([user('p'), reply(), user('q'), reply()]);
+    expect(judgeableTurn(a, b)).toBe(1);
+    expect(unjudgeableReason(a, b)).toBeNull();
+  });
+
+  it('a model failing on its own is still a result to judge', () => {
+    const a = turnsOf([user('p'), reply()]);
+    const b = turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }]);
+    expect(judgeableTurn(a, b)).toBe(0);
+  });
+
+  it('block the composer while the account cannot pay', () => {
+    const free = { continued: false, busy: false };
+    expect(composerBlock('both', { a: free, b: free }, { a: 'Kimi', b: 'Qwen' }, { outOfCredits: ['b'] })).toEqual({
+      message: 'Qwen stopped because the balance ran out. Add funds to keep comparing.',
+      canSwitch: false,
+      action: 'addFunds',
+    });
+    expect(composerBlock('both', { a: free, b: free }, undefined, { outOfCredits: [] })).toBeNull();
+  });
+});
+
+describe('silentFor', () => {
+  it('speaks up after two minutes without an event', () => {
+    expect(silentFor(0, 119_000)).toBeNull();
+    expect(silentFor(0, 120_000)).toBe(120_000);
+    expect(silentFor(undefined, 500_000)).toBeNull();
+  });
+});
+
+describe('compareCreditNotice', () => {
+  const low = { kind: 'balance_low', tone: 'warning', title: 'Balance low', body: '$4.20 left.' };
+  const empty = { kind: 'balance_empty', tone: 'danger', title: 'Balance empty', body: 'Add funds.' };
+  const resting = { kind: 'free_at_rest', tone: 'resting', resting: true, title: '80% left', body: '' };
+
+  it('takes the more severe side and blocks when either could not run', () => {
+    expect(compareCreditNotice([low, empty])).toMatchObject({ kind: 'balance_empty', blocks: true });
+    expect(compareCreditNotice([low, null])).toMatchObject({ kind: 'balance_low', blocks: false });
+  });
+
+  it('says why a low balance matters more here', () => {
+    expect(compareCreditNotice([low, low]).body)
+      .toBe('$4.20 left. A comparison runs two models, so it uses about twice the credits of one task.');
+  });
+
+  it('leaves the standing allowance figure out', () => {
+    expect(compareCreditNotice([resting, null])).toBeNull();
   });
 });
