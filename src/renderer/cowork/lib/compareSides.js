@@ -161,10 +161,11 @@ export function sideNames(a = {}, b = {}) {
 
 export const VERDICT_ORDER = ['a', 'b', 'tie', 'neither'];
 
+/** An option in "Which answer was better?": the model's name, or a non-answer. */
 export function verdictLabel(winner, names = { a: 'A', b: 'B' }) {
-  if (winner === 'a' || winner === 'b') return `${names[winner]} was better`;
+  if (winner === 'a' || winner === 'b') return names[winner];
   if (winner === 'tie') return 'About the same';
-  if (winner === 'neither') return 'Neither did it';
+  if (winner === 'neither') return 'Neither';
   return 'No verdict';
 }
 

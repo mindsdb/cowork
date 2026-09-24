@@ -691,7 +691,7 @@ export default function Sidebar({
         <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
-          <NavItem icon={Ico.columns(15)} label="Compare models" onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
+          <NavItem icon={Ico.columns(15)} label="Compare Models" onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty

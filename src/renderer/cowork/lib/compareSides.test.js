@@ -197,9 +197,10 @@ describe('sideNames', () => {
 });
 
 describe('verdictLabel', () => {
-  it('names the winning model', () => {
+  it('names the model; the question around it says "better"', () => {
     const names = { a: 'Kimi', b: 'Qwen' };
-    expect(verdictLabel('b', names)).toBe('Qwen was better');
+    expect(verdictLabel('b', names)).toBe('Qwen');
+    expect(verdictLabel('neither', names)).toBe('Neither');
     expect(verdictLabel('tie', names)).toBe('About the same');
     expect(verdictLabel(null, names)).toBe('No verdict');
   });
