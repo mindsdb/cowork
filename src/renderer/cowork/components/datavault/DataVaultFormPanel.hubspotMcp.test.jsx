@@ -38,10 +38,15 @@ const HUBSPOT_MCP_SPEC = {
   ],
 };
 
-// HubSpot's real spec has two methods (mcp + private-app), so the picker's
-// hero-promotion UI (ENG-1534) actually renders — a single-method spec (like
-// the test above) auto-selects its only method and skips the picker/hero
-// entirely, so it can't exercise the hero one-click path at all.
+// A two-method spec is what makes the picker's hero-promotion UI (ENG-1534)
+// render at all — a single-method spec (like the test above) auto-selects its
+// only method and skips the picker/hero entirely, so it can't exercise the
+// hero one-click path.
+//
+// This is a fixture, not a copy of HubSpot's real spec: that one now hides
+// `private-app` so OAuth is its sole offered method (App Marketplace listing
+// requirement), which means HubSpot itself takes the auto-select path above.
+// Kept two-method here because some connector has to cover the hero path.
 const HUBSPOT_TWO_METHOD_SPEC = {
   ...HUBSPOT_MCP_SPEC,
   methods: [
