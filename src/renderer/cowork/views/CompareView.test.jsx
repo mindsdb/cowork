@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 vi.mock('../../platform/host', () => ({
   host: {
@@ -59,7 +59,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
-import CompareView from './CompareView';
+import CompareView, { filterComparisons } from './CompareView';
 
 const models = [{ id: 'kimi', name: 'Kimi' }, { id: 'qwen', name: 'Qwen' }];
 const projects = [{ id: 'p-real', name: 'reports', display_name: 'Reports' }];
@@ -116,18 +116,83 @@ beforeEach(() => {
 });
 
 describe('CompareView', () => {
+  it('opens on the start screen while there is no history yet', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    render(<CompareView models={models} projects={projects} />);
+    expect(await screen.findByRole('heading', { name: 'Compare two models' })).toBeTruthy();
+    expect(screen.queryByText('Comparisons')).toBeNull();
+  });
+
+  it('swaps the two sides and fills the prompt from an example', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    render(<CompareView models={models} projects={projects} />);
+    const [modelA, modelB] = await screen.findAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Swap sides' }));
+    const [afterA, afterB] = screen.getAllByLabelText('model');
+    expect([afterA.value, afterB.value]).toEqual(['qwen', 'kimi']);
+
+    fireEvent.click(screen.getByText('Build a dashboard'));
+    expect(screen.getByLabelText('Task for both models').value).toMatch(/^Build a one-page HTML dashboard/);
+    // Examples step aside once there is a prompt.
+    expect(screen.queryByText('Try an example')).toBeNull();
+  });
+
+  it('counts a working side up live', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const started = new Date(Date.now() - 40_000).toISOString();
+      api.fetchInFlightStatus.mockImplementation(async (id) => ({ in_flight: id === 'conv-a' }));
+      api.tailInFlight.mockReturnValue({ abort: vi.fn() });
+      await openDetail(comparison(), {
+        'conv-a': session('conv-a', [{ role: 'user', content: 'p', created_at: started }]),
+        'conv-b': session('conv-b', finishedTurn('p')),
+      });
+      const status = await screen.findByRole('status', { name: 'Side A status' });
+      await waitFor(() => expect(status.textContent).toMatch(/Working · 4\ds$/));
+      const seconds = () => Number(status.textContent.match(/(\d+)s$/)[1]);
+      const before = seconds();
+      await act(async () => { vi.advanceTimersByTime(3000); });
+      expect(seconds()).toBeGreaterThanOrEqual(before + 3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('says an update is needed when the server has no comparisons API', async () => {
     api.fetchComparisons.mockResolvedValue(null);
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByText('Update needed')).toBeTruthy();
   });
 
-  it('lists past comparisons with their models and verdict', async () => {
-    api.fetchComparisons.mockResolvedValue([comparison({ verdict: 'b', sides: comparison().sides.map((s) => ({ ...s, turnCount: 3 })) })]);
+  it('lists past comparisons under column headers, with the verdict named by model', async () => {
+    api.fetchComparisons.mockResolvedValue([
+      comparison({ verdict: 'b', sides: comparison().sides.map((s) => ({ ...s, turnCount: 3 })) }),
+      comparison({ id: 'cmp-2', title: 'Second task' }),
+    ]);
     render(<CompareView models={models} projects={projects} />);
-    expect(await screen.findByText('Kimi vs Qwen')).toBeTruthy();
-    expect(screen.getByText('3 turns')).toBeTruthy();
-    expect(screen.getByText('B was better')).toBeTruthy();
+    const row = await screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
+    for (const heading of ['Prompt', 'Models', 'Turns', 'Verdict', 'Started']) {
+      expect(screen.getByText(heading)).toBeTruthy();
+    }
+    expect(within(row).getByText('Kimi')).toBeTruthy();
+    expect(within(row).getByText('Qwen')).toBeTruthy();
+    expect(within(row).getByText('3')).toBeTruthy();
+    expect(within(row).getByText('Qwen preferred')).toBeTruthy();
+    expect(within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByText('No verdict')).toBeTruthy();
+    // Few comparisons: no search box yet.
+    expect(screen.queryByPlaceholderText('Search prompts and models')).toBeNull();
+  });
+
+  it('adds search once there are more comparisons than fit at a glance', async () => {
+    const many = Array.from({ length: 11 }, (_, i) => comparison({ id: `c${i}`, title: `Task ${i}` }));
+    many[3] = comparison({ id: 'c3', title: 'Quarterly revenue dashboard' });
+    api.fetchComparisons.mockResolvedValue(many);
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.change(await screen.findByPlaceholderText('Search prompts and models'), { target: { value: 'revenue' } });
+    expect(screen.getByRole('button', { name: 'Open comparison: Quarterly revenue dashboard' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open comparison: Task 0' })).toBeNull();
   });
 
   it('starts a comparison and sends the prompt to both sides on their own settings', async () => {
@@ -185,26 +250,63 @@ describe('CompareView', () => {
     expect(api.streamMessage).toHaveBeenCalledTimes(2);
   });
 
-  it('will not send to both while one side is still answering', async () => {
+  const target = (name) => within(screen.getByRole('group', { name: 'Send to' })).getByText(name);
+
+  it('picks the target by model name and will not send to both while one is working', async () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect(screen.getByRole('button', { name: 'Send' }).disabled).toBe(true);
+    fireEvent.click(target('Qwen'));
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
-    fireEvent.click(screen.getByText('B only'));
-    fireEvent.click(screen.getByText('Send'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(api.streamMessage).toHaveBeenCalledTimes(1);
     expect(api.streamMessage.mock.calls[0][0]).toBe('conv-b');
 
-    fireEvent.click(screen.getByText('Both'));
-    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'again' } });
-    expect(screen.getByText('Send').closest('button').disabled).toBe(true);
-    expect(screen.getByText(/still answering/)).toBeTruthy();
-    fireEvent.keyDown(screen.getByLabelText('Follow-up message'), { key: 'Enter' });
-    expect(api.streamMessage).toHaveBeenCalledTimes(1);
+    // Back to Both while Qwen works: the composer says why instead of
+    // offering a box that cannot send.
+    fireEvent.click(target('Both'));
+    expect(screen.getByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    fireEvent.click(target('Kimi'));
+    expect(screen.getByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
+  it('closes the composer while both models work', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(api.streamMessage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('You can follow up when both models finish.')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Send to' })).toBeNull();
+    act(() => openStreams['conv-a'].onDone());
+    await waitFor(() => expect(screen.getByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy());
+  });
+
+  it('shows each side under its model name with a quiet status line', async () => {
+    const cmp = comparison();
+    cmp.sides[1] = { ...cmp.sides[1], reasoningEffort: 'xhigh' };
+    await openDetail(cmp, { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect(screen.getByRole('heading', { name: 'Kimi' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Qwen' })).toBeTruthy();
+    expect(screen.getByText('xhigh effort')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toBe('Done · 30s');
+  });
+
+  it('keeps Delete in the overflow menu, behind a confirmation', async () => {
+    api.deleteComparison.mockResolvedValue({ ok: true });
+    await openDetail(comparison(), { 'conv-a': session('conv-a'), 'conv-b': session('conv-b') });
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Comparison actions' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete comparison/ }));
+    expect(api.deleteComparison).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(api.deleteComparison).toHaveBeenCalledWith('cmp-1'));
   });
 
   it('reports a dropped connection but leaves an agent error to the transcript', async () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
-    fireEvent.click(screen.getByText('Send'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     act(() => openStreams['conv-a'].onError('Network lost', { code: 'stream_error' }));
     act(() => openStreams['conv-b'].onError('Model refused', { code: 'anton_error' }));
     expect(await screen.findByText('Network lost')).toBeTruthy();
@@ -215,9 +317,9 @@ describe('CompareView', () => {
     api.recordComparisonVerdict.mockResolvedValue(comparison({ verdict: 'a', verdicts: [{ turnIndex: 0, winner: 'a' }] }));
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     expect(screen.getByText('Turn 1: which was better?')).toBeTruthy();
-    fireEvent.click(screen.getByText('A was better'));
+    fireEvent.click(screen.getByText('Kimi was better'));
     await waitFor(() => expect(api.recordComparisonVerdict).toHaveBeenCalledWith('cmp-1', 0, 'a'));
-    await waitFor(() => expect(screen.getByText('A was better').closest('button').getAttribute('aria-pressed')).toBe('true'));
+    await waitFor(() => expect(screen.getByText('Kimi was better').closest('button').getAttribute('aria-pressed')).toBe('true'));
   });
 
   it('offers no verdict until both sides finished', async () => {
@@ -235,9 +337,12 @@ describe('CompareView', () => {
       'conv-a': session('conv-a', [...finishedTurn('compared'), ...finishedTurn('asked later in its project')]),
       'conv-b': session('conv-b', finishedTurn('compared')),
     });
-    expect(screen.getAllByText('compared').length).toBe(2);
-    expect(screen.queryByText('asked later in its project')).toBeNull();
-    expect(screen.getByText('Continued as a task')).toBeTruthy();
+    // Both sides' answers to the compared turn, and nothing after it.
+    expect(screen.getAllByText('answer to compared').length).toBe(2);
+    expect(screen.queryByText('answer to asked later in its project')).toBeNull();
+    // The first prompt is on the page once, not in each pane.
+    expect(screen.queryAllByText('compared')).toHaveLength(0);
+    expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toMatch(/^Continued as a task/);
   });
 
   it('marks the point where the two sides stopped being asked the same thing', async () => {
@@ -264,9 +369,38 @@ describe('CompareView', () => {
     api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
     render(<CompareView models={models} projects={projects} onOpenTask={onOpenTask} />);
     fireEvent.click(await screen.findByText('Build a dashboard'));
-    fireEvent.click(await screen.findByText('Continue with A'));
+    const paneA = await screen.findByRole('region', { name: 'Side A' });
+    fireEvent.click(await within(paneA).findByText('Continue with this model'));
     fireEvent.click(screen.getByText('Continue'));
     await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real'));
     await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
+  });
+});
+
+
+describe('filterComparisons', () => {
+  const rows = [
+    // Newest-first and A–Z disagree here, so each sort is told apart.
+    { id: '1', title: 'Alpha', createdAt: '2026-09-02T00:00:00Z', verdict: 'a', sides: [{ model: 'kimi' }, { model: 'qwen' }] },
+    { id: '2', title: 'Beta', createdAt: '2026-09-03T00:00:00Z', verdict: null, sides: [{ model: 'glm' }, { model: 'qwen' }] },
+  ];
+  const ids = (list) => list.map((c) => c.id);
+
+  it('searches prompts and model names', () => {
+    expect(ids(filterComparisons(rows, { query: 'bet' }))).toEqual(['2']);
+    expect(ids(filterComparisons(rows, { query: 'Kimi' }, (id) => (id === 'kimi' ? 'Kimi K2' : id)))).toEqual(['1']);
+  });
+
+  it('filters by model', () => {
+    expect(ids(filterComparisons(rows, { model: 'kimi' }))).toEqual(['1']);
+    expect(ids(filterComparisons(rows, { model: 'qwen' }))).toEqual(['2', '1']);
+  });
+
+  it('filters by verdict and sorts', () => {
+    expect(ids(filterComparisons(rows, { verdict: 'none' }))).toEqual(['2']);
+    expect(ids(filterComparisons(rows, { verdict: 'judged' }))).toEqual(['1']);
+    expect(ids(filterComparisons(rows, { sort: 'recent' }))).toEqual(['2', '1']);
+    expect(ids(filterComparisons(rows, { sort: 'oldest' }))).toEqual(['1', '2']);
+    expect(ids(filterComparisons(rows, { sort: 'prompt' }))).toEqual(['1', '2']);
   });
 });

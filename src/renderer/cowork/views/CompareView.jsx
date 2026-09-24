@@ -10,11 +10,15 @@ import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/collection';
-import { Alert, Button, CardRow, EmptyState, Select, Spinner, Textarea } from '../components/ui';
+import { Alert, Badge, Button, CardRow, EmptyState, Select, Spinner, Tooltip } from '../components/ui';
+import { ProviderIcon } from '../components/ProviderIcon';
+import { SearchInput, SortPill } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import Ico from '../components/Icons';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { modelMaker } from '../lib/modelCatalog';
 import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
@@ -34,16 +38,22 @@ import {
 } from '../api';
 import {
   SIDE_LABELS,
-  VERDICT_LABELS,
+  VERDICT_ORDER,
+  composerBlock,
   divergedAt,
   formatDuration,
   judgeableTurn,
+  firstUserText,
   messagesUpToTurn,
+  withoutFirstPrompt,
   sendTargets,
+  sideNames,
+  sideStatus,
   titleFromPrompt,
   totalDurationMs,
   turnDurationMs,
   turnsOf,
+  verdictLabel,
 } from '../lib/compareSides';
 
 // Web turns do not carry a reasoning effort yet, so offering the pick there
@@ -61,10 +71,31 @@ function modelName(models, id) {
   return models.find((m) => m.id === id)?.name || id;
 }
 
-function sideTitle(label, side, models) {
-  const effort = side?.reasoningEffort ? ` · ${side.reasoningEffort}` : '';
-  return `${label.toUpperCase()} · ${modelName(models, side?.model)}${effort}`;
+function namesFor(models, a, b) {
+  return sideNames(
+    { name: modelName(models, a?.model), effort: a?.reasoningEffort },
+    { name: modelName(models, b?.model), effort: b?.reasoningEffort },
+  );
 }
+
+// Re-renders once a second while `active`, for a live "Working · 41s".
+function useNow(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return undefined;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+const STATUS_DOT = {
+  working: 'bg-accent pulse-dot',
+  done: 'bg-success',
+  failed: 'bg-danger',
+  muted: 'bg-ink-4',
+};
 
 export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask }) {
   const [comparisons, setComparisons] = useState(undefined);
@@ -99,13 +130,15 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
     );
   }
 
-  if (mode === 'new') {
+  // With nothing in the history yet, the start screen is the page.
+  const firstVisit = mode === 'list' && Array.isArray(comparisons) && comparisons.length === 0;
+  if (mode === 'new' || firstVisit) {
     return (
       <NewComparison
         models={models}
         modelMeta={modelMeta}
         projects={projects}
-        onCancel={() => setMode('list')}
+        onCancel={firstVisit ? null : () => setMode('list')}
         onStarted={(comparison, firstSend) => {
           setFirstSend(firstSend);
           setOpenId(comparison.id);
@@ -143,61 +176,189 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   );
 }
 
+const HISTORY_GRID = 'minmax(0, 3fr) minmax(0, 2fr) 56px 150px 72px 16px';
+// Below this many comparisons a search box is clutter; above it, finding one
+// by eye stops being quick.
+const FILTER_THRESHOLD = 10;
+
+const VERDICT_FILTERS = [
+  { id: 'all', label: 'All verdicts' },
+  { id: 'none', label: 'No verdict' },
+  { id: 'judged', label: 'Has a verdict' },
+];
+
+const SORTS = [
+  { id: 'recent', label: 'Newest' },
+  { id: 'oldest', label: 'Oldest' },
+  { id: 'prompt', label: 'Prompt (A–Z)' },
+];
+
+function ModelTag({ id, name }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <ProviderIcon maker={modelMaker(id || '', name)} size={13} />
+      <span className="truncate text-[13px] text-ink font-medium">{name}</span>
+    </span>
+  );
+}
+
+function VerdictChip({ verdict, names }) {
+  if (!verdict) return <Badge variant="muted">No verdict</Badge>;
+  if (verdict === 'a' || verdict === 'b') {
+    return <Badge variant="accent" className="max-w-full truncate">{names[verdict]} preferred</Badge>;
+  }
+  return <Badge>{verdict === 'tie' ? 'Tie' : 'Neither'}</Badge>;
+}
+
+function HistoryHeaderRow() {
+  const Cell = ({ children }) => (
+    <div className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{children}</div>
+  );
+  return (
+    <div
+      className="grid gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
+      style={{ gridTemplateColumns: HISTORY_GRID }}
+    >
+      <Cell>Prompt</Cell>
+      <Cell>Models</Cell>
+      <Cell>Turns</Cell>
+      <Cell>Verdict</Cell>
+      <Cell>Started</Cell>
+      <Cell />
+    </div>
+  );
+}
+
+function modelFilterOptions(rows, models) {
+  const ids = [...new Set(rows.flatMap((c) => (c.sides || []).map((s) => s.model)).filter(Boolean))];
+  return [
+    { id: 'all', label: 'All models' },
+    ...ids.map((id) => ({ id, label: modelName(models, id) })).sort((x, y) => x.label.localeCompare(y.label)),
+  ];
+}
+
+export function filterComparisons(rows, { query = '', verdict = 'all', sort = 'recent', model = 'all' } = {}, nameOf = (id) => id) {
+  const q = query.trim().toLowerCase();
+  const out = rows.filter((c) => {
+    if (model !== 'all' && !(c.sides || []).some((s) => s.model === model)) return false;
+    if (verdict === 'none' && c.verdict) return false;
+    if (verdict === 'judged' && !c.verdict) return false;
+    if (!q) return true;
+    const haystack = [c.title, ...(c.sides || []).flatMap((s) => [s.model, nameOf(s.model)])].join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
+  const time = (c) => Date.parse(c.createdAt || '') || 0;
+  if (sort === 'oldest') out.sort((x, y) => time(x) - time(y));
+  else if (sort === 'prompt') out.sort((x, y) => (x.title || '').localeCompare(y.title || ''));
+  else out.sort((x, y) => time(y) - time(x));
+  return out;
+}
+
 function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
-  const rows = comparisons || [];
+  const [query, setQuery] = useState('');
+  const [verdict, setVerdict] = useState('all');
+  const [model, setModel] = useState('all');
+  const [sort, setSort] = useState('recent');
+  const all = comparisons || [];
+  const filtering = all.length > FILTER_THRESHOLD;
+  const rows = filtering
+    ? filterComparisons(all, { query, verdict, sort, model }, (id) => modelName(models, id))
+    : all;
+  const newButton = (
+    <Button variant="primary" onClick={onNew}>{Ico.plus(14)} New comparison</Button>
+  );
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <PageHeader
-        title="Compare models"
-        subtitle="Give the same task to two models and see how each one handles it."
-        actions={<Button variant="primary" onClick={onNew}>New comparison</Button>}
+        title="Comparisons"
+        subtitle="View your past model comparisons."
+        actions={newButton}
       />
-      <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-8">
-        {error && <Alert variant="danger">{error}</Alert>}
-        {comparisons === undefined && !error && <div className="py-10 text-center"><Spinner /></div>}
-        {comparisons !== undefined && rows.length === 0 && !error && (
-          <EmptyState
-            icon={Ico.columns(28)}
-            title="No comparisons yet"
-            description="Pick two models and a task. Both work on it at the same time, each on its own copy of the files."
-            action={<Button variant="primary" onClick={onNew}>New comparison</Button>}
-          />
-        )}
-        {rows.map((c) => {
-          const [a, b] = c.sides || [];
-          const turns = Math.max(a?.turnCount || 0, b?.turnCount || 0);
-          return (
-            <CardRow
-              key={c.id}
-              as="div"
-              onActivate={() => onOpen(c.id)}
-              className="grid gap-[14px] py-3 px-[14px] items-center grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_90px_130px_90px]"
-            >
-              <span className="truncate text-ink">{c.title}</span>
-              <span className="truncate text-ink-3">
-                {modelName(models, a?.model)} vs {modelName(models, b?.model)}
-              </span>
-              <span className="text-ink-3 font-mono text-xs">{turns} {turns === 1 ? 'turn' : 'turns'}</span>
-              <span className="text-ink-3 text-xs truncate">{c.verdict ? VERDICT_LABELS[c.verdict] : 'No verdict'}</span>
-              <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>
-            </CardRow>
-          );
-        })}
+      <div className="flex-1 min-h-0 overflow-y-auto pb-8">
+        <div className="max-w-[1080px] mx-auto w-full px-7 flex flex-col gap-3">
+          {error && <Alert variant="danger">{error}</Alert>}
+          {comparisons === undefined && !error && <div className="py-10 text-center"><Spinner /></div>}
+          {filtering && (
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <SearchInput value={query} onChange={setQuery} placeholder="Search prompts and models" shortcut="" />
+              <SortPill label="Model" value={model} onChange={setModel} options={modelFilterOptions(all, models)} />
+              <SortPill label="Verdict" value={verdict} onChange={setVerdict} options={VERDICT_FILTERS} />
+              <SortPill value={sort} onChange={setSort} options={SORTS} />
+            </div>
+          )}
+          {all.length > 0 && (
+            <div className="rounded-[12px] border border-solid border-line overflow-hidden">
+              <HistoryHeaderRow />
+              {rows.map((c) => {
+                const [a, b] = c.sides || [];
+                const turns = Math.max(a?.turnCount || 0, b?.turnCount || 0);
+                const names = namesFor(models, a, b);
+                return (
+                  <CardRow
+                    key={c.id}
+                    as="div"
+                    onActivate={() => onOpen(c.id)}
+                    aria-label={`Open comparison: ${c.title}`}
+                    className="group grid gap-[14px] py-3 px-[14px] items-center cursor-pointer transition-colors hover:bg-surface-2"
+                    style={{ gridTemplateColumns: HISTORY_GRID }}
+                  >
+                    <span className="truncate text-[14px] text-ink font-medium" title={c.title}>{c.title}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <ModelTag id={a?.model} name={names.a} />
+                      <span aria-label="versus" className="text-ink-4 flex-shrink-0">↔</span>
+                      <ModelTag id={b?.model} name={names.b} />
+                    </span>
+                    <span className="text-ink-3 font-mono text-xs">{turns}</span>
+                    <span className="min-w-0"><VerdictChip verdict={c.verdict} names={names} /></span>
+                    <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>
+                    <span aria-hidden className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">{Ico.chevRight(14)}</span>
+                  </CardRow>
+                );
+              })}
+              {rows.length === 0 && (
+                <div className="py-10 text-center text-[13px] text-ink-4">No comparisons match.</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+const EXAMPLES = [
+  { label: 'Summarize a document', prompt: 'Read the attached document and give me a one-page summary with the key points and anything I should watch out for.' },
+  { label: 'Analyze data', prompt: 'Analyze the attached data, find the three most interesting patterns, and chart them.' },
+  { label: 'Build a dashboard', prompt: 'Build a one-page HTML dashboard from the attached data with the main numbers and two charts.' },
+  { label: 'Write a plan', prompt: 'Write a step-by-step project plan with milestones, owners and risks for launching a new internal tool.' },
+  { label: 'Explain code', prompt: 'Explain what the attached code does, how it is structured, and the three changes you would make first.' },
+];
+
+function SideIcon({ model, name }) {
+  return model
+    ? <ProviderIcon maker={modelMaker(model, name)} size={30} />
+    : <span className="text-ink-4 text-lg">?</span>;
 }
 
 function SidePicker({ label, value, onChange, models, modelMeta }) {
   const options = useMemo(() => buildModelPickerOptions(models, modelMeta), [models, modelMeta]);
   const efforts = EFFORT_SUPPORTED ? modelMeta?.modelEfforts || {} : undefined;
   return (
-    <div className="flex flex-col gap-1.5 min-w-0">
-      <span className="text-xs text-ink-3 font-mono uppercase tracking-[0.08em]">Model {label.toUpperCase()}</span>
+    <div className="flex-1 min-w-0 flex items-center gap-2 h-12 pl-3 pr-1.5 rounded-[12px] border border-solid border-line bg-surface">
+      <span
+        aria-hidden
+        className="inline-grid place-items-center w-6 h-6 rounded-[6px] bg-surface-2 font-mono text-[11.5px] text-ink-3 flex-shrink-0"
+      >
+        {label.toUpperCase()}
+      </span>
       <ModelSelect
         value={value.model}
         onValueChange={(model) => onChange({ model, reasoningEffort: '' })}
         options={options}
+        variant="unstyled"
+        className="meta-pill flex-1 min-w-0 justify-between"
+        ariaLabel={`Model ${label.toUpperCase()}`}
+        placeholder="Choose a model"
         {...(efforts ? {
           modelEfforts: efforts,
           effort: value.reasoningEffort,
@@ -219,11 +380,14 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
 
   const ready = prompt.trim() && sides.a.model && sides.b.model && !busy;
   const projectOptions = [
-    { value: EMPTY_START, label: 'Start empty' },
+    { value: EMPTY_START, label: 'No project files' },
     ...projects.map((p) => ({ value: String(p.id), label: projectLabel(p) })),
   ];
+  const nameA = modelName(models, sides.a.model);
+  const nameB = modelName(models, sides.b.model);
 
   const start = async () => {
+    if (!ready) return;
     setBusy(true);
     setError('');
     try {
@@ -244,39 +408,36 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <PageHeader onBack={onCancel} backLabel="Compare models" current="New comparison" />
-      <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-8">
-        <div className="max-w-[760px] mx-auto flex flex-col gap-5">
-          <Textarea
-            value={prompt}
-            onChange={setPrompt}
-            rows={5}
-            placeholder="Describe the task. Both models get exactly this."
-            aria-label="Task for both models"
-          />
-          <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
-            {SIDE_LABELS.map((label) => (
-              <SidePicker
-                key={label}
-                label={label}
-                value={sides[label]}
-                onChange={(next) => setSides((prev) => ({ ...prev, [label]: next }))}
-                models={models}
-                modelMeta={modelMeta}
-              />
-            ))}
+      {onCancel && <PageHeader onBack={onCancel} backLabel="Comparisons" current="New comparison" />}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-7 pb-12">
+        <div className="w-full max-w-[640px] flex flex-col items-center gap-5">
+          <div className="flex items-center gap-5" aria-hidden>
+            <span className="compare-vs-orb inline-grid place-items-center w-16 h-16 rounded-full bg-surface border border-solid border-line">
+              <SideIcon model={sides.a.model} name={nameA} />
+            </span>
+            <span className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink-3 tracking-[0.08em]">VS</span>
+            <span className="compare-vs-orb compare-vs-orb--right inline-grid place-items-center w-16 h-16 rounded-full bg-surface border border-solid border-line">
+              <SideIcon model={sides.b.model} name={nameB} />
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1 items-end">
-            <div className="flex flex-col gap-1.5 min-w-0">
-              <span className="text-xs text-ink-3 font-mono uppercase tracking-[0.08em]">Files</span>
-              <Select
-                value={source}
-                onValueChange={setSource}
-                options={projectOptions}
-                aria-label="Start from a project"
-              />
-            </div>
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="text-center">
+            <h1 className="m-0 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-[-0.004em] text-strong">Compare two models</h1>
+            <p className="mt-2 mb-0 text-[14px] text-ink-3">Give the same task to two models and see how each handles it.</p>
+          </div>
+
+          <div className="composer-wrap w-full">
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); }
+              }}
+              rows={3}
+              placeholder="What should both models do?"
+              aria-label="Task for both models"
+              className="block w-full border-0 outline-0 resize-none bg-transparent font-[family-name:var(--font-sans)] text-[length:var(--text-md)] leading-[1.5] text-strong px-[18px] pt-4 pb-1 min-h-[88px] placeholder:text-[color:var(--frost-500)]"
+            />
+            <div className="composer-toolbar">
               <input
                 ref={fileInput}
                 type="file"
@@ -284,28 +445,68 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 hidden
                 onChange={(e) => { setFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
               />
-              <Button variant="subtle" onClick={() => fileInput.current?.click()}>
-                {Ico.attach(14)} Attach files
-              </Button>
-              {files.length > 0 && (
-                <span className="text-xs text-ink-3 truncate">
-                  {files.length === 1 ? files[0].name : `${files.length} files`}
-                </span>
-              )}
+              <button type="button" className="meta-pill" onClick={() => fileInput.current?.click()}>
+                {Ico.attach(14)}
+                <span>{files.length === 0 ? 'Add files' : files.length === 1 ? files[0].name : `${files.length} files`}</span>
+              </button>
+              <Select
+                value={source}
+                onValueChange={setSource}
+                options={projectOptions}
+                variant="pill"
+                aria-label="Start from a project"
+              />
+              <span className="flex-1" />
+              <Tooltip content="Start comparison">
+                <button
+                  type="button"
+                  className="send-btn"
+                  aria-label="Start comparison"
+                  disabled={!ready}
+                  onClick={start}
+                >
+                  {Ico.send(15)}
+                </button>
+              </Tooltip>
             </div>
           </div>
-          <p className="text-xs text-ink-4 m-0">
-            Each model works on its own copy of the files. Connected data sources use your real
-            credentials, so a task that changes data changes it for both. Nothing is published or
-            sent through messaging apps until you continue with one side.
-          </p>
-          {error && <Alert variant="danger">{error}</Alert>}
-          <div className="flex justify-end gap-2">
-            <Button variant="subtle" onClick={onCancel}>Cancel</Button>
-            <Button variant="primary" disabled={!ready} onClick={start}>
-              {busy ? 'Starting…' : 'Start comparison'}
-            </Button>
+
+          <div className="w-full flex items-center gap-2 max-sm:flex-col">
+            <SidePicker label="a" value={sides.a} onChange={(next) => setSides((prev) => ({ ...prev, a: next }))} models={models} modelMeta={modelMeta} />
+            <Tooltip content="Swap sides">
+              <Button
+                icon
+                variant="subtle"
+                aria-label="Swap sides"
+                onClick={() => setSides((prev) => ({ a: prev.b, b: prev.a }))}
+              >
+                {Ico.swap(15)}
+              </Button>
+            </Tooltip>
+            <SidePicker label="b" value={sides.b} onChange={(next) => setSides((prev) => ({ ...prev, b: next }))} models={models} modelMeta={modelMeta} />
           </div>
+
+          {error && <Alert variant="danger" className="w-full">{error}</Alert>}
+          <Button variant="primary" size="lg" disabled={!ready} onClick={start}>
+            {busy ? 'Starting…' : <>Start comparison {Ico.chevRight(14)}</>}
+          </Button>
+          <p className="m-0 text-xs text-ink-4 text-center max-w-[520px]">
+            Each model works on its own copy of the files. Nothing is published or sent through
+            messaging apps until you continue with one side.
+          </p>
+
+          {!prompt.trim() && (
+            <div className="w-full flex flex-col items-center gap-2">
+              <span className="text-xs text-ink-4">Try an example</span>
+              <div className="flex flex-wrap justify-center gap-2">
+                {EXAMPLES.map((example) => (
+                  <Button key={example.label} size="sm" variant="subtle" onClick={() => setPrompt(example.prompt)}>
+                    {example.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -439,11 +640,15 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     [comparison],
   );
 
-  const shownMessages = (label) => messagesUpToTurn(
+  const comparedMessages = (label) => messagesUpToTurn(
     tasks[label]?.messages || [],
     sides[label]?.continuedAt ? sides[label].continuedTurnCount : null,
   );
-  const turns = { a: turnsOf(shownMessages('a')), b: turnsOf(shownMessages('b')) };
+  // The first prompt is the page's title, so the panes open on the answers.
+  // Later messages stay in the panes: a follow-up can go to one side only.
+  const shownMessages = (label) => withoutFirstPrompt(comparedMessages(label));
+  const firstPrompt = firstUserText(comparedMessages('a')) || firstUserText(comparedMessages('b'));
+  const turns = { a: turnsOf(comparedMessages('a')), b: turnsOf(comparedMessages('b')) };
   const diverged = divergedAt(turns.a, turns.b);
   const judgeable = judgeableTurn(turns.a, turns.b);
   const verdictFor = (turnIndex) => comparison?.verdicts?.find((v) => v.turnIndex === turnIndex)?.winner || null;
@@ -480,14 +685,16 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     busy: !!busy[label],
   }]));
   const targets = sendTargets(target, sideState);
-  const skipped = (target === 'both' ? SIDE_LABELS : [target]).filter((l) => !targets.includes(l));
   // All or nothing: a message meant for both must not quietly reach only the
   // side that happens to be free, which would make the two diverge.
-  const canSend = targets.length > 0 && skipped.length === 0;
+  const names = namesFor(models, sides.a, sides.b);
+  const block = composerBlock(target, sideState, names);
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || !canSend) return;
+    // The composer is not rendered while blocked; this covers a state change
+    // landing between the last render and the key press.
+    if (!text || block) return;
     setDraft('');
     sendToSides(text, targets);
   };
@@ -526,10 +733,26 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     <div className="flex-1 min-h-0 flex flex-col">
       <PageHeader
         onBack={onBack}
-        backLabel="Compare models"
-        current={comparison.title}
-        actions={<Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>}
+        backLabel="Comparisons"
+        actions={(
+          <OverflowMenu
+            label="Comparison actions"
+            icon={Ico.moreVert(16)}
+            triggerClassName="h-8 w-8 justify-center rounded-lg hover:bg-surface-2"
+            items={[
+              { id: 'delete', label: 'Delete comparison', icon: Ico.trash(14), danger: true, onClick: () => setConfirmDelete(true) },
+            ]}
+          />
+        )}
       />
+      <div className="px-7 pb-3 flex flex-col gap-1">
+        <h1 className="m-0 font-[family-name:var(--font-display)] text-[22px] leading-7 font-semibold text-strong" title={firstPrompt || comparison.title}>
+          {comparison.title}
+        </h1>
+        <span className="text-[12.5px] text-ink-3">
+          {names.a} vs {names.b} · Started {relativeAge(comparison.createdAt) || 'just now'}
+        </span>
+      </div>
       {error && <div className="px-7 pb-2"><Alert variant="danger">{error}</Alert></div>}
       {diverged !== null && (
         <div className="px-7 pb-2 text-xs text-ink-3" role="status">
@@ -541,12 +764,12 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           <SidePane
             key={label}
             label={label}
+            name={names[label]}
             side={sides[label]}
             task={tasks[label] ? { ...tasks[label], messages: shownMessages(label) } : null}
             turns={turns[label]}
             busy={!!busy[label]}
             error={errors[label]}
-            models={models}
             projects={projects}
             agentLabel={agentLabel}
             onStop={() => stop(label)}
@@ -560,7 +783,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         {judgeable !== null && (
           <div className="flex items-center gap-2 flex-wrap" aria-label="Which was better?">
             <span className="text-xs text-ink-3">Turn {judgeable + 1}: which was better?</span>
-            {Object.entries(VERDICT_LABELS).map(([winner, text]) => (
+            {VERDICT_ORDER.map((winner) => (
               <Button
                 key={winner}
                 size="sm"
@@ -568,45 +791,59 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 aria-pressed={verdictFor(judgeable) === winner}
                 onClick={() => judge(winner)}
               >
-                {text}
+                {verdictLabel(winner, names)}
               </Button>
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <div className="flex-1 min-w-0">
-            <Textarea
-              value={draft}
-              onChange={setDraft}
-              rows={2}
-              placeholder={target === 'both' ? 'Follow up with both models' : `Follow up with ${target.toUpperCase()} only`}
-              aria-label="Follow-up message"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-              }}
-            />
+        <div className="flex items-end gap-3 max-md:flex-col max-md:items-stretch">
+          <div className="composer-wrap flex-1 min-w-0 max-w-none">
+            {block ? (
+              // A message cannot go out right now. Say so where the text box
+              // would be, rather than showing a box that looks usable.
+              <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
+                {!block.canSwitch && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
+                <span>{block.message}</span>
+              </div>
+            ) : (
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={2}
+                placeholder={target === 'both' ? 'Ask a follow-up question to both models…' : `Ask ${names[target]} a follow-up…`}
+                aria-label="Follow-up message"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+                }}
+                className="block w-full border-0 outline-0 resize-none bg-transparent font-[family-name:var(--font-sans)] text-[length:var(--text-md)] leading-[1.5] text-strong px-[18px] pt-3.5 pb-1 min-h-[56px] placeholder:text-[color:var(--frost-500)]"
+              />
+            )}
+            {!block && (
+              <div className="composer-toolbar">
+                <span className="text-xs text-ink-4 px-2">
+                  {target === 'both' ? 'Both models get this message.' : `Only ${names[target]} gets this; the two will diverge.`}
+                </span>
+                <span className="flex-1" />
+                <button type="button" className="send-btn" aria-label="Send" disabled={!draft.trim()} onClick={submit}>
+                  {Ico.send(15)}
+                </button>
+              </div>
+            )}
           </div>
-          <ToggleGroup
-            value={target}
-            onValueChange={setTarget}
-            aria-label="Send to"
-            options={[
-              { value: 'both', label: 'Both' },
-              { value: 'a', label: 'A only' },
-              { value: 'b', label: 'B only' },
-            ]}
-          />
-          <Button variant="primary" disabled={!draft.trim() || !canSend} onClick={submit}>Send</Button>
+          {(!block || block.canSwitch) && (
+            <ToggleGroup
+              value={target}
+              onValueChange={setTarget}
+              aria-label="Send to"
+              className="mb-1.5"
+              options={[
+                { value: 'both', label: 'Both' },
+                { value: 'a', label: names.a },
+                { value: 'b', label: names.b },
+              ]}
+            />
+          )}
         </div>
-        {skipped.length > 0 && (
-          <span className="text-xs text-ink-4">
-            {skipped.map((l) => l.toUpperCase()).join(' and ')} {skipped.length === 1 ? 'is' : 'are'} not taking messages right now
-            {sideState[skipped[0]]?.continued ? ' (continued as a task).' : ' (still answering).'}
-          </span>
-        )}
-        {target !== 'both' && (
-          <span className="text-xs text-ink-4">Sending to one side makes the two diverge.</span>
-        )}
       </div>
       <ConfirmModal
         open={confirmDelete}
@@ -620,7 +857,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
       />
       {continuing && (
         <ContinueDialog
-          label={continuing}
+          name={names[continuing]}
           projects={projects}
           onClose={() => setContinuing(null)}
           onContinue={async (projectId) => {
@@ -635,25 +872,53 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   );
 }
 
-function SidePane({ label, side, task, turns, busy, error, models, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, busy, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
+  const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
+  const now = useNow(status.tone === 'working');
+  const startedAt = last?.userAt ? Date.parse(last.userAt) : NaN;
+  const runningFor = Number.isFinite(startedAt) ? Math.max(0, now - startedAt) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
   return (
     <section
       aria-label={`Side ${label.toUpperCase()}`}
       className="min-h-0 flex flex-col rounded-[14px] border border-solid border-line bg-surface overflow-hidden"
     >
-      <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-x-0 border-t-0 border-solid border-line">
-        <span className="font-mono text-xs text-ink truncate">{sideTitle(label, side, models)}</span>
+      <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-x-0 border-t-0 border-solid border-line">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            aria-hidden
+            className="inline-grid place-items-center w-5 h-5 rounded-[5px] bg-surface-2 font-mono text-[11px] text-ink-3 flex-shrink-0"
+          >
+            {label.toUpperCase()}
+          </span>
+          <ProviderIcon maker={modelMaker(side?.model || '', name)} size={16} />
+          <h2 className="m-0 text-[15px] leading-5 font-semibold text-ink truncate" title={side?.model}>{name}</h2>
+          {side?.reasoningEffort && !name.includes(side.reasoningEffort) && (
+            <span className="text-[11px] text-ink-3 flex-shrink-0">{side.reasoningEffort} effort</span>
+          )}
+        </div>
         <span className="flex items-center gap-2 flex-shrink-0">
-          <span className="font-mono text-[11px] text-ink-3" title="Time on the latest turn · on all turns">
-            {busy ? 'working…' : formatDuration(turnDurationMs(last))} · {formatDuration(total.counted ? total.total : null)}
+          <span
+            className="inline-flex items-center gap-1.5 text-[12px] text-ink-3"
+            role="status"
+            aria-label={`Side ${label.toUpperCase()} status`}
+            title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
+          >
+            {status.tone === 'working'
+              ? <span aria-hidden className="inline-flex"><Spinner /></span>
+              : <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status.tone]}`} />}
+            <span>
+              {status.label}
+              {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
+              {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
+            </span>
           </span>
           {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
-          {side?.continuedAt
-            ? <span className="text-[11px] text-ink-3">Continued as a task</span>
-            : !busy && turns.length > 0 && <Button size="xs" variant="subtle" onClick={onContinue}>Continue with {label.toUpperCase()}</Button>}
+          {!busy && !side?.continuedAt && turns.length > 0 && (
+            <Button size="xs" variant="subtle" onClick={onContinue}>Continue with this model</Button>
+          )}
         </span>
       </header>
       {error && <div className="px-4 pt-2"><Alert variant="danger">{error}</Alert></div>}
@@ -675,14 +940,14 @@ function SidePane({ label, side, task, turns, busy, error, models, projects, age
   );
 }
 
-function ContinueDialog({ label, projects, onClose, onContinue }) {
+function ContinueDialog({ name, projects, onClose, onContinue }) {
   const [projectId, setProjectId] = useState(projects[0] ? String(projects[0].id) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
     <ConfirmModal
       open
-      title={`Continue with ${label.toUpperCase()}`}
+      title={`Continue with ${name}`}
       message={(
         <div className="flex flex-col gap-3">
           <span>
@@ -707,7 +972,7 @@ function ContinueDialog({ label, projects, onClose, onContinue }) {
         try {
           await onContinue(projectId);
         } catch (err) {
-          setError(err?.message || 'Could not continue with this side.');
+          setError(err?.message || 'Could not continue with this model.');
           setBusy(false);
         }
       }}
