@@ -26,6 +26,7 @@ import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CompareView from './views/CompareView';
 import CodeView from './code/CodeView';
 import { useCodeModeAccess } from './code/codeModeAccess';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
@@ -5134,6 +5135,15 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {route === 'compare' && (
+          <CompareView
+            models={models}
+            modelMeta={modelMeta}
+            projects={projects}
+            agentLabel={agentLabel}
+            onOpenTask={(id) => { if (id) selectTask(id); }}
+          />
+        )}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             projects={projects}

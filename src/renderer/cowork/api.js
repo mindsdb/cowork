@@ -2309,6 +2309,59 @@ export async function moveTaskToProject(id, projectName, moveObjects = true) {
   });
 }
 
+// Model comparisons: one task run on two models side by side. Each side is an
+// ordinary conversation the server keeps in a hidden project, so its turns go
+// through the same streaming calls as any task.
+//
+// `null` means the sidecar predates comparisons: the renderer bundle updates
+// over the air ahead of the server, so the Compare screen has to be able to
+// say "update needed" rather than show an empty history.
+export async function fetchComparisons() {
+  try {
+    const data = await req('/comparisons/');
+    return Array.isArray(data?.comparisons) ? data.comparisons : [];
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return null;
+    throw err;
+  }
+}
+
+export async function fetchComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`);
+}
+
+export async function createComparison({ title, sides, sourceProjectId } = {}) {
+  return req('/comparisons/', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: title || '',
+      sides: (sides || []).map((side) => ({
+        model: side.model,
+        ...(side.reasoningEffort ? { reasoningEffort: side.reasoningEffort } : {}),
+      })),
+      ...(sourceProjectId ? { sourceProjectId } : {}),
+    }),
+  });
+}
+
+export async function deleteComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function recordComparisonVerdict(id, turnIndex, winner) {
+  return req(`/comparisons/${encodeURIComponent(id)}/verdicts/${encodeURIComponent(turnIndex)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ winner }),
+  });
+}
+
+export async function continueComparisonSide(id, label, projectId) {
+  return req(`/comparisons/${encodeURIComponent(id)}/sides/${encodeURIComponent(label)}/continue`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);
