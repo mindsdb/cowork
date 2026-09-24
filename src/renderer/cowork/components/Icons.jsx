@@ -85,6 +85,7 @@ import {
   ThumbsUp,
   Trash2,
   Upload,
+  UserRound,
   Users,
   Wifi,
   X,
@@ -167,6 +168,9 @@ const Ico = {
   key:      ico(KeyRound),
   lock:     ico(Lock),
   people:   ico(Users),
+  // A single person — "created by another member" marker (ENG-2979).
+  // Not `people`: that one already means "Restricted" access.
+  user:     ico(UserRound),
   robot:    ico(Bot),
   link:     ico(Link),
   // Isometric cube — a discrete composable unit; Skills library nav.
