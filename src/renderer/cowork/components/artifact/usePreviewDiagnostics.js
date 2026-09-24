@@ -61,7 +61,7 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
       if (data.source !== 'anton-preview') return;
       // Only our frame. Unlike the comments bridge, reject rather than pass
       // when there's no frame to compare against: `enabled` mirrors exactly
-      // the iframe's mount condition (ArtifactViewer.jsx), so ref and
+      // the iframe's mount condition (ArtifactViewerBody.jsx), so ref and
       // listener are set up in the same commit and the ref is never null
       // while this listener is live — a message here with no ref has no
       // legitimate source.
