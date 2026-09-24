@@ -111,3 +111,13 @@ describe('optimistic conversation registry', () => {
     expect(isOptimisticConversation('')).toBe(false);
   });
 });
+
+describe('the compare route', () => {
+  afterEach(() => window.history.replaceState({}, '', '/'));
+
+  it('round-trips between the route key and /compare', () => {
+    expect(pathForRoute('compare', null)).toBe('/compare');
+    window.history.replaceState({}, '', '/compare');
+    expect(initialNavState().route).toBe('compare');
+  });
+});
