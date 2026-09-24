@@ -68,6 +68,24 @@ describe('usePreviewDiagnostics', () => {
     expect(screen.getByTestId('count').textContent).toBe('0');
   });
 
+  it('ignores a message that arrives while the iframe ref is still null', () => {
+    // No frame to compare against means no legitimate source for the
+    // message, so it must be rejected rather than accepted by default.
+    function NoFrameHarness() {
+      const iframeRef = useRef(null);
+      const diagnostics = usePreviewDiagnostics(iframeRef, { enabled: true, resetKey: 'a' });
+      return <output data-testid="count">{diagnostics.errors.length}</output>;
+    }
+    render(<NoFrameHarness />);
+
+    fireEvent(window, new MessageEvent('message', {
+      source: window,
+      data: { source: 'anton-preview', type: 'error', message: 'spoof', file: '', line: 0 },
+    }));
+
+    expect(screen.getByTestId('count').textContent).toBe('0');
+  });
+
   it('collapses a repeated error and keeps distinct ones', () => {
     render(<Harness />);
     const frame = screen.getByTitle('Draft preview');

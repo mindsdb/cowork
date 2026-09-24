@@ -59,9 +59,14 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
     const onMessage = (ev) => {
       const data = ev.data || {};
       if (data.source !== 'anton-preview') return;
-      // Defense-in-depth, same rule as the comments bridge: only our frame.
+      // Only our frame. Unlike the comments bridge, reject rather than pass
+      // when there's no frame to compare against: `enabled` mirrors exactly
+      // the iframe's mount condition (ArtifactViewer.jsx), so ref and
+      // listener are set up in the same commit and the ref is never null
+      // while this listener is live — a message here with no ref has no
+      // legitimate source.
       const win = iframeRef.current && iframeRef.current.contentWindow;
-      if (win && ev.source !== win) return;
+      if (!win || ev.source !== win) return;
       if (data.type === 'document-start') {
         // Bail out to the same array when the list is already empty, so a
         // page that spams document-start (e.g. an in-frame reload loop)
