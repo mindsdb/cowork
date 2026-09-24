@@ -60,7 +60,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
-import CompareView, { filterComparisons } from './CompareView';
+import CompareView, { EXAMPLES, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const models = [{ id: 'kimi', name: 'Kimi' }, { id: 'qwen', name: 'Qwen' }];
@@ -151,10 +151,14 @@ describe('CompareView', () => {
     const [afterA, afterB] = screen.getAllByLabelText('model');
     expect([afterA.value, afterB.value]).toEqual(['qwen', 'kimi']);
 
-    fireEvent.click(screen.getByText('Build a dashboard'));
-    expect(screen.getByLabelText('Task for both models').value).toMatch(/^Build a one-page HTML dashboard/);
+    const examples = screen.getByRole('group', { name: 'Example comparisons' });
+    // Every example must work with nothing attached: most comparisons start empty.
+    const pills = within(examples).getAllByRole('button');
+    expect(pills.length).toBeGreaterThanOrEqual(6);
+    fireEvent.click(within(examples).getByText('Build website'));
+    expect(screen.getByLabelText('Task for both models').value).toMatch(/^Build a landing page/);
     // Examples step aside once there is a prompt.
-    expect(screen.queryByText('Try an example')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Example comparisons' })).toBeNull();
   });
 
   it('counts a working side up live', async () => {
@@ -490,5 +494,16 @@ describe('filterComparisons', () => {
     expect(ids(filterComparisons(rows, { sort: 'recent' }))).toEqual(['2', '1']);
     expect(ids(filterComparisons(rows, { sort: 'oldest' }))).toEqual(['1', '2']);
     expect(ids(filterComparisons(rows, { sort: 'prompt' }))).toEqual(['1', '2']);
+  });
+});
+
+
+describe('example prompts', () => {
+  it('stand alone, with nothing attached, and each names what it compares', () => {
+    expect(EXAMPLES.length).toBeGreaterThanOrEqual(6);
+    for (const example of EXAMPLES) {
+      expect(example.prompt).not.toMatch(/attach/i);
+      expect(example.hint).toMatch(/^Compares /);
+    }
   });
 });

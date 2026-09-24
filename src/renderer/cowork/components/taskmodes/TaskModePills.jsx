@@ -11,14 +11,16 @@ import { TASK_MODES } from './taskModes';
 // bare hover: compiles to plain :hover, which sticks on touch. The stagger
 // delay rides a --stagger CSS var built from the motion tokens, so reduced
 // motion (tokens zeroed) makes the entrance instant.
-export default function TaskModePills({ onPick }) {
+// `modes` defaults to Home's task modes; the Compare screen passes its own
+// examples so both surfaces share one pill.
+export default function TaskModePills({ onPick, modes = TASK_MODES, label = 'Task types' }) {
   return (
     <div
       className="mt-5 flex w-full max-w-[var(--composer-max-width,640px)] flex-wrap justify-center gap-2"
       role="group"
-      aria-label="Task types"
+      aria-label={label}
     >
-      {TASK_MODES.map((mode, i) => (
+      {modes.map((mode, i) => (
         <button
           key={mode.id}
           type="button"
@@ -27,6 +29,7 @@ export default function TaskModePills({ onPick }) {
           style={{ '--stagger': `calc(${3.5 + i} * var(--dur-stagger))` }}
           className="group inline-flex cursor-pointer items-center gap-[7px] rounded-full border border-solid border-line-2 bg-[var(--surface-0)] px-[14px] py-2 [font-family:inherit] text-[13.5px] font-medium text-[var(--frost-700)] opacity-0 [animation:fadein-up_var(--dur-layout)_var(--ease-out)_var(--stagger)_both] [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_5%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]"
           onClick={() => onPick(mode)}
+          title={mode.hint}
         >
           <span
             className="inline-flex text-[var(--frost-600)] [transition:color_var(--dur-hover)_ease] [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-[var(--text-strong)]"
