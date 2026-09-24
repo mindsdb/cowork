@@ -24,6 +24,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
@@ -366,6 +367,9 @@ export function ArtifactViewer({
     : artifact?.capabilities
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
+  // Same precedence as canManage: the card's capabilities stand in until the
+  // workspace answers, so the header tag does not flicker in (ENG-2979).
+  const authorship = artifactAuthorship(workspace.capabilities ?? artifact?.capabilities);
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -853,6 +857,7 @@ export function ArtifactViewer({
     >
       <ArtifactViewerHeader
         title={title}
+        authorship={authorship}
         workspace={workspace}
         review={headerReview}
         publication={publication}

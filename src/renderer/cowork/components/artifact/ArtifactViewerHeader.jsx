@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
+import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,
 // open-in-browser, kebab, close). forwardRef so it can be the render
@@ -57,6 +58,7 @@ const IconButton = forwardRef(function IconButton(
 
 export function ArtifactViewerHeader({
   title,
+  authorship = null,
   workspace,
   review,
   publication,
@@ -130,6 +132,13 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
+        {/* "Another member" / "Unknown owner" (ENG-2979). Does not shrink:
+            a long title truncates first, the tag stays readable. */}
+        {authorship && (
+          <span style={{ flexShrink: 0, display: 'inline-flex' }}>
+            <ArtifactAuthorshipBadge authorship={authorship} />
+          </span>
+        )}
       </div>
 
       {/* Middle — the artifact's three working modes. */}

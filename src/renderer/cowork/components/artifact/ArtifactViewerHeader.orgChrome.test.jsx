@@ -18,6 +18,7 @@ vi.mock('./publish/PublishMenu', () => ({
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { setOrgMode } from '../../../lib/orgMode';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 
 const workspace = {
   supported: true,
@@ -105,5 +106,37 @@ describe('preview window chrome on desktop', () => {
 
     expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument();
+  });
+});
+
+// ENG-2979: the preview says whose artifact it is, right after the title.
+describe('preview window authorship tag', () => {
+  const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('tags another member\'s artifact right after the title', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    const title = document.getElementById('artifact-viewer-title');
+    const tag = screen.getByText('Another member');
+    expect(title.parentElement).toContainElement(tag);
+    expect(follows(title, tag)).toBe(true);
+  });
+
+  it('tags an ownerless artifact', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer', ownerUnknown: true })} />);
+    expect(screen.getByText('Unknown owner')).toBeInTheDocument();
+  });
+
+  it('shows no tag for the viewer\'s own artifact', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={null} />);
+    expect(screen.queryByText('Another member')).toBeNull();
+    expect(screen.queryByText('Unknown owner')).toBeNull();
+  });
+
+  it('shows no tag when the prop is not passed', () => {
+    render(<ArtifactViewerHeader {...props} />);
+    expect(screen.queryByText('Another member')).toBeNull();
   });
 });
