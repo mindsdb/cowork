@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
+import TaskModePills from '../components/taskmodes/TaskModePills';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/collection';
@@ -369,12 +370,67 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
   );
 }
 
-const EXAMPLES = [
-  { label: 'Summarize a document', prompt: 'Read the attached document and give me a one-page summary with the key points and anything I should watch out for.' },
-  { label: 'Analyze data', prompt: 'Analyze the attached data, find the three most interesting patterns, and chart them.' },
-  { label: 'Build a dashboard', prompt: 'Build a one-page HTML dashboard from the attached data with the main numbers and two charts.' },
-  { label: 'Write a plan', prompt: 'Write a step-by-step project plan with milestones, owners and risks for launching a new internal tool.' },
-  { label: 'Explain code', prompt: 'Explain what the attached code does, how it is structured, and the three changes you would make first.' },
+// Starting points, each an angle on which models tend to differ. Every prompt
+// works with nothing attached, since most comparisons start empty, and asks
+// for one focused output: a model that tries to write everything in a single
+// reply runs out of output budget, which then reads as the model failing.
+export const EXAMPLES = [
+  {
+    id: 'website',
+    pillLabel: 'Build website',
+    icon: 'appWindow',
+    hint: 'Compares design taste and polish',
+    prompt: 'Build a landing page for a made-up coffee subscription called Night Owl Roasters, as a single HTML file: a hero with a clear call to action, three plans with prices, customer quotes, and an FAQ. Make it look like a real product launched this year.',
+  },
+  {
+    id: 'games',
+    pillLabel: 'Create games',
+    icon: 'gamepad',
+    hint: 'Compares creative coding, and whether it actually runs',
+    prompt: 'Make a small browser game in a single HTML file: the player dodges falling obstacles, the speed rises over time, and there is a score and a restart button. Keep the code focused and make sure it plays.',
+  },
+  {
+    id: 'visualization',
+    pillLabel: 'Visualization',
+    icon: 'chartColumn',
+    hint: 'Compares chart choices and the insight drawn from data',
+    prompt: 'Invent a realistic year of monthly sales data for an online store across three regions and four product lines, then build a one-page dashboard with the charts that best tell its story. Finish with the three most important insights.',
+  },
+  {
+    id: 'spreadsheet',
+    pillLabel: 'Spreadsheet',
+    icon: 'table',
+    hint: 'Compares numerical correctness',
+    prompt: 'Build a spreadsheet forecasting three years of revenue for a SaaS product starting at 200 customers at $49 a month, with growth, churn and a price rise in year two as explicit assumptions. Add a sheet that checks the totals add up.',
+  },
+  {
+    id: 'research',
+    pillLabel: 'Wide Research',
+    icon: 'telescope',
+    hint: 'Compares accuracy and sourcing',
+    prompt: 'Research where solid-state batteries for electric cars stand today: who is closest to mass production, what is still unsolved, and realistic timelines. Cite your sources and say clearly what is uncertain.',
+  },
+  {
+    id: 'slides',
+    pillLabel: 'Create slides',
+    icon: 'presentation',
+    hint: 'Compares structure and storytelling',
+    prompt: 'Create a six-slide pitch deck for a fictional app that helps small restaurants cut food waste: the problem, the solution, how it works, the market, the business model, and the ask.',
+  },
+  {
+    id: 'reasoning',
+    pillLabel: 'Reasoning',
+    icon: 'brain',
+    hint: 'Compares thinking a problem through',
+    prompt: 'Five people must each give one 30-minute talk between 9:00 and 12:00 in two rooms. Ana and Ben cannot overlap, Carla must talk before Ben, Dev only after 10:30, and Eli needs the same room as Ana. Find a schedule, explain the reasoning, and check it against every rule.',
+  },
+  {
+    id: 'writing',
+    pillLabel: 'Writing',
+    icon: 'edit',
+    hint: 'Compares tone and following instructions',
+    prompt: 'Write a launch announcement for a new dark mode in a note-taking app in three versions: a tweet under 280 characters, a friendly email under 120 words, and a changelog entry under 50 words. Each should sound right for its channel.',
+  },
 ];
 
 // The same pill Home's composer uses for its project. Here picking a project
@@ -567,16 +623,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           </p>
 
           {!prompt.trim() && (
-            <div className="w-full flex flex-col items-center gap-2">
-              <span className="text-xs text-ink-4">Try an example</span>
-              <div className="flex flex-wrap justify-center gap-2">
-                {EXAMPLES.map((example) => (
-                  <Button key={example.label} size="sm" variant="subtle" onClick={() => setPrompt(example.prompt)}>
-                    {example.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
+            <TaskModePills modes={EXAMPLES} label="Example comparisons" onPick={(example) => setPrompt(example.prompt)} />
           )}
         </div>
       </div>
