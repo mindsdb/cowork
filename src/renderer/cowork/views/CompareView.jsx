@@ -10,10 +10,11 @@ import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
 import TaskModePills from '../components/taskmodes/TaskModePills';
+import ProjectPicker from '../components/ProjectPicker';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/collection';
-import { Alert, Badge, Button, CardRow, EmptyState, Menu, Select, Spinner, Tooltip } from '../components/ui';
+import { Alert, Badge, Button, CardRow, EmptyState, Select, Spinner, Tooltip } from '../components/ui';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { SearchInput, SortPill } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -439,40 +440,6 @@ export const EXAMPLES = [
   },
 ];
 
-// The same pill Home's composer uses for its project. Here picking a project
-// gives each model its own copy of that project's files to work on.
-function ProjectPill({ projects, value, onChange }) {
-  const current = projects.find((p) => String(p.id) === value) || null;
-  const item = (id, label, icon) => ({
-    id,
-    label,
-    icon,
-    onClick: () => onChange(id),
-    ...(value === id ? { aria: { 'aria-current': 'true' } } : {}),
-  });
-  return (
-    <Menu
-      trigger={(
-        <button
-          type="button"
-          className="meta-pill"
-          aria-label="Choose project"
-          title="Each model starts from its own copy of the project's files"
-        >
-          {Ico.folder(14)}
-          <span>{current ? projectLabel(current) : 'Work in a project'}</span>
-          <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-        </button>
-      )}
-      items={[
-        item(EMPTY_START, 'No project', null),
-        ...(projects.length ? [{ separator: true }] : []),
-        ...projects.map((p) => item(String(p.id), projectLabel(p), Ico.folder(14))),
-      ]}
-    />
-  );
-}
-
 function SideIcon({ model, name }) {
   return model
     ? <ProviderIcon maker={makerOf(model, name)} size={30} />
@@ -587,7 +554,14 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 {Ico.attach(14)}
                 <span>{files.length === 0 ? 'Add files' : files.length === 1 ? files[0].name : `${files.length} files`}</span>
               </button>
-              <ProjectPill projects={projects} value={source} onChange={setSource} />
+              {/* Home's project picker. Picking a project gives each model its
+                  own copy of that project's files to work on. */}
+              <ProjectPicker
+                projects={projects}
+                project={projects.find((p) => String(p.id) === source) || null}
+                onChange={(picked) => setSource(picked ? String(picked.id) : EMPTY_START)}
+                noneLabel="No project"
+              />
               <span className="flex-1" />
               <Tooltip content="Start comparison">
                 <button
