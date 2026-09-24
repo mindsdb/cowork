@@ -4867,3 +4867,20 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 @container (max-width: 600px) {
   .artifacts-grid { grid-template-columns: 1fr; }
 }
+
+/* Compare models: the two contenders on the start screen. A slow, faint glow
+   on each side, offset in time, so the head-to-head reads as live without
+   drawing the eye away from the prompt. Off when the user asks for less
+   motion. */
+.compare-vs-orb {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  animation: compare-vs-glow 3.2s ease-in-out infinite;
+}
+.compare-vs-orb--right { animation-delay: 1.6s; }
+@keyframes compare-vs-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50%      { box-shadow: 0 0 22px 2px color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compare-vs-orb { animation: none; }
+}
