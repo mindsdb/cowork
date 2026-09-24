@@ -72,10 +72,18 @@ export function artifactStatusHint(artifact, publishable = true) {
 
 // `inlineChanges` — list view flows the "Unpublished changes" pill inline
 // right after the access chip; the card (default) pushes it to the right edge.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false }) {
+//
+// `extra` — a node that rides in the same row, right after the primary badge
+// (ENG-2979: the "Another member" tag). Pass null, not an element that renders
+// nothing, when there is none: without it the DOM is exactly what it was.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, extra = null }) {
+  const withExtra = (primary) => (extra
+    ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{extra}</span>
+    : primary);
+
   // Transient phases win over the persisted state.
   if (phase === 'failed') {
-    return (
+    return withExtra(
       <span className="inline-flex items-center gap-2 min-w-0">
         <Badge variant="danger" size="sm">Sharing failed</Badge>
         <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
@@ -91,33 +99,35 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
             >Try again</button>
           )}
         </span>
-      </span>
+      </span>,
     );
   }
-  if (phase === 'publishing') return <Badge variant="accent" size="sm">Sharing…</Badge>;
-  if (phase === 'updating') return <Badge variant="accent" size="sm">Updating…</Badge>;
-  if (phase === 'unpublishing') return <Badge variant="default" size="sm">Stopping sharing…</Badge>;
-  if (phase === 'deleting') return <Badge variant="default" size="sm">Deleting…</Badge>;
+  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">Sharing…</Badge>);
+  if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">Updating…</Badge>);
+  if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">Stopping sharing…</Badge>);
+  if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">Deleting…</Badge>);
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return (
+    return withExtra(
       <Tooltip content={artifactStatusHint(artifact, publishable)}>
         <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>
-      </Tooltip>
+      </Tooltip>,
     );
   }
   const badge = accessBadge(artifact);
   return (
     // Fills the status area: access badge on the left, the "Unpublished
     // changes" warning pushed to the right (margin-left:auto). On a tight
-    // card it wraps to its own line, still right-aligned there.
+    // card it wraps to its own line, still right-aligned there. `extra` sits
+    // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
       <Tooltip content={artifactStatusHint(artifact, publishable)}>
         <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
           {badge.label}
         </Badge>
       </Tooltip>
+      {extra}
       {artifact.modified && (
         inlineChanges
           ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>

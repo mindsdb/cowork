@@ -150,3 +150,68 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
     expect(await screen.findByText('Shared. Only the people you chose can open the link.')).toBeInTheDocument();
   });
 });
+
+// ENG-2979: the "Another member" tag rides in the status row. As a sibling of
+// ArtifactStatus it wrapped to a second line on every published card, because
+// the published row is `w-full`.
+describe('ArtifactStatus extra slot (ENG-2979)', () => {
+  const published = { publishedUrl: 'https://x.test/a', accessMode: 'restricted', accessEmails: ['a@b.com'] };
+  const extra = <span data-testid="extra">tag</span>;
+  const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('puts extra in the published row, after the access badge and before Unshared changes', () => {
+    render(<ArtifactStatus artifact={{ ...published, modified: true }} extra={extra} />);
+    const tag = screen.getByTestId('extra');
+    const row = screen.getByText('Unshared changes').closest('.flex-wrap');
+    expect(row).toContainElement(tag);
+    expect(row).toContainElement(screen.getByText('Restricted'));
+    expect(follows(screen.getByText('Restricted'), tag)).toBe(true);
+    expect(follows(tag, screen.getByText('Unshared changes'))).toBe(true);
+  });
+
+  it('keeps the inline list layout the same way', () => {
+    render(<ArtifactStatus artifact={{ ...published, modified: true }} extra={extra} inlineChanges />);
+    const tag = screen.getByTestId('extra');
+    expect(follows(screen.getByText('Restricted'), tag)).toBe(true);
+    expect(follows(tag, screen.getByText('Unshared changes'))).toBe(true);
+  });
+
+  it('puts extra right after the Not shared badge', () => {
+    render(<ArtifactStatus artifact={{}} publishable extra={extra} />);
+    const tag = screen.getByTestId('extra');
+    expect(tag.parentElement).toContainElement(screen.getByText('Not shared'));
+    expect(follows(screen.getByText('Not shared'), tag)).toBe(true);
+  });
+
+  it('puts extra right after a transient phase badge', () => {
+    render(<ArtifactStatus artifact={{}} phase="publishing" extra={extra} />);
+    const tag = screen.getByTestId('extra');
+    expect(tag.parentElement).toContainElement(screen.getByText('Sharing…'));
+  });
+
+  it('puts extra after the failure message', () => {
+    render(<ArtifactStatus artifact={{}} phase="failed" extra={extra} />);
+    const tag = screen.getByTestId('extra');
+    expect(follows(screen.getByText('Sharing failed'), tag)).toBe(true);
+  });
+
+  // Base UI Tooltip ids come from React useId, a global counter, so two
+  // renders can differ in id/aria-* even with identical structure. Strip them.
+  const structure = (html) => html.replace(/\s(?:id|aria-describedby|aria-controls|aria-labelledby)="[^"]*"/g, '');
+
+  it('renders exactly today\'s DOM without extra', () => {
+    const cases = [
+      { artifact: {}, publishable: true },
+      { artifact: {}, phase: 'deleting' },
+      { artifact: { ...published, modified: true } },
+    ];
+    for (const props of cases) {
+      const without = render(<ArtifactStatus {...props} />);
+      const html = structure(without.container.innerHTML);
+      without.unmount();
+      const withNull = render(<ArtifactStatus {...props} extra={null} />);
+      expect(structure(withNull.container.innerHTML)).toBe(html);
+      withNull.unmount();
+    }
+  });
+});
