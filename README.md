@@ -655,9 +655,10 @@ closed and visibly instead of reloading forever.
 
 Every authenticated browser API request also carries
 `X-Cowork-Expected-Organization-Id`, pinned to the organization in which that
-document started. Once the server boundary is enforced, a missing header from a
-pre-protocol bundle receives an upgrade response, while a header that differs
-from the gateway-resolved organization receives a mandatory-reload response.
+document started. In org tenancy, cowork-server always enforces this boundary
+for browser JWT requests. A missing header from a pre-protocol bundle receives
+HTTP 426; a malformed header or one that differs from the gateway-resolved
+organization receives HTTP 409. Both responses require a reload.
 This closes the gap between the token check and actual request dispatch, and it
 also catches a Keycloak session change made from another origin. The client
 clears tenant state and reloads before consuming such a response.
@@ -671,11 +672,19 @@ organization returns no content after the principal changes. Private artifact
 `serveUrl` routes are unavailable in org tenancy and therefore are not part of
 the organization-switch protocol.
 
-Rollout is ordered: deploy the protocol-capable client with the picker hidden;
-deploy cowork-server in audit mode; enforce the expected-organization boundary
-while the capability remains disabled; then enable the capability only after
-every server replica enforces it. Do not combine enforcement and enablement in
-one rollout.
+The initial four-stage rollout was superseded by
+[cowork-server#524](https://github.com/mindsdb/cowork-server/pull/524), promoted
+to `main` through [#489](https://github.com/mindsdb/cowork-server/pull/489) on
+2026-09-13. It removed `COWORK_ORGANIZATION_BOUNDARY_MODE` and enabled the picker
+in the dev, staging, and production overlays. There is no audit setting that
+can reopen the boundary. The server still logs `organization boundary:` for
+refused requests.
+
+`COWORK_ORGANIZATION_SWITCH_ENABLED=false` remains the deployment control for
+hiding switch targets without weakening enforcement. The capability handshake
+still requires org tenancy and enforced identity before advertising switching.
+Verify every deployed replica and authenticated browser behavior when checking
+a rollout; an enabled source value alone does not prove the deployed state.
 
 ### Shared-resource permissions come from the server
 

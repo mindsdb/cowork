@@ -36,6 +36,11 @@ const lowBalance = (usd, autoTopUp = {}) => usage({
 });
 
 const withAuto = (status) => ({ enabled: true, thresholdUsd: 10, rechargeToUsd: 50, status });
+// No wallet to fall through to: the allowance can stop this person, so the
+// standing figure is theirs at any level (ENG-2749). `usage()` has $42.10 and
+// gets none at any number.
+const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
+const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
 const PAID = { model: 'claude-sonnet-4' };
 const AIR = { model: MINDSHUB_AIR_MODEL_ID };
 
@@ -61,8 +66,13 @@ const CASES = [
     opts: { model: null },
   },
   {
-    label: 'Free Air allowance running low, balance healthy.',
+    label: 'Free Air allowance running low, balance healthy. Closing this hides the bar: with a wallet to fall through to there is no figure to step down to.',
     usage: usage({ freeTokens: { percentRemaining: 12, limit: 100, used: 88, remaining: 12, resetsAt: RESET } }),
+    opts: AIR,
+  },
+  {
+    label: 'Free Air allowance running low, no wallet. Closing this steps down to the standing figure, which closes in turn.',
+    usage: unpaid({ freeTokens: { percentRemaining: 12, limit: 100, used: 88, remaining: 12, resetsAt: RESET } }),
     opts: AIR,
   },
   {
@@ -71,28 +81,38 @@ const CASES = [
     opts: AIR,
   },
   {
-    label: 'The standing figure: healthy allowance, no warning, no close button. This is what used to be a blank space.',
-    usage: usage(),
+    label: 'Paid wallet, 28% left: nothing. Air running out would not stop this person, so the figure has nothing to tell them (ENG-2749).',
+    usage: usage({ freeTokens: at(28) }),
+    opts: AIR,
+  },
+  {
+    label: 'No wallet, 80% left: the standing figure shows from the first token, exactly as before ENG-2749.',
+    usage: unpaid({ freeTokens: at(80) }),
+    opts: AIR,
+  },
+  {
+    label: 'The standing figure: no wallet, 28% left, closable. The only place the number is visible before the 20% warning.',
+    usage: unpaid(),
     opts: AIR,
   },
   {
     label: 'The standing figure on the router, which is the default pick.',
-    usage: usage(),
+    usage: unpaid(),
     opts: { model: null },
   },
   {
     label: 'The standing figure with no reset date to quote.',
-    usage: usage({ freeTokens: { percentRemaining: 80, limit: 100, used: 20, remaining: 80, resetsAt: null } }),
+    usage: unpaid({ freeTokens: { ...at(28), resetsAt: null } }),
     opts: AIR,
   },
   {
     label: 'The standing figure naming an empty balance, which is said at rest rather than waiting for 20%.',
-    usage: usage({ balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
+    usage: usage({ freeTokens: at(28), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } }),
     opts: AIR,
   },
   {
     label: 'An uncapped grant has nothing to count down, so there is still no figure.',
-    usage: usage({ freeTokens: { limit: -1, used: 30 } }),
+    usage: unpaid({ freeTokens: { limit: -1, used: 30 } }),
     opts: AIR,
   },
 ];

@@ -136,6 +136,7 @@ export function useCodeTaskActions({
         model: input.model,
         ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
         permission_mode: input.permissionMode,
+        ...(input.taskMode === 'plan' ? { task_mode: 'plan' as const } : {}),
         attachments: input.attachments,
         source_contexts: input.sourceContexts,
       });

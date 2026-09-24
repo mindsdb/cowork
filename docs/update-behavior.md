@@ -163,6 +163,32 @@ The repair is boot-only. Mid-session polls, the Settings check, and a manual
 pill reads as the app being confused, so the stranded install simply repairs
 itself on the next launch.
 
+### Going back to an older shell mixes account data again
+
+Per-account data roots live in the shell, not the sidecar: the shell decides
+which root to hand over and sets `COWORK_HOME` accordingly. A build from before
+that existed does not read the partition — it uses the shared home for whoever
+signs in.
+
+So on an older shell every account sees the data at the shared root, which
+belongs to whichever account owns it, and any account partitioned into
+`<home>/accounts/<id>/` finds its own data missing. Nothing is deleted: the
+subtrees stay on disk and reappear when a partition-aware build runs again. But
+while the older build is in use the isolation is simply not there, and the
+account that owns the shared root has its tasks, files, provider keys and
+connector credentials visible to anyone who signs in.
+
+This matters in two ordinary situations, neither of which is an update failure:
+
+- A deliberate downgrade, or a machine kept on an older channel.
+- A local `npm run pack`, which is prod-kind and therefore shares the
+  production data home. A developer building locally on a machine that also
+  runs the released app is exactly this case.
+
+There is no in-app guard, because the build that would have to warn is the one
+that knows nothing about partitions. Treat it as a property of downgrading
+rather than a bug to be reported.
+
 ## Sample scenarios: what the user sees
 
 The app updates three independently-versioned pieces, each through its own

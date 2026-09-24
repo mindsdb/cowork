@@ -307,7 +307,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           form_error: null,
         });
         try {
-          const result = await host.oauthConnect({ engine, name: values?.label || '' });
+          const result = await host.oauthConnect({ engine, name: values?.label || '', extraFields: values || {} });
           if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
           setBusy(false);
           try { await fetchDatasources(); } catch { /* best effort */ }

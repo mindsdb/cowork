@@ -305,6 +305,43 @@ describe('content_recovery failure card', () => {
   });
 });
 
+describe('content_too_large failure card (ENG-2689)', () => {
+  const SERVER_COPY =
+    'An image in this conversation is too large for the model to accept. The provider '
+    + 'said: The image you provided requires 32400 patches after processing, exceeding '
+    + 'the limit of 30000. Please resize the image and try again. That image will be '
+    + 'removed automatically so the conversation can continue.';
+
+  it("renders its own card carrying the provider's resize instruction", () => {
+    render(<ChatView task={taskWith(failedTurn('content_too_large', SERVER_COPY))} />);
+    // The TITLE is what distinguishes this from the generic `anton_error`
+    // danger alert, which also renders `m.content` verbatim — asserting only
+    // on the body text would pass with no card branch at all.
+    expect(screen.getByText('That image is too large')).toBeInTheDocument();
+    expect(screen.getByText(/resize the image/i)).toBeInTheDocument();
+  });
+
+  it('does not claim the problem is fixed and the user can keep going', () => {
+    // The `content_recovery` card says exactly that, and it is the wrong
+    // reading here: the conversation is unstuck, but what the user asked for
+    // still has not happened.
+    render(<ChatView task={taskWith(failedTurn('content_too_large', SERVER_COPY))} />);
+    expect(screen.getByText('That image is too large')).toBeInTheDocument();
+    expect(screen.queryByText(/you can keep going/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
+  });
+
+  it('offers no Try again — the image is gone, so a resend answers blind', () => {
+    render(
+      <ChatView
+        task={taskWith(failedTurn('content_too_large', SERVER_COPY))}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('policy_unavailable failure card', () => {
   it('names the outage and retries the failed message', async () => {
     const user = userEvent.setup();
@@ -438,6 +475,9 @@ const WIRE_CODES = [
   'included_allowance_exhausted',
   // ENG-1992 — a content-shaped rejection the server already repaired.
   'content_recovery',
+  // ENG-2689 — an image the provider refused as too large; the user has to
+  // attach a smaller one, so it gets different copy and no Retry.
+  'content_too_large',
   // ENG-2126 — the worker never answered, so the turn never ran.
   'worker_unresponsive',
   'anton_error',

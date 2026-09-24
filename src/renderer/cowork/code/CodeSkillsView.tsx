@@ -14,6 +14,7 @@ import {
   type SkillLibrarySource,
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
+import { PersonalSkillModal } from './PersonalSkillModal';
 import { openCodeRepository } from './shellLinks';
 import { useSkillLibrary } from './useSkillLibrary';
 import './code-skills.css';
@@ -214,6 +215,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [removePending, setRemovePending] = useState<SkillLibrarySource | null>(null);
   const [removeError, setRemoveError] = useState('');
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
+  const [personalEditor, setPersonalEditor] = useState<{ id?: string } | null>(null);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -283,6 +285,11 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
           {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
         </Button>
+      ) : item.origin === 'personal' ? (
+        <div className="code-skill-row__personal">
+          <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>
+          <Button size="sm" variant="subtle" aria-label={`Edit ${item.name}`} onClick={() => setPersonalEditor({ id: item.path })}>Edit</Button>
+        </div>
       ) : <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>}
     </div>
   ));
@@ -290,8 +297,11 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   return (
     <main className="code-skills-view">
       <header className="code-skills-view__header">
-        <div><h1>Skills</h1><p>Shared engineering practice, versioned and ready for every coding agent.</p></div>
-        <Button variant="primary" onClick={() => setAddOpen(true)}>{Ico.plus(13)} Add team source</Button>
+        <div><h1>Skills</h1><p>Your workflows and your team’s engineering standards, ready for Code tasks.</p></div>
+        <div className="code-skills-view__actions">
+          <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
+          <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
+        </div>
       </header>
 
       <div className="code-skills-toolbar">
@@ -320,8 +330,13 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         })}
         {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
         {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
-        {!library.items.length && !library.sources.length && <div className="code-skills-empty"><span>{Ico.cube(20)}</span><strong>No team skills yet</strong><p>Add a Git repository once, then choose which projects use each item.</p><Button variant="subtle" onClick={() => setAddOpen(true)}>Add team source</Button></div>}
-        {!hasVisibleCatalog && (library.sources.length > 0 || library.items.length > 0) && <div className="code-skills-empty">{query.trim() ? 'No skills match your search.' : 'No skills in this view.'}</div>}
+        {!hasVisibleCatalog && <div className="code-skills-empty">
+          {query.trim() ? 'No skills match your search.' : filter === 'personal' || filter === 'all' ? <>
+            <span>{Ico.cube(20)}</span><strong>No personal skills yet</strong>
+            <p>Write instructions or import a SKILL.md. No Git repository needed.</p>
+            <Button variant="subtle" onClick={() => setPersonalEditor({})}>Add your first skill</Button>
+          </> : filter === 'team' ? <><strong>No team sources yet</strong><p>Connect a Git repository to share engineering standards across projects.</p></> : 'No skills in this view.'}
+        </div>}
       </div>}
 
       <AddSkillSourceModal open={addOpen} busy={busy} onClose={() => setAddOpen(false)} onAdd={async (values) => {
@@ -369,6 +384,9 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
         }}
       />
       <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
+      {personalEditor && <PersonalSkillModal skillId={personalEditor.id} onClose={() => setPersonalEditor(null)} onSaved={() => {
+        setPersonalEditor(null); setFilter('personal'); setQuery(''); void load();
+      }} />}
     </main>
   );
 }

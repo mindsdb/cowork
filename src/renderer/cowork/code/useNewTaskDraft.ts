@@ -366,6 +366,7 @@ export function useNewTaskDraft({
     availableEngines,
     engineCommands: selectedEngine?.commands || [],
     engineLabel: selectedEngine?.label || engineId,
+    supportsPlanning: selectedEngine?.features?.planning === 'supported',
     attachFiles,
     standaloneFolderPath,
     standaloneFolderName: folderName(standaloneFolderPath),

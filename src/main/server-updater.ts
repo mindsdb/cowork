@@ -19,11 +19,13 @@
 // COWORK_SERVER_DISABLE_AUTOUPDATE=1. Never throws.
 
 import { execFile } from 'child_process';
+import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { buildKind } from './cowork-home';
+import { authHeader } from './server-auth';
 import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
@@ -681,6 +683,26 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
   }
 }
 
+/**
+ * /health is exempt from auth by design, so startServer()'s health check
+ * alone can't tell an auth-mismatched sidecar (COWORK_REQUIRE_AUTH on, this
+ * shell's authHeader() holding no token that matches) from a genuinely
+ * healthy one — every other route still 401s (ENG-2852). Only an explicit
+ * 401 counts as a mismatch: a network error or timeout here isn't proof of
+ * one and must not roll back an update the health check already passed.
+ */
+function probeAuthMismatch(port: number, timeoutMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { hostname: '127.0.0.1', port, path: '/api/v1/conversations/', timeout: timeoutMs, headers: authHeader() },
+      (res) => { res.resume(); resolve(res.statusCode === 401); },
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
 // ---- git channel ----------------------------------------------------------
 
 async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateResult> {
@@ -724,8 +746,10 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
 
     _notify?.({ phase: 'restarting' });
     const result = await startServer();
-    if (!result.ok) {
-      console.error('[server-updater] new commit failed health check, rolling back...');
+    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
+    if (!result.ok || authMismatch) {
+      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
+      console.error(`[server-updater] new commit failed health check (${reason}), rolling back...`);
       // Rollback by pinning the exact prior commits.
       const rollback = await installGit(uv, prevCowork, prevAnton);
       if (rollback.ok) {
@@ -738,7 +762,7 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update failed and rollback also failed (${rollback.stderr}). Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: prevCowork, error: `New commit failed to start: ${result.reason}` };
+      return { updated: false, previousVersion: prevCowork, error: `New commit failed to start: ${reason}` };
     }
 
     console.log('[server-updater] git update applied successfully');
@@ -819,8 +843,10 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
 
     _notify?.({ phase: 'restarting' });
     const result = await startServer();
-    if (!result.ok) {
-      console.error('[server-updater] new version failed health check, rolling back...');
+    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
+    if (!result.ok || authMismatch) {
+      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
+      console.error(`[server-updater] new version failed health check (${reason}), rolling back...`);
       const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
       if (rollback.ok) {
         const restored = await startServer();
@@ -832,7 +858,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed and rollback to ${from} also failed. Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${result.reason}` };
+      return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${reason}` };
     }
 
     console.log(`[server-updater] successfully updated to ${to}`);
@@ -865,8 +891,10 @@ async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from
     }
 
     const result = await startServer();
-    if (!result.ok) {
-      console.error('[server-updater] new anton failed health check, rolling back...');
+    const authMismatch = result.ok && result.port !== undefined && await probeAuthMismatch(result.port);
+    if (!result.ok || authMismatch) {
+      const reason = authMismatch ? 'answers /health but 401s on an authenticated route (auth mismatch)' : result.reason;
+      console.error(`[server-updater] new anton failed health check (${reason}), rolling back...`);
       const rollback = await runUv(uv, [
         'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
         coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.from}`,
@@ -881,7 +909,7 @@ async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed and rollback to ${anton.from} also failed. Restart the app to recover.` });
       }
-      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${result.reason}` };
+      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${reason}` };
     }
 
     console.log(`[server-updater] successfully updated anton-agent to ${anton.to}`);

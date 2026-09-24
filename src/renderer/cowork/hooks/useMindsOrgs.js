@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
+import { isElectron, mindshubListOrgs, mindshubSwitchOrg } from '../../platform/host';
 import { prepareForOrganizationReload } from '../lib/organizationTransition';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
+import { purgeOrganizationScopedState } from '../lib/accountLocalState';
+import { clearDraftsForOrganizationSwitch } from '../lib/draftStore';
+import { clearCachedSettings } from '../lib/settingsCache';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -128,6 +131,47 @@ export function useMindsOrgs(accountUser) {
        * responsive shell swap must not cancel a tenant-safety reload.
        */
       if (result?.reloadRequired === true) {
+        /**
+         * Desktop takes its own path. `prepareForOrganizationReload` budgets
+         * three reloads per 10s and then stays put "refusing tokens", which in
+         * a desktop window is simply wedged, and it returns before
+         * `notifyOrganizationChanged` below, cutting off the in-app refresh
+         * signal mounted readers have.
+         *
+         * The reload itself is not optional here: the sidecar has moved to a
+         * different database, so module state and component state both still
+         * belong to the organization being left, and only a reload clears them.
+         */
+        if (isElectron) {
+          if (result.clearTenantState !== false) {
+            // 'purge': this is an explicit switch, so state carrying no
+            // organization marker belongs to the one being left. Boot cannot
+            // assume that and passes the default.
+            purgeOrganizationScopedState(result.activeOrgId ?? organizationId, 'purge');
+            // Removing the keys is not the whole job, which is why the web path
+            // through `prepareForOrganizationReload` does both. A draft typed in
+            // the last 400 ms leaves a flush timer armed, and `pagehide` fires
+            // it during the reload below — writing the organization being LEFT
+            // back to a storage key the next document reads under the
+            // destination's marker. Cancelling the timer is the load-bearing
+            // half; the in-memory clear is what stops the same heap serving it.
+            clearDraftsForOrganizationSwitch();
+            clearCachedSettings();
+          }
+          /**
+           * The reload goes FIRST, and nothing may be put between it and the
+           * cache clear above. It is the only thing that reconciles this
+           * document with the stores the sidecar has already moved to; the
+           * notification below is an in-app refresh signal for mounted readers,
+           * which matters only in the case where the reload does not take.
+           * Ordered the other way round, anything that threw on the way through
+           * the listeners left the document on the previous organization's
+           * data — the reload line simply never ran.
+           */
+          globalThis.location?.reload();
+          notifyOrganizationChanged(sub);
+          return result;
+        }
         prepareForOrganizationReload({
           clearTenantState: result.clearTenantState !== false,
         });

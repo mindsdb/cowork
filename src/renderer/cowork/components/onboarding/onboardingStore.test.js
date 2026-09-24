@@ -65,4 +65,26 @@ describe('onboardingStore', () => {
     expect(store.isArtifactTipDismissed()).toBe(false);
     expect(store.getSnapshot().dismissed).toBe(false);
   });
+
+  // reset() is what a caller must use to clear this account's progress out of
+  // the module's OWN in-memory state, not just localStorage: `state` is read
+  // once at module load and cached, so removing the keys from localStorage
+  // alone (e.g. a generic account-switch purge) leaves a stale in-memory
+  // snapshot behind for the rest of the session.
+  it('clears completed steps, dismissal, and the in-memory snapshot, and notifies subscribers', async () => {
+    const store = await load();
+    store.completeStep('see-it-work');
+    store.dismiss();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.reset();
+
+    const snap = store.getSnapshot();
+    expect(snap.completed.size).toBe(0);
+    expect(snap.dismissed).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('anton.onboarding.completed')).toBe(JSON.stringify([]));
+    expect(localStorage.getItem('anton.onboarding.dismissed')).toBe(JSON.stringify(false));
+  });
 });

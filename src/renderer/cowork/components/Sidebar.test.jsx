@@ -551,3 +551,66 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
     expect(screen.queryByText('No tasks yet')).toBeNull();
   });
 });
+
+describe('Sidebar — says which app this is, and why other work is missing (ENG-2172, ENG-2169)', () => {
+  // Web and desktop look the same but keep separate work. The product
+  // branched on host.isWeb everywhere and never said the answer out loud.
+  afterEach(() => {
+    getAccessTokenMock.mockResolvedValue(null);
+    hostMock.isWeb = true;
+  });
+
+  it('labels the web app in the footer', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} />);
+    expect(screen.getByText('Web app')).toBeInTheDocument();
+    expect(screen.queryByText('Desktop app')).toBeNull();
+  });
+
+  it('labels the desktop app in the footer', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    expect(screen.getByText('Desktop app')).toBeInTheDocument();
+    expect(screen.queryByText('Web app')).toBeNull();
+  });
+
+  it('keeps the label when signed in, under the account row', async () => {
+    getAccessTokenMock.mockResolvedValue(jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com' }));
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    expect(screen.getByText('Desktop app')).toBeInTheDocument();
+  });
+
+  it('keeps the label while the desktop status pill is showing', async () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline={false} />);
+    await screen.findByRole('button', { name: /Backend status/i });
+    expect(screen.getByText('Desktop app')).toBeInTheDocument();
+  });
+
+  it('on web, an empty task list points at the desktop app', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} tasksStatus="ready" />);
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument();
+    expect(screen.getByText('Tasks made in the desktop app stay there.')).toBeInTheDocument();
+  });
+
+  it('on desktop, an empty task list points at the web app', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" />);
+    expect(screen.getByText('Tasks made in the web app stay there.')).toBeInTheDocument();
+  });
+
+  it('says nothing about the other app while loading, after a failure, or once there are tasks', () => {
+    hostMock.isWeb = false;
+    const { unmount } = render(<Sidebar {...baseProps} serverOnline tasksStatus="loading" />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
+    unmount();
+    const failed = render(<Sidebar {...baseProps} serverOnline tasksStatus="failed" />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
+    failed.unmount();
+    render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" tasks={[{ id: 't1', title: 'Real task', messages: [] }]} />);
+    expect(screen.queryByText(/stay there/)).toBeNull();
+  });
+});
