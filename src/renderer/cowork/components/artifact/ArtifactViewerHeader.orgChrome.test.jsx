@@ -122,6 +122,18 @@ describe('preview window authorship tag', () => {
     expect(follows(title, tag)).toBe(true);
   });
 
+  // Fix wave (code review): the badge is a direct flex child of the title
+  // zone, no anonymous wrapper span — so `shrink-0` has to land on the pill
+  // itself for a long title to truncate before the tag does.
+  it('gives the tag pill shrink-0, with no wrapper between it and the title', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    const title = document.getElementById('artifact-viewer-title');
+    const pill = screen.getByText('Another member').closest('.rounded-full');
+    expect(pill.className).toContain('shrink-0');
+    expect(pill.parentElement).toBe(title.parentElement);
+  });
+
   it('tags an ownerless artifact', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer', ownerUnknown: true })} />);
