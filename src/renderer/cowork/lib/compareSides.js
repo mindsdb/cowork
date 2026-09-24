@@ -309,3 +309,16 @@ export function compareCreditNotice(notices = []) {
     : notice.body;
   return { ...notice, body, blocks };
 }
+
+/**
+ * The history's Turns cell. One number while both sides had the same number
+ * of turns; "A / B" once a follow-up went to one side only, so the list shows
+ * that the two stopped being the same conversation.
+ */
+export function turnsLabel(a = 0, b = 0, names = { a: 'A', b: 'B' }) {
+  const turnsA = Number(a) || 0;
+  const turnsB = Number(b) || 0;
+  if (turnsA === turnsB) return { text: String(turnsA), title: undefined };
+  const count = (n) => `${n} ${n === 1 ? 'turn' : 'turns'}`;
+  return { text: `${turnsA} / ${turnsB}`, title: `${names.a}: ${count(turnsA)} · ${names.b}: ${count(turnsB)}` };
+}
