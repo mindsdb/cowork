@@ -327,8 +327,10 @@ describe('CompareView', () => {
     fireEvent.change(modelA, { target: { value: 'kimi' } });
     fireEvent.change(modelB, { target: { value: 'qwen' } });
     fireEvent.change(screen.getAllByLabelText('effort')[1], { target: { value: 'xhigh' } });
+    // Home's project picker: search, pick, and "No project" to clear it.
     fireEvent.click(screen.getByRole('button', { name: 'Choose project' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Reports/ }));
+    expect(screen.getByRole('button', { name: /No project/ })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /Reports/ }));
     expect(screen.getByRole('button', { name: 'Choose project' }).textContent).toMatch(/Reports/);
     expect(start.closest('button').disabled).toBe(false);
     fireEvent.click(start);
