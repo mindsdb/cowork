@@ -229,8 +229,22 @@ export function DataVaultForm({
   // on that method's fields. We pretend the spec had `selected_method`
   // set; the breadcrumb header sees a single-method form and hides
   // itself (nothing to "go back" to).
-  const onlyMethodId = (isMultiMethod && visibleMethods.length === 1)
-    ? visibleMethods[0].id
+  //
+  // Exception: a sole method that would render as a ONE-CLICK hero has
+  // no fields to open onto, so auto-selecting it shows an empty form
+  // whose only control is "Submit" — two clicks and a dead-end-looking
+  // dialog in place of "Authorize with <Provider>". HubSpot hit this the
+  // moment its `private-app` method was hidden for the App Marketplace
+  // listing, leaving `mcp` alone. Keep the picker so the hero renders;
+  // with one visible method its "See other options" list is empty
+  // anyway, so the user sees exactly the hero and nothing else.
+  const soleMethod = (isMultiMethod && visibleMethods.length === 1)
+    ? visibleMethods[0]
+    : null;
+  const soleMethodIsOneClickHero = !!soleMethod
+    && computeHeroView([soleMethod], spec).heroOneClick;
+  const onlyMethodId = (soleMethod && !soleMethodIsOneClickHero)
+    ? soleMethod.id
     : null;
   const activeMethodId = localSelectedMethod || spec?.selected_method || onlyMethodId || null;
   const activeMethod = isMultiMethod

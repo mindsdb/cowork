@@ -89,4 +89,35 @@ describe('DataVaultFormPanel — HubSpot mcp method', () => {
     expect(oauthConnectMock).toHaveBeenCalledTimes(1);
     expect(oauthConnectMock).toHaveBeenCalledWith(expect.objectContaining({ engine: 'hubspot' }));
   });
+
+  // HubSpot's shipping shape once `private-app` was hidden for the App
+  // Marketplace listing: ONE visible method, recommended, zero fields.
+  // That tripped DataVaultForm's single-method auto-select, which opens
+  // straight onto the method's fields — of which there are none — so the
+  // user got an empty dialog whose only control was "Submit", instead of
+  // the "Authorize with HubSpot" hero every other OAuth connector shows.
+  const HUBSPOT_SOLE_METHOD_SPEC = {
+    ...HUBSPOT_MCP_SPEC,
+    methods: [
+      {
+        id: 'mcp',
+        label: 'In-Browser Connect',
+        recommended: true,
+        fields: [],
+        oauth: { auth_url: 'https://mcp.hubspot.com/oauth/authorize/user' },
+      },
+    ],
+  };
+
+  it('still shows the Authorize hero when OAuth is the only visible method', async () => {
+    setForm(CID, HUBSPOT_SOLE_METHOD_SPEC);
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    expect(screen.getByRole('button', { name: /Authorize with HubSpot/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^submit$/i })).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Authorize with HubSpot/i }));
+    expect(oauthConnectMock).toHaveBeenCalledWith(expect.objectContaining({ engine: 'hubspot' }));
+  });
 });
