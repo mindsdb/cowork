@@ -162,21 +162,13 @@ function draftDirectoryUrl(fetchUrl) {
  *
  * Known limitation: `location.hash` and CSS `:target` do not update. Scroll
  * position is what matters for a preview; accepted.
+ *
+ * Written as one line on purpose: this markup is inserted into <head>, and
+ * every newline here shifts the reported line number of every inline script
+ * below it. The preview shim corrects for its own injection server-side and
+ * cannot see this one, so this one has to add nothing.
  */
-export const DRAFT_FRAGMENT_GUARD_SCRIPT = `(function () {
-  document.addEventListener('click', function (event) {
-    var anchor = event.target && event.target.closest ? event.target.closest('a') : null;
-    if (!anchor) return;
-    var href = anchor.getAttribute('href');
-    if (!href || href.charAt(0) !== '#') return;
-    event.preventDefault();
-    if (href.length === 1) { window.scrollTo(0, 0); return; }
-    var name = href.slice(1);
-    try { name = decodeURIComponent(name); } catch (e) { /* malformed percent-encoding, use raw */ }
-    var target = document.getElementById(name) || document.getElementsByName(name)[0];
-    if (target && target.scrollIntoView) target.scrollIntoView();
-  });
-})();`;
+export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListener('click',function(event){var anchor=event.target&&event.target.closest?event.target.closest('a'):null;if(!anchor)return;var href=anchor.getAttribute('href');if(!href||href.charAt(0)!=='#')return;event.preventDefault();if(href.length===1){window.scrollTo(0,0);return;}var name=href.slice(1);try{name=decodeURIComponent(name);}catch(e){}var target=document.getElementById(name)||document.getElementsByName(name)[0];if(target&&target.scrollIntoView)target.scrollIntoView();});})();";
 
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would

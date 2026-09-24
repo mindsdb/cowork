@@ -320,6 +320,11 @@ export function ArtifactViewer({
       const requested = await workspace.addressWithAgent({
         thread,
         conversationId: targetConversationId,
+        // Ten is what the server keeps; sending more only pays context for
+        // lines it will drop.
+        previewErrors: diagnostics.errors.slice(0, 10).map(({ message, file, line }) => ({
+          message, file, line,
+        })),
       });
       if (requested) {
         let started;

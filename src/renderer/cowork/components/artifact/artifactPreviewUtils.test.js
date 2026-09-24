@@ -310,6 +310,16 @@ describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('injects the fragment guard without adding a line', () => {
+    // Every inline script below the injection shifts by the lines it adds, and
+    // the shim's line-offset correction is computed server-side where this
+    // client-side injection is invisible. Zero added lines keeps the two in
+    // step and the reported positions true.
+    expect(DRAFT_FRAGMENT_GUARD_SCRIPT).not.toContain('\n');
+    const out = injectDraftBaseHref('<html><head></head><body></body></html>', 'https://x/y/a.html');
+    expect(out.split('\n')).toHaveLength(1);
+  });
 });
 
 /*

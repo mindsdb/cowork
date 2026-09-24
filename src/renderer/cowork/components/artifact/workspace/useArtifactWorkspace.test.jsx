@@ -34,6 +34,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   saveArtifactSource: (...args) => api.saveArtifactSource(...args),
 }));
 
+import { requestAgentRepair } from '../../../lib/artifactWorkspaceApi';
 import { useArtifactWorkspace } from './useArtifactWorkspace';
 
 const artifact = {
@@ -713,5 +714,26 @@ describe('useArtifactWorkspace releasing a repair on resolve', () => {
     await act(async () => { await result.current.releaseRepairsForComment('thread-9'); });
 
     expect(result.current.repair.status).toBe('ready');
+  });
+});
+
+describe('useArtifactWorkspace addressWithAgent preview errors', () => {
+  it('sends the preview errors along with the repair request', async () => {
+    requestAgentRepair.mockResolvedValue({ repair: { id: 'r1', status: 'queued' }, prompt: '' });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(() => result.current.addressWithAgent({
+      thread: { id: 't1', payload: { text: 'fix it' } },
+      conversationId: 'c1',
+      previewErrors: [{ message: 'boom', file: 'a.html', line: 44 }],
+    }));
+
+    expect(requestAgentRepair).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        previewErrors: [{ message: 'boom', file: 'a.html', line: 44 }],
+      }),
+    );
   });
 });
