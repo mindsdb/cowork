@@ -271,6 +271,32 @@ describe('CompareView', () => {
     expect(screen.queryByPlaceholderText('Search prompts and models')).toBeNull();
   });
 
+  it("shows each model's own logo, not the generic mark", async () => {
+    api.fetchComparisons.mockResolvedValue([comparison({ sides: [
+      { ...comparison().sides[0], model: 'claude-sonnet-5' },
+      { ...comparison().sides[1], model: 'gpt-6-terra' },
+    ] })]);
+    const { container } = render(<CompareView models={[{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5' }, { id: 'gpt-6-terra', name: 'GPT 6 Terra' }]} projects={projects} />);
+    await screen.findByText('Claude Sonnet 5');
+    const icons = [...container.querySelectorAll('[role="button"] svg')];
+    expect(icons.length).toBeGreaterThanOrEqual(2);
+    // The neutral fallback is an outlined circle; a real logo is a path.
+    for (const svg of icons.slice(0, 2)) {
+      expect(svg.querySelector('path')).not.toBeNull();
+      expect(svg.querySelector('circle')).toBeNull();
+    }
+  });
+
+  it('falls back to the generic mark for a model with no logo', async () => {
+    api.fetchComparisons.mockResolvedValue([comparison({ sides: [
+      { ...comparison().sides[0], model: 'house-model-x' },
+      comparison().sides[1],
+    ] })]);
+    const { container } = render(<CompareView models={[{ id: 'house-model-x', name: 'House Model X' }, ...models]} projects={projects} />);
+    await screen.findByText('House Model X');
+    expect(container.querySelector('[role="button"] svg circle')).not.toBeNull();
+  });
+
   it('adds search once there are more comparisons than fit at a glance', async () => {
     const many = Array.from({ length: 11 }, (_, i) => comparison({ id: `c${i}`, title: `Task ${i}` }));
     many[3] = comparison({ id: 'c3', title: 'Quarterly revenue dashboard' });
@@ -376,8 +402,11 @@ describe('CompareView', () => {
     await openDetail(cmp, { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     expect(screen.getByRole('heading', { name: 'Kimi' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Qwen' })).toBeTruthy();
-    expect(screen.getByText('xhigh effort')).toBeTruthy();
     expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toBe('Done · 30s');
+    expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toBe('Done · 30s · xhigh effort');
+    // The name has its row to itself; the status sits beneath it.
+    const header = screen.getByRole('heading', { name: 'Qwen' }).parentElement;
+    expect(within(header).queryByRole('status')).toBeNull();
   });
 
   it('keeps Delete in the overflow menu, behind a confirmation', async () => {
@@ -462,8 +491,8 @@ describe('CompareView', () => {
     render(<CompareView models={models} projects={projects} onOpenTask={onOpenTask} />);
     fireEvent.click(await screen.findByText('Build a dashboard'));
     const paneA = await screen.findByRole('region', { name: 'Side A' });
-    fireEvent.click(await within(paneA).findByText('Continue with this model'));
-    fireEvent.click(screen.getByText('Continue'));
+    fireEvent.click(await within(paneA).findByRole('button', { name: 'Continue' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real'));
     await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
   });
