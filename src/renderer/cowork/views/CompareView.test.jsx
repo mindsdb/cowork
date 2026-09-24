@@ -316,10 +316,14 @@ describe('CompareView', () => {
   it('records which side was better on the latest finished turn', async () => {
     api.recordComparisonVerdict.mockResolvedValue(comparison({ verdict: 'a', verdicts: [{ turnIndex: 0, winner: 'a' }] }));
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    expect(screen.getByText('Turn 1: which was better?')).toBeTruthy();
-    fireEvent.click(screen.getByText('Kimi was better'));
+    const bar = screen.getByRole('group', { name: 'Which answer was better?' });
+    expect(within(bar).queryByText('Saved')).toBeNull();
+    // One turn so far: no turn number to read.
+    expect(within(bar).queryByText('Turn 1')).toBeNull();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Kimi' }));
     await waitFor(() => expect(api.recordComparisonVerdict).toHaveBeenCalledWith('cmp-1', 0, 'a'));
-    await waitFor(() => expect(screen.getByText('Kimi was better').closest('button').getAttribute('aria-pressed')).toBe('true'));
+    await waitFor(() => expect(within(bar).getByRole('button', { name: 'Kimi' }).getAttribute('aria-pressed')).toBe('true'));
+    expect(within(bar).getByText('Saved')).toBeTruthy();
   });
 
   it('offers no verdict until both sides finished', async () => {
@@ -327,7 +331,7 @@ describe('CompareView', () => {
       'conv-a': session('conv-a', finishedTurn('p')),
       'conv-b': session('conv-b', [{ role: 'user', content: 'p' }]),
     });
-    expect(screen.queryByText(/which was better/)).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();
   });
 
   it('shows a continued side only as far as it was compared', async () => {

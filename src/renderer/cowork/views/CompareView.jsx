@@ -120,7 +120,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   if (comparisons === null) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <PageHeader title="Compare models" />
+        <PageHeader title="Compare Models" />
         <EmptyState
           icon={Ico.columns(28)}
           title="Update needed"
@@ -623,6 +623,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [continuing, setContinuing] = useState(null);
+  const [judging, setJudging] = useState(false);
 
   const loadComparison = useCallback(async () => {
     try {
@@ -701,10 +702,13 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 
   const judge = async (winner) => {
     if (judgeable === null) return;
+    setJudging(true);
     try {
       setComparison(await recordComparisonVerdict(comparisonId, judgeable, winner));
     } catch (err) {
       setError(err?.message || 'Could not save the verdict.');
+    } finally {
+      setJudging(false);
     }
   };
 
@@ -723,7 +727,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   if (!comparison) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <PageHeader onBack={onBack} backLabel="Compare models" current="Comparison" />
+        <PageHeader onBack={onBack} backLabel="Comparisons" current="Comparison" />
         {error ? <div className="px-7"><Alert variant="danger">{error}</Alert></div> : <div className="py-10 text-center"><Spinner /></div>}
       </div>
     );
@@ -781,20 +785,15 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
       </div>
       <div className="px-7 pt-3 pb-5 flex flex-col gap-2 max-w-[1100px] w-full mx-auto">
         {judgeable !== null && (
-          <div className="flex items-center gap-2 flex-wrap" aria-label="Which was better?">
-            <span className="text-xs text-ink-3">Turn {judgeable + 1}: which was better?</span>
-            {VERDICT_ORDER.map((winner) => (
-              <Button
-                key={winner}
-                size="sm"
-                variant={verdictFor(judgeable) === winner ? 'primary' : 'subtle'}
-                aria-pressed={verdictFor(judgeable) === winner}
-                onClick={() => judge(winner)}
-              >
-                {verdictLabel(winner, names)}
-              </Button>
-            ))}
-          </div>
+          <VerdictBar
+            turnIndex={judgeable}
+            showTurn={Math.max(turns.a.length, turns.b.length) > 1}
+            chosen={verdictFor(judgeable)}
+            saving={judging}
+            names={names}
+            sides={sides}
+            onChoose={judge}
+          />
         )}
         <div className="flex items-end gap-3 max-md:flex-col max-md:items-stretch">
           <div className="composer-wrap flex-1 min-w-0 max-w-none">
@@ -867,6 +866,55 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onOpenTask?.(result?.conversationId);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// "Which answer was better?" as one contained question: the two models (by
+// name and icon) and the two non-answers as pills, the pick shown filled with
+// a check, and "Saved" once the server has it -- read from the comparison the
+// server returned, so it never claims a save that did not happen.
+function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoose }) {
+  return (
+    <div
+      role="group"
+      aria-label="Which answer was better?"
+      className="flex items-center gap-3 flex-wrap px-4 py-2.5 rounded-[12px] border border-solid border-line bg-surface"
+    >
+      <span className="flex items-baseline gap-2">
+        <span className="text-[13.5px] font-medium text-ink">Which answer was better?</span>
+        {showTurn && <span className="text-xs text-ink-4">Turn {turnIndex + 1}</span>}
+      </span>
+      <span className="flex-1" />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {VERDICT_ORDER.map((winner) => {
+          const selected = chosen === winner;
+          const side = winner === 'a' || winner === 'b' ? sides[winner] : null;
+          return (
+            <button
+              key={winner}
+              type="button"
+              aria-pressed={selected}
+              disabled={saving}
+              onClick={() => onChoose(winner)}
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-solid text-[13px] cursor-pointer transition-colors disabled:cursor-default ${
+                selected
+                  ? 'border-accent bg-accent-bg text-accent'
+                  : 'border-line bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink'
+              }`}
+            >
+              {selected && <span aria-hidden className="inline-flex">{Ico.check(13)}</span>}
+              {side && <ProviderIcon maker={modelMaker(side.model || '', names[winner])} size={13} />}
+              <span>{verdictLabel(winner, names)}</span>
+            </button>
+          );
+        })}
+      </div>
+      {chosen && (
+        <span className="text-xs text-ink-4 inline-flex items-center gap-1" role="status">
+          {Ico.check(12)} Saved
+        </span>
       )}
     </div>
   );

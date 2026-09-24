@@ -27,7 +27,7 @@ function titleForRoute(route, { selectedProject, currentTask } = {}) {
   if (route === 'settings') return 'Settings';
   if (route === 'memory') return 'Memories';
   if (route === 'skills') return 'Skills';
-  if (route === 'compare') return 'Compare models';
+  if (route === 'compare') return 'Compare Models';
   return 'MindsHub Cowork';
 }
 
