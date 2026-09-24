@@ -11,6 +11,7 @@ const workspaceMock = vi.hoisted(() => ({
   currentRevision: null,
   revisions: [],
   capabilities: null,
+  capabilitiesFromServer: false,
   commentsReady: true,
   status: 'ready',
   dirty: false,
@@ -95,6 +96,7 @@ const shown = () => screen.getByTestId('authorship').textContent;
 describe('viewer authorship tag', () => {
   beforeEach(() => {
     workspaceMock.capabilities = null;
+    workspaceMock.capabilitiesFromServer = false;
   });
 
   it('uses the card\'s capabilities while the workspace has none', () => {
@@ -104,12 +106,14 @@ describe('viewer authorship tag', () => {
 
   it('follows the workspace once it answers', () => {
     workspaceMock.capabilities = { role: 'owner', canEdit: true };
+    workspaceMock.capabilitiesFromServer = true;
     render(<ArtifactViewer open artifact={artifact({ role: 'reviewer' })} onClose={vi.fn()} />);
     expect(shown()).toBe('none');
   });
 
   it('shows the ownerless tag from the workspace', () => {
     workspaceMock.capabilities = { role: 'reviewer', canEdit: false, ownerUnknown: true };
+    workspaceMock.capabilitiesFromServer = true;
     render(<ArtifactViewer open artifact={artifact({ role: 'owner' })} onClose={vi.fn()} />);
     expect(shown()).toBe('Unknown owner');
   });
@@ -117,5 +121,23 @@ describe('viewer authorship tag', () => {
   it('shows nothing when neither side has capabilities', () => {
     render(<ArtifactViewer open artifact={artifact(undefined)} onClose={vi.fn()} />);
     expect(shown()).toBe('none');
+  });
+
+  // ENG-2979 fix wave: a client-side GUESS (canEdit gating's OWNER_CAPABILITIES
+  // / reviewer-403 fallback) must never override the card's server-sent role —
+  // a guessed reviewer would hide the tag on the viewer's own artifact, and a
+  // guessed owner would hide it on a colleague's.
+  it('ignores a guessed reviewer fallback and keeps the card\'s own-artifact read', () => {
+    workspaceMock.capabilities = { role: 'reviewer', canPreview: true, canComment: true };
+    workspaceMock.capabilitiesFromServer = false;
+    render(<ArtifactViewer open artifact={artifact({ role: 'owner' })} onClose={vi.fn()} />);
+    expect(shown()).toBe('none');
+  });
+
+  it('ignores a guessed owner fallback and keeps the card\'s colleague read', () => {
+    workspaceMock.capabilities = { role: 'owner', canEdit: true };
+    workspaceMock.capabilitiesFromServer = false;
+    render(<ArtifactViewer open artifact={artifact({ role: 'reviewer' })} onClose={vi.fn()} />);
+    expect(shown()).toBe('Another member');
   });
 });
