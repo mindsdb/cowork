@@ -25,11 +25,12 @@ const workspaceMock = vi.hoisted(() => ({
 
 const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
 const loadArtifactDraftText = vi.hoisted(() => vi.fn());
+const previewArtifact = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(),
-  previewArtifact: vi.fn(),
+  previewArtifact,
   unpublishArtifact: vi.fn(),
   artifactServeUrl: vi.fn(),
 }));
@@ -103,6 +104,8 @@ describe('ArtifactViewer preview error notice', () => {
       contentType: 'text/html; charset=utf-8',
       isHtml: true,
     });
+    previewArtifact.mockReset();
+    previewArtifact.mockResolvedValue({ content: 'hello preview text', truncated: false, mime: 'text/markdown' });
   });
 
   it('announces a preview error without hiding the page that produced it', async () => {
@@ -144,5 +147,34 @@ describe('ArtifactViewer preview error notice', () => {
 
     expect(await screen.findByText(/The preview reported an error/))
       .toHaveTextContent('(+1 more)');
+  });
+
+  it('ignores preview messages for a text artifact, which never mounts an iframe', async () => {
+    // No iframe means iframeRef.current is permanently null, which used to
+    // make the sender check degrade to "accept anyone" — the hook must not
+    // even be listening in this case.
+    const textArtifact = {
+      ...artifact,
+      ext: '.md',
+      path: '/artifacts/launch/notes.md',
+      canonicalPath: '/artifacts/launch/notes.md',
+      draftUrl: '',
+    };
+    render(<ArtifactViewer open artifact={textArtifact} onClose={vi.fn()} />);
+    await screen.findByText('hello preview text');
+    expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
+
+    fireEvent(window, new MessageEvent('message', {
+      source: window,
+      data: {
+        source: 'anton-preview',
+        type: 'error',
+        message: 'should never surface',
+        file: 'a.html',
+        line: 1,
+      },
+    }));
+
+    expect(screen.queryByText(/The preview reported an error/)).not.toBeInTheDocument();
   });
 });

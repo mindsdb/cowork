@@ -198,8 +198,15 @@ export function ArtifactViewer({
   // Reset key, not a URL: the srcdoc branch swaps `previewDoc` and leaves
   // `previewUrl` empty, so keying on the URL alone would carry the previous
   // document's errors onto a new one in org mode.
+  //
+  // Gated on a preview actually being mounted, not just on `open`: text and
+  // image artifacts never mount an iframe, so `iframeRef.current` stays null
+  // and the sender check below degrades to "accept anyone" — and the HTML
+  // comparison view mounts its own `sandbox="allow-scripts"` frames of
+  // agent-written HTML that could otherwise post into this channel. Same
+  // rationale as the comments bridge's `commentsOpen` gate below.
   const diagnostics = usePreviewDiagnostics(iframeRef, {
-    enabled: open,
+    enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {

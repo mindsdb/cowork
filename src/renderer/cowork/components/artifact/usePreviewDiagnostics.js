@@ -9,27 +9,37 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const MAX_ERRORS = 20;
+// Matches the server's cap (cowork/services/artifact_revisions.py,
+// _MAX_PREVIEW_MESSAGE) so the notice and the repair payload never show more
+// than the server would have kept anyway.
+const MAX_MESSAGE_LENGTH = 300;
 
 // Every report becomes the same shape, so the banner, the dedup key and the
-// payload sent to the agent all read one record type.
+// payload sent to the agent all read one record type. Returns null for a
+// type we don't recognize or a report too empty to say anything useful.
 function normalize(data) {
   if (data.type === 'resource') {
     const kind = String(data.tagName || 'resource').toLowerCase();
-    return { message: `Failed to load ${kind} ${String(data.url || '')}`, file: '', line: 0 };
+    const url = String(data.url || '').trim();
+    if (!url) return null;
+    return { message: `Failed to load ${kind} ${url}`, file: '', line: 0 };
   }
   if (data.type === 'csp') {
+    const directive = String(data.violatedDirective || '').trim();
+    const blockedUri = String(data.blockedURI || '').trim();
+    if (!directive && !blockedUri) return null;
+    const target = directive ? ` (${directive})` : '';
+    const source = blockedUri ? `: ${blockedUri}` : '';
+    return { message: `Blocked by the page security policy${target}${source}`, file: '', line: 0 };
+  }
+  if (data.type === 'error') {
     return {
-      message: `Blocked by the page security policy (${String(data.violatedDirective || '')}): `
-        + `${String(data.blockedURI || '')}`,
-      file: '',
-      line: 0,
+      message: String(data.message || ''),
+      file: String(data.file || ''),
+      line: Number(data.line) || 0,
     };
   }
-  return {
-    message: String(data.message || ''),
-    file: String(data.file || ''),
-    line: Number(data.line) || 0,
-  };
+  return null;
 }
 
 function signature(errors) {
@@ -52,9 +62,16 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
       // Defense-in-depth, same rule as the comments bridge: only our frame.
       const win = iframeRef.current && iframeRef.current.contentWindow;
       if (win && ev.source !== win) return;
-      if (data.type === 'document-start') { setErrors([]); return; }
+      if (data.type === 'document-start') {
+        // Bail out to the same array when the list is already empty, so a
+        // page that spams document-start (e.g. an in-frame reload loop)
+        // doesn't force a re-render of the whole viewer on every message.
+        setErrors((prev) => (prev.length ? [] : prev));
+        return;
+      }
       const entry = normalize(data);
-      if (!entry.message) return;
+      if (!entry || !entry.message) return;
+      entry.message = entry.message.slice(0, MAX_MESSAGE_LENGTH);
       setErrors((prev) => {
         if (prev.length >= MAX_ERRORS) return prev;
         const duplicate = prev.some((e) => e.message === entry.message
@@ -84,9 +101,15 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
 
   return {
     errors,
-    // Keyed by the error set, not a flag: the viewer reloads the frame after
-    // every save, and a banner the user closed must not reappear for the same
-    // unchanged failure — only for a new one.
+    // Keyed by the error set, not a flag, so a dismissal survives the shim
+    // re-announcing the same document (document-start with no new errors)
+    // instead of only ever surviving one render. It does NOT survive a save:
+    // the mount effect resets previewUrl/previewDoc to '' on every run and a
+    // save bumps the cache-busting nonce, so `resetKey` changes, the effect
+    // above clears `dismissedSignature`, and the banner comes back even for
+    // an unchanged failure. That's intended here — the content did change (a
+    // new revision was written), so treating it as worth re-flagging is the
+    // safer default even when the same bug happens to still be present.
     dismissed: errors.length > 0 && current === dismissedSignature,
     dismiss,
   };

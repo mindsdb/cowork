@@ -185,6 +185,11 @@ export function injectDraftBaseHref(html, fetchUrl) {
   // string with no such sequence today; this guards against a future edit
   // introducing one silently breaking the injected markup.
   const guardScript = DRAFT_FRAGMENT_GUARD_SCRIPT.replace(/<\/script>/gi, '<\\/script>');
+  // On the org-mode draft path this lands BEFORE the script cowork-server
+  // already injected as the document's first script (see its own docstring
+  // and tests). Harmless only because this guard registers a listener,
+  // touches no storage API and cannot throw — anything added here runs
+  // ahead of the server's script and must keep that same property.
   const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
   return HEAD_OPEN_RE.test(html)
     ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)

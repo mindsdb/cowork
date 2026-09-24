@@ -99,9 +99,75 @@ describe('usePreviewDiagnostics', () => {
       .toBe('Blocked by the page security policy (script-src): https://cdn.example/x.js');
   });
 
-  it('stays dismissed until a new error appears', () => {
-    // The viewer reloads the frame after every save; a banner the user closed
-    // must not come back for the same unchanged failure.
+  it('ignores a message type outside the known four', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'not-a-real-type', message: 'should not show' });
+
+    expect(screen.getByTestId('count').textContent).toBe('0');
+  });
+
+  it('drops a resource failure with no url instead of showing a bare sentence', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'resource', tagName: 'SCRIPT' });
+
+    expect(screen.getByTestId('count').textContent).toBe('0');
+  });
+
+  it('drops a csp violation with no directive and no blocked URI', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'csp', violatedDirective: '', blockedURI: '' });
+
+    expect(screen.getByTestId('count').textContent).toBe('0');
+  });
+
+  it('caps a message at 300 characters, matching the server cap', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'error', message: 'x'.repeat(500), file: 'a.html', line: 1 });
+
+    expect(screen.getByTestId('first').textContent.length).toBe(300);
+  });
+
+  it('keeps the same errors array identity for a burst of document-start on an already-empty list', () => {
+    // A page looping postMessage({type:'document-start'}) used to call
+    // setErrors([]) unconditionally, allocating a fresh array every time and
+    // forcing the whole viewer to re-render on every message. Asserting on
+    // identity rather than render count sidesteps React's documented "may
+    // still render this one component once before bailing out" nuance for
+    // the very first no-op update.
+    const seenArrays = [];
+    function IdentityHarness() {
+      const iframeRef = useRef(null);
+      const diagnostics = usePreviewDiagnostics(iframeRef, { enabled: true, resetKey: 'a' });
+      seenArrays.push(diagnostics.errors);
+      return <iframe ref={iframeRef} title="Identity preview" srcDoc="<html></html>" />;
+    }
+    render(<IdentityHarness />);
+    const frame = screen.getByTitle('Identity preview');
+    const baselineIndex = seenArrays.length - 1;
+    const baselineArray = seenArrays[baselineIndex];
+
+    send(frame, { type: 'document-start' });
+    send(frame, { type: 'document-start' });
+    send(frame, { type: 'document-start' });
+
+    // Only what got captured from here on is in scope: mount itself already
+    // allocates one array (unrelated to this fix), which is exactly why the
+    // baseline is taken after mount rather than compared against it.
+    seenArrays.slice(baselineIndex + 1).forEach((arr) => expect(arr).toBe(baselineArray));
+  });
+
+  it('stays dismissed across a document-start restart, but not for a new error', () => {
+    // document-start is the shim re-announcing the same resetKey (no reload,
+    // no save) — a dismissal survives that. A save changes resetKey instead,
+    // which is covered separately below and does clear the dismissal.
     render(<Harness />);
     const frame = screen.getByTitle('Draft preview');
     send(frame, { type: 'error', message: 'boom', file: 'a.html', line: 1 });
@@ -114,6 +180,21 @@ describe('usePreviewDiagnostics', () => {
     expect(screen.getByTestId('dismissed').textContent).toBe('true');
 
     send(frame, { type: 'error', message: 'another', file: 'a.html', line: 9 });
+    expect(screen.getByTestId('dismissed').textContent).toBe('false');
+  });
+
+  it('clears a dismissal when resetKey changes, even for the same failure', () => {
+    // A save bumps the cache-busting nonce, which changes resetKey — unlike
+    // document-start, this is not treated as "the same document restarting".
+    const view = render(<Harness resetKey="a" />);
+    const frame = screen.getByTitle('Draft preview');
+    send(frame, { type: 'error', message: 'boom', file: 'a.html', line: 1 });
+    act(() => { screen.getByText('Dismiss').click(); });
+    expect(screen.getByTestId('dismissed').textContent).toBe('true');
+
+    view.rerender(<Harness resetKey="b" />);
+    send(frame, { type: 'error', message: 'boom', file: 'a.html', line: 1 });
+
     expect(screen.getByTestId('dismissed').textContent).toBe('false');
   });
 });
