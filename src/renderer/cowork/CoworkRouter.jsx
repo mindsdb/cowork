@@ -58,6 +58,7 @@ const VIEW_ROUTES = [
   'customize',
   'skills',
   'memory',
+  'compare',
   'publish',
 ];
 
