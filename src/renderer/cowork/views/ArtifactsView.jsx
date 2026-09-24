@@ -42,7 +42,6 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
-import { ArtifactAuthorshipBadge } from '../components/artifacts/ArtifactAuthorshipBadge';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
 import {
   PageHeader,
@@ -345,7 +344,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             phase={phase}
             publishable={publishable}
             onRetry={onRetry}
-            extra={authorship && <ArtifactAuthorshipBadge authorship={authorship} />}
+            authorship={authorship}
           />
         </div>
       </div>
@@ -630,7 +629,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             publishable={publishable}
             onRetry={onRetry}
             inlineChanges
-            extra={authorship && <ArtifactAuthorshipBadge authorship={authorship} />}
+            authorship={authorship}
           />
         </div>
 

@@ -12,6 +12,7 @@
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
 import { isOwnerOnlySelection } from '../artifact/publish/AccessChooser';
+import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
 // public artifact gets the green "success" treatment — password/restricted
@@ -73,12 +74,14 @@ export function artifactStatusHint(artifact, publishable = true) {
 // `inlineChanges` — list view flows the "Unpublished changes" pill inline
 // right after the access chip; the card (default) pushes it to the right edge.
 //
-// `extra` — a node that rides in the same row, right after the primary badge
-// (ENG-2979: the "Another member" tag). Pass null, not an element that renders
-// nothing, when there is none: without it the DOM is exactly what it was.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, extra = null }) {
-  const withExtra = (primary) => (extra
-    ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{extra}</span>
+// `authorship` — the artifactAuthorship() result, rendered as the "Another
+// member" / "Unknown owner" tag right after the primary badge (ENG-2979).
+// Pass null, not an element that renders nothing, when there is none: without
+// it the DOM is exactly what it was.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null }) {
+  const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
+  const withExtra = (primary) => (tag
+    ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
     : primary);
 
   // Transient phases win over the persisted state.
@@ -119,7 +122,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   return (
     // Fills the status area: access badge on the left, the "Unpublished
     // changes" warning pushed to the right (margin-left:auto). On a tight
-    // card it wraps to its own line, still right-aligned there. `extra` sits
+    // card it wraps to its own line, still right-aligned there. `tag` sits
     // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
       <Tooltip content={artifactStatusHint(artifact, publishable)}>
@@ -127,7 +130,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
           {badge.label}
         </Badge>
       </Tooltip>
-      {extra}
+      {tag}
       {artifact.modified && (
         inlineChanges
           ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
