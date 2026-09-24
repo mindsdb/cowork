@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  turnsLabel,
   compareCreditNotice,
   composerBlock,
   isCreditFailure,
@@ -308,5 +309,13 @@ describe('compareCreditNotice', () => {
 
   it('leaves the standing allowance figure out', () => {
     expect(compareCreditNotice([resting, null])).toBeNull();
+  });
+});
+
+describe('turnsLabel', () => {
+  it('is one number while both sides had the same turns, both once they differ', () => {
+    expect(turnsLabel(2, 2)).toEqual({ text: '2', title: undefined });
+    expect(turnsLabel(3, 1, { a: 'Kimi', b: 'Qwen' })).toEqual({ text: '3 / 1', title: 'Kimi: 3 turns · Qwen: 1 turn' });
+    expect(turnsLabel(undefined, 0).text).toBe('0');
   });
 });

@@ -59,6 +59,7 @@ import {
   sideNames,
   sideStatus,
   titleFromPrompt,
+  turnsLabel,
   totalDurationMs,
   turnDurationMs,
   turnsOf,
@@ -227,15 +228,15 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   );
 }
 
-const HISTORY_GRID = 'minmax(0, 3fr) minmax(0, 2fr) 56px 150px 72px 16px';
+const HISTORY_GRID = 'minmax(0, 2.4fr) minmax(0, 2fr) 64px 170px 72px 16px';
 // Below this many comparisons a search box is clutter; above it, finding one
 // by eye stops being quick.
 const FILTER_THRESHOLD = 10;
 
 const VERDICT_FILTERS = [
-  { id: 'all', label: 'All verdicts' },
-  { id: 'none', label: 'No verdict' },
-  { id: 'judged', label: 'Has a verdict' },
+  { id: 'all', label: 'Any winner' },
+  { id: 'none', label: 'No winner yet' },
+  { id: 'judged', label: 'Has a winner' },
 ];
 
 const SORTS = [
@@ -253,17 +254,19 @@ function ModelTag({ id, name }) {
   );
 }
 
-function VerdictChip({ verdict, names }) {
-  if (!verdict) return <Badge variant="muted">No verdict</Badge>;
+// The "Winner" column: the model's name, Tie, Neither, or a quiet dash while
+// nobody has said.
+function WinnerChip({ verdict, names }) {
+  if (!verdict) return <span className="text-ink-4" aria-label="No winner yet">—</span>;
   if (verdict === 'a' || verdict === 'b') {
-    return <Badge variant="accent" className="max-w-full truncate">{names[verdict]} preferred</Badge>;
+    return <Badge variant="accent" className="max-w-full truncate" title={names[verdict]}>{names[verdict]}</Badge>;
   }
   return <Badge>{verdict === 'tie' ? 'Tie' : 'Neither'}</Badge>;
 }
 
 function HistoryHeaderRow() {
-  const Cell = ({ children }) => (
-    <div className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{children}</div>
+  const Cell = ({ children, center = false }) => (
+    <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase${center ? ' text-center' : ''}`}>{children}</div>
   );
   return (
     <div
@@ -272,8 +275,8 @@ function HistoryHeaderRow() {
     >
       <Cell>Prompt</Cell>
       <Cell>Models</Cell>
-      <Cell>Turns</Cell>
-      <Cell>Verdict</Cell>
+      <Cell center>Turns</Cell>
+      <Cell>Winner</Cell>
       <Cell>Started</Cell>
       <Cell />
     </div>
@@ -333,7 +336,7 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
             <div className="flex items-center gap-2.5 flex-wrap">
               <SearchInput value={query} onChange={setQuery} placeholder="Search prompts and models" shortcut="" />
               <SortPill label="Model" value={model} onChange={setModel} options={modelFilterOptions(all, models)} />
-              <SortPill label="Verdict" value={verdict} onChange={setVerdict} options={VERDICT_FILTERS} />
+              <SortPill label="Winner" value={verdict} onChange={setVerdict} options={VERDICT_FILTERS} />
               <SortPill value={sort} onChange={setSort} options={SORTS} />
             </div>
           )}
@@ -342,8 +345,8 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
               <HistoryHeaderRow />
               {rows.map((c) => {
                 const [a, b] = c.sides || [];
-                const turns = Math.max(a?.turnCount || 0, b?.turnCount || 0);
                 const names = namesFor(models, a, b);
+                const turns = turnsLabel(a?.turnCount, b?.turnCount, names);
                 return (
                   <CardRow
                     key={c.id}
@@ -354,13 +357,13 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
                     style={{ gridTemplateColumns: HISTORY_GRID }}
                   >
                     <span className="truncate text-[14px] text-ink font-medium" title={c.title}>{c.title}</span>
-                    <span className="flex items-center gap-2 min-w-0">
+                    {/* One model per line, so each name is shown whole. */}
+                    <span className="flex flex-col gap-1 min-w-0">
                       <ModelTag id={a?.model} name={names.a} />
-                      <span aria-label="versus" className="text-ink-4 flex-shrink-0">↔</span>
                       <ModelTag id={b?.model} name={names.b} />
                     </span>
-                    <span className="text-ink-3 font-mono text-xs">{turns}</span>
-                    <span className="min-w-0"><VerdictChip verdict={c.verdict} names={names} /></span>
+                    <span className="text-ink-3 font-mono text-xs text-center" title={turns.title}>{turns.text}</span>
+                    <span className="min-w-0"><WinnerChip verdict={c.verdict} names={names} /></span>
                     <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>
                     <span aria-hidden className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">{Ico.chevRight(14)}</span>
                   </CardRow>
