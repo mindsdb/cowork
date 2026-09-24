@@ -132,15 +132,11 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
-        {/* "Another member" / "Unknown owner" (ENG-2979). Does not shrink:
-            a long title truncates first, the tag stays readable. The badge
-            (Tooltip renders it as its own trigger) is a direct flex child of
-            this zone, so `shrink-0` — a literal Tailwind class, not the
-            inline style the anonymous wrapper used before — applies to it
-            with no extra wrapper span. */}
-        {authorship && (
-          <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
-        )}
+        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+            the viewer's own artifact. A direct flex child of this zone
+            (Tooltip renders the badge as its own trigger), so `shrink-0`
+            keeps it whole while the title truncates. */}
+        <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
       </div>
 
       {/* Middle — the artifact's three working modes. */}
