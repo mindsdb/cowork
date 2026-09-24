@@ -255,18 +255,25 @@ describe('CompareView', () => {
   it('lists past comparisons under column headers, with the verdict named by model', async () => {
     api.fetchComparisons.mockResolvedValue([
       comparison({ verdict: 'b', sides: comparison().sides.map((s) => ({ ...s, turnCount: 3 })) }),
-      comparison({ id: 'cmp-2', title: 'Second task' }),
+      comparison({ id: 'cmp-2', title: 'Second task', sides: [
+        { ...comparison().sides[0], turnCount: 3 },
+        { ...comparison().sides[1], turnCount: 2 },
+      ] }),
     ]);
     render(<CompareView models={models} projects={projects} />);
     const row = await screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
-    for (const heading of ['Prompt', 'Models', 'Turns', 'Verdict', 'Started']) {
+    for (const heading of ['Prompt', 'Models', 'Turns', 'Winner', 'Started']) {
       expect(screen.getByText(heading)).toBeTruthy();
     }
     expect(within(row).getByText('Kimi')).toBeTruthy();
-    expect(within(row).getByText('Qwen')).toBeTruthy();
     expect(within(row).getByText('3')).toBeTruthy();
-    expect(within(row).getByText('Qwen preferred')).toBeTruthy();
-    expect(within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByText('No verdict')).toBeTruthy();
+    // A follow-up went to one side only: both counts, each named in the tooltip.
+    const uneven = within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByText('3 / 2');
+    expect(uneven.getAttribute('title')).toBe('Kimi: 3 turns · Qwen: 2 turns');
+    // The winner is named by model alone; no winner yet is a quiet dash.
+    expect(within(row).getAllByText('Qwen')).toHaveLength(2);
+    expect(within(row).queryByText(/preferred/)).toBeNull();
+    expect(within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByLabelText('No winner yet')).toBeTruthy();
     // Few comparisons: no search box yet.
     expect(screen.queryByPlaceholderText('Search prompts and models')).toBeNull();
   });
