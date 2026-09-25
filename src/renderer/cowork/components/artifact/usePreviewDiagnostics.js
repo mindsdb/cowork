@@ -97,7 +97,10 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
   // reopening the same artifact would flash the previous session's banner
   // until the mount effect swapped the preview URL.
   useEffect(() => {
-    setErrors([]);
+    // Same bail-out as the document-start handler: `enabled` and `resetKey`
+    // both flip twice per preview mount, and a fresh `[]` each time would
+    // re-render the whole viewer for nothing.
+    setErrors((prev) => (prev.length ? [] : prev));
     setDismissedSignature('');
   }, [enabled, resetKey]);
 
