@@ -43,6 +43,10 @@ export default defineConfig({
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
+        // What a comparison treats as the same question, a finished turn and a
+        // continued side's cut-off. A wrong answer here reads as a plausible
+        // screen, so the tests that pin it stay pinned.
+        'src/renderer/cowork/lib/compareSides.js': { statements: 98, branches: 93 },
         // The liveness decision and its store. Pinned for the same reason as the
         // entries above: these exist because a stale artifact card shipped, and
         // the value is entirely in the branch table that proves each fail-open

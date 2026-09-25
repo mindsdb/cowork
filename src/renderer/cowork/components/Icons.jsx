@@ -15,6 +15,7 @@
 // button design.
 import {
   AppWindow,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -28,6 +29,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Columns2,
   CodeXml,
   Copy,
   Database,
@@ -161,6 +163,8 @@ const Ico = {
   doc:      ico(FileText),
   globe:    ico(Globe),
   brain:    ico(Brain),
+  columns:  ico(Columns2),
+  swap:     ico(ArrowLeftRight),
   database: ico(Database),
   mail:     ico(Mail),
   upload:   ico(Upload),
