@@ -270,7 +270,7 @@ function _hydrateAssistantEvents(messages) {
   return out;
 }
 
-function _conversationToTask(conv, messages = []) {
+function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
   // Server stores conversations under <project>/.anton/episodes/ and
   // returns the project NAME on each conversation meta. We carry both:
   //   projectName — the canonical id from the server
@@ -295,6 +295,13 @@ function _conversationToTask(conv, messages = []) {
     subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
+    // 'loading' until a real fetch resolves — every sidebar-listed
+    // task is built with an empty placeholder array before that happens, so
+    // the loading gate needs this to distinguish "not fetched yet" from
+    // "genuinely empty". Callers that hand over messages from a real fetch
+    // (fetchSession/fetchSessionResult) rely on the 'loaded' default; the
+    // conversation-list caller (fetchSessions) passes 'loading' explicitly.
+    messagesStatus,
     projectName: conv.project || null,
     projectId: conv.project_id || null,
     projectPath: conv.project_path || null,
@@ -350,6 +357,33 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** Default page size for the paginated /items envelope. Matches
+ * the server's own default so the two agree without either side needing to
+ * repeat the number. */
+const MESSAGE_PAGE_LIMIT = 50;
+
+function _itemsPath(id, { limit, before } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set('limit', String(limit));
+  if (before) params.set('before', before);
+  const qs = params.toString();
+  return `/conversations/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
+}
+
+/** Normalizes a /items response into one shape regardless of which branch
+ * the server took: the bare (unbounded) list — from a call with no params,
+ * or a version-skewed server during a rolling deploy — or the paginated
+ * envelope. Every caller that requests a page reads this instead of
+ * checking Array.isArray itself, so the envelope is never silently read as
+ * an empty transcript. */
+function _pageFromItemsResponse(raw) {
+  if (Array.isArray(raw)) return { items: raw, hasMore: false, nextBefore: null };
+  if (raw && Array.isArray(raw.items)) {
+    return { items: raw.items, hasMore: !!raw.hasMore, nextBefore: raw.nextBefore ?? null };
+  }
+  return { items: [], hasMore: false, nextBefore: null };
+}
+
 /** Resolves as soon as the conversation LIST lands — one request. Everything
  * the sidebar renders comes from that response (`_conversationToTask` reads
  * `messages` for nothing but `messages`), so waiting on the per-conversation
@@ -385,13 +419,24 @@ export async function fetchSessions({ onItems } = {}) {
   // interaction.
   if (onItems) {
     for (const c of conversations.slice(0, EAGER)) {
-      req(`/conversations/${encodeURIComponent(c.id)}/items`)
+      // Bounded like every other transcript fetch. Warming the FULL history of
+      // the 50 most recent conversations moved the unbounded fetch from
+      // task-open to startup rather than removing it — and it pre-filled a long
+      // conversation so completely that neither the loading state nor
+      // "load earlier" ever engaged for the tasks most likely to be opened.
+      req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
         // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
         // through _conversationToTask, so they got _hydrateAssistantEvents —
         // which replays `events` into steps/startedAt and appends the synthetic
         // `error` / `provider_required` message a failed turn renders its card
         // from. Handing over the raw array silently dropped both.
-        .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
+        .then((r) => {
+          const page = _pageFromItemsResponse(r);
+          onItems(c.id, _hydrateAssistantEvents(page.items), {
+            hasMoreMessages: page.hasMore,
+            messagesCursor: page.nextBefore,
+          });
+        })
         .catch(() => {});
     }
   }
@@ -404,7 +449,7 @@ export async function fetchSessions({ onItems } = {}) {
     .filter((c) => c && typeof c === 'object')
     .map((c) => {
       try {
-        return _conversationToTask(c, []);
+        return _conversationToTask(c, [], { messagesStatus: 'loading' });
       } catch (err) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
@@ -418,12 +463,34 @@ export async function fetchSessions({ onItems } = {}) {
 
 export async function fetchSession(id) {
   try {
-    const [meta, msgs] = await Promise.all([
+    const [meta, raw] = await Promise.all([
       req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/items`).catch(() => null),
+      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })).catch(() => null),
     ]);
     if (!meta) return null;
-    return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
+    const page = _pageFromItemsResponse(raw);
+    return {
+      ..._conversationToTask(meta, page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetches the next OLDER page for a conversation already showing its most
+ * recent one — the "load earlier messages" affordance. `cursor` is the
+ * `messagesCursor`/`nextBefore` the previous page returned; the caller
+ * merges the result in ahead of what it already has (see
+ * lib/mergeMessagePage.js). Returns `null` on failure — same "caller
+ * decides how to degrade" convention as fetchSession. */
+export async function fetchOlderMessages(id, cursor) {
+  if (!cursor) return null;
+  try {
+    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }));
+    const page = _pageFromItemsResponse(raw);
+    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -443,7 +510,7 @@ export async function fetchSession(id) {
 export async function fetchSessionResult(id) {
   const [metaRes, msgsRes] = await Promise.allSettled([
     req(`/conversations/${encodeURIComponent(id)}`),
-    req(`/conversations/${encodeURIComponent(id)}/items`),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -460,8 +527,13 @@ export async function fetchSessionResult(id) {
       return { status: 'unavailable', code: (err && err.status) || 0 };
     }
   }
-  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
-  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+  const page = msgsRes.status === 'fulfilled' ? _pageFromItemsResponse(msgsRes.value) : { items: [], hasMore: false, nextBefore: null };
+  const task = {
+    ..._conversationToTask(metaRes.value, page.items),
+    hasMoreMessages: page.hasMore,
+    messagesCursor: page.nextBefore,
+  };
+  return { status: 'ok', task };
 }
 
 /**
@@ -2221,10 +2293,14 @@ const DELETE_TURN_TIMEOUT_MS = 30000;
 
 // Delete one user→answer cycle (the question + the assistant
 // response, including any internal tool_use/tool_result blocks
-// anton generated during the turn). `turnIndex` is the 0-based
-// displayable bubble index — same value used to look up events
-// in the per-turn sidecar.
-export async function deleteConversationTurn(id, turnIndex) {
+// anton generated during the turn).
+/** `messageId` anchors the turn: the visible assistant message it produced,
+ * or (a turn stopped/failed before any answer) the opening user message
+ * itself — matching the server's two accepted anchor shapes.
+ * Positional (`turnIndex`) doesn't survive a lazily-loaded/paginated
+ * conversation, so this replaced that contract; both worktrees land
+ * together. */
+export async function deleteConversationTurn(id, messageId) {
   // The caller holds the turn in an in-flight state for the life of this
   // request and refuses further deletes in that conversation while it is out,
   // so a request that never settles would strand the conversation until a
@@ -2233,14 +2309,14 @@ export async function deleteConversationTurn(id, turnIndex) {
   const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
   try {
     const res = await authFetch(
-      BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+      BASE + `/conversations/${encodeURIComponent(id)}/turns/${encodeURIComponent(messageId)}`,
       {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
       },
     );
-    if (res.status === 404) return { status: 'gone', id, turnIndex };
+    if (res.status === 404) return { status: 'gone', id, messageId };
     if (!res.ok) {
       let detail = '';
       try { detail = (await res.json())?.detail || ''; } catch {}

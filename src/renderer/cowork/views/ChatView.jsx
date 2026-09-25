@@ -38,6 +38,7 @@ import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArti
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -1511,9 +1512,16 @@ export default function ChatView({
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // User-input index of the turn whose delete is on the wire, or null. The
-  // same index this view hands to onDeleteTurn.
-  deletingTurnIndex = null,
+  // "Load earlier messages": present only when the task's most recent page
+  // doesn't cover its whole history. Fired both by scrolling to the top of
+  // the transcript and by the explicit button. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see either
+  // affordance — task.hasMoreMessages is falsy for them.
+  onLoadEarlierMessages,
+  loadingEarlierMessages,
+  // Anchor id of the turn whose delete is on the wire, or null. The same id
+  // this view hands to onDeleteTurn.
+  deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1765,9 +1773,56 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [task.messages.length, isStreaming]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+      taskId: task.id,
+      messages: visibleMessages,
+      previousAnchor: scrollAnchorRef.current,
+      scrollHeight: el.scrollHeight,
+    });
+    // Loading an older page prepends content above what's on screen —
+    // shifting scrollTop by the same delta keeps the reader's position
+    // steady instead of yanking them to the bottom.
+    if (isPrepend) {
+      el.scrollTop += scrollHeightDelta;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    scrollAnchorRef.current = anchor;
+    // visibleMessages is a fresh array every render (task.messages.filter(...),
+    // not memoized) — depending on task.messages.length instead keeps this
+    // effect firing only when the count actually changes, same as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.messages.length, isStreaming]);
+
+  // Inverted infinite scroll: reaching the top of the transcript pulls the
+  // next older page in, which is the behaviour a long conversation is
+  // expected to have. The button below stays as the explicit affordance and
+  // as the fallback wherever IntersectionObserver is unavailable.
+  //
+  // Firing repeatedly is safe: onLoadEarlierMessages guards its own dispatch
+  // against a fetch already in flight and against there being nothing more to
+  // load. Re-running once a load settles re-checks a reader who is still
+  // parked at the top and needs the page after this one.
+  const loadEarlierSentinelRef = useRef(null);
+  useEffect(() => {
+    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const root = scrollRef.current;
+    const sentinel = loadEarlierSentinelRef.current;
+    if (!root || !sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
+      // Start the fetch slightly before the top is actually reached, so the
+      // page is usually already there by the time the reader gets there.
+      { root, rootMargin: '200px 0px 0px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -1792,7 +1847,7 @@ export default function ChatView({
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
-  const deleteInFlight = deletingTurnIndex != null;
+  const deleteInFlight = deletingTurnMessageId != null;
 
   return (
     <div
@@ -2071,21 +2126,41 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+            {task.hasMoreMessages && (
+              // Adapted from Sidebar's dashed-pill "Show more" idiom.
+              <button
+                type="button"
+                ref={loadEarlierSentinelRef}
+                onClick={() => onLoadEarlierMessages?.()}
+                disabled={loadingEarlierMessages}
+                className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
+              >
+                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+              </button>
+            )}
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
-              let assistantTurnIdx = -1;
-              let userInputIdx = -1;
               // Skip + orphan rules live together in lib/turnVisibility so a
               // user message whose only assistant bubble is skipped keeps the
               // delete affordance the hidden bubble used to carry (ENG-1304,
               // PR #580 review).
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
+              // The id this turn hands to onDeleteTurn: its assistant reply,
+              // or the user row itself when nothing answered it. Resolved from
+              // any row in the turn, so an activity or error card dims with the
+              // exchange it belongs to rather than on its own.
+              const turnAnchorIdAt = (atIdx) => {
+                let start = atIdx;
+                while (start > 0 && visibleMessages[start]?.role !== 'user') start -= 1;
+                if (visibleMessages[start]?.role !== 'user') return null;
+                if (isOrphanUser(start)) return visibleMessages[start].id ?? null;
+                for (let k = start + 1; k < visibleMessages.length; k++) {
+                  if (visibleMessages[k]?.role === 'user') break;
+                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? null;
+                }
+                return visibleMessages[start].id ?? null;
+              };
+              const isTurnBeingDeleted = (atIdx) => deletingTurnMessageId != null
+                && turnAnchorIdAt(atIdx) === deletingTurnMessageId;
               // Index of the last user or assistant message that renders —
               // its actions stay always-visible (Claude pattern: most recent
               // exchange shows its toolbar). Skipped failed-assistant bubbles
@@ -2095,12 +2170,10 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
-                userInputIdx += 1;
-                const turnIdxForThisUser = userInputIdx;
                 const orphan = isOrphanUser(i);
                 return (
                   <UserTurn
-                    key={i}
+                    key={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2110,11 +2183,16 @@ export default function ChatView({
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
                     time={formatTime(m.createdAt)}
-                    // No turn offers a delete while one is out: every other
-                    // turn's index is about to shift when the server reindexes
-                    // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
-                    deleting={deletingTurnIndex === turnIdxForThisUser}
+                    // Anchored on this user message's own id — an
+                    // orphan turn (stopped/failed before any answer) has no
+                    // assistant row to anchor on instead. Hidden, not just
+                    // disabled, when there's no id yet (a stop/error refetch
+                    // that hasn't landed) rather than rendering a button that
+                    // 422s silently when clicked. No turn offers a delete
+                    // while one is out, so the list cannot be re-cut under a
+                    // delete that has not come back yet.
+                    onDelete={orphan && m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
+                    deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
@@ -2129,9 +2207,9 @@ export default function ChatView({
                   />
                 );
               }
-              // Past the user branch, userInputIdx names the turn this
-              // message belongs to, whatever kind of row it renders as.
-              const deletingThisTurn = deletingTurnIndex === userInputIdx;
+              // Every row of a turn dims together, so this resolves the
+              // turn's own anchor id from whatever kind of row this is.
+              const deletingThisTurn = isTurnBeingDeleted(i);
               if (m.role === 'activity') {
                 // Activity rows normally live in the rail's Progress
                 // only. Exception: when this is the just-sent
@@ -2143,7 +2221,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                    <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
                       <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
@@ -2167,7 +2245,7 @@ export default function ChatView({
                   : undefined;
                 return (
                   <ConnectIntroBubble
-                    key={i}
+                    key={messageKey(m, i)}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
@@ -2195,7 +2273,7 @@ export default function ChatView({
                 if (m.code === 'token_limit') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2227,7 +2305,7 @@ export default function ChatView({
                 if (m.code === 'provider_auth') {
                   return (
                     <ReconnectCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2246,7 +2324,7 @@ export default function ChatView({
                   const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2269,7 +2347,7 @@ export default function ChatView({
                   const prevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2304,7 +2382,7 @@ export default function ChatView({
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2334,7 +2412,7 @@ export default function ChatView({
                 if (m.code === 'image_format') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2355,7 +2433,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2402,7 +2480,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2426,7 +2504,7 @@ export default function ChatView({
                   const retryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2445,7 +2523,7 @@ export default function ChatView({
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2486,7 +2564,7 @@ export default function ChatView({
                   const rlRetryText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2511,7 +2589,7 @@ export default function ChatView({
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
+                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
@@ -2526,7 +2604,7 @@ export default function ChatView({
               if (m.role === 'provider_required') {
                 return (
                   <ActionCard
-                    key={i}
+                    key={messageKey(m, i)}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
                     title="Connect a provider to start chatting"
@@ -2548,30 +2626,27 @@ export default function ChatView({
                   />
                 );
               }
-              assistantTurnIdx += 1;
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Same predicate keeps isOrphanUser's delete affordance honest.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
-              const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
-                  key={i}
+                  key={messageKey(m, i)}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
                   // start time supplies this — and a replay with no steps has
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={deleteInFlight ? null : () => onDeleteTurn?.(turnIdxForThisBubble)}
+                  // Anchored on this assistant message's own id.
+                  // Hidden, not just disabled, when there's no id yet — a
+                  // just-completed turn always has one (the id rides the
+                  // completion frame), so this only ever applies to the
+                  // sliver of time before that lands.
+                  onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}

@@ -5,6 +5,9 @@ import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
+import { resolveConversationLoadState } from './lib/conversationLoadingGate';
+import { mergeMessagePage, reconcilePaginationState } from './lib/mergeMessagePage';
+import { stampUserMessageId } from './lib/stampUserMessageId';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -60,12 +63,12 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnIndex, userTurnCount, dropNoticesFromTurn, removeNoticeTurns } from './lib/usageNoticePlacement';
+import { currentTurnAnchorId, dropNoticesFromTurn } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -87,6 +90,7 @@ import {
   applySessionMessages,
   persistTurnState,
   mergeConvTurns,
+  removeConvTurnsFor,
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
@@ -479,8 +483,12 @@ async function loadSessionMessagesWithRetry(
     const fresh = await fetchSession(cid);
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
+      // Only the most recent page — the caller merges this
+      // against whatever it already has, rather than replacing wholesale.
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
       disabledConnections: fresh.disabledConnections,
+      hasMoreMessages: fresh.hasMoreMessages ?? false,
+      messagesCursor: fresh.messagesCursor ?? null,
     };
   }
   return null;
@@ -791,11 +799,19 @@ function AppCore() {
           finished.forEach((cid) => {
             fetchSession(cid).then((fresh) => {
               if (!fresh || !Array.isArray(fresh.messages)) return;
+              const reconciled = applySessionMessages(cid, fresh.messages);
               setTasks((tasksPrev) => tasksPrev.map((t) => {
                 if (t.id !== cid) return t;
                 return {
                   ...t,
-                  messages: applySessionMessages(cid, fresh.messages),
+                  // Only the most recent page — merge against what the
+                  // task already has instead of replacing wholesale.
+                  messages: mergeMessagePage(t.messages, reconciled),
+                  // Same array the merge just used. Inert today — applySessionMessages
+                  // neither adds nor removes an id-bearing row, so both see the
+                  // same oldest id — but the two decisions must agree on which
+                  // rows the page covers, and only one of them should pick.
+                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
                   status: 'idle',
                 };
               }));
@@ -926,6 +942,18 @@ function AppCore() {
       delete next[taskId];
       return next;
     });
+  };
+
+  // Fans lib/stampUserMessageId out over the ids a stream can be filed under
+  // (a tmp- id and the server's canonical one both reach here mid-adoption).
+  const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
+    if (!userMessageId) return;
+    const ids = new Set(taskIds.filter(Boolean).map(String));
+    setTasks((prev) => prev.map((t) => {
+      if (!ids.has(String(t.id))) return t;
+      const next = stampUserMessageId(t.messages, userMessageId);
+      return next === t.messages ? t : { ...t, messages: next };
+    }));
   };
 
   // Called from every stream's onEvent, right after reduceStream. Keeps
@@ -1126,7 +1154,8 @@ function AppCore() {
             ? {
                 ...t,
                 status: 'idle',
-                messages: loaded.messages,
+                messages: mergeMessagePage(t.messages, loaded.messages),
+                ...reconcilePaginationState(t, loaded),
                 ...(Array.isArray(loaded.disabledConnections)
                   ? { disabledConnections: loaded.disabledConnections }
                   : {}),
@@ -1185,7 +1214,8 @@ function AppCore() {
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
-          messages: loaded.messages,
+          messages: mergeMessagePage(t.messages, loaded.messages),
+          ...reconcilePaginationState(t, loaded),
           ...(Array.isArray(loaded.disabledConnections)
             ? { disabledConnections: loaded.disabledConnections }
             : {}),
@@ -1600,11 +1630,20 @@ function AppCore() {
     setTasksStatus((prev) => (prev === 'failed' ? 'loading' : prev));
     // Merges a warmed transcript in without disturbing a live conversation:
     // anything mid-stream, or already filled, keeps what it has.
-    const warmTranscript = (id, msgs) => setTasks((prev) => prev.map((t) => {
+    const warmTranscript = (id, msgs, page) => setTasks((prev) => prev.map((t) => {
       if (t.id !== id) return t;
       const local = Array.isArray(t.messages) ? t.messages : [];
       if (local.length > 0) return t;   // covers _streaming too: the placeholder is an element
-      return { ...t, messages: msgs };
+      // The warm-up fetches a page, not the whole history, so the boundary has
+      // to come from what it actually loaded. Hardcoding "nothing more to
+      // load" here is what hid "load earlier" on every recently-opened task.
+      return {
+        ...t,
+        messages: msgs,
+        messagesStatus: 'loaded',
+        hasMoreMessages: page?.hasMoreMessages ?? false,
+        messagesCursor: page?.messagesCursor ?? null,
+      };
     }));
     // Claimed synchronously, not on resolve: refreshData re-enters on the
     // serverOnline false->true flip that its own fetchHealth above causes, and
@@ -1788,15 +1827,19 @@ function AppCore() {
   // Loader hit a transient failure and there's nothing local — show the retry
   // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
   // A locally-available conversation keeps rendering during a blip.
-  const showConversationError =
-    route === 'task' &&
-    conversationError != null &&
-    conversationError === activeTaskId &&
-    !resolvedTask;
-  // Requested id not resolved and not (yet) errored: show a loading state, not
-  // the wrong conversation, until openConversation merges it into local state.
-  const showConversationLoading =
-    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  //
+  // Requested id not resolved, or resolved but its messages haven't loaded
+  // yet (every sidebar-listed task is already in `tasks` before
+  // its messages fetch even starts) — show a loading state, not the wrong
+  // conversation, until messagesStatus settles.
+  const conversationLoadState = route === 'task' && activeTaskId != null
+    ? resolveConversationLoadState({
+      resolvedTask,
+      conversationErrorMatches: conversationError != null && conversationError === activeTaskId,
+    })
+    : 'ready';
+  const showConversationError = conversationLoadState === 'error';
+  const showConversationLoading = conversationLoadState === 'loading';
   // A detail URL whose id isn't yet the selected project (resolving, or cold
   // deep link): show the grid, never a stale project, under `/projects/:id`.
   const projectDetailResolving =
@@ -1909,6 +1952,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
+        stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -1925,6 +1969,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        // The persisted row's real id, off response.completed/
+        // failed — absent for an empty/config-error turn (nothing persisted).
+        const finalAssistantMessageId = streamState.assistantMessageId;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -1933,11 +1980,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -1948,11 +1993,12 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent && !configErrorInBody) {
-          persistTurnState(taskId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(taskId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // Open the side panel if the agent streamed a connect form.
           openStreamedForm(taskId, finalContent);
         }
@@ -2008,8 +2054,15 @@ function AppCore() {
     // loader failure flag it for a retry; any resolvable result clears a stale
     // error. The render only shows it when the conversation is absent locally,
     // so a sidebar click during a blip keeps rendering.
-    if (loaded?.unavailable) setConversationError(id);
-    else setConversationError((cur) => (cur === id ? null : cur));
+    if (loaded?.unavailable) {
+      setConversationError(id);
+      // Only a task already known locally (sidebar-listed) needs its status
+      // flipped here — an unresolved cold deep-link has no task record yet,
+      // and showConversationError's own gate already covers that case.
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, messagesStatus: 'unavailable' } : t)));
+    } else {
+      setConversationError((cur) => (cur === id ? null : cur));
+    }
     // Phase 2 reconnect — fire-and-forget. If a turn is still running
     // server-side for this conversation (closed-tab-came-back, or opened
     // from another tab/device), this re-attaches the live SSE stream and
@@ -2041,7 +2094,13 @@ function AppCore() {
     // link (conversation absent from the recents fetch) still renders, but
     // don't wipe any locally-restored messages.
     if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
-      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      setTasks((prev) => (prev.some((t) => t.id === id)
+        ? prev.map((t) => (t.id === id ? {
+          ...t,
+          messagesStatus: 'loaded',
+          ...reconcilePaginationState(t, fresh),
+        } : t))
+        : [fresh, ...prev]));
       return;
     }
 
@@ -2049,9 +2108,24 @@ function AppCore() {
     // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
     // legacy localStorage sidecar. Merge into recents, inserting the
     // conversation if it wasn't in the capped fetch.
+    // Opening the conversation is a fresh intent: let the scroll trigger try
+    // again. Without this one transient failure suppresses auto-loading for
+    // this task until a full reload, because the cursor it failed on is
+    // deliberately preserved across every later refetch.
+    failedOlderCursorRef.current.delete(id);
     const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
     const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    // fresh.messages is only the most recent page — merge it against
+    // whatever the task already has rather than replacing wholesale, so an
+    // older prefix loaded earlier via "load earlier messages" survives.
+    const patch = (t) => ({
+      ...t,
+      messages: mergeMessagePage(t.messages, reconciled),
+      messagesStatus: 'loaded',
+      // Decided from the array the merge consumed, not the raw page.
+      ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
+      ...(dc !== undefined ? { disabledConnections: dc } : {}),
+    });
     setTasks((prev) => (prev.some((t) => t.id === id)
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));
@@ -2633,8 +2707,8 @@ function AppCore() {
       // composer: a task on an explicit paid model never hears about free tokens.
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
-      const turnIndex = currentTurnIndex(t.messages);
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, turnIndex }))] };
+      const anchorId = currentTurnAnchorId(t.messages);
+      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, anchorId }))] };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -2976,6 +3050,12 @@ function AppCore() {
       subtitle: 'just now',
       status: 'active',
       messages: [],
+      // Locally created: nothing is fetching history for it, because it has
+      // none yet. Without an explicit status here the conversation LIST
+      // fetch's 'loading' placeholder is adopted on the next background
+      // refresh and the loading gate covers a working chat with a spinner
+      // that nothing ever resolves.
+      messagesStatus: 'loaded',
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
@@ -3087,6 +3167,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -3122,6 +3203,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        // The persisted row's real id, off response.completed/
+        // failed — absent for an empty/config-error turn (nothing persisted).
+        const finalAssistantMessageId = streamState.assistantMessageId;
         // Anton sometimes wraps auth failures into a 200 stream that
         // emits the error as plain assistant text. Detect that case
         // and replace the assistant turn with the provider_required
@@ -3134,15 +3218,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          // Count prior assistant turns BEFORE adding the new one so
-          // the persisted index lines up with what mergeConvTurns
-          // expects on reload (the merge walks assistant messages in
-          // the same order and looks up by index).
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -3153,6 +3231,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
@@ -3163,7 +3242,7 @@ function AppCore() {
         // history file doesn't carry step metadata, so this is a
         // sidecar in localStorage.
         if (finalContent && !configErrorInBody) {
-          persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(finalId, finalAssistantMessageId, finalSteps, finalStartedAt);
           // If the agent streamed a connect form, open the side panel
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
@@ -3542,6 +3621,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
@@ -3562,6 +3642,9 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        // The persisted row's real id, off response.completed/
+        // failed — absent for an empty/config-error turn (nothing persisted).
+        const finalAssistantMessageId = streamState.assistantMessageId;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         // Activation gate (ENG-736): a completed turn (status 'done') is a real
         // answer (success), unless a config error was wrapped into its 200 body.
@@ -3570,11 +3653,9 @@ function AppCore() {
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
         }));
-        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
@@ -3585,12 +3666,13 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent && !configErrorInBody) {
           // Sidecar — see persistTurnState comment for the full schema.
-          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3813,6 +3895,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
@@ -3874,11 +3957,13 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
-        let assistantTurnIndex = 0;
+        // Probe turns frequently persist nothing (no conversation
+        // context, or no body text) — an absent id here is the expected
+        // case, not an error.
+        const finalAssistantMessageId = streamState.assistantMessageId;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
@@ -3886,11 +3971,12 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent) {
-          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
         // A successful save changes the connectors list — refetch
@@ -4092,12 +4178,13 @@ function AppCore() {
   };
 
   // Pending delete-turn confirm payload — null when no modal is open.
-  // The user clicked the trash on the assistant message at this turn
-  // index of the conversation; we open ConfirmModal, then on confirm
-  // hit the API and re-hydrate the chat from the truncated history.
+  // The user clicked the trash on the turn's anchor row (the assistant
+  // reply, or the user message itself for an orphan turn) — see
+  // ChatView's onDelete wiring; we open ConfirmModal, then on confirm hit
+  // the API and truncate the chat locally (see truncateTaskAt).
   const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
 
-  // Turn index currently being deleted, per conversation id. Keyed rather than
+  // Message id currently being deleted, per conversation id. Keyed rather than
   // a single slot because a delete may be in flight in more than one
   // conversation at once, and each has to clear only its own.
   const [deletingTurns, setDeletingTurns] = useState({});
@@ -4110,9 +4197,9 @@ function AppCore() {
   const refreshingAfterDeleteRef = useRef(new Set());
 
   /**
-   * Replaces a conversation's messages with the server's, so a delete keyed by
-   * position aims at the exchange the user is looking at. Returns false when
-   * the server could not be asked; the list on screen then stays unvouched for.
+   * Re-reads the conversation from the server after a delete, so the list on
+   * screen is one the server has vouched for. Returns false when the server
+   * could not be asked; the list then stays unvouched for.
    */
   const resyncConversationAfterDelete = async (taskId) => {
     try {
@@ -4125,14 +4212,21 @@ function AppCore() {
         return false;
       }
       const fresh = res.task;
+      // Replaced, not merged. After a delete the server's list is the whole
+      // truth about this conversation, and a merge cannot express it: an empty
+      // page (every turn deleted) is indistinguishable from "nothing to merge",
+      // so the removed rows would stay on screen. Pagination is re-anchored on
+      // what came back, which means an older prefix pulled in through "load
+      // earlier" has to be loaded again — the honest cost of trusting the
+      // server here. Notices and sidecar entries are handled by
+      // forgetTurnArtifacts, which knows the ids that went.
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
           ? {
             ...t,
             messages: applySessionMessages(taskId, fresh.messages),
-            // What survived says how many turns are left. Counted from the
-            // refetch, since the server resolves `turnIndex` its own way.
-            usageNotices: dropNoticesFromTurn(t.usageNotices, userTurnCount(fresh.messages)),
+            hasMoreMessages: fresh.hasMoreMessages ?? false,
+            messagesCursor: fresh.messagesCursor ?? null,
           }
           : t,
       ));
@@ -4144,18 +4238,17 @@ function AppCore() {
     }
   };
 
-  const handleDeleteTurnRequest = async (taskId, turnIndex) => {
-    if (!taskId || typeof turnIndex !== 'number') return;
-    // A second delete in the same conversation would carry a stale index: the
-    // server reindexes what survives, so it would remove the wrong exchange.
+  const handleDeleteTurnRequest = async (taskId, messageId) => {
+    if (!taskId || !messageId) return;
+    // One delete at a time per conversation: a second would race the first's
+    // resync, and the list it was clicked against is the one being replaced.
     // Another conversation is unaffected and stays deletable.
     if (deletingTurns[taskId] != null) return;
     if (unconfirmedDeletes[taskId]) {
       if (refreshingAfterDeleteRef.current.has(taskId)) return;
       refreshingAfterDeleteRef.current.add(taskId);
       // Said before the fetch, not after it: the click has to register at once,
-      // and this spends it on a refresh rather than on `turnIndex`, which was
-      // read off the very list being replaced.
+      // and this spends it on a refresh rather than on the delete.
       alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
       try {
         if (await resyncConversationAfterDelete(taskId)) {
@@ -4173,17 +4266,145 @@ function AppCore() {
       }
       return;
     }
-    setPendingDeleteTurn({ taskId, turnIndex });
+    setPendingDeleteTurn({ taskId, messageId });
   };
 
-  const performDeleteTurn = async (taskId, turnIndex) => {
-    if (!taskId || typeof turnIndex !== 'number') return;
+  // "Load earlier messages": tracks which tasks currently have a
+  // page fetch in flight, so ChatView can disable/relabel the affordance
+  // per task rather than globally.
+  const [loadingOlderMessagesFor, setLoadingOlderMessagesFor] = useState(() => new Set());
+  // Guards the actual dispatch synchronously — the state Set above only
+  // drives the button's disabled/label UI and can't stop a second click
+  // dispatched before React re-renders from also passing the guard and
+  // prepending the same page twice.
+  const loadingOlderMessagesForRef = useRef(new Set());
+  // Cursor whose fetch just failed, per task. The scroll trigger will not
+  // retry it: nothing scrolled, so the sentinel is still on screen and the
+  // observer re-fires the moment the in-flight flag clears, which is a tight
+  // request loop against a server that is already failing. The button stays
+  // as the manual retry and clears this.
+  const failedOlderCursorRef = useRef(new Map());
+
+  const handleLoadEarlierMessages = async (taskId, { auto = false } = {}) => {
+    const current = tasksRef.current.find((t) => t.id === taskId);
+    if (!current?.hasMoreMessages || !current?.messagesCursor) return;
+    if (loadingOlderMessagesForRef.current.has(taskId)) return;
+    if (auto && failedOlderCursorRef.current.get(taskId) === current.messagesCursor) return;
+    loadingOlderMessagesForRef.current.add(taskId);
+    setLoadingOlderMessagesFor((prev) => new Set(prev).add(taskId));
+    try {
+      const page = await fetchOlderMessages(taskId, current.messagesCursor);
+      if (!page) {
+        failedOlderCursorRef.current.set(taskId, current.messagesCursor);
+        toastManager.add({
+          type: 'danger',
+          title: "Couldn't load earlier messages. Try again.",
+        });
+        return;
+      }
+      failedOlderCursorRef.current.delete(taskId);
+      // Hydrate exactly like the first page does (fetchSession ->
+      // _conversationToTask -> _hydrateAssistantEvents): a raw item dict's
+      // `events` needs replaying into `steps`/`startedAt` for its Thinking
+      // block/scratchpad tabs to render, and a failed turn needs its
+      // synthetic error/provider_required row appended — skipped here
+      // before, so a turn loaded via "load earlier" rendered with no
+      // Thinking block and no error card even though the same turn would
+      // render correctly on the first page.
+      const hydrated = applySessionMessages(taskId, page.messages, {
+        isLive: false, isServerInFlight: false,
+      });
+      // Older page: prepend directly, no id-based merge needed — the
+      // cursor guarantees no overlap with what's already loaded, unlike
+      // mergeMessagePage's job of reconciling a re-fetched TAIL.
+      setTasks((prev) => prev.map((t) => (t.id === taskId
+        ? {
+            ...t,
+            messages: [...hydrated, ...t.messages],
+            hasMoreMessages: page.hasMoreMessages,
+            messagesCursor: page.messagesCursor,
+          }
+        : t)));
+    } finally {
+      loadingOlderMessagesForRef.current.delete(taskId);
+      setLoadingOlderMessagesFor((prev) => {
+        if (!prev.has(taskId)) return prev;
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  };
+
+  // Stable identity on purpose: ChatView rebuilds its scroll observer
+  // whenever this prop changes, and an inline arrow changes on every
+  // render — which for a streaming task is every SSE delta.
+  const currentTaskId = currentTask?.id;
+  const handleLoadEarlierMessagesForCurrent = useCallback(
+    (opts) => handleLoadEarlierMessages(currentTaskId, opts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentTaskId],
+  );
+
+  // `messageId` anchors the turn being deleted: the assistant
+  // reply, or (an orphan turn with no reply yet) the user message that
+  // opened it — see ChatView's onDelete wiring. Both the local (`tmp-`)
+  // and server-backed paths now truncate `t.messages` locally at that
+  // id's own position instead of refetching: delete_turn always removes
+  // "this turn and everything after", the client already knows exactly
+  // which local rows that covers, and a page-merge refetch could
+  // resurrect rows the server actually deleted (or fail to remove ghosted
+  // ones) if the server's real cut point ever differs from what the
+  // client assumed — e.g. an error row widening the cut server-side.
+  const turnCutFrom = (msgs, messageId) => {
+    const anchorIdx = msgs.findIndex((m) => m.id === messageId);
+    if (anchorIdx === -1) return -1;
+    // delete_turn's server-side rule is to step back over hidden tool rows and
+    // take the user message only when it is the row immediately before the
+    // anchor, cutting at the anchor itself otherwise
+    // (services/conversations.py). Tool rows never reach the client, so the
+    // same rule here is a single step back. It must NOT scan further for a
+    // user row: two visible assistant rows can sit next to each other (the
+    // probe persists an assistant turn with no user message of its own), and
+    // scanning past one would drop rows the server kept, which then reappear
+    // on the next refetch.
+    return (msgs[anchorIdx].role === 'assistant' && msgs[anchorIdx - 1]?.role === 'user')
+      ? anchorIdx - 1
+      : anchorIdx;
+  };
+
+  // The notices and localStorage sidecar entries belonging to the turn anchored
+  // at `messageId` and everything after it. Split from truncateTaskAt because
+  // the server-backed path deliberately leaves the list alone until the resync
+  // lands — clearing rows early would un-dim the turn into a list that no
+  // longer matches the server — but the by-id cleanup has to happen while the
+  // client still knows which ids went.
+  const forgetTurnArtifacts = (t, messageId) => {
+    const msgs = t.messages || [];
+    const cutFrom = turnCutFrom(msgs, messageId);
+    if (cutFrom === -1) return t;
+    const removedIds = msgs.slice(cutFrom).map((m) => m.id).filter(Boolean);
+    removeConvTurnsFor(t.id, removedIds);
+    return { ...t, usageNotices: dropNoticesFromTurn(t.usageNotices, removedIds) };
+  };
+
+  // Full local cut, for a conversation the server has never seen: there is no
+  // resync to follow it, so this is the only thing that removes the rows.
+  const truncateTaskAt = (t, messageId) => {
+    const msgs = t.messages || [];
+    const cutFrom = turnCutFrom(msgs, messageId);
+    if (cutFrom === -1) return t;
+    return { ...forgetTurnArtifacts(t, messageId), messages: msgs.slice(0, cutFrom) };
+  };
+
+  const performDeleteTurn = async (taskId, messageId) => {
+    if (!taskId || !messageId) return;
     const isLocalOnly = typeof taskId === 'string' && taskId.startsWith('tmp-');
     // Raised before the stop-stream branch, not after it: cancelling a live
     // stream is itself two network calls, and the turn has to read as in
     // flight for that wait too. The local-only path never sets it.
     if (!isLocalOnly) {
-      setDeletingTurns((prev) => ({ ...prev, [taskId]: turnIndex }));
+      setDeletingTurns((prev) => ({ ...prev, [taskId]: messageId }));
     }
     try {
       // If anton is actively streaming a response to the turn being
@@ -4195,67 +4416,44 @@ function AppCore() {
       }
       if (isLocalOnly) {
         // No server-side history yet — drop the local pair only.
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== taskId) return t;
-          let assistantSeen = -1;
-          let dropFromUserAt = -1;
-          let dropEnd = (t.messages || []).length;
-          for (let i = 0; i < (t.messages || []).length; i++) {
-            const m = t.messages[i];
-            if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
-              dropFromUserAt = i;
-            }
-            if (m.role === 'assistant') {
-              assistantSeen += 1;
-              if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
-                dropEnd = i;
-                break;
-              }
-            }
-          }
-          if (dropFromUserAt === -1) return t;
-          // Read off the cut, not off `turnIndex`: the walk above counts assistant
-          // rows while the caller counts user ones, so it can take extra turns.
-          const cut = t.messages.slice(dropFromUserAt, dropEnd);
-          return {
-            ...t,
-            usageNotices: removeNoticeTurns(
-              t.usageNotices,
-              userTurnCount(t.messages.slice(0, dropFromUserAt)),
-              userTurnCount(cut),
-            ),
-            messages: [
-              ...t.messages.slice(0, dropFromUserAt),
-              ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
-            ],
-          };
-        }));
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? truncateTaskAt(t, messageId) : t)));
         return;
       }
       let failure = null;
+      let result = null;
       try {
-        await deleteConversationTurn(taskId, turnIndex);
+        result = await deleteConversationTurn(taskId, messageId);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[performDeleteTurn] server delete failed', e);
         failure = e;
       }
-      // Re-fetch whatever happened above, not just on success. A delete we did
-      // not see confirmed may still have landed, and the server reindexes what
-      // survives, so handing the delete affordances back against the old list
-      // would aim the next one at a different exchange than the user sees.
+      // A 404 arrives as {status:'gone'} rather than throwing, and means the
+      // server did not cut here: it either never had this id or rejected it as
+      // an anchor. That is a refusal, not a failure to reach the server, so
+      // the resync below is what puts the list right.
+      const gone = result?.status === 'gone';
+      // The list itself is left to the resync below, so the turn never
+      // un-dims into one the server has not vouched for. Only the by-id
+      // cleanup happens here, while the client still knows which ids went —
+      // the resync replaces messages and cannot work that out afterwards.
+      if (!failure && !gone) {
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? forgetTurnArtifacts(t, messageId) : t)));
+      }
+      // Re-fetch whatever happened above, not just on success: a delete we did
+      // not see confirmed may still have landed, so the list on screen is not
+      // one the server has vouched for until this returns.
       const resynced = await resyncConversationAfterDelete(taskId);
       // Only a 4xx is the server saying it did not do this. Our own timeout, a
       // gateway 5xx and no response at all all leave a delete that may still
       // commit, which a re-sync read before it does cannot show.
-      const refused = failure?.status >= 400 && failure.status < 500;
+      const refused = gone || (failure?.status >= 400 && failure.status < 500);
       if (!resynced || (failure && !refused)) {
         setUnconfirmedDeletes((prev) => (prev[taskId] ? prev : { ...prev, [taskId]: true }));
       }
       if (!resynced) {
         // The quiet version of this is the one that loses data: the exchange
-        // may be gone on the server while the list still shows it, and the
-        // next delete is keyed by position in that list.
+        // may be gone on the server while the list still shows it.
         alert(failure
           ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
           : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
@@ -4263,6 +4461,8 @@ function AppCore() {
         alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
       } else if (failure) {
         alert(`Could not delete this exchange: ${failure?.message || failure}`);
+      } else if (gone) {
+        alert('This exchange was already gone on the server, so the conversation has been refreshed.');
       }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn
@@ -4836,7 +5036,7 @@ function AppCore() {
 
         {route === 'task' && showConversationLoading && <ConversationLoading />}
 
-        {route === 'task' && currentTask && !showConversationError && (
+        {route === 'task' && currentTask && !showConversationError && !showConversationLoading && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
@@ -4885,8 +5085,10 @@ function AppCore() {
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
-            onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
-            deletingTurnIndex={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
+            onDeleteTurn={(messageId) => handleDeleteTurnRequest(currentTask?.id, messageId)}
+            onLoadEarlierMessages={handleLoadEarlierMessagesForCurrent}
+            loadingEarlierMessages={loadingOlderMessagesFor.has(currentTask?.id)}
+            deletingTurnMessageId={currentTask?.id != null ? deletingTurns[currentTask.id] ?? null : null}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
@@ -5351,7 +5553,7 @@ function AppCore() {
         onConfirm={async () => {
           const payload = pendingDeleteTurn;
           setPendingDeleteTurn(null);
-          if (payload) await performDeleteTurn(payload.taskId, payload.turnIndex);
+          if (payload) await performDeleteTurn(payload.taskId, payload.messageId);
         }}
       />
 

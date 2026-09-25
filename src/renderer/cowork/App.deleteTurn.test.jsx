@@ -39,18 +39,20 @@ vi.mock('./api', async (importOriginal) => ({
 // views/ChatView.deletingTurn.test.jsx, which also pins the prop contract
 // between the two.
 vi.mock('./views/ChatView', () => ({
-  default: ({ task, deletingTurnIndex, onDeleteTurn }) => (
+  default: ({ task, deletingTurnMessageId, onDeleteTurn }) => (
     <div>
       <div>Chat task: {task?.title || 'none'}</div>
-      {deletingTurnIndex != null && <div>{`Deleting turn: ${deletingTurnIndex}`}</div>}
+      {deletingTurnMessageId != null && <div>{`Deleting turn: ${deletingTurnMessageId}`}</div>}
       {(task?.messages || []).map((m, i) => (
         <div key={i}>{`msg: ${m.role}: ${m.content}`}</div>
       ))}
-      {[0, 1].map((idx) => (
-        <button key={idx} type="button" onClick={() => onDeleteTurn?.(idx)}>
-          {`Request turn delete ${idx}`}
-        </button>
-      ))}
+      {(task?.messages || [])
+        .filter((m) => m.role === 'assistant' && m.id)
+        .map((m, idx) => (
+          <button key={m.id} type="button" onClick={() => onDeleteTurn?.(m.id)}>
+            {`Request turn delete ${idx}`}
+          </button>
+        ))}
     </div>
   ),
 }));
@@ -95,11 +97,13 @@ vi.mock('../platform/host', async (importOriginal) => {
 
 import App from './App';
 
+// Anchors are message ids now, and a turn's anchor is its assistant reply, so
+// turn 0 is `a1` and turn 1 is `a2`.
 const exchange = [
-  { role: 'user', content: 'first question' },
-  { role: 'assistant', content: 'first answer' },
-  { role: 'user', content: 'second question' },
-  { role: 'assistant', content: 'second answer' },
+  { role: 'user', id: 'u1', content: 'first question' },
+  { role: 'assistant', id: 'a1', content: 'first answer' },
+  { role: 'user', id: 'u2', content: 'second question' },
+  { role: 'assistant', id: 'a2', content: 'second answer' },
 ];
 
 const task = {
@@ -115,13 +119,15 @@ const otherTask = {
   status: 'idle',
 };
 // A conversation with no server history yet: performDeleteTurn drops the pair
-// locally and never reaches the network.
+// locally and never reaches the network. The rows still carry ids — a tmp-
+// task that has streamed gets them from the turn's own created/completed
+// frames — because a row with no id offers no delete affordance at all now.
 const localTask = {
   id: 'tmp-local-1',
   title: 'Unsaved task',
   messages: [
-    { role: 'user', content: 'local question' },
-    { role: 'assistant', content: 'local answer' },
+    { role: 'user', id: 'lu1', content: 'local question' },
+    { role: 'assistant', id: 'la1', content: 'local answer' },
   ],
   status: 'idle',
 };
@@ -178,7 +184,7 @@ describe('deleting a turn shows it as in flight', () => {
     await confirmDelete(user, 0);
 
     // The DELETE is still out: the turn must already read as in flight.
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     // The server has answered, but the list still shows the old messages until
     // the refetch lands. Clearing here would un-dim the turn and leave it
@@ -188,13 +194,13 @@ describe('deleting a turn shows it as in flight', () => {
       resolveRefetch = resolve;
     }));
     await act(async () => { resolveDelete({ status: 'deleted' }); });
-    expect(screen.getByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(screen.getByText('Deleting turn: a1')).toBeInTheDocument();
 
     await act(async () => {
       resolveRefetch({ status: 'ok', task: { id: task.id, messages: exchange.slice(2) } });
     });
     await waitFor(() => {
-      expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     });
     expect(screen.queryByText('msg: user: first question')).not.toBeInTheDocument();
     expect(screen.getByText('msg: user: second question')).toBeInTheDocument();
@@ -210,7 +216,7 @@ describe('deleting a turn shows it as in flight', () => {
     await openTask(user, task);
 
     await confirmDelete(user, 0);
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     // A stale index: the server reindexes what survives, so this second
     // request would delete the wrong exchange.
@@ -230,12 +236,12 @@ describe('deleting a turn shows it as in flight', () => {
     render(<App />);
     await openTask(user, task);
     await confirmDelete(user, 0);
-    expect(await screen.findByText('Deleting turn: 0')).toBeInTheDocument();
+    expect(await screen.findByText('Deleting turn: a1')).toBeInTheDocument();
 
     await openTask(user, otherTask);
     // The in-flight turn belongs to the other conversation, so nothing here
     // reads as deleting and the affordance still works.
-    expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Request turn delete 0' }));
     expect(await screen.findByText('Delete this exchange?')).toBeInTheDocument();
 
@@ -253,7 +259,7 @@ describe('deleting a turn shows it as in flight', () => {
     await confirmDelete(user, 0);
 
     await waitFor(() => {
-      expect(screen.queryByText('Deleting turn: 0')).not.toBeInTheDocument();
+      expect(screen.queryByText('Deleting turn: a1')).not.toBeInTheDocument();
     });
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('turn is locked'));
     // Nothing was removed, and the turn can be deleted again.
