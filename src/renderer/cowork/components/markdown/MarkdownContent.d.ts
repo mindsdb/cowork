@@ -11,6 +11,9 @@ export interface MarkdownContentProps {
   enableCharts?: boolean;
   animateStreamingWords?: boolean;
   isAssistant?: boolean;
+  softBreaks?: boolean;
+  neutralizeLoopback?: boolean;
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;
+export const MarkdownPlainText: ComponentType<{ text?: string }>;

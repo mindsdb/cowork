@@ -30,6 +30,9 @@ describe('responseStreamAdapter — ask_user', () => {
     const step = question(state);
     expect(step).toBeTruthy();
     expect(step.badge).toBe('AskUser');
+    // Fixed label: the prompt can be a long markdown brief, and the label is
+    // shown as one truncated line in the ThinkingBlock header / step list.
+    expect(step.label).toBe('Question for you');
     expect(step.status).toBe('in_progress');
     expect(step._questionKey).toBe('ask:1');
     expect(step.data.prompt).toBe('Which database?');

@@ -199,11 +199,14 @@ describe('AskUserCard', () => {
   it('ties the options to the prompt and announces the card arriving', async () => {
     // The only interactive control in an otherwise static stream, appearing
     // unprompted and blocking the agent — a screen-reader user gets no signal
-    // that it is their turn without this.
+    // that it is their turn without this. The announcement is a fixed line:
+    // the prompt can be a long markdown brief, and it is read through the
+    // group's aria-labelledby instead.
     renderCard();
     expect(screen.getByRole('group')).toHaveAccessibleName('Which database?');
-    expect(await screen.findByRole('status'))
-      .toHaveTextContent(/asking a question: Which database\?/i);
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('The agent is asking a question');
+    expect(status).not.toHaveTextContent(/Which database/);
   });
 
   it('reports the chosen single-select option as pressed', async () => {
@@ -228,5 +231,64 @@ describe('AskUserCard', () => {
     act(() => { fireEvent.click(button); });
     await act(async () => { await Promise.resolve(); });
     expect(submitAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a single-line prompt verbatim, without markdown parsing', () => {
+    // The ask_user tool asks for one short plain-text line; parsed as
+    // markdown, "<div>" would vanish and "__init__" would turn bold.
+    const prompt = 'Use <div> or edit __init__.py?';
+    const { container } = renderCard({ prompt });
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    expect(container.querySelector('strong')).toBeNull();
+    expect(screen.getByRole('group')).toHaveAccessibleName(prompt);
+  });
+
+  it('renders a markdown brief with headings, line breaks and lists', () => {
+    // The shape of the artifact PRD brief anton sends: bold section lines
+    // followed by a SINGLE newline and the body, and two closing lines
+    // joined by a single newline.
+    const brief = [
+      'Here is what I plan to build.',
+      '',
+      '**Goal**',
+      'A small page that shows a sparrow.',
+      '',
+      '**Requirements**',
+      '- Keep it simple',
+      '- Text in English',
+      '',
+      'If you continue, the proposals above are used as they are.',
+      'Continue, or say what to change.',
+    ].join('\n');
+    const { container } = renderCard({ prompt: brief });
+    const prompt = container.querySelector('.markdown-content');
+    expect(prompt).not.toBeNull();
+    const goal = prompt.querySelector('strong');
+    expect(goal).toHaveTextContent('Goal');
+    expect(goal.closest('p').querySelector('br')).not.toBeNull();
+    expect(prompt.querySelectorAll('li')).toHaveLength(2);
+    const closing = [...prompt.querySelectorAll('p')].at(-1);
+    expect(closing.querySelector('br')).not.toBeNull();
+    expect(prompt.textContent).not.toContain('**');
+  });
+
+  it('renders chart and form fences in the prompt as plain code blocks', () => {
+    const prompt = [
+      'Pick one:',
+      '',
+      '```chartjs',
+      '{"type":"bar","data":{"labels":["a"],"datasets":[{"data":[1]}]}}',
+      '```',
+      '',
+      '```data-vault-form',
+      '{"title":"Connect"}',
+      '```',
+    ].join('\n');
+    const { container } = renderCard({ prompt });
+    expect(container.textContent).toContain('"type":"bar"');
+    expect(container.textContent).toContain('"title":"Connect"');
+    expect(container.querySelector('canvas')).toBeNull();
+    expect(screen.queryByText(/side panel/i)).toBeNull();
+    expect(screen.queryByText(/Form spec did not parse/i)).toBeNull();
   });
 });
