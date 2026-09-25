@@ -379,6 +379,8 @@ export default function CodeView({
                 projects.setSelectedId(projectId);
                 resumeProjectEditor.current = { id: projectId };
                 onOpenProjects();
+              } else if (connectorReturn.destination === 'session') {
+                onSelectionChange(connectorReturn.sessionId, false);
               } else {
                 onOpenNewTask();
               }
@@ -708,7 +710,14 @@ export default function CodeView({
           }}
           onOpenConnectors={() => {
             resumeProjectEditor.current = projectEditor;
-            setConnectorReturn({ projectId: projectEditor?.id ?? null, destination: projectsOpen ? 'settings' : 'task' });
+            const projectId = projectEditor?.id ?? null;
+            if (projectsOpen) {
+              setConnectorReturn({ projectId, destination: 'settings' });
+            } else if (!newTask && selectedId) {
+              setConnectorReturn({ projectId, destination: 'session', sessionId: selectedId });
+            } else {
+              setConnectorReturn({ projectId, destination: 'task' });
+            }
             onOpenConnectors();
           }}
           onOpenSkills={() => {

@@ -24,8 +24,10 @@ export function withProjectConnection(
 /** Where the Connectors view sends the user back to, and what to call it. */
 export type ConnectorReturn = {
   projectId: string | null;
-  destination: 'task' | 'settings';
-};
+} & (
+  | { destination: 'task' | 'settings' }
+  | { destination: 'session'; sessionId: string }
+);
 
 export function connectorReturnLabel(destination: ConnectorReturn['destination']): string {
   return destination === 'settings' ? 'Back to project settings' : 'Back to task';
