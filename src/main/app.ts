@@ -67,7 +67,7 @@ import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
-import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
+import { getServerAuthToken, authHeader } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
@@ -1351,9 +1351,8 @@ function setupIPC() {
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     console.log('[server] restart requested');
     await stopServer();
-    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
-    // the cache so the webRequest hook re-reads it on the next request.
-    resetServerAuthTokenCache();
+    // The replacement is handed the token the shell holds, so there is nothing
+    // to drop here — startServer settles and pins it.
     const result = await startServer({});
     if (result.ok) {
       console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
