@@ -383,6 +383,20 @@ export interface ProjectConnection {
   label: string;
 }
 
+export interface GitHubRepository {
+  full_name: string;
+  clone_url: string;
+  private: boolean;
+  default_branch: string | null;
+  archived: boolean;
+  connection_name: string;
+}
+
+export interface GitHubRepositoryPage {
+  items: GitHubRepository[];
+  next_page: number | null;
+}
+
 export interface PlaybookReference {
   repository: string;
   branch: string;
@@ -765,6 +779,9 @@ async function ensureCodeService(): Promise<void> {
 
 const liveCodingApi = {
   engines: () => requestJson<EngineCapability[]>('/engines'),
+  githubRepositories: (connectionName: string, page = 1) => requestJson<GitHubRepositoryPage>(
+    `/github/repositories?${new URLSearchParams({ connection_name: connectionName, page: String(page) })}`,
+  ),
   models: (engineId: string) => requestJson<{ items: string[] }>(`/models?engineId=${encodeURIComponent(engineId)}`),
   inspect: (path: string) => requestJson<WorkspaceInspection>(`/workspace/inspect?path=${encodeURIComponent(path)}`),
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),

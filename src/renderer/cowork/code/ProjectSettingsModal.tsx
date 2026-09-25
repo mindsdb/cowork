@@ -308,6 +308,9 @@ export function ProjectSettingsModal({
           </label>
 
           <ProjectResourcesEditor
+            connections={connections}
+            onOpenConnectors={onOpenConnectors}
+            onRepositoryConnection={(connectionName) => setSelectedConnections((current) => [...new Set([...current, `github:${connectionName}`])])}
             resources={resources}
             computers={computers}
             availability={availability}
@@ -320,6 +323,7 @@ export function ProjectSettingsModal({
           />
 
           <ProjectConnectedTools
+            required={resources.flatMap((resource) => resource.kind === 'repository' && resource.connector_name ? [`github:${resource.connector_name}`] : [])}
             connections={availableConnections}
             selected={selectedConnections}
             onChange={setSelectedConnections}

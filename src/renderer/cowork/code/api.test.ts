@@ -21,6 +21,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('coding API boundary', () => {
+  it('encodes repository connection names and pages without leaking URL structure', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [], next_page: null }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await codingApi.githubRepositories('work & home/#', 2);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:26866/api/v1/coding/github/repositories?connection_name=work+%26+home%2F%23&page=2', expect.anything());
+  });
   it('sends the displayed revision and attachments with an explicit mode change', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
     vi.stubGlobal('fetch', fetchMock);

@@ -134,7 +134,7 @@ export default function CodeView({
   // shell. Keep it interactive while detailed history and review data load in
   // the background instead of replacing the whole workspace with a spinner.
   const session = detail.session?.id === selectedId ? detail.session : cachedSession;
-  const projects = useCodeProjects(newTask ? null : session?.project_id);
+  const projects = useCodeProjects(newTask || draftSuspended ? null : session?.project_id);
   const taskList = useCodeTaskList({
     active,
     sessions,
@@ -216,14 +216,14 @@ export default function CodeView({
     setReferenceRequest(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
-  // Changing view closes the project editor, except when the Connectors view
-  // is handing the user back to the project they were editing.
-  const resumeProjectEditorId = useRef<string | null>(null);
+  // Keep the editor across explicit Connectors round trips, including a new
+  // project with no ID. Other navigation still closes it.
+  const resumeProjectEditor = useRef<{ id: string | null } | null>(null);
   useEffect(() => {
-    const resumeId = resumeProjectEditorId.current;
-    resumeProjectEditorId.current = null;
-    setProjectEditor(resumeId ? { id: resumeId } : null);
-  }, [newTask, projectsOpen, skillsOpen, selectedId]);
+    const editor = resumeProjectEditor.current;
+    resumeProjectEditor.current = null;
+    setProjectEditor(editor);
+  }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
@@ -371,13 +371,16 @@ export default function CodeView({
             projects={projects.projects}
             onConnectionsChange={onConnectionsChange}
             returnProjectName={projects.projects.find((project) => project.id === connectorReturn?.projectId)?.name || ''}
-            backLabel={connectorReturn ? connectorReturnLabel(connectorReturn.destination) : undefined}
+            backLabel={connectorReturn ? connectorReturnLabel(projectEditor ? 'settings' : connectorReturn.destination) : undefined}
             onBack={connectorReturn ? () => {
               const { projectId, destination } = connectorReturn;
-              projects.setSelectedId(projectId);
+              resumeProjectEditor.current = projectEditor;
               if (destination === 'settings') {
-                resumeProjectEditorId.current = projectId;
+                projects.setSelectedId(projectId);
+                resumeProjectEditor.current = { id: projectId };
                 onOpenProjects();
+              } else if (connectorReturn.destination === 'session') {
+                onSelectionChange(connectorReturn.sessionId, false);
               } else {
                 onOpenNewTask();
               }
@@ -706,7 +709,15 @@ export default function CodeView({
             }
           }}
           onOpenConnectors={() => {
-            if (projectEditor?.id) setConnectorReturn({ projectId: projectEditor.id, destination: 'settings' });
+            resumeProjectEditor.current = projectEditor;
+            const projectId = projectEditor?.id ?? null;
+            if (projectsOpen) {
+              setConnectorReturn({ projectId, destination: 'settings' });
+            } else if (!newTask && selectedId) {
+              setConnectorReturn({ projectId, destination: 'session', sessionId: selectedId });
+            } else {
+              setConnectorReturn({ projectId, destination: 'task' });
+            }
             onOpenConnectors();
           }}
           onOpenSkills={() => {
