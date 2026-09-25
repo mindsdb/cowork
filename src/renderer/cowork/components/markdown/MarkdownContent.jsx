@@ -569,12 +569,13 @@ const _SIZES = {
   },
 };
 
-// Text shown verbatim (no markdown parsing) with the same classes as a
-// rendered paragraph, for callers that must not reinterpret plain text.
-export function MarkdownPlainText({ text }) {
+// Content shown verbatim (no markdown parsing, line breaks kept) with the
+// same classes as a rendered paragraph, for callers that must not
+// reinterpret plain text.
+export function MarkdownPlainText({ children }) {
   return (
     <div className={_SIZES.default.root}>
-      <p className={_SIZES.default.p}>{text}</p>
+      <p className={`${_SIZES.default.p} whitespace-pre-wrap`}>{children}</p>
     </div>
   );
 }
