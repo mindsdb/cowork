@@ -216,14 +216,14 @@ export default function CodeView({
     setReferenceRequest(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
-  // Changing view closes the project editor, except when the Connectors view
-  // is handing the user back to the project they were editing.
-  const resumeProjectEditorId = useRef<string | null>(null);
+  // Keep the editor across explicit Connectors round trips, including a new
+  // project with no ID. Other navigation still closes it.
+  const resumeProjectEditor = useRef<{ id: string | null } | null>(null);
   useEffect(() => {
-    const resumeId = resumeProjectEditorId.current;
-    resumeProjectEditorId.current = null;
-    setProjectEditor(resumeId ? { id: resumeId } : null);
-  }, [newTask, projectsOpen, skillsOpen, selectedId]);
+    const editor = resumeProjectEditor.current;
+    resumeProjectEditor.current = null;
+    setProjectEditor(editor);
+  }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
@@ -376,7 +376,7 @@ export default function CodeView({
               const { projectId, destination } = connectorReturn;
               projects.setSelectedId(projectId);
               if (destination === 'settings') {
-                resumeProjectEditorId.current = projectId;
+                resumeProjectEditor.current = { id: projectId };
                 onOpenProjects();
               } else {
                 onOpenNewTask();
@@ -706,7 +706,8 @@ export default function CodeView({
             }
           }}
           onOpenConnectors={() => {
-            if (projectEditor?.id) setConnectorReturn({ projectId: projectEditor.id, destination: 'settings' });
+            resumeProjectEditor.current = projectEditor;
+            setConnectorReturn({ projectId: projectEditor?.id ?? null, destination: 'settings' });
             onOpenConnectors();
           }}
           onOpenSkills={() => {
