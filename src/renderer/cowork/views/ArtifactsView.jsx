@@ -42,6 +42,7 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
+import { artifactAuthorship } from '../lib/artifactAuthorship';
 import {
   PageHeader,
   FilterRow,
@@ -263,6 +264,9 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
   // Open the live thing: published URL, else served URL, else local file. In org
   // mode the last fallback is skipped — there is no local file the user can reach,
@@ -335,7 +339,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         </div>
 
         <div className="flex min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            authorship={authorship}
+          />
         </div>
       </div>
 
@@ -502,6 +512,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
@@ -606,10 +619,18 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           )}
         </div>
 
-        {/* Status — query container so the access chip drops to icon-only
-            when the column gets tight (frees room for "Unpublished changes"). */}
+        {/* Status — access chip, "Unshared changes" and the authorship tag
+            flow inline and wrap inside the cell. The container query that
+            used to collapse the chip is gone (ENG-1475). */}
         <div className="cw-status-cell flex items-center min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            inlineChanges
+            authorship={authorship}
+          />
         </div>
 
         {/* Updated + open + ⋯ */}

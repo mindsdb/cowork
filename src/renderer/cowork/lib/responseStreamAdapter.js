@@ -486,7 +486,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     }
     const step = {
       id: `question-${key}`,
-      label: event.prompt || 'Question',
+      // Fixed text, not the prompt: the prompt can be a long markdown brief,
+      // and this label is the collapsed ThinkingBlock header while the
+      // question is open. The card renders the full prompt from data.prompt.
+      label: 'Question for you',
       badge: 'AskUser',
       icon: 'question',
       status: 'in_progress',

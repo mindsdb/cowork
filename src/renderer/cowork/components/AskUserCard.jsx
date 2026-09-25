@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { submitAnswer } from '../api';
+import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -19,15 +20,39 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   const settled = Boolean(answer) || expired || gone;
 
+  // Only a multi-line prompt is markdown: the ask_user tool asks for one
+  // plain-text line, and markdown would lose text in it ("<div>" vanishes,
+  // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
+  // single-newline lines; forms and charts stay off so a fence is plain code.
+  // Memoised: ChatView re-renders on every streamed delta, and each card
+  // would otherwise re-parse its brief every time.
+  const prompt = q.prompt || '';
+  const promptBody = useMemo(
+    () => (prompt.trim().includes('\n') ? (
+      <MarkdownContent
+        text={prompt}
+        softBreaks
+        neutralizeLoopback
+        enableForms={false}
+        enableCharts={false}
+      />
+    ) : (
+      <MarkdownPlainText text={prompt} />
+    )),
+    [prompt],
+  );
+
   // This is the only interactive control in an otherwise static stream, it
   // appears unprompted mid-turn, and it blocks the agent — so a screen-reader
   // user needs to be told it is their turn. The region has to mount EMPTY and
   // be filled on a later commit: aria-live announces content CHANGES, so a
-  // card that arrives with its text already in place is silent.
+  // card that arrives with its text already in place is silent. The line is
+  // fixed: the prompt can be a long markdown brief, and it is read through
+  // the options group's aria-labelledby instead.
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    setAnnouncement(settled ? '' : `The agent is asking a question: ${q.prompt || ''}`);
-  }, [settled, q.prompt]);
+    setAnnouncement(settled ? '' : 'The agent is asking a question');
+  }, [settled]);
 
   const send = async (payload) => {
     if (settled || busy) return;
@@ -70,7 +95,14 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
-      <div id={promptId} className="mb-2 text-[13px] text-ink">{q.prompt}</div>
+      {/* Only paragraphs reset their outer margins in the markdown sizes;
+          drop them for a leading heading or trailing list in the card. */}
+      <div
+        id={promptId}
+        className="mb-2 [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
+      >
+        {promptBody}
+      </div>
 
       <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
 

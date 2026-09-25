@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
+import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,
 // open-in-browser, kebab, close). forwardRef so it can be the render
@@ -57,6 +58,7 @@ const IconButton = forwardRef(function IconButton(
 
 export function ArtifactViewerHeader({
   title,
+  authorship = null,
   workspace,
   review,
   publication,
@@ -130,6 +132,11 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
+        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+            the viewer's own artifact. A direct flex child of this zone
+            (Tooltip renders the badge as its own trigger), so `shrink-0`
+            keeps it whole while the title truncates. */}
+        <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
       </div>
 
       {/* Middle — the artifact's three working modes. */}
