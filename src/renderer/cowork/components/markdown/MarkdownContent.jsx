@@ -7,6 +7,7 @@
 
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
+import clsx from 'clsx';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -574,7 +575,7 @@ const _SIZES = {
 export function MarkdownPlainText({ text, className = '' }) {
   return (
     <div className={_SIZES.default.root}>
-      <p className={className ? `${_SIZES.default.p} ${className}` : _SIZES.default.p}>{text}</p>
+      <p className={clsx(_SIZES.default.p, className)}>{text}</p>
     </div>
   );
 }

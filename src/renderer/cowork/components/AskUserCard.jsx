@@ -144,10 +144,11 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               // Hover is `enabled:` only and the cursor resets when disabled:
               // `hover:` also matches a disabled button, and globals.css gives
               // every button a pointer, so a settled card still looked live.
-              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:opacity-60 disabled:cursor-default ${
+              // Only unselected options dim: the chosen one is the answer.
+              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:cursor-default ${
                 isSelected
                   ? 'border-accent bg-accent-bg text-ink font-medium'
-                  : 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2'
+                  : 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2 disabled:opacity-60'
               }`}
             >
               <span>{option.label || option.value}</span>
@@ -176,7 +177,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
             type="button"
             disabled={busy}
             onClick={() => send({ skipped: true })}
-            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:cursor-default"
+            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:opacity-60 disabled:cursor-default"
           >
             Skip
           </button>
@@ -205,10 +206,15 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       ) : null}
       {/* The answer is body text, not a status caption: an answer typed in the
           composer is not echoed as a user message, so this is the only place
-          the user sees it. pre-wrap keeps a multi-line answer's line breaks. */}
+          the user sees it. The bold prefix sets it apart from the prompt, which
+          uses the same prose style; pre-wrap keeps a multi-line answer's line
+          breaks. */}
       {answerText ? (
         <div className="mt-2">
-          <MarkdownPlainText text={`Answered: ${answerText}`} className="whitespace-pre-wrap" />
+          <MarkdownPlainText
+            text={<><span className="font-semibold text-ink">Answered:</span> {answerText}</>}
+            className="whitespace-pre-wrap"
+          />
         </div>
       ) : null}
       {expired || gone ? (

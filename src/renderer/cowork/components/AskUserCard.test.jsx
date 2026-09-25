@@ -28,6 +28,12 @@ const step = (over = {}) => ({
   },
 });
 
+// The answer line is split into a bold prefix and the text, so match the
+// paragraph by its full text content.
+const answerLine = (text) => screen.getByText(
+  (_, el) => el?.tagName === 'P' && el.textContent === `Answered: ${text}`,
+);
+
 const renderCard = (over = {}, props = {}) =>
   render(
     <AskUserCard
@@ -118,6 +124,11 @@ describe('AskUserCard', () => {
     // true on screen: the chosen option has to LOOK different from the others.
     expect(screen.getByRole('button', { name: /postgres/i }).className)
       .not.toBe(screen.getByRole('button', { name: /mysql/i }).className);
+    // Only the options that were not picked dim; the chosen one is the answer.
+    expect(screen.getByRole('button', { name: /postgres/i }).className)
+      .not.toContain('disabled:opacity-60');
+    expect(screen.getByRole('button', { name: /mysql/i }).className)
+      .toContain('disabled:opacity-60');
   });
 
   it('names the choice for a card that was answered by clicking an option', () => {
@@ -125,7 +136,9 @@ describe('AskUserCard', () => {
     // an option-answered card showed the prompt, greyed buttons, and nothing
     // about what was chosen.
     renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
-    expect(screen.getByText(/answered: postgres/i)).toBeInTheDocument();
+    // Body text, like a typed answer: this is the Accept / Cancel case of the
+    // artifact brief.
+    expect(answerLine('postgres')).toHaveClass('text-body');
   });
 
   it('shows a free-text answer verbatim', () => {
@@ -137,10 +150,12 @@ describe('AskUserCard', () => {
     // An answer typed in the composer is not echoed as a user message, so it
     // has to read as text, not as a faint status caption.
     renderCard({ answer: { status: 'answered', values: [], text: 'line one\nline two' } });
-    const shown = screen.getByText(
-      (_, el) => el?.tagName === 'P' && el.textContent === 'Answered: line one\nline two',
-    );
+    const shown = answerLine('line one\nline two');
     expect(shown).toHaveClass('text-body', 'whitespace-pre-wrap');
+    // The bold prefix is what tells the answer apart from the prompt, which
+    // uses the same prose style.
+    expect(shown.querySelector('span')).toHaveTextContent('Answered:');
+    expect(shown.querySelector('span')).toHaveClass('font-semibold');
   });
 
   it('shows no hover effect or pointer cursor on the options of a settled card', () => {
@@ -153,6 +168,31 @@ describe('AskUserCard', () => {
       expect(option.className).not.toMatch(/(^|\s)hover:/);
       expect(option.className).toContain('disabled:cursor-default');
     }
+  });
+
+  it('shows no hover effect or pointer cursor on a disabled Send', () => {
+    // Multi-select: Send stays disabled until something is picked.
+    renderCard({ select: 'many' });
+    const send = screen.getByRole('button', { name: /^send$/i });
+    expect(send).toBeDisabled();
+    expect(send.className).not.toMatch(/(^|\s)hover:/);
+    expect(send.className).toContain('disabled:cursor-default');
+  });
+
+  it('makes every control look disabled while a submission is in flight', async () => {
+    let release;
+    submitAnswer.mockImplementationOnce(() => new Promise((r) => { release = r; }));
+    renderCard();
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /mysql/i })); });
+    for (const name of [/postgres/i, /mysql/i]) {
+      const option = screen.getByRole('button', { name });
+      expect(option.className).not.toMatch(/(^|\s)hover:/);
+      expect(option.className).toContain('disabled:cursor-default');
+    }
+    const skip = screen.getByRole('button', { name: /skip/i });
+    expect(skip).toBeDisabled();
+    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
+    await act(async () => { release({ accepted: true }); });
   });
 
   it('says so when the question was skipped', () => {
