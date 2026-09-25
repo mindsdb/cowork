@@ -84,7 +84,10 @@ export function ThinkingStep({
           {isInProgress && <TextDots />}
         </div>
         <div className="ml-2 flex flex-none items-center gap-2 pr-1">
-          {!isInProgress && duration && (
+          {/* No duration on a tool's step line: fullstack generation runs
+              steps in parallel, so "time until the next line" is not how
+              long the step took (ENG-2981). */}
+          {!isInProgress && duration && step.badge !== 'ToolProgress' && (
             <span className="w-10 text-right text-[11px] text-ink-4">{duration}</span>
           )}
           {step.cellStatus === 'timeout' && (
@@ -105,11 +108,6 @@ export function ThinkingStep({
           {step.badge === 'Artifact' && (
             <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
               artifact
-            </span>
-          )}
-          {step.badge === 'AskUser' && (
-            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
-              question
             </span>
           )}
         </div>

@@ -28,4 +28,25 @@ describe('ThinkingBlock', () => {
 
     expect(screen.queryByText('Search the docs')).not.toBeInTheDocument();
   });
+
+  it('auto-expands a live block that holds only ToolProgress rows (ENG-2981)', () => {
+    // The block that appears below an answered question starts with just
+    // the pipeline's step lines; they must be visible without a click.
+    render(
+      <ThinkingBlock
+        isActive
+        startedAt={1000}
+        steps={[{
+          id: 'step-5',
+          label: 'Writing the page (step 3 of 4)',
+          badge: 'ToolProgress',
+          status: 'in_progress',
+          startedAt: 1000,
+          _scratchpadTabId: 'tc_1',
+        }]}
+      />
+    );
+
+    expect(screen.getByText('Writing the page (step 3 of 4)')).toBeVisible();
+  });
 });
