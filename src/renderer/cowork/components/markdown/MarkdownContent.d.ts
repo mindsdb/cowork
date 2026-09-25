@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 export interface MarkdownContentProps {
   text?: string;
@@ -16,4 +16,4 @@ export interface MarkdownContentProps {
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;
-export const MarkdownPlainText: ComponentType<{ text?: string }>;
+export const MarkdownPlainText: ComponentType<{ children?: ReactNode }>;

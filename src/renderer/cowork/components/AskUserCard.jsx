@@ -2,6 +2,11 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { submitAnswer } from '../api';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 
+// Unselected option and Send. Hover is `enabled:` only and the cursor resets
+// when disabled: `hover:` also matches a disabled button, and globals.css
+// gives every button a pointer, so a settled card still looked live.
+const QUIET_BUTTON = 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2 disabled:opacity-60';
+
 /**
  * An inline question card: the agent is blocked until this is answered.
  *
@@ -37,7 +42,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
         enableCharts={false}
       />
     ) : (
-      <MarkdownPlainText text={prompt} />
+      <MarkdownPlainText>{prompt.trim()}</MarkdownPlainText>
     )),
     [prompt],
   );
@@ -84,14 +89,16 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   };
 
   const chosen = new Set(answer?.values || []);
-  // What the user actually picked, in the answer's own order, mapped back to
-  // the labels they clicked. Rendered because a card reloaded in the answered
-  // state otherwise showed the prompt, greyed buttons, and nothing at all about
-  // the choice — the state the props-derived `settled` design exists to serve.
   const chosenLabels = (answer?.values || []).map((v) => {
     const opt = (q.options || []).find((o) => o.value === v);
     return opt?.label || v;
   });
+  // The typed text, or what the user picked in the answer's own order, mapped
+  // back to the labels they clicked. Rendered because a card reloaded in the
+  // answered state otherwise showed the prompt, greyed buttons, and nothing at
+  // all about the choice — the state the props-derived `settled` design exists
+  // to serve.
+  const answerText = answer?.text || chosenLabels.join(', ');
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
@@ -140,10 +147,9 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               // with no background falls through to the browser's native
               // button chrome instead of the app's surface tokens — that's
               // what read as "grey, low-contrast" before this class was added.
-              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:opacity-60 ${
-                isSelected
-                  ? 'border-accent bg-accent-bg text-ink font-medium'
-                  : 'border-line bg-surface text-ink hover:bg-surface-3 hover:border-line-2'
+              // Only unselected options dim: the chosen one is the answer.
+              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:cursor-default ${
+                isSelected ? 'border-accent bg-accent-bg text-ink font-medium' : QUIET_BUTTON
               }`}
             >
               <span>{option.label || option.value}</span>
@@ -160,7 +166,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           type="button"
           disabled={picked.length === 0 || busy}
           onClick={() => send({ values: picked })}
-          className="mt-2 rounded-md border border-line bg-surface text-ink px-2.5 py-1 text-[12px] transition-colors hover:bg-surface-3 hover:border-line-2 disabled:opacity-60"
+          className={`mt-2 rounded-md border px-2.5 py-1 text-[12px] transition-colors disabled:cursor-default ${QUIET_BUTTON}`}
         >
           Send
         </button>
@@ -172,7 +178,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
             type="button"
             disabled={busy}
             onClick={() => send({ skipped: true })}
-            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline"
+            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:opacity-60 disabled:cursor-default"
           >
             Skip
           </button>
@@ -199,11 +205,14 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       {answer?.status === 'timeout' ? (
         <div className="mt-2 text-[11.5px] text-ink-4">No answer — timed out.</div>
       ) : null}
-      {answer?.text ? (
-        <div className="mt-2 text-[11.5px] text-ink-3">Answered: {answer.text}</div>
-      ) : chosenLabels.length > 0 ? (
-        <div className="mt-2 text-[11.5px] text-ink-3">
-          Answered: {chosenLabels.join(', ')}
+      {/* Body text, not a status caption: a composer-typed answer is not echoed
+          as a user message anywhere else. The bold prefix (styled like markdown
+          bold) sets it apart from the prompt, which uses the same prose style. */}
+      {answerText ? (
+        <div className="mt-2">
+          <MarkdownPlainText>
+            <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+          </MarkdownPlainText>
         </div>
       ) : null}
       {expired || gone ? (
