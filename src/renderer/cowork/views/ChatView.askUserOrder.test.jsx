@@ -283,9 +283,9 @@ describe('tool step lines render around ask_user cards in event order (ENG-2981)
     expect(container.textContent.indexOf(hs[0].textContent)).toBeLessThan(
       container.textContent.indexOf('Prompt ask:1'),
     );
-    // Collapsed, the live header shows the current label.
+    // Collapsed, the live header shows the pending question step's label.
     if (hs[0].getAttribute('aria-expanded') === 'true') fireEvent.click(hs[0]);
-    expect(hs[0].textContent).toContain('Prompt ask:1');
+    expect(hs[0].textContent).toContain('Question for you');
   });
 
   it('streaming turn after the answer: the live header moves below the card and shows the current step', () => {
@@ -346,14 +346,12 @@ describe('tool step lines render around ask_user cards in event order (ENG-2981)
     // No inspectable steps precede the question, so the header mounts
     // collapsed and shows the question's label directly.
     expect(hs[0].getAttribute('aria-expanded')).toBe('false');
-    expect(hs[0].textContent).toContain('Prompt ask:1');
+    expect(hs[0].textContent).toContain('Question for you');
 
-    // The header text and the card's own prompt text are identical, so
-    // locate the header's occurrence (first, since it precedes the card in
-    // the DOM) and confirm a second, later occurrence exists for the card.
+    // The header (step label) precedes the card (its own prompt text).
     const text = container.textContent;
-    const headerIdx = text.indexOf('Prompt ask:1');
-    const cardIdx = text.indexOf('Prompt ask:1', headerIdx + 1);
+    const headerIdx = text.indexOf('Question for you');
+    const cardIdx = text.indexOf('Prompt ask:1');
     expect(headerIdx).toBeGreaterThan(-1);
     expect(cardIdx).toBeGreaterThan(headerIdx);
   });
