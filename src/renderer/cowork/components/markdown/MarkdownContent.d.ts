@@ -16,3 +16,4 @@ export interface MarkdownContentProps {
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;
+export const MarkdownPlainText: ComponentType<{ text?: string }>;

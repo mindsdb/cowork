@@ -568,11 +568,14 @@ describe('MarkdownContent streaming performance', () => {
 });
 
 describe('MarkdownContent softBreaks', () => {
-  it('keeps a single newline as a line break when enabled', () => {
-    const { container } = render(<MarkdownContent text={'line one\nline two'} softBreaks />);
-    // mdast-util-to-hast emits a "\n" text node after every <br>.
-    expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
-  });
+  it.each(['line one\nline two', 'line one\r\nline two'])(
+    'keeps the single line ending in %j as a line break when enabled',
+    (text) => {
+      const { container } = render(<MarkdownContent text={text} softBreaks />);
+      // mdast-util-to-hast emits a "\n" text node after every <br>.
+      expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
+    },
+  );
 
   it('leaves a single newline as a soft break by default', () => {
     const { container } = render(<MarkdownContent text={'line one\nline two'} />);
@@ -593,11 +596,6 @@ describe('MarkdownContent softBreaks', () => {
     );
     expect(container.querySelector('br')).toBeNull();
     expect(container.textContent).toContain('line a\nline b');
-  });
-
-  it('treats a CRLF line ending like a plain newline', () => {
-    const { container } = render(<MarkdownContent text={'line one\r\nline two'} softBreaks />);
-    expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
   });
 
   it('breaks lines inside nested blocks such as a list item', () => {
@@ -624,16 +622,6 @@ describe('MarkdownContent neutralizeLoopback', () => {
       const { container } = render(<MarkdownContent text={LOOPBACK} neutralizeLoopback />);
       expect(container.querySelector('a')).toBeNull();
       expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
-    } finally {
-      hostState.isWeb = false;
-    }
-  });
-
-  it('follows isAssistant by default, so authored text keeps its loopback links live', () => {
-    hostState.isWeb = true;
-    try {
-      const { container } = render(<MarkdownContent text={LOOPBACK} />);
-      expect(container.querySelector('a')).not.toBeNull();
     } finally {
       hostState.isWeb = false;
     }

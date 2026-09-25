@@ -24,6 +24,25 @@ import {
 import { host } from '../../../platform/host';
 import { useSkillNames } from '../../lib/skillsStore';
 
+// Shared walk for the text-splitting remark plugins below: every `text` node
+// is replaced by the nodes `splitText` returns (kept as-is when it returns
+// null), every other node is walked. `code` / `inlineCode` keep their source
+// in `value`, not in text children, so they are never split.
+function expandTextNodes(node, splitText) {
+  if (!Array.isArray(node.children)) return;
+  const next = [];
+  for (const child of node.children) {
+    const parts = child.type === 'text' ? splitText(child.value) : null;
+    if (parts) {
+      next.push(...parts);
+    } else {
+      expandTextNodes(child, splitText);
+      next.push(child);
+    }
+  }
+  node.children = next;
+}
+
 // remark plugin: colour "/skill-name" mentions in the brand accent. Splits
 // text nodes on a "/name" token at a word boundary whose name matches a known
 // skill (so a path like /usr/bin or "and/or" is never tinted), wrapping the
@@ -53,51 +72,24 @@ function remarkSkillMentions(names) {
     if (out && last < value.length) out.push({ type: 'text', value: value.slice(last) });
     return out;
   };
-  const walk = (node) => {
-    if (!node || !Array.isArray(node.children)) return;
-    const next = [];
-    for (const child of node.children) {
-      if (child.type === 'text') {
-        const parts = splitText(child.value);
-        if (parts) next.push(...parts);
-        else next.push(child);
-      } else {
-        if (child.type !== 'code' && child.type !== 'inlineCode') walk(child);
-        next.push(child);
-      }
-    }
-    node.children = next;
-  };
-  return (tree) => { if (set.size > 0) walk(tree); };
+  return (tree) => { if (set.size > 0) expandTextNodes(tree, splitText); };
 }
 
 // remark plugin: keep single newlines as line breaks. CommonMark renders a
-// lone "\n" inside a paragraph as a space, which glues a "**Goal**" line to
-// the body under it — the shape the artifact brief in an ask_user prompt
-// uses. Opt-in via `softBreaks`; chat answers keep standard soft breaks.
-// Empty parts are dropped so "**Goal**\nbody" becomes strong, break, text
-// with no empty text node. Code keeps its newlines without a special case:
-// `code` / `inlineCode` hold their source in `value`, not in text children,
-// so the walk never reaches it.
+// lone "\n" inside a paragraph as a space, which glues the ask_user brief's
+// "**Goal**" line to the body under it. Opt-in via `softBreaks`; chat
+// answers keep standard soft breaks.
 function remarkSoftBreaks() {
-  const walk = (node) => {
-    if (!node || !Array.isArray(node.children)) return;
-    const next = [];
-    for (const child of node.children) {
-      const parts = child.type === 'text' ? child.value.split(/\r?\n/) : null;
-      if (parts && parts.length > 1) {
-        parts.forEach((part, i) => {
-          if (i > 0) next.push({ type: 'break' });
-          if (part) next.push({ type: 'text', value: part });
-        });
-      } else {
-        walk(child);
-        next.push(child);
-      }
-    }
-    node.children = next;
+  const splitText = (value) => {
+    if (!value.includes('\n')) return null;
+    const out = [];
+    value.split(/\r?\n/).forEach((part, i) => {
+      if (i > 0) out.push({ type: 'break' });
+      if (part) out.push({ type: 'text', value: part });
+    });
+    return out;
   };
-  return (tree) => walk(tree);
+  return (tree) => expandTextNodes(tree, splitText);
 }
 
 // Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
@@ -576,6 +568,16 @@ const _SIZES = {
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
   },
 };
+
+// Text shown verbatim (no markdown parsing) with the same classes as a
+// rendered paragraph, for callers that must not reinterpret plain text.
+export function MarkdownPlainText({ text }) {
+  return (
+    <div className={_SIZES.default.root}>
+      <p className={_SIZES.default.p}>{text}</p>
+    </div>
+  );
+}
 
 export function MarkdownContent({
   text,

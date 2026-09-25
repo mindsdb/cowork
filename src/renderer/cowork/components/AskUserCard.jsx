@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { submitAnswer } from '../api';
-import { MarkdownContent } from './markdown/MarkdownContent';
+import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -20,18 +20,12 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   const settled = Boolean(answer) || expired || gone;
 
-  // Only a multi-line prompt is markdown. The ask_user tool asks the model
-  // for one short plain-text line, and parsing that as markdown loses text
-  // ("Use <div>?" drops the tag, "__init__.py" turns bold) — so a single
-  // line renders verbatim. The artifact PRD brief is multi-line markdown
-  // (bold section lines, lists, single-newline line breaks): softBreaks
-  // keeps those newlines, forms and charts are off so a fence stays a plain
-  // code block, and loopback links are neutralised on web as in chat
-  // answers. Both shapes sit in `.markdown-content`, so inside the chat the
-  // `.answer-turn .markdown-content` rule gives them the answer prose style,
-  // and default (not dense) sizes match the 14.5px chat text around the
-  // card. Memoised: ChatView re-renders on every streamed delta, and each
-  // card would otherwise re-parse its brief every time.
+  // Only a multi-line prompt is markdown: the ask_user tool asks for one
+  // plain-text line, and markdown would lose text in it ("<div>" vanishes,
+  // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
+  // single-newline lines; forms and charts stay off so a fence is plain code.
+  // Memoised: ChatView re-renders on every streamed delta, and each card
+  // would otherwise re-parse its brief every time.
   const prompt = q.prompt || '';
   const promptBody = useMemo(
     () => (prompt.trim().includes('\n') ? (
@@ -43,9 +37,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
         enableCharts={false}
       />
     ) : (
-      <div className="markdown-content">
-        <p className="font-body text-body text-ink-2 my-0">{prompt}</p>
-      </div>
+      <MarkdownPlainText text={prompt} />
     )),
     [prompt],
   );
@@ -103,10 +95,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
-      {/* The chat's markdown sizes give lists and headings outer margins
-          (only paragraphs reset theirs); inside the padded card those would
-          add a gap above a leading heading or below a trailing list, so the
-          first and last blocks drop them. */}
+      {/* Only paragraphs reset their outer margins in the markdown sizes;
+          drop them for a leading heading or trailing list in the card. */}
       <div
         id={promptId}
         className="mb-2 [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
