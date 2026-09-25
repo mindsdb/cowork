@@ -571,10 +571,10 @@ const _SIZES = {
 
 // Text shown verbatim (no markdown parsing) with the same classes as a
 // rendered paragraph, for callers that must not reinterpret plain text.
-export function MarkdownPlainText({ text }) {
+export function MarkdownPlainText({ text, className = '' }) {
   return (
     <div className={_SIZES.default.root}>
-      <p className={_SIZES.default.p}>{text}</p>
+      <p className={className ? `${_SIZES.default.p} ${className}` : _SIZES.default.p}>{text}</p>
     </div>
   );
 }

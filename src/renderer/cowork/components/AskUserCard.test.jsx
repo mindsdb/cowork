@@ -133,6 +133,28 @@ describe('AskUserCard', () => {
     expect(screen.getByText(/clickhouse/)).toBeInTheDocument();
   });
 
+  it('shows the answer as body text and keeps its line breaks', () => {
+    // An answer typed in the composer is not echoed as a user message, so it
+    // has to read as text, not as a faint status caption.
+    renderCard({ answer: { status: 'answered', values: [], text: 'line one\nline two' } });
+    const shown = screen.getByText(
+      (_, el) => el?.tagName === 'P' && el.textContent === 'Answered: line one\nline two',
+    );
+    expect(shown).toHaveClass('text-body', 'whitespace-pre-wrap');
+  });
+
+  it('shows no hover effect or pointer cursor on the options of a settled card', () => {
+    // `hover:` also matches a disabled button, so the options of an answered
+    // card used to light up under the mouse.
+    renderCard({ answer: { status: 'answered', values: [], text: 'something else' } });
+    for (const name of [/postgres/i, /mysql/i]) {
+      const option = screen.getByRole('button', { name });
+      expect(option).toBeDisabled();
+      expect(option.className).not.toMatch(/(^|\s)hover:/);
+      expect(option.className).toContain('disabled:cursor-default');
+    }
+  });
+
   it('says so when the question was skipped', () => {
     renderCard({ answer: { status: 'cancelled', values: [], text: '' } });
     expect(screen.getByText(/skipped/i)).toBeInTheDocument();

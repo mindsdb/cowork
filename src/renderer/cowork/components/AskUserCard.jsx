@@ -92,6 +92,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
     const opt = (q.options || []).find((o) => o.value === v);
     return opt?.label || v;
   });
+  const answerText = answer?.text || chosenLabels.join(', ');
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
@@ -140,10 +141,13 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               // with no background falls through to the browser's native
               // button chrome instead of the app's surface tokens — that's
               // what read as "grey, low-contrast" before this class was added.
-              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:opacity-60 ${
+              // Hover is `enabled:` only and the cursor resets when disabled:
+              // `hover:` also matches a disabled button, and globals.css gives
+              // every button a pointer, so a settled card still looked live.
+              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:opacity-60 disabled:cursor-default ${
                 isSelected
                   ? 'border-accent bg-accent-bg text-ink font-medium'
-                  : 'border-line bg-surface text-ink hover:bg-surface-3 hover:border-line-2'
+                  : 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2'
               }`}
             >
               <span>{option.label || option.value}</span>
@@ -160,7 +164,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           type="button"
           disabled={picked.length === 0 || busy}
           onClick={() => send({ values: picked })}
-          className="mt-2 rounded-md border border-line bg-surface text-ink px-2.5 py-1 text-[12px] transition-colors hover:bg-surface-3 hover:border-line-2 disabled:opacity-60"
+          className="mt-2 rounded-md border border-line bg-surface text-ink px-2.5 py-1 text-[12px] transition-colors enabled:hover:bg-surface-3 enabled:hover:border-line-2 disabled:opacity-60 disabled:cursor-default"
         >
           Send
         </button>
@@ -172,7 +176,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
             type="button"
             disabled={busy}
             onClick={() => send({ skipped: true })}
-            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline"
+            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:cursor-default"
           >
             Skip
           </button>
@@ -199,11 +203,12 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       {answer?.status === 'timeout' ? (
         <div className="mt-2 text-[11.5px] text-ink-4">No answer — timed out.</div>
       ) : null}
-      {answer?.text ? (
-        <div className="mt-2 text-[11.5px] text-ink-3">Answered: {answer.text}</div>
-      ) : chosenLabels.length > 0 ? (
-        <div className="mt-2 text-[11.5px] text-ink-3">
-          Answered: {chosenLabels.join(', ')}
+      {/* The answer is body text, not a status caption: an answer typed in the
+          composer is not echoed as a user message, so this is the only place
+          the user sees it. pre-wrap keeps a multi-line answer's line breaks. */}
+      {answerText ? (
+        <div className="mt-2">
+          <MarkdownPlainText text={`Answered: ${answerText}`} className="whitespace-pre-wrap" />
         </div>
       ) : null}
       {expired || gone ? (
