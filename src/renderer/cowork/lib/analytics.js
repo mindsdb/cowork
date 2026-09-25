@@ -99,7 +99,7 @@ const EVENTS = {
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent (ENG-1533, ENG-1782). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
@@ -587,7 +587,7 @@ export function trackAgentSessionStarted() {
 
 // The key upgrade-intent signal: a turn was blocked on credits. Fired from the
 // stream adapter on receipt of the failure (ENG-385). `reason` is the wire code
-// that blocked the turn — a drained wallet (`token_limit`), a spent free monthly
+// that blocked the turn — a drained wallet (`token_limit`), a spent free
 // allowance (`included_allowance_exhausted`, ENG-1537) or the legacy per-model
 // credit denial (`model_access_denied`, ENG-1533), whose card used to be shown
 // with no impression at all. One event with a `reason` rather than three events,
@@ -631,15 +631,25 @@ export function trackTurnFailed(conversationId, event) {
 // someone remembered. `trigger` names the condition that sent them, because the
 // causes have different fixes and probably different conversion rates:
 //   token_limit               out of credits mid-turn; pairs with token_cap_hit
-//   included_allowance_exhausted  the month's free allowance is spent, not the
+//   included_allowance_exhausted  the free allowance is spent, not the
 //                             wallet; also pairs with token_cap_hit (ENG-1537)
+//   free_serving_paused       free MindsHub Air is paused for everyone by the
+//                             daily spend fuse; NOT paired with token_cap_hit,
+//                             because it is not this user's cap
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
 //   connect_provider          "Start for free" on the connect-a-provider card
 //                             (chat and home render the same card)
 //   no_credits_notice         Settings, after a minds-cloud provider test came
-//                             back 402/429/credit/quota
+//                             back wallet_empty, or, from a sidecar that sends
+//                             no reasons map at all, with any 402/429/credit/
+//                             quota in the detail. A sidecar that sends the map
+//                             and names no reason never records this.
+//   allowance_used_notice     Settings, after a minds-cloud provider test came
+//                             back included_allowance_exhausted
+//   free_air_paused_notice    Settings, after a minds-cloud provider test hit
+//                             the daily free-Air spend fuse; not this user's cap
 //   locked_model_hint         Settings, the "<model> needs credits" hint under a
 //                             model the wallet cannot pay for
 //   nav                       the Billing & Usage item in the user menu

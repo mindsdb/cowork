@@ -5,8 +5,9 @@
 // composer knows about the current pick. Output is copy + action keys; the
 // renderer decides how to paint them and where the actions open.
 //
-// Two resources, always named apart: the FREE monthly MindsHub Air tokens and
-// the PAID balance. "Out of tokens" on its own is never one of the outputs.
+// Two resources, always named apart: the FREE MindsHub Air allowance, which
+// refills on its own, and the PAID balance. "Out of tokens" on its own is never
+// one of the outputs.
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
@@ -140,6 +141,68 @@ function freeState(free) {
     remaining,
     fractionLeft,
   };
+}
+
+/* The console's no-grant sentence (mindshub_frontend grant-usage-card.jsx
+   NO_GRANT_SENTENCE), word for word, so both apps describe the same account
+   the same way. It names no cause and no size. */
+export const NO_FREE_GRANT_SENTENCE =
+  'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.';
+
+/**
+ * @typedef {'has_room' | 'spent' | 'no_grant' | 'no_figure'} FreeAllowanceStatus
+ * @typedef {{ status: FreeAllowanceStatus, resetsAt: string | null }} FreeAllowanceState
+ */
+
+/** Where the free MindsHub Air allowance stands, for a surface outside the
+ *  composer bar that has to say so (ChatView's stopped-task cards, the
+ *  Settings probe notice).
+ *
+ *  `has_room` and `spent` only ever describe a capped grant from a reachable
+ *  read. `no_grant` is the sidecar's explicit no-grant value, a limit of 0,
+ *  which cowork-server sends only when auth reports `free_grant_eligible:
+ *  false`. It carries no `resetsAt`: nothing refills, so no card may name a
+ *  refill time, even if an older sidecar still relays one. Everything else is
+ *  `no_figure`: signed out or unreachable, a missing figure, or auth's uncapped
+ *  sentinel, none of which gives a card a number to speak from. A missing read
+ *  is unknown, never `no_grant`. `resetsAt` is the refill instant auth
+ *  reported, carried whenever the read is reachable and a grant exists,
+ *  because a caller that already knows the allowance is spent (the gate said
+ *  so) still needs the time.
+ *
+ *  @returns {FreeAllowanceState} */
+export function freeAllowanceState(usage) {
+  if (!usage?.reachable) return { status: 'no_figure', resetsAt: null };
+  if (usage.freeTokens?.limit === 0) return { status: 'no_grant', resetsAt: null };
+  const resetsAt = usage.freeTokens?.resetsAt || null;
+  const f = freeState(usage.freeTokens);
+  if (f.fractionLeft === null) return { status: 'no_figure', resetsAt };
+  return { status: f.available ? 'has_room' : 'spent', resetsAt };
+}
+
+/** What a stop on `included_allowance_exhausted` says, for the stopped-task
+ *  card and the Settings probe notice alike.
+ *
+ *  An org with no free grant is told that, in the console's words, and never a
+ *  refill time. Otherwise the refill time is the gate's (`resetAt`), falling
+ *  back to the hub usage read's, and the clause is dropped when neither is a
+ *  usable future instant. */
+export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
+  const free = freeAllowanceState(usage);
+  if (free.status === 'no_grant') {
+    return `${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`;
+  }
+  const time = formatResetTime(resetAt || free.resetsAt);
+  return `Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${time ? ` at ${time}` : ''}.`;
+}
+
+/** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
+ *  on a turn, `free_air_daily_spend_fuse_exceeded` on the Settings probe). The
+ *  fuse lifts at the next UTC midnight, which the gate sends as its reset
+ *  instant; without a usable one the sentence names the event instead. */
+export function freeServingPausedCopy(resetAt) {
+  const until = formatResetTime(resetAt) || 'the daily budget resets';
+  return `Free MindsHub Air is paused for everyone until ${until}. This doesn't use your allowance. Add funds to keep working now.`;
 }
 
 /** Whether a bar descriptor is something to WARN about, as opposed to the

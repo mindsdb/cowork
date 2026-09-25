@@ -484,8 +484,8 @@ if you need one for that.
 
 **Nothing under `/api/v1/hub/*` calls Django auth directly.** The renderer calls
 its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/`
-carries the free monthly grant, the balance, the period's credit spend and auto
-top up state, and backs Settings → Usage. `/api/v1/hub/workspaces/` answers the
+carries the free MindsHub Air allowance, the balance, the period's credit spend
+and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the
 MindsHub workspace listing and backs the workspace selector described in the
 next section.
 
@@ -712,15 +712,15 @@ edit, and disable go unavailable for everyone, creators and organization admins
 included. Deploy cowork-server#417, confirm hosted responses carry
 `capabilities`, and only then deploy the renderer.
 
-### A model the wallet can't pay for is not selectable
+### A model that can't run right now is not selectable
 
-MindsHub's `/v1/models` marks each model with whether the org can pay for it
-right now: a paid model on a drained wallet, or any model once a free org has
-spent its monthly included allowance, arrives as `enabled: false`. That map
-reaches the renderer as `settings.modelEnabled`, and `isModelLocked`
-(`lib/modelCatalog.js`) is the single definition both pickers read, so the
-Settings rows and the composer's menu can never disagree about what a user may
-choose.
+MindsHub's `/v1/models` marks each model with whether it can run for the org
+right now: a paid model on a drained wallet, any model once a free org has spent
+its free allowance, or a model an org admin's model rule blocks, arrives as
+`enabled: false`. That map reaches the renderer as `settings.modelEnabled`, and
+`isModelLocked` (`lib/modelCatalog.js`) is the single definition both pickers
+read, so the Settings rows and the composer's menu can never disagree about what
+a user may choose.
 
 A locked model renders **visible, tagged "Needs credits", disabled, and
 carrying an "Add credits" button**. It stays on screen so the model is still
@@ -735,6 +735,24 @@ only when the **current** model is locked — the stranded-pin case, where the
 wallet drained under a model already saved. It says nothing about a row the user
 is merely looking at, which is why the button on the row is the general answer
 and the hint is the specific one.
+
+An admin's model rule is the one reason money cannot fix, so it is told apart.
+MindsHub sends each disabled row's `disabled_reason`, and cowork-server relays it
+from the MindsHub listing only (never a custom endpoint) as
+`modelDisabledReasons`. A row whose reason is `model_restricted` renders
+**disabled and tagged "Restricted"**, with the tooltip "An admin in your
+organization restricted this model.", and is never `locked`, so it carries no
+"Add credits" button. `unavailableModelFields` in `lib/modelCatalog.js` builds
+the row fields for both pickers, so they cannot drift. The Settings hint under a
+restricted current model names the admin and has no billing link, and Code
+Mode's new-task check says "An admin restricted this model. Choose another
+model." A server too old to send reasons leaves every disabled row on "Needs
+credits", exactly as before. cowork-server relays any non-empty reason string,
+so `knownModelDisabledReasons` keeps only `model_restricted`, `wallet_empty` and
+`included_allowance_exhausted`: a row with any other reason reads as having
+none, and shows "Needs credits". `mergeRecommendedModels` replaces the reason map
+whenever it replaces `modelEnabled` and keeps it whenever it keeps that map, so
+a reason never outlives the enabled map it described.
 
 Why it is not merely tagged: `cowork-server` resolves a stored model it knows
 the gateway will deny into an affordable one instead, so allowing the pick meant
@@ -753,8 +771,8 @@ as available, so a degraded response can never empty a picker.
 The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
 and again whenever the window regains focus, so a top-up made in a browser shows
 up without a relaunch. `useHubUsage` holds the answer. One read carries the free
-monthly token grant, the paid balance, auto top up state and credit spend for the
-period. `reachable: false` is the resting state, so every surface renders exactly
+MindsHub Air allowance, the paid balance, auto top up state and credit spend for
+the period. `reachable: false` is the resting state, so every surface renders exactly
 as it did before this existed until the sidecar says otherwise. A sidecar too old
 to serve the route answers 404, which reads as unreachable and paints nothing.
 
@@ -836,6 +854,55 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `deriveComposerWarning`, so the copy on the page is the copy a user sees. Add
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
+
+A task that stops on a billing limit gets a card in its timeline, and the card
+names the limit that fired. The drained-wallet card (`token_limit`) reads the
+same usage view through `freeAllowanceState` in `lib/usageWarnings.js`. With free
+allowance left, it says the priced model is what stopped and offers Switch to
+MindsHub Air. With the allowance spent, it names both resources and the refill
+time. With nothing to go on (usage unreachable, no grant, an uncapped grant, or
+no usable time), it keeps the fixed balance copy. The spent-allowance card
+(`included_allowance_exhausted`) takes its refill time from the usage view when
+the failure carries none, which is every hosted web turn. For an org with no free
+grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when
+auth reports `free_grant_eligible: false`), `freeAllowanceState` answers
+`no_grant` and the card shows the console's no-grant sentence
+(`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent.
+`free_serving_paused` has its own card: auth's daily spend fuse has paused free
+MindsHub Air for every org that cannot pay, which is not the user's allowance, so
+the card says so and names when it lifts. `model_restricted` is not a billing
+stop but shares the page: an org admin's model rule refused the model, so the
+card names the model and an admin, and offers Open Settings only.
+
+To see those cards, open `/billing-stop-fixture.html` under the same dev server.
+It renders the drained-wallet card in each usage state, the spent-allowance card
+with and without the gate's refill time and for an org with no grant, the paused
+card with and without a time, the restricted-model card with and without a model
+name, and the connect-a-provider card, all from the components ChatView renders.
+`?theme=dark` works the same way, and each case has a fixed `id` for cropping.
+
+Settings > Agent tests each configured provider through the sidecar's
+`/settings/test-providers`. For a failed MindsHub probe the sidecar adds
+`providerStatusReasons`, the gateway's own reason per provider type
+(`{ code, resetAt }`), and only for a response from the configured MindsHub host.
+`mindsProbeNotice` in `lib/providerStatus.js` turns it into the notice under each
+role row: no credits (`wallet_empty`), the spent-allowance copy shared with the
+card (`included_allowance_exhausted`), the paused copy shared with the card
+(the daily fuse), a muted slow-down line (`rate_limited`), or a muted
+billing-outage line (`policy_unavailable`). The LLM Providers row names the same
+stop instead of calling every 429 "Rate limited". A sidecar that sends the map
+but names no reason for a failed probe, such as an upstream vendor's 429 that
+the gateway relays without its own reason, gets the generic "failed its last
+test" warning and no billing notice. Only a sidecar too old to send the map at
+all keeps the old check, where any 402 or 429 in the detail reads as no credits.
+The map lives in the settings blob beside `providerStatusDetails`: it is left
+out of the Save button's dirty check, never written back, cleared for a provider
+whose key is edited, and replaced per provider type on every test (a tested type
+the sidecar named no reason for is held as `null`, which is how the notice tells
+it from a type an old sidecar never classified). To see the notices, the Providers row
+copy, the restricted hint and an open picker with a restricted row, open
+`/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
+per-case `id`s work the same way.
 
 ---
 

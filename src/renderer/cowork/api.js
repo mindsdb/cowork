@@ -1431,9 +1431,10 @@ export async function fetchSettings() {
       } catch { /* leave defaults */ }
       /* Overlay the live model list + effort capability. modelEfforts is the
          single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. modelEnabled marks the models MindsHub's
-         wallet can't currently pay for so the picker greys them with an "add
-         credits" prompt (absent id ⇒ available), and modelLabels carries the
+         iff it has an entry here. modelEnabled marks the models MindsHub says
+         can't run right now so the picker greys them (absent id ⇒ available),
+         modelDisabledReasons says why (an admin's model rule reads
+         "Restricted", anything else an "add credits" prompt), and modelLabels carries the
          policy's display name per id (absent ⇒ id-derived at the render site).
          mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
          we-have rule; SettingsView's on-open refresh goes through the same
@@ -1566,12 +1567,27 @@ export async function validateSettings() {
   return req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
 }
 
+/**
+ * @typedef {{
+ *   providerStatus: Record<string, string>,
+ *   providerStatusDetails: Record<string, string>,
+ *   providerStatusReasons?: Record<string, import('./lib/providerStatus.js').ProbeDenialReason>,
+ *   error?: string,
+ * }} ProviderTestResult
+ *   `providerStatusReasons` is absent from a sidecar too old to classify the
+ *   probe, which keeps the Settings notice on its legacy detail check. A
+ *   sidecar that sends it classified every type in `providerStatus`, so a
+ *   reported type with no entry was not refused by MindsHub, and the Settings
+ *   notice shows no billing copy for it.
+ */
+
+/** @returns {Promise<ProviderTestResult>} */
 export async function testProviders(providers) {
   const body = Array.isArray(providers) ? { providers } : {};
   try {
     return await req('/settings/test-providers', { method: 'POST', body: JSON.stringify(body) });
   } catch (err) {
-    return { providerStatus: {}, providerStatusDetails: {}, error: err?.message || 'Test failed' };
+    return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
 }
 

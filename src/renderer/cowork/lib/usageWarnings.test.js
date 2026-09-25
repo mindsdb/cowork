@@ -10,6 +10,10 @@ import {
   formatUsd,
   formatResetDate,
   formatResetTime,
+  freeAllowanceState,
+  allowanceStopCopy,
+  freeServingPausedCopy,
+  NO_FREE_GRANT_SENTENCE,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
 } from './usageWarnings';
@@ -484,6 +488,131 @@ describe('usageTransitions', () => {
     expect(usageTransitions(usage(), usage())).toEqual([]);
     expect(usageTransitions(null, usage())).toEqual([]);
     expect(usageTransitions(usage(), { reachable: false })).toEqual([]);
+  });
+});
+
+describe('freeAllowanceState', () => {
+  it('says a capped grant with tokens left has room, with its refill time', () => {
+    expect(freeAllowanceState(usage())).toEqual({ status: 'has_room', resetsAt: RESET });
+    // A sliver left is still room: Air runs on it.
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(1), remaining: 0.5 } })).status).toBe('has_room');
+  });
+
+  it('says a capped grant with nothing left is spent, and still carries the refill time', () => {
+    expect(freeAllowanceState(usage({ freeTokens: at(0) }))).toEqual({ status: 'spent', resetsAt: RESET });
+  });
+
+  it('reads a negative remaining count as spent rather than trusting it', () => {
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(0), remaining: -3 } })).status).toBe('spent');
+  });
+
+  it('gives no figure for an uncapped grant, which has nothing to count down', () => {
+    // The uncapped sentinel is -1. Reading it as "room" would put a claim on a
+    // card that no number backs.
+    expect(freeAllowanceState(usage({ freeTokens: { limit: -1, used: 30, resetsAt: RESET } })))
+      .toEqual({ status: 'no_figure', resetsAt: RESET });
+  });
+
+  it('gives no figure when there is no grant to draw from', () => {
+    expect(freeAllowanceState(usage({ freeTokens: null })).status).toBe('no_figure');
+    /* Retargeted from 'no_figure': a limit of 0 is the sidecar's explicit
+       no-grant value, which now has its own status so a card can say "no
+       grant" rather than falling back. It is still never room or spent. */
+    expect(freeAllowanceState(usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } })).status).toBe('no_grant');
+  });
+
+  it('gives no figure and no time when signed out or unreachable', () => {
+    expect(freeAllowanceState(null)).toEqual({ status: 'no_figure', resetsAt: null });
+    expect(freeAllowanceState({ reachable: false })).toEqual({ status: 'no_figure', resetsAt: null });
+    // A dark read never lends its stale refill time to a card.
+    expect(freeAllowanceState({ reachable: false, freeTokens: at(0) })).toEqual({ status: 'no_figure', resetsAt: null });
+  });
+
+  it('carries a missing refill time as null, never as a string to format', () => {
+    expect(freeAllowanceState(usage({ freeTokens: { ...at(0), resetsAt: undefined } })))
+      .toEqual({ status: 'spent', resetsAt: null });
+  });
+
+  describe('an org with no free grant', () => {
+    it('reads limit 0 as no grant, and names no refill time even when a sidecar relays one', () => {
+      /* An older sidecar still passes auth's next_refresh_at through for a
+         no-grant org. Nothing refills there, so the time must not reach a card. */
+      expect(freeAllowanceState(usage({ freeTokens: { limit: 0, used: 0, remaining: 0, resetsAt: RESET } })))
+        .toEqual({ status: 'no_grant', resetsAt: null });
+    });
+
+    it.each([
+      ['a spent capped grant', { ...at(0) }],
+      ['a capped grant with room', { ...at(40) }],
+      ['the uncapped sentinel', { limit: -1, used: 3, resetsAt: RESET }],
+      ['a figure with no limit at all', {}],
+    ])('never reads %s as no grant', (_label, freeTokens) => {
+      expect(freeAllowanceState(usage({ freeTokens })).status).not.toBe('no_grant');
+    });
+
+    it('never reads a missing read as no grant: unknown is not "no grant"', () => {
+      expect(freeAllowanceState(null).status).toBe('no_figure');
+      expect(freeAllowanceState({ reachable: false, freeTokens: { limit: 0 } }).status).toBe('no_figure');
+      expect(freeAllowanceState(usage({ freeTokens: null })).status).toBe('no_figure');
+    });
+  });
+});
+
+describe('NO_FREE_GRANT_SENTENCE', () => {
+  it("is the console's NO_GRANT_SENTENCE word for word", () => {
+    // mindshub_frontend src/features/billing/components/grant-usage-card.jsx.
+    expect(NO_FREE_GRANT_SENTENCE).toBe(
+      'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.',
+    );
+  });
+});
+
+describe('allowanceStopCopy', () => {
+  const SOON = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+  const LATER = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
+
+  it('tells a no-grant org so, with no refill clause, even when the gate sent a time', () => {
+    const copy = allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }) });
+    expect(copy).toBe(`${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`);
+    expect(copy).not.toMatch(/refill/i);
+    expect(copy).not.toContain(formatResetTime(SOON));
+  });
+
+  it("names the gate's refill time for an org with a grant", () => {
+    expect(allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
+      .toBe(`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+  });
+
+  it('falls back to the hub usage refill time when the gate sent none', () => {
+    expect(allowanceStopCopy({ resetAt: null, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
+      .toMatch(new RegExp(`refill at ${formatResetTime(LATER)}\.$`));
+  });
+
+  it("keeps the gate's time when hub usage is unknown, and drops the clause when there is no time at all", () => {
+    expect(allowanceStopCopy({ resetAt: SOON, usage: null })).toMatch(new RegExp(`refill at ${formatResetTime(SOON)}\.$`));
+    expect(allowanceStopCopy({})).toBe('Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill.');
+  });
+
+  it('never states the size or the length of the allowance, and uses no em-dash', () => {
+    for (const copy of [
+      allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0) } }) }),
+      allowanceStopCopy({ usage: usage({ freeTokens: { limit: 0 } }) }),
+    ]) {
+      expect(copy).not.toMatch(/month|daily|weekly|hour|\d+ ?(k|m|tokens)/i);
+      expect(copy).not.toContain('\u2014');
+    }
+  });
+});
+
+describe('freeServingPausedCopy', () => {
+  it('names when the fuse lifts, or the event when there is no usable time', () => {
+    const lifts = new Date(Date.now() + 6 * 3600 * 1000).toISOString();
+    expect(freeServingPausedCopy(lifts)).toBe(
+      `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
+    );
+    expect(freeServingPausedCopy(null)).toBe(
+      "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+    );
   });
 });
 

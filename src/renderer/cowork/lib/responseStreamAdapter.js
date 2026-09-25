@@ -284,7 +284,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // impression and they are simply different ways of being out of credits:
     //   token_limit                   a drained wallet mid-turn (the original
     //                                 ENG-385 signal)
-    //   included_allowance_exhausted  the free monthly allowance is spent, not
+    //   included_allowance_exhausted  the free allowance is spent, not
     //                                 the wallet (ENG-1537). Splitting it out
     //                                 into its own code would otherwise have
     //                                 silently dropped it from this metric —
@@ -297,10 +297,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     //                                 so it was a paywall impression with no
     //                                 impression event at all.
     //
-    // Two codes are deliberately NOT counted. `model_disabled` — an admin
+    // Four codes are deliberately NOT counted. `model_disabled` — an admin
     // turned the model off, and credits do not unlock it, so it is not upgrade
     // intent. `rate_limited` — a velocity limit was never upgrade intent, and
     // counting it would inflate the signal with users who already pay.
+    // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
+    // `model_restricted`: an org admin's model rule, which credits do not lift.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
