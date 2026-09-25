@@ -71,6 +71,33 @@ function remarkSkillMentions(names) {
   return (tree) => { if (set.size > 0) walk(tree); };
 }
 
+// remark plugin: keep single newlines as line breaks. CommonMark renders a
+// lone "\n" inside a paragraph as a space, which glues a "**Goal**" line to
+// the body under it — the shape the artifact brief in an ask_user prompt
+// uses. Opt-in via `softBreaks`; chat answers keep standard soft breaks.
+// Empty parts are dropped so "**Goal**\nbody" becomes strong, break, text
+// with no empty text node. Code keeps its newlines: `code` / `inlineCode`
+// are never descended into (same rule as remarkSkillMentions).
+function remarkSoftBreaks() {
+  const walk = (node) => {
+    if (!node || !Array.isArray(node.children)) return;
+    const next = [];
+    for (const child of node.children) {
+      if (child.type === 'text' && /\r?\n/.test(child.value)) {
+        child.value.split(/\r?\n/).forEach((part, i) => {
+          if (i > 0) next.push({ type: 'break' });
+          if (part) next.push({ type: 'text', value: part });
+        });
+      } else {
+        if (child.type !== 'code' && child.type !== 'inlineCode') walk(child);
+        next.push(child);
+      }
+    }
+    node.children = next;
+  };
+  return (tree) => walk(tree);
+}
+
 // Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
 // do NOT include javascript:, file:, data:, or anything that could
 // navigate the Electron renderer to a privileged location. mailto: is
@@ -571,6 +598,9 @@ export function MarkdownContent({
   // artifact previews) defaults to off so author-intentional inline
   // code runs are preserved verbatim.
   isAssistant = false,
+  // Render single newlines as line breaks (remarkSoftBreaks). Off by
+  // default; the ask_user card turns it on for agent-authored prompts.
+  softBreaks = false,
 }) {
   const rootRef = useRef(null);
   // Only run the form-fence normalization pass when forms are enabled.
@@ -615,8 +645,10 @@ export function MarkdownContent({
       // stay neutralised for every consumer: only the `web` option gates the
       // loopback branch inside isArtifactLocalPath.
       [remarkArtifactLocalLinks, { web: host.isWeb && isAssistant }],
+      // Last, so every transform above sees the unchanged tree.
+      ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, isAssistant],
+    [skillNames, isAssistant, softBreaks],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]

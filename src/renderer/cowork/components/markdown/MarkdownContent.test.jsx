@@ -566,3 +566,32 @@ describe('MarkdownContent streaming performance', () => {
     expect(container).toHaveTextContent('The agent is still working on this change.');
   });
 });
+
+describe('MarkdownContent softBreaks', () => {
+  it('keeps a single newline as a line break when enabled', () => {
+    const { container } = render(<MarkdownContent text={'line one\nline two'} softBreaks />);
+    // mdast-util-to-hast emits a "\n" text node after every <br>.
+    expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
+  });
+
+  it('leaves a single newline as a soft break by default', () => {
+    const { container } = render(<MarkdownContent text={'line one\nline two'} />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('p').textContent).toBe('line one\nline two');
+  });
+
+  it('puts a bold heading and its body on separate lines', () => {
+    const { container } = render(<MarkdownContent text={'**Goal**\nbody'} softBreaks />);
+    const p = container.querySelector('p');
+    expect([...p.childNodes].map((n) => n.nodeName)).toEqual(['STRONG', 'BR', '#text', '#text']);
+    expect([...p.childNodes].map((n) => n.textContent)).toEqual(['Goal', '', '\n', 'body']);
+  });
+
+  it('does not touch newlines inside a fenced code block', () => {
+    const { container } = render(
+      <MarkdownContent text={'```\nline a\nline b\n```'} softBreaks />,
+    );
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.textContent).toContain('line a\nline b');
+  });
+});
