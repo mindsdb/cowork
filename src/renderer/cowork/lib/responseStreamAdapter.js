@@ -106,18 +106,11 @@ function patchScratchpadStepById(steps, toolUseId, patch) {
  *  calls and their ToolProgress rows — so future progress/artifact step
  *  types can define their own terminal behavior. */
 function closeOpenInspectableSteps(steps, completedAt) {
-  let changed = false;
-  const next = steps.map((step) => {
-    if (
-      step?.status !== 'in_progress'
-      || (!step._isScratchpad && !step._isToolCall && step.badge !== 'ToolProgress')
-    ) {
-      return step;
-    }
-    changed = true;
-    return { ...step, status: 'completed', completedAt };
-  });
-  return changed ? next : steps;
+  return closeOpenSteps(
+    steps,
+    completedAt,
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+  );
 }
 
 /** Close open ToolProgress rows — only the given tool's when `toolUseId`
@@ -126,10 +119,21 @@ function closeOpenInspectableSteps(steps, completedAt) {
  *  announces the next line, asks the user, or finishes. `patch` adds
  *  fields to the closed row (e.g. the tool's failure verdict). */
 function closeOpenToolProgress(steps, completedAt, toolUseId = null, patch = null) {
+  return closeOpenSteps(
+    steps,
+    completedAt,
+    (step) => step.badge === 'ToolProgress' && (!toolUseId || step._scratchpadTabId === toolUseId),
+    patch,
+  );
+}
+
+/** Mark every `in_progress` step that matches `predicate` completed at
+ *  `completedAt`, merging `patch` into it. Returns the original array when
+ *  nothing matched, so callers keep reference equality for no-ops. */
+function closeOpenSteps(steps, completedAt, predicate, patch = null) {
   let changed = false;
   const next = steps.map((step) => {
-    if (step?.badge !== 'ToolProgress' || step.status !== 'in_progress') return step;
-    if (toolUseId && step._scratchpadTabId !== toolUseId) return step;
+    if (step?.status !== 'in_progress' || !predicate(step)) return step;
     changed = true;
     return { ...step, status: 'completed', completedAt, ...patch };
   });
@@ -746,7 +750,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // so the first progress line seeds it — same idiom as the
     // scratchpad_start seed-if-missing case above.
     let base = state;
-    if (!base.steps.some((s) => s._isToolCall && s._toolUseId === toolUseId)) {
+    let idx = base.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    if (idx === -1) {
       base = reduceStream(base, {
         type: 'response.in_progress',
         thought_role: 'thought.tool_call.start',
@@ -754,9 +759,9 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         content: event.tool_name || 'Tool',
         at_ms: eventTs,
       }, now);
+      // tool_call.start appends the new step.
+      idx = base.steps.length - 1;
     }
-    const idx = base.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
-    if (idx === -1) return base;
     const parent = base.steps[idx];
 
     // The rail (PhaseProgress) and ScratchpadModal read the latest line

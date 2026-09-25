@@ -38,20 +38,19 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
 
   const segments = [];
   // Work after a question starts when the user answered it; without an
-  // answer time, when its first step started.
-  const pushSteps = (seg, isFirst) => {
-    if (!isFirst && seg.startedAt == null) seg.startedAt = seg.steps[0]?.startedAt ?? null;
+  // answer time, when its first step started. The first segment keeps the
+  // turn's own start.
+  const pushSteps = (seg) => {
+    if (segments.length > 0 && seg.startedAt == null) seg.startedAt = seg.steps[0]?.startedAt ?? null;
     segments.push(seg);
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
-  let isFirst = true;
   for (const step of list) {
     if (!isQuestion(step)) {
       current.steps.push(step);
       continue;
     }
-    pushSteps(current, isFirst);
-    isFirst = false;
+    pushSteps(current);
     segments.push({
       kind: 'question',
       key: step.id,
@@ -60,7 +59,7 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
     });
     current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
   }
-  pushSteps(current, isFirst);
+  pushSteps(current);
   return segments;
 }
 
