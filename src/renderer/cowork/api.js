@@ -1763,8 +1763,8 @@ export async function getDatasourceConnection(connectionId) {
 }
 
 // `expectedRevision` is the connection revision the form was opened against;
-// auth moves it on every edit, a rename included. The relay refuses with code `stale_version` when it has moved, which is the
-// only way a caller can tell a conflict from any other refusal.
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
 export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
   requireOrgMode('Editing a cloud database connection');
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {

@@ -63,7 +63,7 @@ const SPEC = {
 
 const CONNECTION = {
   id: 7, connector_id: 'postgres', method: 'host-port', name: 'Analytics',
-  status: 'pending', credential_version: 1, revision: 1, host_masked: 'db.***.example.com',
+  status: 'pending', credential_version: 1, revision: 4, host_masked: 'db.***.example.com',
   port: 5432, database: 'analytics', username: 'readonly', tls_mode: 'system',
 };
 
