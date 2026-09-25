@@ -323,4 +323,38 @@ describe('tool step lines render around ask_user cards in event order (ENG-2981)
     fireEvent.click(hs[1]);
     expect(hs[1].textContent).toContain('Writing the page (step 3 of 4)');
   });
+
+  it('streaming turn, text then a question with no earlier steps: the live header still renders above the card', () => {
+    const { container } = render(
+      <ChatView
+        task={taskWith([
+          { role: 'user', content: 'hi' },
+          {
+            role: '_streaming',
+            content: 'Let me ask you first.',
+            startedAt: 1000,
+            streamStatus: 'in_progress',
+            steps: [timedAsk('ask:1', null, 5000, null)],
+          },
+        ])}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const hs = headers(container);
+    expect(hs).toHaveLength(1);
+    // No inspectable steps precede the question, so the header mounts
+    // collapsed and shows the question's label directly.
+    expect(hs[0].getAttribute('aria-expanded')).toBe('false');
+    expect(hs[0].textContent).toContain('Prompt ask:1');
+
+    // The header text and the card's own prompt text are identical, so
+    // locate the header's occurrence (first, since it precedes the card in
+    // the DOM) and confirm a second, later occurrence exists for the card.
+    const text = container.textContent;
+    const headerIdx = text.indexOf('Prompt ask:1');
+    const cardIdx = text.indexOf('Prompt ask:1', headerIdx + 1);
+    expect(headerIdx).toBeGreaterThan(-1);
+    expect(cardIdx).toBeGreaterThan(headerIdx);
+  });
 });

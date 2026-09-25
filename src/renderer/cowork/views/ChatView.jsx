@@ -535,7 +535,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
   segments.forEach((seg, idx) => {
     if (seg.kind === 'question') {
       out.push(
-        // Same spacing StepQuestions used: 4px under a block, 12px between cards.
+        // Spacing: 4px under a block, 12px between consecutive cards.
         <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
           <AskUserCard
             step={seg.step}
@@ -551,10 +551,15 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
     if (idx === liveIdx) {
       // Same condition the single streaming ThinkingBlock used: also the
       // pre-step "Thinking…" placeholder, so right after an answer the empty
-      // segment below the card shows that work has resumed.
+      // segment below the card shows that work has resumed. Also shown when
+      // a question is pending right after this segment, even if it has no
+      // steps of its own (e.g. streamed text, then ask_user with nothing
+      // earlier) — otherwise the header, and the orb slot it carries, would
+      // disappear while the question waits.
       const show = seg.steps.length > 0
         || live.currentThought?.text
-        || (live.isActive && !live.hasBodyText);
+        || (live.isActive && !live.hasBodyText)
+        || pendingQuestion;
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
       // While a question waits, it is the question's label, as before this
