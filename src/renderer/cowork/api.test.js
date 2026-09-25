@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchSession, validateAndSaveConnector } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -632,6 +632,59 @@ describe('streamNewSession — network failure reporting', () => {
   });
 });
 
+// The connection can close cleanly (no thrown error) with no
+// response.completed/failed — that used to fire onDone, rendering a
+// partial answer as finished.
+describe('streamNewSession — stream closes without a terminal event', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports an interrupted error instead of onDone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ message, event }) });
+    });
+
+    expect(result.done).toBeUndefined();
+    expect(result.event?.code).toBe('interrupted');
+  });
+
+  it('ends with onDone, not interrupted, when the server reports a cancel', async () => {
+    // A Stop whose clean close lands while handleStopStream is still awaiting
+    // cancelResponse: no local abort yet, so only the cancelled frame counts.
+    const enc = new TextEncoder();
+    const frames = [
+      enc.encode('data: {"type":"response.output_text.delta","delta":"part"}\n\n'),
+      enc.encode('event: response.cancelled\ndata: {"type":"response.cancelled"}\n\n'),
+    ];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => (i < frames.length
+            ? { done: false, value: frames[i++] }
+            : { done: true, value: undefined }),
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve({ done: true }), onError: (message, event) => resolve({ event }) });
+    });
+
+    expect(result.event?.code).toBeUndefined();
+    expect(result.done).toBe(true);
+  });
+});
+
 // The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
 // than from its five call sites precisely so a sixth added later cannot
 // silently stop reporting it — and that only holds while fetchHealth performs
@@ -802,7 +855,30 @@ describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2
 // did not actually reach the server — otherwise the UI shows a stopped task
 // that is still running (and still spending tokens) on the remote worker.
 describe('cancelResponse', () => {
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('gives up instead of hanging forever on a connection that never settles', async () => {
+    // The Stop button awaits this before any local cleanup — a hung fetch
+    // (a proxy holding the socket open with the backend dead) used to make
+    // Stop do nothing at all, forever.
+    vi.useFakeTimers();
+    let signal;
+    vi.stubGlobal('fetch', vi.fn((_url, options) => {
+      signal = options?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    }));
+
+    const resultPromise = cancelResponse('conv-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'error', conversation_id: 'conv-a' });
+  });
 
   it('reports ok when the server accepts the cancel', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
@@ -840,6 +916,77 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+// The 10s bound is opt-in, not a blanket default — some endpoints have their
+// own longer server-side budget (e.g. connector validation allows 15s), and a
+// global client timeout would abort a call the server was about to fulfill.
+// Honors an abort signal like a real fetch would — resolves at delayMs, or
+// rejects earlier if the caller's signal fires first. Without this, a mock
+// that ignores `signal` can't tell a real no-timeout pass from a mutant that
+// silently reintroduced the global default (both just "resolve after delayMs").
+function _abortAwareFetch(delayMs, body) {
+  return vi.fn((_url, options) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(jsonRes(body)), delayMs);
+    options?.signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  }));
+}
+
+describe('req() timeout scoping', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('does not time out a request that opts out (past the short-timeout window)', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(12_000, { connected: true }));
+
+    const resultPromise = validateAndSaveConnector('github', { token: 'x' });
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    expect(await resultPromise).toEqual({ connected: true });
+  });
+
+  it('fetchSession does not time out by default either', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', _abortAwareFetch(12_000, { id: 'c1' }));
+
+    const resultPromise = fetchSession('c1');
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    expect(await resultPromise).not.toBeNull();
+  });
+
+  it('a scoped timeout still fires when headers arrive but the body stalls', async () => {
+    // Exactly the failure this exists for: a proxy that returns headers
+    // promptly then never delivers the body. `return res.json()` (no await)
+    // inside `try { ... } finally { cancel() }` would clear the abort timer
+    // at header time instead of body time, so this must stay aborted.
+    vi.useFakeTimers();
+    let signal;
+    vi.stubGlobal('fetch', vi.fn((_url, options) => {
+      signal = options?.signal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }),
+      });
+    }));
+
+    const resultPromise = cancelResponse('conv-a');
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toEqual({ status: 'error', conversation_id: 'conv-a' });
   });
 });
 
