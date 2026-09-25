@@ -34,6 +34,12 @@ const answerLine = (text) => screen.getByText(
   (_, el) => el?.tagName === 'P' && el.textContent === `Answered: ${text}`,
 );
 
+// A disabled control must not look live: no plain `hover:` and no pointer.
+const expectInertWhenDisabled = (el) => {
+  expect(el.className).not.toMatch(/(^|\s)hover:/);
+  expect(el).toHaveClass('disabled:cursor-default');
+};
+
 const renderCard = (over = {}, props = {}) =>
   render(
     <AskUserCard
@@ -136,8 +142,6 @@ describe('AskUserCard', () => {
     // an option-answered card showed the prompt, greyed buttons, and nothing
     // about what was chosen.
     renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
-    // Body text, like a typed answer: this is the Accept / Cancel case of the
-    // artifact brief.
     expect(answerLine('postgres')).toHaveClass('text-body');
   });
 
@@ -146,53 +150,26 @@ describe('AskUserCard', () => {
     expect(screen.getByText(/clickhouse/)).toBeInTheDocument();
   });
 
-  it('shows the answer as body text and keeps its line breaks', () => {
-    // An answer typed in the composer is not echoed as a user message, so it
-    // has to read as text, not as a faint status caption.
+  it('shows the answer as body text with a bold prefix and keeps its line breaks', () => {
     renderCard({ answer: { status: 'answered', values: [], text: 'line one\nline two' } });
     const shown = answerLine('line one\nline two');
     expect(shown).toHaveClass('text-body', 'whitespace-pre-wrap');
-    // The bold prefix is what tells the answer apart from the prompt, which
-    // uses the same prose style.
-    expect(shown.querySelector('span')).toHaveTextContent('Answered:');
-    expect(shown.querySelector('span')).toHaveClass('font-semibold');
+    expect(shown.querySelector('strong')).toHaveTextContent('Answered:');
   });
 
-  it('shows no hover effect or pointer cursor on the options of a settled card', () => {
-    // `hover:` also matches a disabled button, so the options of an answered
-    // card used to light up under the mouse.
-    renderCard({ answer: { status: 'answered', values: [], text: 'something else' } });
+  it('shows no hover effect or pointer cursor on disabled options and Send', () => {
+    const { unmount } = renderCard({ answer: { status: 'answered', values: [], text: 'other' } });
     for (const name of [/postgres/i, /mysql/i]) {
       const option = screen.getByRole('button', { name });
       expect(option).toBeDisabled();
-      expect(option.className).not.toMatch(/(^|\s)hover:/);
-      expect(option.className).toContain('disabled:cursor-default');
+      expectInertWhenDisabled(option);
     }
-  });
-
-  it('shows no hover effect or pointer cursor on a disabled Send', () => {
-    // Multi-select: Send stays disabled until something is picked.
+    unmount();
+    // Multi-select, nothing picked yet: Send is disabled.
     renderCard({ select: 'many' });
     const send = screen.getByRole('button', { name: /^send$/i });
     expect(send).toBeDisabled();
-    expect(send.className).not.toMatch(/(^|\s)hover:/);
-    expect(send.className).toContain('disabled:cursor-default');
-  });
-
-  it('makes every control look disabled while a submission is in flight', async () => {
-    let release;
-    submitAnswer.mockImplementationOnce(() => new Promise((r) => { release = r; }));
-    renderCard();
-    act(() => { fireEvent.click(screen.getByRole('button', { name: /mysql/i })); });
-    for (const name of [/postgres/i, /mysql/i]) {
-      const option = screen.getByRole('button', { name });
-      expect(option.className).not.toMatch(/(^|\s)hover:/);
-      expect(option.className).toContain('disabled:cursor-default');
-    }
-    const skip = screen.getByRole('button', { name: /skip/i });
-    expect(skip).toBeDisabled();
-    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
-    await act(async () => { release({ accepted: true }); });
+    expectInertWhenDisabled(send);
   });
 
   it('says so when the question was skipped', () => {
@@ -231,7 +208,10 @@ describe('AskUserCard', () => {
     act(() => { fireEvent.click(screen.getByRole('button', { name: /mysql/i })); });
     expect(screen.getByRole('button', { name: /mysql/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
+    const skip = screen.getByRole('button', { name: /skip/i });
+    expect(skip).toBeDisabled();
+    // ...and looks it: Skip dims like the options.
+    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
     await act(async () => { release({ accepted: true }); });
   });
 

@@ -7,7 +7,6 @@
 
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
-import clsx from 'clsx';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -570,12 +569,13 @@ const _SIZES = {
   },
 };
 
-// Text shown verbatim (no markdown parsing) with the same classes as a
-// rendered paragraph, for callers that must not reinterpret plain text.
-export function MarkdownPlainText({ text, className = '' }) {
+// Content shown verbatim (no markdown parsing, line breaks kept) with the
+// same classes as a rendered paragraph, for callers that must not
+// reinterpret plain text.
+export function MarkdownPlainText({ children }) {
   return (
     <div className={_SIZES.default.root}>
-      <p className={clsx(_SIZES.default.p, className)}>{text}</p>
+      <p className={`${_SIZES.default.p} whitespace-pre-wrap`}>{children}</p>
     </div>
   );
 }

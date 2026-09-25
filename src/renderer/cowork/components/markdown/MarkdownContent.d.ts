@@ -16,4 +16,4 @@ export interface MarkdownContentProps {
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;
-export const MarkdownPlainText: ComponentType<{ text?: ReactNode; className?: string }>;
+export const MarkdownPlainText: ComponentType<{ children?: ReactNode }>;
