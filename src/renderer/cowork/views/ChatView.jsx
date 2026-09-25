@@ -50,6 +50,7 @@ import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
+import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
@@ -511,44 +512,82 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   );
 }
 
-// Renders any badge='AskUser' steps as inline question cards, the same way
-// StepArtifacts renders artifacts — both receive the shared `steps` array.
+// One turn's steps and ask_user cards, rendered in event order: work done
+// after an answer appears below that answer's card, not above it (ENG-2981).
+// Segments and the per-question expiry rules come from `splitTurnSegments`.
 //
-// `expired` is derived PER QUESTION, not per conversation. Conversation-level
-// liveness ("this chat has something in flight") is the wrong granularity: it
-// renders an unanswered card from an EARLIER turn with live buttons for as long
-// as any new stream runs on the same conversation, and clicking it 404s — which
-// then retires whatever question the new turn is actually blocked on.
-//
-// Two rules:
-//   - an answered question is never expired; the card renders its outcome, and
-//     the generic "no longer active" line would be noise on top of it
-//   - only the LAST unanswered question of a LIVE turn can still be answered
-//
-// That last rule leans on an invariant owned by anton, not by this repo: the
-// `ask_user` tool blocks the turn, so anton never publishes a second question
-// while one is outstanding, and it always retires the outstanding one (answer,
-// cancel, or the server's 300 s timeout) before the turn ends. This repo can
-// neither see nor enforce that cross-repo contract, so an earlier unanswered
-// card is treated as expired rather than trusted to still be answerable.
-function StepQuestions({ steps, conversationId, conversationLive, onAnswered }) {
-  const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
-  if (questions.length === 0) return null;
-  let lastUnanswered = -1;
-  questions.forEach((s, i) => { if (!s.data?.answer) lastUnanswered = i; });
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-      {questions.map((s, i) => (
-        <AskUserCard
-          key={s.id}
-          step={s}
-          conversationId={conversationId}
-          expired={!s.data?.answer && !(conversationLive && i === lastUnanswered)}
-          onAnswered={onAnswered}
-        />
-      ))}
-    </div>
+// `live` is set only for the streaming turn. It marks the ONE segment that
+// carries the in-flight header (orb slot, live thought, working label) —
+// `liveSegmentIndex` puts it above a pending card and below an answered one.
+// Every other segment is a finished, collapsed block.
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null }) {
+  const segments = useMemo(
+    () => splitTurnSegments(steps, { startedAt, conversationLive }),
+    [steps, startedAt, conversationLive],
   );
+  const liveIdx = live ? liveSegmentIndex(segments) : -1;
+  // The live segment sits right before a pending question, if there is one.
+  const next = live ? segments[liveIdx + 1] : null;
+  const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
+
+  const out = [];
+  let prevWasCard = false;
+  segments.forEach((seg, idx) => {
+    if (seg.kind === 'question') {
+      out.push(
+        // Same spacing StepQuestions used: 4px under a block, 12px between cards.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <AskUserCard
+            step={seg.step}
+            conversationId={conversationId}
+            expired={seg.expired}
+            onAnswered={onAnswered}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
+    if (idx === liveIdx) {
+      // Same condition the single streaming ThinkingBlock used: also the
+      // pre-step "Thinking…" placeholder, so right after an answer the empty
+      // segment below the card shows that work has resumed.
+      const show = seg.steps.length > 0
+        || live.currentThought?.text
+        || (live.isActive && !live.hasBodyText);
+      if (!show) return;
+      // The header stays the WORKING message — never the live thought text.
+      // While a question waits, it is the question's label, as before this
+      // split (the AskUser step was the last in-progress step).
+      const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
+      out.push(
+        <ThinkingBlock
+          key={seg.key}
+          steps={seg.steps}
+          startedAt={seg.startedAt}
+          isActive={live.isActive}
+          slotId={live.slotId}
+          currentThought={live.currentThought}
+          currentLabel={pendingQuestion ? pendingQuestion.label : (active?.label || live.placeholderLabel || null)}
+          onActivateStep={onActivateStep}
+        />,
+      );
+      prevWasCard = false;
+      return;
+    }
+    if (seg.steps.length === 0) return;
+    out.push(
+      <ThinkingBlock
+        key={seg.key}
+        steps={seg.steps}
+        startedAt={seg.startedAt}
+        isActive={false}
+        onActivateStep={onActivateStep}
+      />,
+    );
+    prevWasCard = false;
+  });
+  return out;
 }
 
 // Renders any badge='Skill' steps as inline SkillCards — a skill the agent
@@ -2576,19 +2615,12 @@ export default function ChatView({
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
                 >
-                  {m.steps?.length > 0 && (
-                    <ThinkingBlock
-                      steps={m.steps}
-                      startedAt={m.startedAt}
-                      isActive={false}
-                      onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
-                    />
-                  )}
                   {/* Above the text: a question is asked, then answered, then
-                      (at most) the turn's closing text streams — so the card
-                      always precedes any text that came after the answer. */}
-                  <StepQuestions
+                      (at most) the turn's closing text streams — so every
+                      card and block precedes the text that came after. */}
+                  <TurnSegments
                     steps={m.steps}
+                    startedAt={m.startedAt}
                     conversationId={task.id}
                     // A completed turn by construction — `visibleMessages`
                     // excludes the `_streaming` row — so no question rendered
@@ -2596,6 +2628,7 @@ export default function ChatView({
                     // on this conversation.
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
+                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                   />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
@@ -2635,37 +2668,22 @@ export default function ChatView({
                     so a plain text answer isn't topped by a "Thinking…"
                     header. `_placeholderLabel` is set by the pre-first-event
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
-                    task…" for new tasks, "Thinking…" for replies). */}
-                {(streamingMsg.steps?.length > 0
-                  || streamingMsg.currentThought?.text
-                  || (isThinkingActive(streamingMsg.streamStatus) && !streamingMsg.content)) && (
-                  <ThinkingBlock
-                    steps={streamingMsg.steps}
-                    startedAt={streamingMsg.startedAt}
-                    isActive={isThinkingActive(streamingMsg.streamStatus)}
-                    slotId="header:streaming"
-                    currentThought={streamingMsg.currentThought}
-                    currentLabel={(() => {
-                      // The header stays the WORKING message (active step
-                      // label, else the placeholder label, else "Thinking…")
-                      // — never the live thought text. The thought has its
-                      // own distinct line at the bottom of the steps; letting
-                      // it also drive the header made the working message
-                      // flicker/overwrite as each reasoning delta streamed in.
-                      const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      return active?.label || streamingMsg._placeholderLabel || null;
-                    })()}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
-                  />
-                )}
-                {/* Above the text: a question is asked, then answered, then
-                    (at most) the turn's closing text streams — so the card
-                    always precedes any text that came after the answer. */}
-                <StepQuestions
+                    task…" for new tasks, "Thinking…" for replies).
+                    With questions, the header is in the live segment (TurnSegments). */}
+                <TurnSegments
                   steps={streamingMsg.steps}
+                  startedAt={streamingMsg.startedAt}
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
+                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  live={{
+                    isActive: isThinkingActive(streamingMsg.streamStatus),
+                    currentThought: streamingMsg.currentThought,
+                    placeholderLabel: streamingMsg._placeholderLabel || null,
+                    hasBodyText: !!streamingMsg.content,
+                    slotId: 'header:streaming',
+                  }}
                 />
                 {streamingMsg.content && (
                   <div className="relative">
