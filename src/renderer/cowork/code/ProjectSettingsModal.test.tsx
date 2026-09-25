@@ -5,7 +5,8 @@ import { useCodingCatalog } from './useCodingCatalog';
 
 import type { CodeProject, PlaybookStatus, SkillLibraryItem } from './api';
 
-const { engines, models, pickCodeFolder, playbook, skillLibrary } = vi.hoisted(() => ({
+const { engines, models, pickCodeFolder, playbook, skillLibrary, githubRepositories } = vi.hoisted(() => ({
+  githubRepositories: vi.fn(async () => ({ items: [{ full_name: 'acme/private', clone_url: 'https://github.com/acme/private.git', private: true, default_branch: 'develop', archived: false, connection_name: 'work' }], next_page: null })),
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
@@ -36,6 +37,7 @@ vi.mock('../../platform/host', () => ({
 
 vi.mock('./api', () => ({
   codingApi: {
+    githubRepositories,
     engines,
     models,
     playbook,
@@ -72,6 +74,55 @@ describe('ProjectSettingsModal', () => {
     vi.clearAllMocks();
     credentialListeners.clear();
     resetSkillLibraryCache();
+  });
+
+  it('saves a picked repository and its required connection together, with the default branch', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={null} busy={false} connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('private');
+    const checkbox = screen.getByRole('checkbox', { name: /Work/ });
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
+      connections: [{ provider: 'github', name: 'work', label: 'Work' }],
+    })));
+  });
+
+  it('keeps non-GitHub URL entry working and prevents URL-variant duplicates', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={project} busy={false} connections={[]} onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    const input = screen.getByRole('textbox', { name: 'Git repository URL' });
+    await user.type(input, 'https://github.com/mindsdb/cowork/{Enter}');
+    expect(screen.getByText('That repository is already in this project.')).toBeInTheDocument();
+    await user.clear(input);
+    await user.type(input, 'https://gitlab.com/acme/api.git{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'MindsHub', resources: [project.resources[0], expect.objectContaining({ source_url: 'https://gitlab.com/acme/api.git' })], connections: [],
+    })));
+  });
+
+  it('can restore a missing project connection used by an existing repository', async () => {
+    const user = userEvent.setup();
+    render(<ProjectSettingsModal open busy={false}
+      project={{ ...project, resources: project.resources.map((resource) => ({ ...resource, connector_name: 'work' })) }}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={vi.fn()} />);
+    const checkbox = screen.getByRole('checkbox', { name: /Work/ });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toBeEnabled();
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeDisabled();
   });
 
   it.each(['local', 'shared'])('refreshes an open project’s %s catalogue without resetting its draft', async (source) => {

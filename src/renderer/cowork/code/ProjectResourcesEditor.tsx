@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import type { ConnectorConnection } from '../api';
+import { RepositoryPicker, repositoryKey } from './RepositoryPicker';
 import { host } from '../../platform/host';
 import {
   codingApi,
@@ -11,6 +13,7 @@ import {
   type ProjectResource,
   type RepositoryResource,
   type ResourceAvailability,
+  type GitHubRepository,
 } from './api';
 
 
@@ -50,6 +53,9 @@ export function ProjectResourcesEditor({
   onCommandChange,
   onFirstResource,
   onError,
+  connections,
+  onRepositoryConnection,
+  onOpenConnectors,
 }: {
   resources: ProjectResource[];
   computers: CodeComputer[];
@@ -60,9 +66,12 @@ export function ProjectResourcesEditor({
   onCommandChange: (resourceId: string, phase: CommandPhase, value: string) => void;
   onFirstResource: (name: string) => void;
   onError: (message: string) => void;
+  connections: ConnectorConnection[];
+  onRepositoryConnection: (name: string) => void;
+  onOpenConnectors: () => void;
 }) {
   const [repositoryOpen, setRepositoryOpen] = useState(false);
-  const [repositoryUrl, setRepositoryUrl] = useState('');
+  const repositoryTrigger = useRef<HTMLButtonElement>(null);
   const [adding, setAdding] = useState(false);
   const computersById = useMemo(() => new Map(computers.map((computer) => [computer.id, computer])), [computers]);
   const availabilityById = useMemo(() => new Map(availability.map((item) => [item.resource_id, item])), [availability]);
@@ -93,13 +102,13 @@ export function ProjectResourcesEditor({
     }
   };
 
-  const addRepository = () => {
-    const url = repositoryUrl.trim();
-    if (!/^(https?:\/\/|ssh:\/\/|git@)[^\s]+$/i.test(url)) {
+  const addRepository = (value: string, repository?: GitHubRepository) => {
+    const url = value.trim();
+    if (!/^(https:\/\/|ssh:\/\/|git@)[^\s]+$/i.test(url)) {
       onError('Enter a Git repository URL, such as https://github.com/org/repository.git.');
       return;
     }
-    if (resources.some((item) => item.kind === 'repository' && item.source_url?.toLowerCase() === url.toLowerCase())) {
+    if (resources.some((item) => item.kind === 'repository' && item.source_url && repositoryKey(item.source_url) === repositoryKey(url))) {
       onError('That repository is already in this project.');
       return;
     }
@@ -111,13 +120,15 @@ export function ProjectResourcesEditor({
       source_url: url,
       local_path: null,
       computer_id: null,
-      default_branch: null,
+      default_branch: repository?.default_branch || null,
+      ...(repository ? { provider: 'github' as const, repository: repository.full_name, connector_name: repository.connection_name } : {}),
       checkout_strategy: 'clone',
       commands: [],
     }]);
+    if (repository) onRepositoryConnection(repository.connection_name);
     if (!resources.length) onFirstResource(name);
-    setRepositoryUrl('');
     setRepositoryOpen(false);
+    repositoryTrigger.current?.focus();
     onError('');
   };
 
@@ -138,27 +149,17 @@ export function ProjectResourcesEditor({
           <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
             {Ico.folder(13)} {adding ? 'Adding…' : 'Local folder'}
           </Button>
-          <Button size="sm" variant="subtle" disabled={disabled} onClick={() => setRepositoryOpen((value) => !value)}>
+          <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
             {Ico.plus(13)} Git repository
           </Button>
         </div>
       </div>
 
       {repositoryOpen && (
-        <div className="code-resource-url-row">
-          <Input
-            value={repositoryUrl}
-            onChange={setRepositoryUrl}
-            placeholder="https://github.com/org/repository.git"
-            aria-label="Git repository URL"
-            autoFocus
-            onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
-              if (event.key === 'Enter') { event.preventDefault(); addRepository(); }
-              if (event.key === 'Escape') setRepositoryOpen(false);
-            }}
-          />
-          <Button size="sm" variant="primary" disabled={!repositoryUrl.trim()} onClick={addRepository}>Add</Button>
-        </div>
+        <RepositoryPicker connections={connections} disabled={!!disabled}
+          existingUrls={resources.flatMap((resource) => resource.kind === 'repository' && resource.source_url ? [resource.source_url] : [])}
+          onChoose={(repository) => addRepository(repository.clone_url, repository)} onAddUrl={addRepository}
+          onOpenConnectors={onOpenConnectors} onClose={() => { setRepositoryOpen(false); repositoryTrigger.current?.focus(); }} />
       )}
 
       <div className="code-project-folder-list">
