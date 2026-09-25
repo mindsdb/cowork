@@ -250,6 +250,20 @@ describe('CompareView', () => {
     api.fetchComparisons.mockResolvedValue(null);
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByText('Update needed')).toBeTruthy();
+    expect(screen.getByText(/Restart the app to update it/)).toBeTruthy();
+  });
+
+  it('does not tell a web user to restart a server they do not run', async () => {
+    hostMock.isWeb = true;
+    try {
+      api.fetchComparisons.mockResolvedValue(null);
+      render(<CompareView models={models} projects={projects} />);
+      expect(await screen.findByText('Update needed')).toBeTruthy();
+      expect(screen.queryByText(/Restart the app/)).toBeNull();
+      expect(screen.getByText(/once it's updated/)).toBeTruthy();
+    } finally {
+      hostMock.isWeb = false;
+    }
   });
 
   it('lists past comparisons under column headers, with the verdict named by model', async () => {

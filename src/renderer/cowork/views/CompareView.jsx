@@ -176,7 +176,11 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
         <EmptyState
           icon={Ico.columns(28)}
           title="Update needed"
-          description="This version of the app's server can't run comparisons yet. Restart the app to update it."
+          // Desktop updates its own server on restart; on web the server is
+          // hosted, so there is nothing for the user to restart.
+          description={host.isWeb
+            ? "This workspace's server can't run comparisons yet. They'll appear here once it's updated."
+            : "This version of the app's server can't run comparisons yet. Restart the app to update it."}
         />
       </div>
     );
