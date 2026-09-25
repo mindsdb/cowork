@@ -81,14 +81,25 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   );
 }
 
+// A field is masked when it says so, whatever type it declares. Every secret
+// in the registry today is a password (masked already) or a textarea — a PEM
+// or JSON blob you have to see to paste — so this is the guard for the next
+// spec, not a change to those. select and boolean keep their own rendering.
+const MASKABLE_TYPES = new Set(['text', 'password', 'url', undefined, null, '']);
+
+function isMaskedField(field) {
+  return field.type === 'password' || (!!field.secret && MASKABLE_TYPES.has(field.type));
+}
+
 function FieldInput({ field, value, onChange, disabled, inputRef }) {
+  const masked = isMaskedField(field);
   const baseStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '8px 10px', borderRadius: 7,
     background: 'var(--surface-2)',
     border: '1px solid var(--line)',
     color: 'var(--ink)',
-    fontFamily: field.type === 'password' ? FONT_MONO : FONT_BODY,
+    fontFamily: masked ? FONT_MONO : FONT_BODY,
     fontSize: 13,
     outline: 'none',
     opacity: disabled ? 0.6 : 1,
@@ -171,11 +182,14 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
   return (
     <Input
       ref={inputRef}
-      type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
+      type={masked ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       aria-label={field.label}
       value={displayValue}
       placeholder={placeholder}
-      autoComplete={field.type === 'password' ? 'current-password' : 'off'}
+      // `new-password` asks the browser not to offer a credential it saved for
+      // somewhere else; it is a hint about autofill, and says nothing about
+      // what the browser chooses to store.
+      autoComplete={masked ? 'new-password' : 'off'}
       autoCapitalize="none"
       autoCorrect="off"
       spellCheck={false}
@@ -290,8 +304,13 @@ export function DataVaultForm({
   // can inject context into messages sent during a connect task.
   // Secret fields (password type or `secret: true`) are flagged but
   // never carry their value.
+  //
+  // Not for a cloud datasource form. App.jsx appends this snapshot to the
+  // text of the next message the user sends, so a filled database form would
+  // put its host, database and username into the conversation and the model.
+  // That form is dedicated entry, kept out of chat.
   useEffect(() => {
-    if (!conversationId || !spec) return;
+    if (!conversationId || !spec || spec._cloud_datasource) return;
     const fieldSnapshot = {};
     for (const f of fields || []) {
       if (skipped?.has?.(f.name)) continue;
@@ -326,6 +345,45 @@ export function DataVaultForm({
   };
 
   if (!spec) return null;
+
+  // Pending state — a cloud database connection is created `pending`: the
+  // server holds the credential encrypted and a separate check decides
+  // whether it works. Replacing the field surface is the point, not just the
+  // message: it takes the typed password off the page and stops a second
+  // submit, which would only earn a duplicate-name refusal.
+  if (spec._datasource_pending) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <div className="flex items-start gap-3">
+          <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row"
+            style={{
+              background: 'color-mix(in srgb, var(--ink-4) 14%, var(--surface))',
+              color: 'var(--ink-2)',
+              border: '1px solid var(--line)',
+            }}
+          >{Ico.link(18)}</span>
+          <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
+            <div className="s-h3">{spec.title || 'Checking the connection'}</div>
+            <div className="text-sm text-ink-3 leading-[1.5]">
+              {spec.subtitle || 'Your credentials are stored encrypted.'}
+            </div>
+          </div>
+        </div>
+        <Alert variant="info">
+          This can take a moment. The result shows up on Connect Apps and Data, where you can retry it if the
+          check does not succeed.
+        </Alert>
+        <div className="flex justify-end gap-2">
+          <Button variant="default" onClick={() => onAction?.({ id: 'cancel', kind: 'cancel', values: {}, skipped: [] })}>
+            Close
+          </Button>
+          <Button variant="primary" onClick={() => onAction?.({ id: 'view_connectors', kind: 'primary', values: {}, skipped: [] })}>
+            View connections
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Success state — the agent endpoint flips `_is_success` after a
   // save. Replace the noisy fields/actions surface with a green

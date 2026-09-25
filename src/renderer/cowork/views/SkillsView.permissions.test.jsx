@@ -206,15 +206,11 @@ describe('SkillsView shared-resource permissions', () => {
     mocks.deleteSkillAndSync.mockImplementation(() => new Promise((resolve) => {
       resolveDelete = resolve;
     }));
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
-
     render(<SkillsView />);
     await user.click(screen.getByText(first.label));
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: /Uninstall/ }));
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(mocks.deleteSkillAndSync).toHaveBeenCalledWith(first.label));
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));

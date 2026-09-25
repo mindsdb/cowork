@@ -1306,6 +1306,11 @@ export default function Composer({
                         className="menu-connectors-accordion__scroll"
                         inert={!connectorsOpen || undefined}
                       >
+                        {connectors.length > 0 && (
+                          <div className="pt-1.5 px-[14px] pb-1 text-[11px] text-ink-4 leading-[1.5]">
+                            Turning one off applies from your next message in this chat.
+                          </div>
+                        )}
                         {connectors.length === 0 ? (
                           <div className="py-2 px-[14px] text-sm text-ink-3">
                             No connectors yet. Add one in{' '}

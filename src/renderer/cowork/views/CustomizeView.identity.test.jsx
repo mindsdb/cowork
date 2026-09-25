@@ -128,23 +128,40 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
   });
 
   it('preserves the card and enables retry when disconnect fails', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
-    vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
     const onConnectionsSynced = vi.fn();
     render(<CustomizeView connectors={CONNECTIONS} onConnectionsSynced={onConnectionsSynced} />);
     const card = screen.getAllByRole('article')[0];
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Could not disconnect: Connection is unavailable'));
-    expect(screen.getAllByRole('article')).toHaveLength(6);
-    expect(within(card).getByRole('button', {name:'Disconnect'})).toBeEnabled();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // The failure is answered in the dialog the person is looking at, and the
+    // card stays where it was.
+    const confirm = await screen.findByRole('dialog');
+    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
+    expect(await within(confirm).findByText('Connection is unavailable')).toBeInTheDocument();
+    // `hidden`: the open dialog takes the page behind it out of the
+    // accessibility tree, which is the modal doing its job.
+    expect(screen.getAllByRole('article', {hidden: true})).toHaveLength(6);
 
     vi.mocked(deleteDatasource).mockResolvedValueOnce({ok:true});
     vi.mocked(fetchDatasources).mockResolvedValueOnce({connections:CONNECTIONS.slice(1)});
-    await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
+    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(5));
     expect(onConnectionsSynced).toHaveBeenLastCalledWith(CONNECTIONS.slice(1));
+  });
+
+  it('keeps the detail panel open and says why when its disconnect fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
+    render(<CustomizeView connectors={CONNECTIONS} />);
+    const card = screen.getAllByRole('article')[0];
+    await userEvent.click(within(card).getByRole('button', { name: /^Manage / }));
+    await userEvent.click(await screen.findByRole('button', { name: /Remove/ }));
+
+    const confirm = await screen.findByRole('dialog', { name: /^Disconnect / });
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Disconnect' }));
+    expect(await within(confirm).findByText('Connection is unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove/, hidden: true })).toBeInTheDocument();
   });
 });
