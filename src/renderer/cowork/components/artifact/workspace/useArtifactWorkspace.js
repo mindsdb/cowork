@@ -399,7 +399,9 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     }
   }, [artifact, onChange, refreshHistory, source]);
 
-  const addressWithAgent = useCallback(async ({ thread, conversationId = null }) => {
+  const addressWithAgent = useCallback(async ({
+    thread, conversationId = null, previewErrors = [],
+  }) => {
     if (!source || !thread) return null;
     const payloadThread = [
       {
@@ -420,6 +422,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       selector: thread.selector || null,
       thread: payloadThread,
       conversationId,
+      previewErrors,
     });
     if (workspaceGeneration.current !== generation) return null;
     setRepair(requested.repair);

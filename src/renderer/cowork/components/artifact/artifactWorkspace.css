@@ -194,7 +194,9 @@
 }
 .artifact-html-source-pane { flex: 1; min-height: 0; }
 
-.artifact-workspace-notice { margin: 10px 12px 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--danger) 26%, var(--line)); border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); font: 500 12px/1.45 var(--font-body); }
+.artifact-workspace-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 12px 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--danger) 26%, var(--line)); border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); font: 500 12px/1.45 var(--font-body); }
+.artifact-workspace-notice button { flex: 0 0 auto; color: var(--danger); font: inherit; text-decoration: underline; }
+.artifact-workspace-notice button:disabled { opacity: .55; text-decoration: none; cursor: default; }
 .artifact-feedback-badge { position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--surface); border-radius: 999px; color: white; background: var(--danger); font: 700 8px/1 var(--font-body); pointer-events: none; }
 .artifact-feedback-notice { align-self: flex-end; z-index: 4; display: inline-flex; align-items: center; gap: 7px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 8px; color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); font: 500 12px/1.35 var(--font-body); cursor: pointer; }
 .artifact-feedback-notice:hover { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); }
