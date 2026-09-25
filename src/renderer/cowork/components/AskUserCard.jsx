@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { submitAnswer } from '../api';
+import { MarkdownContent } from './markdown/MarkdownContent';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -23,11 +24,13 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   // appears unprompted mid-turn, and it blocks the agent — so a screen-reader
   // user needs to be told it is their turn. The region has to mount EMPTY and
   // be filled on a later commit: aria-live announces content CHANGES, so a
-  // card that arrives with its text already in place is silent.
+  // card that arrives with its text already in place is silent. The line is
+  // fixed: the prompt can be a long markdown brief, and it is read through
+  // the options group's aria-labelledby instead.
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    setAnnouncement(settled ? '' : `The agent is asking a question: ${q.prompt || ''}`);
-  }, [settled, q.prompt]);
+    setAnnouncement(settled ? '' : 'The agent is asking a question');
+  }, [settled]);
 
   const send = async (payload) => {
     if (settled || busy) return;
@@ -70,7 +73,21 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
-      <div id={promptId} className="mb-2 text-[13px] text-ink">{q.prompt}</div>
+      {/* The prompt is agent-authored markdown (the artifact PRD brief has
+          bold section lines, lists and single-newline line breaks).
+          softBreaks keeps those single newlines; forms and charts are off
+          so a fence in a question stays a plain code block. No colour
+          override: inside the chat the `.answer-turn .markdown-content`
+          rule gives it the answer prose style. */}
+      <div id={promptId} className="mb-2">
+        <MarkdownContent
+          text={q.prompt || ''}
+          dense
+          softBreaks
+          enableForms={false}
+          enableCharts={false}
+        />
+      </div>
 
       <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
 
