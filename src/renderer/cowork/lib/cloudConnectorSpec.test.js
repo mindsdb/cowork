@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { isCloudDatasourceSpec, toCloudSpec } from './cloudConnectorSpec';
+import { toDatasourceRows } from './datasourceConnectionRows';
 
 const POSTGRES = {
   form_id: 'postgres-connector',
@@ -116,7 +117,7 @@ describe('toCloudSpec', () => {
 describe('opening the form against an existing connection', () => {
   const CONNECTION = {
     datasourceId: 7,
-    credentialVersion: 3,
+    revision: 6,
     name: 'Analytics',
     engine: 'postgres',
     hostMasked: 'db.example.com',
@@ -126,11 +127,21 @@ describe('opening the form against an existing connection', () => {
     tlsMode: 'system',
   };
 
-  it('carries the id and the version the server checks the edit against', () => {
+  it('carries the id and the revision the server checks the edit against', () => {
     const shaped = toCloudSpec(POSTGRES, CONNECTION);
 
-    expect(shaped._datasource_edit).toEqual({ id: 7, expectedVersion: 3 });
+    expect(shaped._datasource_edit).toEqual({ id: 7, expectedRevision: 6 });
     expect(shaped.name).toBe('Analytics');
+  });
+
+  it('reopening a listed connection edits against its revision, not its credential version', () => {
+    const [row] = toDatasourceRows([{
+      id: 7, connector_id: 'postgres', method: 'host-port', name: 'Analytics', status: 'verified',
+      credential_version: 2, revision: 6, host_masked: 'db.example.com', port: 5432,
+      database: 'analytics', username: 'readonly', tls_mode: 'system',
+    }]);
+
+    expect(toCloudSpec(POSTGRES, row)._datasource_edit).toEqual({ id: 7, expectedRevision: 6 });
   });
 
   it('pre-fills what it knows and never the password, which only auth holds', () => {

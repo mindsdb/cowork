@@ -12,7 +12,7 @@ import { isDatasourceRow, toDatasourceRows } from './datasourceConnectionRows';
 
 const VERIFIED = {
   id: 7, connector_id: 'postgres', method: 'host-port', name: 'Analytics',
-  status: 'verified', credential_version: 3, host_masked: 'db.***.example.com',
+  status: 'verified', credential_version: 2, revision: 6, host_masked: 'db.***.example.com',
   port: 5432, database: 'analytics', username: 'readonly', tls_mode: 'system',
 };
 
@@ -38,11 +38,12 @@ describe('toDatasourceRows', () => {
     expect(rows[1].validationError).toBe('password authentication failed');
   });
 
-  it('carries the masked host and the version an edit has to send', () => {
+  it('carries the masked host and the revision an edit has to send, not the credential version', () => {
     const [row] = toDatasourceRows([VERIFIED]);
 
     expect(row.hostMasked).toBe('db.***.example.com');
-    expect(row.credentialVersion).toBe(3);
+    expect(row.revision).toBe(6);
+    expect(row).not.toHaveProperty('credentialVersion');
     expect(row.database).toBe('analytics');
     expect(row.username).toBe('readonly');
     expect(row.tlsMode).toBe('system');

@@ -1762,14 +1762,14 @@ export async function getDatasourceConnection(connectionId) {
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
 }
 
-// `expectedVersion` is the credential version the form was opened against.
-// The relay refuses with code `stale_version` when it has moved, which is the
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code `stale_version` when it has moved, which is the
 // only way a caller can tell a conflict from any other refusal.
-export async function editDatasourceConnection(connectionId, payload, expectedVersion) {
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
   requireOrgMode('Editing a cloud database connection');
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ ...payload, expected_version: expectedVersion }),
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
   });
 }
 

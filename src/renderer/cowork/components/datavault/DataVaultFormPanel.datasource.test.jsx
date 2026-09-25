@@ -63,7 +63,7 @@ const SPEC = {
 
 const CONNECTION = {
   id: 7, connector_id: 'postgres', method: 'host-port', name: 'Analytics',
-  status: 'pending', credential_version: 1, host_masked: 'db.***.example.com',
+  status: 'pending', credential_version: 1, revision: 1, host_masked: 'db.***.example.com',
   port: 5432, database: 'analytics', username: 'readonly', tls_mode: 'system',
 };
 
@@ -91,7 +91,8 @@ describe('a capture the gateway refused', () => {
       status: 'failed',
       validation_error: 'validation failed',
       validation_code: 'tls_failed',
-      credential_version: 1,
+      credential_version: 2,
+      revision: 6,
     });
     api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, status: 'verified', credential_version: 2 });
 
@@ -126,9 +127,10 @@ describe('a capture the gateway refused', () => {
     await userEvent.click(await screen.findByRole('button', { name: /submit|connect/i }));
 
     await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
-    const [id, body, version] = api.editDatasourceConnection.mock.calls[0];
+    const [id, body, revision] = api.editDatasourceConnection.mock.calls[0];
     expect(id).toBe(7);
-    expect(version).toBe(1);
+    // The failed capture's revision, never its credential version.
+    expect(revision).toBe(6);
     // Every other field in this fixture defaults to what a user would type, so
     // the password is the only one that shows what the second submit carried.
     expect(body.password).toBe(TYPED_SECRET);
@@ -215,21 +217,21 @@ describe('submitting a cloud datasource form', () => {
 describe('editing an existing connection', () => {
   const EDIT_SPEC = {
     ...SPEC,
-    _datasource_edit: { id: 7, expectedVersion: 3 },
+    _datasource_edit: { id: 7, expectedRevision: 6 },
     name: 'Analytics',
     user_label: 'Analytics',
   };
 
-  it('patches the connection it was opened against, with the version it saw', async () => {
+  it('patches the connection it was opened against, with the revision it saw', async () => {
     setForm(CID, { ...EDIT_SPEC });
     api.editDatasourceConnection.mockResolvedValue({ ...CONNECTION, credential_version: 4 });
     render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
     await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
 
     await waitFor(() => expect(api.editDatasourceConnection).toHaveBeenCalledTimes(1));
-    const [id, payload, expectedVersion] = api.editDatasourceConnection.mock.calls[0];
+    const [id, payload, expectedRevision] = api.editDatasourceConnection.mock.calls[0];
     expect(id).toBe(7);
-    expect(expectedVersion).toBe(3);
+    expect(expectedRevision).toBe(6);
     expect(payload.password).toBe('secret');
     expect(api.createDatasourceConnection).not.toHaveBeenCalled();
   });
@@ -292,7 +294,7 @@ describe('re-saving a connection that was stored verified', () => {
 
   const VERIFIED = {
     datasourceId: 7,
-    credentialVersion: 3,
+    revision: 6,
     name: 'Analytics',
     hostMasked: 'db.example.com',
     port: 5432,

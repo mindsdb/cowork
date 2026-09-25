@@ -29,7 +29,7 @@ import CustomizeView from './CustomizeView';
 
 const POSTGRES = {
   id: 7, connector_id: 'postgres', method: 'host-port', name: 'Analytics',
-  status: 'verified', credential_version: 3, host_masked: 'db.***.example.com',
+  status: 'verified', credential_version: 3, revision: 6, host_masked: 'db.***.example.com',
   port: 5432, database: 'analytics', username: 'readonly', tls_mode: 'system',
 };
 const FAILED = { ...POSTGRES, id: 8, name: 'Reporting', status: 'failed', validation_error: 'password authentication failed' };

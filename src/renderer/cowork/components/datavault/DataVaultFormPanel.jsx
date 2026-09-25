@@ -621,7 +621,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         });
         const edit = spec._datasource_edit;
         const connection = edit
-          ? await editDatasourceConnection(edit.id, payload, edit.expectedVersion)
+          ? await editDatasourceConnection(edit.id, payload, edit.expectedRevision)
           : await createDatasourceConnection(payload);
         const state = describeConnectionState(connection);
         patchForm(conversationId, {
@@ -639,7 +639,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // duplicate-name refusal and leave the first sitting there failed.
           ...(state.kind === 'failed' && connection?.id
             ? {
-              _datasource_edit: { id: connection.id, expectedVersion: connection.credential_version },
+              _datasource_edit: { id: connection.id, expectedRevision: connection.revision },
               // The error card replaces the form, so returning to it starts
               // from an empty one. Saying so beats letting someone press
               // Connect on a blank password and read a second refusal.
@@ -711,8 +711,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
     } catch (e) {
       // The relay names this one, and only this one, as a conflict: the
-      // connection moved on while this form was open, so the version the form
-      // carries is no longer the one to edit.
+      // connection moved on while this form was open, so the revision the
+      // form carries is no longer the one to edit.
       setError(
         e?.code === 'stale_version'
           ? 'This connection changed since you opened it. Close this and open it again to edit the current version.'

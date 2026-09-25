@@ -42,7 +42,7 @@ export function toCloudSpec(spec, connection = null) {
 
   const editing = connection
     ? {
-        _datasource_edit: { id: connection.datasourceId, expectedVersion: connection.credentialVersion },
+        _datasource_edit: { id: connection.datasourceId, expectedRevision: connection.revision },
         // Everything but the password, which only auth holds.
         name: connection.name,
         user_label: connection.name,

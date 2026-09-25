@@ -30,7 +30,7 @@ export function toDatasourceRows(connections) {
       // rides along on create, edit and retry, and it is what turns a refusal
       // into something the owner can act on here as well as in the chat form.
       validationCode: c.validation_code || '',
-      credentialVersion: c.credential_version,
+      revision: c.revision,
       hostMasked: c.host_masked || '',
       port: c.port ?? null,
       database: c.database || '',

@@ -45,6 +45,7 @@ const VERIFIED = {
   name: 'analytics',
   status: 'verified',
   credential_version: 3,
+  revision: 6,
   host_masked: 'db.***.example.com',
   port: 5432,
   database: 'analytics',
@@ -108,13 +109,14 @@ describe('the datasource relay calls', () => {
     expect(lastCall().init.method).toBe('DELETE');
   });
 
-  it('sends the version it believes it is editing', async () => {
-    await editDatasourceConnection(7, { connector_id: 'postgres', password: 'new' }, 3);
+  it('sends the revision it believes it is editing, and not the credential version', async () => {
+    await editDatasourceConnection(7, { connector_id: 'postgres', password: 'new' }, 6);
 
     const { url, init, body } = lastCall();
     expect(url).toBe('http://127.0.0.1:26866/api/v1/connectors/datasources/7');
     expect(init.method).toBe('PATCH');
-    expect(body.expected_version).toBe(3);
+    expect(body.expected_revision).toBe(6);
+    expect(body).not.toHaveProperty('expected_version');
   });
 
   it('retries a failed validation on its own route', async () => {
