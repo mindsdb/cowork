@@ -515,6 +515,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // row must stop animating over the pending card, and the segment's
     // "Worked for …" must not include the time the user spends reading.
     // After the guards above, so an ignored event changes nothing.
+    // The event carries no tool_use_id, so every open row closes, not only
+    // the asking tool's. That is exact today: anton dispatches tool calls one
+    // at a time, so the asking tool is the only one running. If tools ever
+    // run concurrently, a sibling tool's row would show as finished here.
     return { ...state, steps: [...closeOpenToolProgress(state.steps, eventTs), step] };
   }
 

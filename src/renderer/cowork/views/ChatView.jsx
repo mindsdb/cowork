@@ -529,6 +529,8 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
   // The live segment sits right before a pending question, if there is one.
   const next = live ? segments[liveIdx + 1] : null;
   const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
+  // splitTurnSegments returns a single steps segment when there is no question.
+  const hasQuestion = segments.length > 1;
 
   const out = [];
   let prevWasCard = false;
@@ -551,15 +553,18 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
     if (idx === liveIdx) {
       // Same condition the single streaming ThinkingBlock used: also the
       // pre-step "Thinking…" placeholder, so right after an answer the empty
-      // segment below the card shows that work has resumed. Also shown when
-      // a question is pending right after this segment, even if it has no
-      // steps of its own (e.g. streamed text, then ask_user with nothing
-      // earlier) — otherwise the header, and the orb slot it carries, would
-      // disappear while the question waits.
+      // segment below the card shows that work has resumed. In a turn that
+      // asked a question it is also shown for as long as the turn runs, even
+      // with no steps of its own: before the split the AskUser step counted
+      // as a step and kept this header — and the orb slot it carries — up to
+      // the end of the turn. Without that the working indicator would vanish
+      // while a question waits after streamed text, or once the closing text
+      // starts streaming below the answered card.
       const show = seg.steps.length > 0
         || live.currentThought?.text
         || (live.isActive && !live.hasBodyText)
-        || pendingQuestion;
+        || pendingQuestion
+        || (live.isActive && hasQuestion);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
       // While a question waits, it is the question's label, as before this
@@ -1825,7 +1830,9 @@ export default function ChatView({
   // active-with-steps state, on one `header:streaming` slot — for as long
   // as there's real work going on. Steps and thoughts keep streaming above
   // the growing answer text throughout, so the orb stays put for the whole turn
-  // rather than handing off once body text starts. Shares
+  // rather than handing off once body text starts. In a turn with ask_user
+  // questions that header belongs to the live segment (TurnSegments): above a
+  // pending card, below the last answered one, kept until the turn ends. Shares
   // isThinkingActive with ThinkingBlock's own header so the two can't
   // drift out of sync again the way they did before (ENG-1107/1109):
   // whatever keeps the steps panel expanded is exactly what should keep

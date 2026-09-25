@@ -355,4 +355,32 @@ describe('tool step lines render around ask_user cards in event order (ENG-2981)
     expect(headerIdx).toBeGreaterThan(-1);
     expect(cardIdx).toBeGreaterThan(headerIdx);
   });
+  it('streaming turn, reply streaming after an answer with no new steps: the live header stays until the turn ends', () => {
+    // Before the split the AskUser step counted as a step, so the in-flight
+    // header (and the orb slot on it) stayed for the whole turn. It must not
+    // vanish once the closing text starts streaming below the answered card.
+    const { container } = render(
+      <ChatView
+        task={taskWith([
+          { role: 'user', content: 'hi' },
+          {
+            role: '_streaming',
+            content: 'Test passed.',
+            startedAt: 1000,
+            streamStatus: 'in_progress',
+            steps: [timedAsk('ask:1', ACCEPT, 5000, 20000)],
+          },
+        ])}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const hs = headers(container);
+    expect(hs).toHaveLength(1);
+    expect(hs[0].querySelector('.thinking-shimmer')).not.toBeNull();
+    const text = container.textContent;
+    const headerIdx = text.indexOf(hs[0].textContent);
+    expect(text.indexOf('Prompt ask:1')).toBeLessThan(headerIdx);
+    expect(headerIdx).toBeLessThan(text.indexOf('Test passed.'));
+  });
 });
