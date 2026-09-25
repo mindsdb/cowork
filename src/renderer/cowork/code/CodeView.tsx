@@ -134,7 +134,7 @@ export default function CodeView({
   // shell. Keep it interactive while detailed history and review data load in
   // the background instead of replacing the whole workspace with a spinner.
   const session = detail.session?.id === selectedId ? detail.session : cachedSession;
-  const projects = useCodeProjects(newTask ? null : session?.project_id);
+  const projects = useCodeProjects(newTask || draftSuspended ? null : session?.project_id);
   const taskList = useCodeTaskList({
     active,
     sessions,
@@ -371,11 +371,12 @@ export default function CodeView({
             projects={projects.projects}
             onConnectionsChange={onConnectionsChange}
             returnProjectName={projects.projects.find((project) => project.id === connectorReturn?.projectId)?.name || ''}
-            backLabel={connectorReturn ? connectorReturnLabel(connectorReturn.destination) : undefined}
+            backLabel={connectorReturn ? connectorReturnLabel(projectEditor ? 'settings' : connectorReturn.destination) : undefined}
             onBack={connectorReturn ? () => {
               const { projectId, destination } = connectorReturn;
-              projects.setSelectedId(projectId);
+              resumeProjectEditor.current = projectEditor;
               if (destination === 'settings') {
+                projects.setSelectedId(projectId);
                 resumeProjectEditor.current = { id: projectId };
                 onOpenProjects();
               } else {
@@ -707,7 +708,7 @@ export default function CodeView({
           }}
           onOpenConnectors={() => {
             resumeProjectEditor.current = projectEditor;
-            setConnectorReturn({ projectId: projectEditor?.id ?? null, destination: 'settings' });
+            setConnectorReturn({ projectId: projectEditor?.id ?? null, destination: projectsOpen ? 'settings' : 'task' });
             onOpenConnectors();
           }}
           onOpenSkills={() => {
