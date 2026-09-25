@@ -76,13 +76,14 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       {/* The prompt is agent-authored markdown (the artifact PRD brief has
           bold section lines, lists and single-newline line breaks).
           softBreaks keeps those single newlines; forms and charts are off
-          so a fence in a question stays a plain code block. No colour
-          override: inside the chat the `.answer-turn .markdown-content`
-          rule gives it the answer prose style. */}
+          so a fence in a question stays a plain code block. Default
+          (not dense) sizes on purpose: the prompt matches the 14.5px chat
+          text around the card. No colour override: inside the chat the
+          `.answer-turn .markdown-content` rule gives it the answer prose
+          style. */}
       <div id={promptId} className="mb-2">
         <MarkdownContent
           text={q.prompt || ''}
-          dense
           softBreaks
           enableForms={false}
           enableCharts={false}
