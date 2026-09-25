@@ -594,4 +594,48 @@ describe('MarkdownContent softBreaks', () => {
     expect(container.querySelector('br')).toBeNull();
     expect(container.textContent).toContain('line a\nline b');
   });
+
+  it('treats a CRLF line ending like a plain newline', () => {
+    const { container } = render(<MarkdownContent text={'line one\r\nline two'} softBreaks />);
+    expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
+  });
+
+  it('breaks lines inside nested blocks such as a list item', () => {
+    const { container } = render(<MarkdownContent text={'- first line\n  second line'} softBreaks />);
+    const li = container.querySelector('li');
+    expect(li.querySelector('br')).not.toBeNull();
+    expect(li.textContent).toBe('first line\nsecond line');
+  });
+
+  it('adds no break inside inline code', () => {
+    const { container } = render(<MarkdownContent text={'run `a\nb` now'} softBreaks />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('code').textContent).toBe('a b');
+  });
+});
+
+describe('MarkdownContent neutralizeLoopback', () => {
+  const PANEL_HINT = 'Live Artifacts panel';
+  const LOOPBACK = '[Open the preview](http://localhost:3000/)';
+
+  it('neutralises a loopback link on web without the assistant-only rewrites', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent text={LOOPBACK} neutralizeLoopback />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+
+  it('follows isAssistant by default, so authored text keeps its loopback links live', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent text={LOOPBACK} />);
+      expect(container.querySelector('a')).not.toBeNull();
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
 });

@@ -76,20 +76,22 @@ function remarkSkillMentions(names) {
 // the body under it — the shape the artifact brief in an ask_user prompt
 // uses. Opt-in via `softBreaks`; chat answers keep standard soft breaks.
 // Empty parts are dropped so "**Goal**\nbody" becomes strong, break, text
-// with no empty text node. Code keeps its newlines: `code` / `inlineCode`
-// are never descended into (same rule as remarkSkillMentions).
+// with no empty text node. Code keeps its newlines without a special case:
+// `code` / `inlineCode` hold their source in `value`, not in text children,
+// so the walk never reaches it.
 function remarkSoftBreaks() {
   const walk = (node) => {
     if (!node || !Array.isArray(node.children)) return;
     const next = [];
     for (const child of node.children) {
-      if (child.type === 'text' && /\r?\n/.test(child.value)) {
-        child.value.split(/\r?\n/).forEach((part, i) => {
+      const parts = child.type === 'text' ? child.value.split(/\r?\n/) : null;
+      if (parts && parts.length > 1) {
+        parts.forEach((part, i) => {
           if (i > 0) next.push({ type: 'break' });
           if (part) next.push({ type: 'text', value: part });
         });
       } else {
-        if (child.type !== 'code' && child.type !== 'inlineCode') walk(child);
+        walk(child);
         next.push(child);
       }
     }
@@ -601,6 +603,11 @@ export function MarkdownContent({
   // Render single newlines as line breaks (remarkSoftBreaks). Off by
   // default; the ask_user card turns it on for agent-authored prompts.
   softBreaks = false,
+  // Neutralise loopback links on web (see remarkArtifactLocalLinks below).
+  // Follows `isAssistant` by default; agent-authored text that must not get
+  // the assistant-only inline-code rewrite (the ask_user prompt) sets it
+  // on its own.
+  neutralizeLoopback = isAssistant,
 }) {
   const rootRef = useRef(null);
   // Only run the form-fence normalization pass when forms are enabled.
@@ -637,18 +644,18 @@ export function MarkdownContent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       [remarkSkillMentions, skillNames],
-      // Loopback neutralisation is scoped to ASSISTANT chat output on web —
+      // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
       // document/artifact preview referencing one, is describing a service on
       // their own machine and must stay live (review finding on #956, round
       // 3). The path shapes (file:, sandbox:, C:\, /mnt/, .anton/artifacts)
       // stay neutralised for every consumer: only the `web` option gates the
       // loopback branch inside isArtifactLocalPath.
-      [remarkArtifactLocalLinks, { web: host.isWeb && isAssistant }],
+      [remarkArtifactLocalLinks, { web: host.isWeb && neutralizeLoopback }],
       // Last, so every transform above sees the unchanged tree.
       ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, isAssistant, softBreaks],
+    [skillNames, neutralizeLoopback, softBreaks],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]

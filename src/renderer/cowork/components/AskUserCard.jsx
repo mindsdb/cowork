@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { submitAnswer } from '../api';
 import { MarkdownContent } from './markdown/MarkdownContent';
 
@@ -19,6 +19,36 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   const promptId = useId();
 
   const settled = Boolean(answer) || expired || gone;
+
+  // Only a multi-line prompt is markdown. The ask_user tool asks the model
+  // for one short plain-text line, and parsing that as markdown loses text
+  // ("Use <div>?" drops the tag, "__init__.py" turns bold) — so a single
+  // line renders verbatim. The artifact PRD brief is multi-line markdown
+  // (bold section lines, lists, single-newline line breaks): softBreaks
+  // keeps those newlines, forms and charts are off so a fence stays a plain
+  // code block, and loopback links are neutralised on web as in chat
+  // answers. Both shapes sit in `.markdown-content`, so inside the chat the
+  // `.answer-turn .markdown-content` rule gives them the answer prose style,
+  // and default (not dense) sizes match the 14.5px chat text around the
+  // card. Memoised: ChatView re-renders on every streamed delta, and each
+  // card would otherwise re-parse its brief every time.
+  const prompt = q.prompt || '';
+  const promptBody = useMemo(
+    () => (prompt.trim().includes('\n') ? (
+      <MarkdownContent
+        text={prompt}
+        softBreaks
+        neutralizeLoopback
+        enableForms={false}
+        enableCharts={false}
+      />
+    ) : (
+      <div className="markdown-content">
+        <p className="font-body text-body text-ink-2 my-0">{prompt}</p>
+      </div>
+    )),
+    [prompt],
+  );
 
   // This is the only interactive control in an otherwise static stream, it
   // appears unprompted mid-turn, and it blocks the agent — so a screen-reader
@@ -73,21 +103,15 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
 
   return (
     <div className="rounded-lg border border-line bg-surface-2 p-3">
-      {/* The prompt is agent-authored markdown (the artifact PRD brief has
-          bold section lines, lists and single-newline line breaks).
-          softBreaks keeps those single newlines; forms and charts are off
-          so a fence in a question stays a plain code block. Default
-          (not dense) sizes on purpose: the prompt matches the 14.5px chat
-          text around the card. No colour override: inside the chat the
-          `.answer-turn .markdown-content` rule gives it the answer prose
-          style. */}
-      <div id={promptId} className="mb-2">
-        <MarkdownContent
-          text={q.prompt || ''}
-          softBreaks
-          enableForms={false}
-          enableCharts={false}
-        />
+      {/* The chat's markdown sizes give lists and headings outer margins
+          (only paragraphs reset theirs); inside the padded card those would
+          add a gap above a leading heading or below a trailing list, so the
+          first and last blocks drop them. */}
+      <div
+        id={promptId}
+        className="mb-2 [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
+      >
+        {promptBody}
       </div>
 
       <div className="sr-only" role="status" aria-live="polite">{announcement}</div>

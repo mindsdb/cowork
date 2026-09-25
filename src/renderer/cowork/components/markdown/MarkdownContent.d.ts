@@ -12,6 +12,7 @@ export interface MarkdownContentProps {
   animateStreamingWords?: boolean;
   isAssistant?: boolean;
   softBreaks?: boolean;
+  neutralizeLoopback?: boolean;
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;

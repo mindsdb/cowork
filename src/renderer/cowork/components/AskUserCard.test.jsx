@@ -233,6 +233,16 @@ describe('AskUserCard', () => {
     expect(submitAnswer).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a single-line prompt verbatim, without markdown parsing', () => {
+    // The ask_user tool asks for one short plain-text line; parsed as
+    // markdown, "<div>" would vanish and "__init__" would turn bold.
+    const prompt = 'Use <div> or edit __init__.py?';
+    const { container } = renderCard({ prompt });
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    expect(container.querySelector('strong')).toBeNull();
+    expect(screen.getByRole('group')).toHaveAccessibleName(prompt);
+  });
+
   it('renders a markdown brief with headings, line breaks and lists', () => {
     // The shape of the artifact PRD brief anton sends: bold section lines
     // followed by a SINGLE newline and the body, and two closing lines
