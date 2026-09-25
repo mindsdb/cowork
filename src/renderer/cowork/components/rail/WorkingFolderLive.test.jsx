@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -364,5 +364,99 @@ describe('artifacts rail click on desktop', () => {
 
     expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
     expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
+// ENG-2979: another member's artifact gets a person icon right after the
+// type icon. The column is reserved on every row of a list that has at least
+// one marker, so names stay in one column; an owner-only list is unchanged.
+describe('artifacts rail authorship marker', () => {
+  beforeEach(() => setOrgMode(true));
+
+  const FOUR = 'grid-cols-[14px_12px_minmax(0,1fr)_auto]';
+  const THREE = 'grid-cols-[14px_minmax(0,1fr)_auto]';
+  const other = (overrides = {}) => draft({
+    id: '22222222222222222222222222222222',
+    title: 'Ops Console',
+    path: '/proj/.anton/artifacts/ops/console.md',
+    capabilities: { role: 'reviewer', canEdit: false },
+    ...overrides,
+  });
+  const renderRows = async (list) => {
+    fetchArtifacts.mockResolvedValue(list);
+    render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    await screen.findByText(list[0].title);
+  };
+  const rowOf = (title) => screen.getByText(title).closest('[role="button"]');
+
+  it('marks another member\'s row with a labelled icon', async () => {
+    await renderRows([other()]);
+    expect(screen.getByRole('img', { name: 'Another member' })).toBeInTheDocument();
+    expect(rowOf('Ops Console').getAttribute('title')).toContain(' · Another member');
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+  });
+
+  it('marks an ownerless row', async () => {
+    await renderRows([other({ capabilities: { role: 'reviewer', canEdit: false, ownerUnknown: true } })]);
+    expect(screen.getByRole('img', { name: 'Unknown owner' })).toBeInTheDocument();
+    expect(rowOf('Ops Console').getAttribute('title')).toContain(' · Unknown owner');
+  });
+
+  it('leaves an owner-only list exactly as it was', async () => {
+    await renderRows([draft()]);
+    expect(screen.queryByRole('img', { name: /Another member|Unknown owner/ })).toBeNull();
+    expect(rowOf('Weekly Report').className).toContain(THREE);
+    expect(rowOf('Weekly Report').getAttribute('title')).not.toContain('Another member');
+  });
+
+  it('aligns names in a mixed list', async () => {
+    await renderRows([other(), draft()]);
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+    expect(rowOf('Weekly Report').className).toContain(FOUR);
+    expect(screen.getAllByRole('img', { name: 'Another member' })).toHaveLength(1);
+    // The owner row keeps the column with an empty, hidden cell.
+    expect(rowOf('Weekly Report').children[1].getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // ENG-2979 fix wave (code review): recomputing the column from the raw
+  // top-12 slice on every 3s poll made it — and every row's horizontal
+  // position — jump as a colleague's artifact entered/left the slice.
+  it('keeps the marker column once set, even when a later poll comes back owner-only', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchArtifacts.mockResolvedValueOnce([other()]);
+      const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await screen.findByText('Ops Console');
+      expect(rowOf('Ops Console').className).toContain(FOUR);
+
+      // Simulate the "streaming just ended" poll: it fires once, ~1s after
+      // isStreaming flips back to false, and this time the slice is owner-only.
+      fetchArtifacts.mockResolvedValueOnce([draft()]);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming />);
+      rerender(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      await screen.findByText('Weekly Report');
+
+      expect(screen.queryByText('Ops Console')).toBeNull();
+      // Column stays reserved for this project even though nothing in the
+      // current slice needs it any more.
+      expect(rowOf('Weekly Report').className).toContain(FOUR);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the marker column to three when the project changes', async () => {
+    const OTHER_PROJECT = { id: 'proj-2', name: 'other', path: '/proj2' };
+    fetchArtifacts.mockResolvedValueOnce([other()]);
+    const { rerender } = render(<WorkingFolderLive project={PROJECT} isStreaming={false} />);
+    await screen.findByText('Ops Console');
+    expect(rowOf('Ops Console').className).toContain(FOUR);
+
+    fetchArtifacts.mockResolvedValueOnce([draft()]);
+    rerender(<WorkingFolderLive project={OTHER_PROJECT} isStreaming={false} />);
+    await screen.findByText('Weekly Report');
+
+    expect(rowOf('Weekly Report').className).toContain(THREE);
   });
 });

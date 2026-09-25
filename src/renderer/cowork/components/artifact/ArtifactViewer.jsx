@@ -24,6 +24,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
@@ -384,6 +385,13 @@ export function ArtifactViewer({
     : artifact?.capabilities
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
+  // Unlike canManage, a client-side guess must never override the card's
+  // server-sent role: a guessed reviewer would hide "Another member" on the
+  // user's own artifact, and a guessed owner would hide it on a colleague's.
+  // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
+  const authorship = artifactAuthorship(
+    (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
+  );
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -871,6 +879,7 @@ export function ArtifactViewer({
     >
       <ArtifactViewerHeader
         title={title}
+        authorship={authorship}
         workspace={workspace}
         review={headerReview}
         publication={publication}

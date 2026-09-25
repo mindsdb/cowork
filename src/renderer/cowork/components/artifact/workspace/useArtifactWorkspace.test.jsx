@@ -344,6 +344,39 @@ describe('useArtifactWorkspace collaboration transport', () => {
   });
 });
 
+// ENG-2979: a surface that must not let a client-side guess override a
+// server-sent role (the authorship tag) reads this flag instead of trusting
+// `capabilities` alone.
+describe('useArtifactWorkspace capabilitiesFromServer', () => {
+  it('is false for an older server whose source carries no capabilities', async () => {
+    api.loadArtifactSource.mockResolvedValue({ ...source, capabilities: undefined });
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(false);
+    // The OWNER_CAPABILITIES guess still drives canEdit exactly as before.
+    expect(result.current.capabilities.canEdit).toBe(true);
+  });
+
+  it('is false for the reviewer fallback on a 403 with no review capabilities', async () => {
+    api.loadArtifactSource.mockRejectedValue(
+      httpError(403, 'Only the artifact owner can change this draft'),
+    );
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(false);
+    expect(result.current.capabilities.role).toBe('reviewer');
+  });
+
+  it('is true once the source answers with its own capabilities', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.capabilitiesFromServer).toBe(true);
+  });
+});
+
 describe('useArtifactWorkspace agent repair decisions', () => {
   const readyRepair = {
     id: 'repair-1',
