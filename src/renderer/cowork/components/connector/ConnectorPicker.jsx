@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { Info } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { Alert, Select, Tooltip } from '../ui';
@@ -141,7 +142,26 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
         <ConnectorLogo connector={connector} size={22} />
       </span>
       <div className="min-w-0 flex flex-col gap-1">
-        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">{connector.label || connector.id}</span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0] truncate">{connector.label || connector.id}</span>
+          {/* Spec-driven, not per-connector code: any connector that sets
+              `notice` in its JSON gets the badge, and one that doesn't gets
+              no extra markup at all. */}
+          {connector.notice && (
+            <Tooltip content={connector.notice}>
+              <span className="shrink-0 inline-flex items-center text-ink-4">
+                <Info size={14} strokeWidth={1.5} />
+                {/* Lucide marks the glyph aria-hidden, and the tooltip is
+                    hover-only: the badge is deliberately not focusable (it
+                    sits inside the tile's own <button>, where a second tab
+                    stop would be invalid markup and a nuisance), and Base UI
+                    only wires aria-describedby once the popup opens. Without
+                    this the notice would reach sighted mouse users only. */}
+                <span className="sr-only">{connector.notice}</span>
+              </span>
+            </Tooltip>
+          )}
+        </span>
         {connector.description && (
           <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">{connector.description}</span>
         )}
