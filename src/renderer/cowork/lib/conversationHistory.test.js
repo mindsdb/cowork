@@ -164,6 +164,17 @@ describe('conversation-turn sidecar (localStorage)', () => {
     expect(readConvTurns('c1')[0].steps).toEqual([{ id: 'art' }]);
     expect(localStorage.getItem('anton:conv-artifacts:c1')).toBeNull();
   });
+
+  it('persistTurnState keeps what a ToolProgress row needs (ENG-2981)', () => {
+    persistTurnState('c1', 0, [{
+      id: 'step-2', label: 'Writing the page (step 3 of 4)', badge: 'ToolProgress', icon: 'code',
+      status: 'completed', startedAt: 1, completedAt: 2, data: null,
+      _isScratchpad: false, _isToolCall: false, _scratchpadTabId: 'tc_1',
+    }], 1);
+    expect(readConvTurns('c1')[0].steps[0]).toMatchObject({
+      label: 'Writing the page (step 3 of 4)', badge: 'ToolProgress', _scratchpadTabId: 'tc_1',
+    });
+  });
 });
 
 const ASK = {
@@ -184,6 +195,42 @@ describe('reduceServerEvents', () => {
     const reduced = reduceServerEvents([ASK, { type: 'response.completed' }], 100);
     expect(reduced.status).toBe('done');
     expect(reduced.steps.length).toBeGreaterThan(0);
+  });
+
+  it('replays a generate_artifact run with rows placed after the accepting question (ENG-2981)', () => {
+    // Trimmed from a recorded run (~/.cowork/streams/04da1410-…/turn_000000.jsonl),
+    // with the step lines the old server throttle used to drop put back.
+    const progress = (content, at_ms, extra = {}) => ({
+      type: 'response.in_progress',
+      thought_role: 'thought.tool_call.progress',
+      tool_use_id: 'tc_1',
+      content,
+      at_ms,
+      ...extra,
+    });
+    const reduced = reduceServerEvents([
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+      progress('Gathering what the artifact needs', 1100, { tool_name: 'generate_artifact' }),
+      progress('Preparing a short brief for you', 5000),
+      { type: 'response.ask_user', question_id: 'q1', prompt: 'Brief', options: [{ value: 'accept', label: 'Accept' }], at_ms: 8000 },
+      { type: 'response.ask_user_answered', question_id: 'q1', status: 'answered', values: ['accept'], at_ms: 20000 },
+      progress('Writing down the agreed requirements (step 1 of 4)', 20001),
+      progress('Writing the technical specification (step 2 of 4)', 24000),
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', ok: true, at_ms: 50000 },
+      { type: 'response.completed', at_ms: 55000 },
+    ], 1000);
+
+    expect(reduced.status).toBe('done');
+    expect(reduced.steps.map((s) => (s.badge === 'AskUser' ? 'QUESTION' : s.label))).toEqual([
+      'generate_artifact',
+      'Gathering what the artifact needs',
+      'Preparing a short brief for you',
+      'QUESTION',
+      'Writing down the agreed requirements (step 1 of 4)',
+      'Writing the technical specification (step 2 of 4)',
+    ]);
+    expect(reduced.steps.find((s) => s.label === 'Preparing a short brief for you').completedAt).toBe(8000);
+    expect(reduced.steps.every((s) => s.status === 'completed')).toBe(true);
   });
 });
 

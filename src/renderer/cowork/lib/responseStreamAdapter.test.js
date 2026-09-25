@@ -325,6 +325,9 @@ describe('truncateLabel', () => {
 describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool progress display)', () => {
   const now = () => 1000;
 
+  const toolSteps = (state) => state.steps.filter((s) => s._isToolCall);
+  const rows = (state) => state.steps.filter((s) => s.badge === 'ToolProgress');
+
   it('creates a step lazily on the first progress event for a tool call', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
@@ -337,7 +340,7 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
+    expect(state.steps).toHaveLength(2); // parent tool step + one row
     const step = state.steps[0];
     expect(step._isToolCall).toBe(true);
     expect(step._toolUseId).toBe('tc_1');
@@ -345,15 +348,16 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
     expect(step.data.one_line_description).toBe('step 1');
   });
 
-  it('patches the same step in place on subsequent progress events, overwriting the text', () => {
+  it('keeps one parent step and adds a row per line; the parent tracks the latest line', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', content: 'step 2' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
-    expect(state.steps[0].data.one_line_description).toBe('step 2');
+    expect(toolSteps(state)).toHaveLength(1);
+    expect(toolSteps(state)[0].data.one_line_description).toBe('step 2');
+    expect(rows(state).map((r) => r.label)).toEqual(['step 1', 'step 2']);
   });
 
   it('closes the step as completed on tool_call.end', () => {
@@ -363,8 +367,8 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', content: '' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(1);
-    expect(state.steps[0].status).toBe('completed');
+    expect(state.steps).toHaveLength(2);
+    expect(state.steps.map((s) => s.status)).toEqual(['completed', 'completed']);
   });
 
   it('marks the step cellStatus "error" when tool_call.end carries ok: false', () => {
@@ -451,13 +455,18 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(2);
-    const [a, b] = state.steps;
+    expect(toolSteps(state)).toHaveLength(2);
+    const [a, b] = toolSteps(state);
     expect(a._toolUseId).toBe('tc_1');
     expect(a.status).toBe('completed');
     expect(b._toolUseId).toBe('tc_2');
     expect(b.status).toBe('in_progress');
     expect(b.data.one_line_description).toBe('step 1');
+    // tc_1's end closes tc_1's row only.
+    expect(rows(state).map((r) => [r._scratchpadTabId, r.status])).toEqual([
+      ['tc_1', 'completed'],
+      ['tc_2', 'in_progress'],
+    ]);
   });
 
   it('gives each tool call its own _scratchpadTabId instead of sharing null', () => {
@@ -474,10 +483,11 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
       { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_2', tool_name: 'test_tool', content: 'step 1' },
     ], initialStreamState(), now);
 
-    expect(state.steps).toHaveLength(2);
-    expect(state.steps[0]._scratchpadTabId).toBe('tc_1');
-    expect(state.steps[1]._scratchpadTabId).toBe('tc_2');
-    expect(state.steps[0]._scratchpadTabId).not.toBe(state.steps[1]._scratchpadTabId);
+    const tools = toolSteps(state);
+    expect(tools).toHaveLength(2);
+    expect(tools[0]._scratchpadTabId).toBe('tc_1');
+    expect(tools[1]._scratchpadTabId).toBe('tc_2');
+    expect(tools[0]._scratchpadTabId).not.toBe(tools[1]._scratchpadTabId);
   });
 });
 
@@ -616,5 +626,138 @@ describe('response.answer_reset — a forced continuation replaces the answer', 
     ]);
     expect(thinking.currentThought).not.toBeNull();
     expect(reduceStream(thinking, RESET).currentThought).toBeNull();
+  });
+});
+
+// ─── ENG-2981: every tool progress line is its own step ────────────────────
+//
+// generate_artifact announces each pipeline step as a tool_call.progress line.
+// The chat shows steps, so each line becomes a 'ToolProgress' row kept in event
+// order (like the CLI prints them), and a row ends when the tool moves on, asks
+// the user, finishes, or the turn ends.
+
+describe('ToolProgress rows (ENG-2981)', () => {
+  const now = () => 1000;
+  const progress = (content, at_ms, tool_use_id = 'tc_1') => ({
+    type: 'response.in_progress',
+    thought_role: 'thought.tool_call.progress',
+    tool_use_id,
+    tool_name: 'generate_artifact',
+    content,
+    at_ms,
+  });
+  const ask = (qid, at_ms) => ({ ...ASK, question_id: qid, at_ms });
+  const answer = (qid, at_ms) => ({ ...ANSWERED, question_id: qid, at_ms });
+  const rows = (state) => state.steps.filter((s) => s.badge === 'ToolProgress');
+
+  it('adds one row per line, linked to its tool, and closes the previous row', () => {
+    const state = reduceAll([
+      progress('Gathering what the artifact needs', 100),
+      progress('Preparing a short brief for you', 200),
+    ], initialStreamState(), now);
+
+    const [parent, first, second] = state.steps;
+    expect(parent._isToolCall).toBe(true);
+    expect(parent.label).toBe('generate_artifact');
+    expect(first).toMatchObject({
+      label: 'Gathering what the artifact needs',
+      badge: 'ToolProgress',
+      icon: parent.icon,
+      status: 'completed',
+      startedAt: 100,
+      completedAt: 200,
+      _isToolCall: false,
+      _isScratchpad: false,
+      _scratchpadTabId: 'tc_1',
+    });
+    expect(second).toMatchObject({ status: 'in_progress', startedAt: 200, completedAt: null });
+    expect(new Set(state.steps.map((s) => s.id)).size).toBe(3);
+  });
+
+  it('keeps the same line twice when a question separates them', () => {
+    const state = reduceAll([
+      progress('Updating the brief with your changes', 100),
+      ask('q1', 150),
+      answer('q1', 300),
+      progress('Updating the brief with your changes', 310),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => r.label)).toEqual([
+      'Updating the brief with your changes',
+      'Updating the brief with your changes',
+    ]);
+  });
+
+  it('adds a retry line as a new row', () => {
+    const state = reduceAll([
+      progress('Writing the page (step 3 of 4)', 100),
+      progress('Writing the page (step 3 of 4, attempt 2)', 200),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => r.label)).toEqual([
+      'Writing the page (step 3 of 4)',
+      'Writing the page (step 3 of 4, attempt 2)',
+    ]);
+  });
+
+  it('closes the open row when a question is asked, and the answer does not reopen it', () => {
+    const asked = reduceAll([
+      progress('Preparing a short brief for you', 100),
+      ask('q1', 150),
+    ], initialStreamState(), now);
+
+    expect(rows(asked)[0]).toMatchObject({ status: 'completed', completedAt: 150 });
+    // The tool itself is still running.
+    expect(asked.steps.find((s) => s._isToolCall).status).toBe('in_progress');
+
+    const answered = reduceStream(asked, answer('q1', 300), now);
+    expect(rows(answered)[0]).toMatchObject({ status: 'completed', completedAt: 150 });
+  });
+
+  it('leaves rows alone when an ignored ask_user arrives', () => {
+    const state = reduceAll([progress('Preparing a short brief for you', 100)], initialStreamState(), now);
+    const noId = reduceStream(state, { ...ASK, question_id: '', at_ms: 150 }, now);
+    expect(noId).toBe(state);
+
+    const asked = reduceStream(state, ask('q1', 150), now);
+    const reopened = reduceStream(
+      { ...asked, steps: asked.steps.map((s) => (s.badge === 'ToolProgress' ? { ...s, status: 'in_progress', completedAt: null } : s)) },
+      ask('q1', 160), // duplicate question id → ignored before any row is touched
+      now,
+    );
+    expect(rows(reopened)[0].status).toBe('in_progress');
+  });
+
+  it('closes the last row on tool_call.end and marks it failed when ok is false', () => {
+    const state = reduceAll([
+      progress('Verifying the page (step 4 of 4)', 100),
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', ok: false, at_ms: 400 },
+    ], initialStreamState(), now);
+
+    expect(rows(state)[0]).toMatchObject({ status: 'completed', completedAt: 400, cellStatus: 'error' });
+  });
+
+  it('closes an open row on response.completed and on response.failed', () => {
+    const open = reduceAll([progress('Writing the page (step 3 of 4)', 100)], initialStreamState(), now);
+
+    const done = reduceStream(open, { type: 'response.completed', at_ms: 500 }, now);
+    expect(rows(done)[0]).toMatchObject({ status: 'completed', completedAt: 500 });
+
+    const failed = reduceStream(open, { type: 'response.failed', error: 'boom', at_ms: 600 }, now);
+    expect(rows(failed)[0]).toMatchObject({ status: 'completed', completedAt: 600 });
+  });
+
+  it('with interleaved tools, a line closes only its own tool\'s previous row', () => {
+    const state = reduceAll([
+      progress('Writing the backend (step 4 of 9)', 100, 'tc_1'),
+      progress('other tool line', 150, 'tc_2'),
+      progress('Verifying the backend (step 5 of 9)', 200, 'tc_1'),
+    ], initialStreamState(), now);
+
+    expect(rows(state).map((r) => [r.label, r.status])).toEqual([
+      ['Writing the backend (step 4 of 9)', 'completed'],
+      ['other tool line', 'in_progress'],
+      ['Verifying the backend (step 5 of 9)', 'in_progress'],
+    ]);
   });
 });
