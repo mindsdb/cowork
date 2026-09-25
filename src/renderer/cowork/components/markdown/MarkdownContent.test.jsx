@@ -566,3 +566,64 @@ describe('MarkdownContent streaming performance', () => {
     expect(container).toHaveTextContent('The agent is still working on this change.');
   });
 });
+
+describe('MarkdownContent softBreaks', () => {
+  it.each(['line one\nline two', 'line one\r\nline two'])(
+    'keeps the single line ending in %j as a line break when enabled',
+    (text) => {
+      const { container } = render(<MarkdownContent text={text} softBreaks />);
+      // mdast-util-to-hast emits a "\n" text node after every <br>.
+      expect(container.querySelector('p').innerHTML).toBe('line one<br>\nline two');
+    },
+  );
+
+  it('leaves a single newline as a soft break by default', () => {
+    const { container } = render(<MarkdownContent text={'line one\nline two'} />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('p').textContent).toBe('line one\nline two');
+  });
+
+  it('puts a bold heading and its body on separate lines', () => {
+    const { container } = render(<MarkdownContent text={'**Goal**\nbody'} softBreaks />);
+    const p = container.querySelector('p');
+    expect([...p.childNodes].map((n) => n.nodeName)).toEqual(['STRONG', 'BR', '#text', '#text']);
+    expect([...p.childNodes].map((n) => n.textContent)).toEqual(['Goal', '', '\n', 'body']);
+  });
+
+  it('does not touch newlines inside a fenced code block', () => {
+    const { container } = render(
+      <MarkdownContent text={'```\nline a\nline b\n```'} softBreaks />,
+    );
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.textContent).toContain('line a\nline b');
+  });
+
+  it('breaks lines inside nested blocks such as a list item', () => {
+    const { container } = render(<MarkdownContent text={'- first line\n  second line'} softBreaks />);
+    const li = container.querySelector('li');
+    expect(li.querySelector('br')).not.toBeNull();
+    expect(li.textContent).toBe('first line\nsecond line');
+  });
+
+  it('adds no break inside inline code', () => {
+    const { container } = render(<MarkdownContent text={'run `a\nb` now'} softBreaks />);
+    expect(container.querySelector('br')).toBeNull();
+    expect(container.querySelector('code').textContent).toBe('a b');
+  });
+});
+
+describe('MarkdownContent neutralizeLoopback', () => {
+  const PANEL_HINT = 'Live Artifacts panel';
+  const LOOPBACK = '[Open the preview](http://localhost:3000/)';
+
+  it('neutralises a loopback link on web without the assistant-only rewrites', () => {
+    hostState.isWeb = true;
+    try {
+      const { container } = render(<MarkdownContent text={LOOPBACK} neutralizeLoopback />);
+      expect(container.querySelector('a')).toBeNull();
+      expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+    } finally {
+      hostState.isWeb = false;
+    }
+  });
+});

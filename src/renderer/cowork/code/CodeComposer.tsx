@@ -1,8 +1,11 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Select from '../components/ui/Select';
 import { Textarea } from '../components/ui/Input';
-import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem } from './api';
+import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem, type TaskMode } from './api';
+import { ComposerAddMenu } from './ComposerAddMenu';
+import { planModeCommand } from './planModeCommand';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu, PromptQueue } from './ComposerMenus';
 import { readComposerDraft, writeComposerDraft } from './composerDrafts';
@@ -10,12 +13,16 @@ import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
+import './task-control.css';
 
 
 type CodeComposerProps = {
   session: CodingSession;
   busy: boolean;
   onSend: (prompt: string, delivery: 'turn' | 'steer' | 'queue', attachments: InputReference[]) => Promise<void>;
+  onModeSend?: (prompt: string, mode: TaskMode, attachments: InputReference[]) => Promise<void>;
+  supportsPlanning?: boolean;
+  planningLoading?: boolean;
   onStop: () => Promise<void>;
   commands: EngineCommand[];
   onClientCommand: (command: EngineCommand) => void;
@@ -68,6 +75,12 @@ function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): b
     && left.session.engine_id === right.session.engine_id
     && left.session.project_id === right.session.project_id
     && left.session.permission_mode === right.session.permission_mode
+    && left.session.pending_question?.id === right.session.pending_question?.id
+    && left.session.pending_approval?.id === right.session.pending_approval?.id
+    && left.session.task_mode === right.session.task_mode
+    && (!right.supportsPlanning || isActiveStatus(right.session.status) || left.session.event_count === right.session.event_count)
+    && left.supportsPlanning === right.supportsPlanning
+    && left.planningLoading === right.planningLoading
     && sameQueuedInstructions(left.session, right.session)
     && left.referenceRequest?.id === right.referenceRequest?.id
     && sameStrings(left.history, right.history);
@@ -77,6 +90,9 @@ export const CodeComposer = memo(function CodeComposer({
   session,
   busy,
   onSend,
+  onModeSend,
+  supportsPlanning = false,
+  planningLoading = false,
   onStop,
   commands,
   onClientCommand,
@@ -95,16 +111,37 @@ export const CodeComposer = memo(function CodeComposer({
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
+  const [delivery, setDelivery] = useState<'queue' | 'steer'>('queue');
+  const [draftMode, setDraftMode] = useState<TaskMode | undefined>(() => readComposerDraft(session.id)?.taskMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
+  const canPlan = supportsPlanning && !!onModeSend;
+  // Capability refreshes must not turn an explicit Plan draft into Build.
+  const mode = !active ? draftMode ?? session.task_mode ?? 'build' : session.task_mode ?? 'build';
+  const modeChange = !active && mode !== (session.task_mode ?? 'build');
+  const sendBlocked = !active && (planningLoading || (modeChange && !canPlan));
+  const modeHint = !active && planningLoading ? 'Checking available task modes…'
+    : sendBlocked ? 'This task mode is unavailable. Change the mode before sending.' : '';
+  const previousLiveMode = useRef({ mode: session.task_mode, active });
+  // A mode chosen for the next turn must not silently become a steer/queue
+  // if another window starts work first. Follow the live mode until idle.
+  useEffect(() => {
+    if (previousLiveMode.current.mode !== session.task_mode || previousLiveMode.current.active !== active) setDraftMode(undefined);
+    previousLiveMode.current = { mode: session.task_mode, active };
+  }, [session.task_mode, active]);
+  const waiting = !!session.pending_question || !!session.pending_approval;
+  useEffect(() => { if (waiting) setDelivery('queue'); }, [waiting]);
   const recoverable = ['failed', 'interrupted', 'recovering'].includes(session.run_status || '');
   const hasDraft = !!prompt.trim();
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase() ?? null;
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
-  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectId: session.project_id });
-  useEffect(() => writeComposerDraft(session.id, { prompt, attachments }), [session.id, prompt, attachments]);
+  const paletteItems = useCodePaletteItems({ commands: [
+    ...(canPlan && !active ? [planModeCommand(mode === 'plan')] : []),
+    ...commands.filter(command => command.name !== 'plan'),
+  ], query: commandQuery, projectId: session.project_id });
+  useEffect(() => writeComposerDraft(session.id, { prompt, attachments, taskMode: draftMode }), [session.id, prompt, attachments, draftMode]);
   useEffect(() => {
     if (!referenceRequest) return;
     setAttachments((current) => mergeReferences(current, [referenceRequest.item]));
@@ -126,6 +163,12 @@ export const CodeComposer = memo(function CodeComposer({
   }, [mentionQuery, session.id]);
 
   const chooseCommand = async (command: EngineCommand) => {
+    if (busy) return;
+    if (command.name === 'plan' && canPlan && !active) {
+      setDraftMode(mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+      return;
+    }
     if (command.argument_hint) {
       setPrompt(`/${command.name} `);
       return;
@@ -135,6 +178,7 @@ export const CodeComposer = memo(function CodeComposer({
       onClientCommand(command);
       return;
     }
+    if (sendBlocked) return;
     const commandPrompt = `/${command.name}`;
     setPrompt('');
     try {
@@ -164,13 +208,23 @@ export const CodeComposer = memo(function CodeComposer({
   };
   const submit = async () => {
     const value = prompt.trim();
-    if (!value || busy) return;
+    if (!value || busy || sendBlocked) return;
+    if (value === '/plan' && canPlan && !active) {
+      setDraftMode(mode === 'plan' ? 'build' : 'plan');
+      setPrompt('');
+      return;
+    }
     const submittedAttachments = attachments;
     setPrompt('');
     setHistoryIndex(null);
     setAttachments([]);
     try {
-      await onSend(value, active ? 'queue' : 'turn', submittedAttachments);
+      if (modeChange && canPlan) {
+        await onModeSend!(value, mode, submittedAttachments);
+        setDraftMode(undefined);
+      } else {
+        await onSend(value, active ? (waiting ? 'queue' : delivery) : 'turn', submittedAttachments);
+      }
     } catch {
       setPrompt(value);
       setAttachments(submittedAttachments);
@@ -180,7 +234,7 @@ export const CodeComposer = memo(function CodeComposer({
     <div className="code-composer">
       <PromptQueue
         items={session.queued_instructions || []}
-        active={active}
+        active={active && !waiting}
         busy={busy}
         onSteer={onSteerQueued}
         onRemove={onRemoveQueued}
@@ -231,7 +285,7 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? 'Message the agent…' : recoverable ? 'Reopen the task, then say how to continue…' : 'Ask for another change…'}
+          placeholder={active ? waiting ? 'Queue a follow-up while the agent waits…' : delivery === 'steer' ? 'Steer the current work…' : 'Add a follow-up for after this turn…' : recoverable ? 'Reopen the task, then say how to continue…' : mode === 'plan' ? 'Refine the plan…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
           disabled={busy}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -240,6 +294,7 @@ export const CodeComposer = memo(function CodeComposer({
             attachFiles(event.clipboardData.files);
           }}
           onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (event.nativeEvent.isComposing) return;
             if (mentionResults.length > 0 && mentionQuery != null && event.key === 'ArrowDown') {
               event.preventDefault();
               setMentionIndex((value) => (value + 1) % mentionResults.length);
@@ -305,6 +360,7 @@ export const CodeComposer = memo(function CodeComposer({
           }}
         />
         {referenceError && <div className="code-reference-error" role="alert">{referenceError}</div>}
+        {modeHint && <div className="code-composer__mode-status" role="status">{modeHint}</div>}
         <div className="code-composer__actions">
           <input
             ref={fileInputRef}
@@ -317,25 +373,26 @@ export const CodeComposer = memo(function CodeComposer({
               event.target.value = '';
             }}
           />
-          <Button icon variant="subtle" size="sm" disabled={busy} onClick={() => fileInputRef.current?.click()} aria-label="Attach files or images">
-            {Ico.attach(13)}
-          </Button>
+          <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
+            planMode={mode === 'plan'} planDisabled={active}
+            onPlanChange={canPlan || draftMode !== undefined ? enabled => setDraftMode(enabled ? 'plan' : 'build') : undefined} />
+          {mode === 'plan' && <span className="code-composer__permission-label">When building:</span>}
           <PermissionSelect
             value={session.permission_mode}
             onValueChange={(value) => void onPermissionChange(value)}
             disabled={busy}
           />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
-          <span className="code-composer__hint">{active ? 'Enter to queue · Shift+Enter for a new line' : 'Enter to send · ↑↓ history · Shift+Enter for a new line'}</span>
-          {active && !hasDraft ? (
-            <Button icon variant="primary" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">
-              {Ico.stop(12)}
-            </Button>
-          ) : (
-            <Button icon variant="primary" size="sm" disabled={busy || !hasDraft} onClick={() => void submit()} aria-label={active ? 'Queue instruction' : 'Send follow-up'}>
-              {Ico.send(13)}
-            </Button>
-          )}
+          <span className="code-composer__hint">{active ? waiting ? 'Answer above · follow-ups wait in the queue' : delivery === 'steer' ? 'Enter to steer · Shift+Enter for a new line' : 'Runs after the active turn' : 'Enter to send · Shift+Enter for a new line'}</span>
+          <div className="code-composer__delivery">
+            {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">{Ico.stop(12)} Stop</Button>}
+            {active && hasDraft && <Select variant="pill" aria-label="Instruction delivery" value={waiting ? 'queue' : delivery} disabled={busy || waiting}
+              onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
+              options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
+            {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
+              {Ico.send(13)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
+            </Button>}
+          </div>
         </div>
       </div>
       <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />

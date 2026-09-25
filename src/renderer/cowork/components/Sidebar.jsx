@@ -14,6 +14,7 @@ import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import WorkspaceModeSwitch from './WorkspaceModeSwitch';
+import { surfaceCopy } from '../lib/surface';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -302,6 +303,9 @@ export default function Sidebar({
   // theme switch) isn't on screen, so the toggles must stay.
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
   const showsUserMenu = !showsStatusPill && !!accountUser;
+  // Which app this is (ENG-2172), and the note that explains an empty list
+  // to someone whose work lives in the other one (ENG-2169).
+  const surface = surfaceCopy(host.isWeb);
 
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -787,7 +791,11 @@ export default function Sidebar({
           )}
           {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
             <div className="px-2 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
-              No tasks yet
+              <div>No tasks yet</div>
+              {/* Where a returning user looks for missing work. The two apps
+                  keep separate work by design, so the honest answer is to
+                  point at the other one, not to imply the work is gone. */}
+              <div className="mt-1 text-ink-4">{surface.tasksNote}</div>
             </div>
           )}
           {recents.map((t) => {
@@ -996,6 +1004,18 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
+        </div>
+
+        {/* Which app this is (ENG-2172). Web and desktop look the same but
+            keep separate work, so the name sits quietly under the account
+            row on every screen, with the reason on hover. It stays in every
+            footer state, the status pill included. */}
+        <div className="anton-sidebar__surface px-5 pb-2 -mt-1 flex">
+          <Tooltip content={surface.detail} side="top">
+            <span className="text-[11px] text-ink-4 font-[family-name:var(--font-body)] cursor-default select-none">
+              {surface.label}
+            </span>
+          </Tooltip>
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

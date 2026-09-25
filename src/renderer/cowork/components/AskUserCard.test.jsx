@@ -28,6 +28,18 @@ const step = (over = {}) => ({
   },
 });
 
+// The answer line is split into a bold prefix and the text, so match the
+// paragraph by its full text content.
+const answerLine = (text) => screen.getByText(
+  (_, el) => el?.tagName === 'P' && el.textContent === `Answered: ${text}`,
+);
+
+// A disabled control must not look live: no plain `hover:` and no pointer.
+const expectInertWhenDisabled = (el) => {
+  expect(el.className).not.toMatch(/(^|\s)hover:/);
+  expect(el).toHaveClass('disabled:cursor-default');
+};
+
 const renderCard = (over = {}, props = {}) =>
   render(
     <AskUserCard
@@ -118,6 +130,11 @@ describe('AskUserCard', () => {
     // true on screen: the chosen option has to LOOK different from the others.
     expect(screen.getByRole('button', { name: /postgres/i }).className)
       .not.toBe(screen.getByRole('button', { name: /mysql/i }).className);
+    // Only the options that were not picked dim; the chosen one is the answer.
+    expect(screen.getByRole('button', { name: /postgres/i }).className)
+      .not.toContain('disabled:opacity-60');
+    expect(screen.getByRole('button', { name: /mysql/i }).className)
+      .toContain('disabled:opacity-60');
   });
 
   it('names the choice for a card that was answered by clicking an option', () => {
@@ -125,12 +142,34 @@ describe('AskUserCard', () => {
     // an option-answered card showed the prompt, greyed buttons, and nothing
     // about what was chosen.
     renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
-    expect(screen.getByText(/answered: postgres/i)).toBeInTheDocument();
+    expect(answerLine('postgres')).toHaveClass('text-body');
   });
 
   it('shows a free-text answer verbatim', () => {
     renderCard({ answer: { status: 'answered', values: [], text: 'clickhouse' } });
     expect(screen.getByText(/clickhouse/)).toBeInTheDocument();
+  });
+
+  it('shows the answer as body text with a bold prefix and keeps its line breaks', () => {
+    renderCard({ answer: { status: 'answered', values: [], text: 'line one\nline two' } });
+    const shown = answerLine('line one\nline two');
+    expect(shown).toHaveClass('text-body', 'whitespace-pre-wrap');
+    expect(shown.querySelector('strong')).toHaveTextContent('Answered:');
+  });
+
+  it('shows no hover effect or pointer cursor on disabled options and Send', () => {
+    const { unmount } = renderCard({ answer: { status: 'answered', values: [], text: 'other' } });
+    for (const name of [/postgres/i, /mysql/i]) {
+      const option = screen.getByRole('button', { name });
+      expect(option).toBeDisabled();
+      expectInertWhenDisabled(option);
+    }
+    unmount();
+    // Multi-select, nothing picked yet: Send is disabled.
+    renderCard({ select: 'many' });
+    const send = screen.getByRole('button', { name: /^send$/i });
+    expect(send).toBeDisabled();
+    expectInertWhenDisabled(send);
   });
 
   it('says so when the question was skipped', () => {
@@ -169,7 +208,10 @@ describe('AskUserCard', () => {
     act(() => { fireEvent.click(screen.getByRole('button', { name: /mysql/i })); });
     expect(screen.getByRole('button', { name: /mysql/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
+    const skip = screen.getByRole('button', { name: /skip/i });
+    expect(skip).toBeDisabled();
+    // ...and looks it: Skip dims like the options.
+    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
     await act(async () => { release({ accepted: true }); });
   });
 
@@ -199,11 +241,14 @@ describe('AskUserCard', () => {
   it('ties the options to the prompt and announces the card arriving', async () => {
     // The only interactive control in an otherwise static stream, appearing
     // unprompted and blocking the agent — a screen-reader user gets no signal
-    // that it is their turn without this.
+    // that it is their turn without this. The announcement is a fixed line:
+    // the prompt can be a long markdown brief, and it is read through the
+    // group's aria-labelledby instead.
     renderCard();
     expect(screen.getByRole('group')).toHaveAccessibleName('Which database?');
-    expect(await screen.findByRole('status'))
-      .toHaveTextContent(/asking a question: Which database\?/i);
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('The agent is asking a question');
+    expect(status).not.toHaveTextContent(/Which database/);
   });
 
   it('reports the chosen single-select option as pressed', async () => {
@@ -228,5 +273,64 @@ describe('AskUserCard', () => {
     act(() => { fireEvent.click(button); });
     await act(async () => { await Promise.resolve(); });
     expect(submitAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a single-line prompt verbatim, without markdown parsing', () => {
+    // The ask_user tool asks for one short plain-text line; parsed as
+    // markdown, "<div>" would vanish and "__init__" would turn bold.
+    const prompt = 'Use <div> or edit __init__.py?';
+    const { container } = renderCard({ prompt });
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    expect(container.querySelector('strong')).toBeNull();
+    expect(screen.getByRole('group')).toHaveAccessibleName(prompt);
+  });
+
+  it('renders a markdown brief with headings, line breaks and lists', () => {
+    // The shape of the artifact PRD brief anton sends: bold section lines
+    // followed by a SINGLE newline and the body, and two closing lines
+    // joined by a single newline.
+    const brief = [
+      'Here is what I plan to build.',
+      '',
+      '**Goal**',
+      'A small page that shows a sparrow.',
+      '',
+      '**Requirements**',
+      '- Keep it simple',
+      '- Text in English',
+      '',
+      'If you continue, the proposals above are used as they are.',
+      'Continue, or say what to change.',
+    ].join('\n');
+    const { container } = renderCard({ prompt: brief });
+    const prompt = container.querySelector('.markdown-content');
+    expect(prompt).not.toBeNull();
+    const goal = prompt.querySelector('strong');
+    expect(goal).toHaveTextContent('Goal');
+    expect(goal.closest('p').querySelector('br')).not.toBeNull();
+    expect(prompt.querySelectorAll('li')).toHaveLength(2);
+    const closing = [...prompt.querySelectorAll('p')].at(-1);
+    expect(closing.querySelector('br')).not.toBeNull();
+    expect(prompt.textContent).not.toContain('**');
+  });
+
+  it('renders chart and form fences in the prompt as plain code blocks', () => {
+    const prompt = [
+      'Pick one:',
+      '',
+      '```chartjs',
+      '{"type":"bar","data":{"labels":["a"],"datasets":[{"data":[1]}]}}',
+      '```',
+      '',
+      '```data-vault-form',
+      '{"title":"Connect"}',
+      '```',
+    ].join('\n');
+    const { container } = renderCard({ prompt });
+    expect(container.textContent).toContain('"type":"bar"');
+    expect(container.textContent).toContain('"title":"Connect"');
+    expect(container.querySelector('canvas')).toBeNull();
+    expect(screen.queryByText(/side panel/i)).toBeNull();
+    expect(screen.queryByText(/Form spec did not parse/i)).toBeNull();
   });
 });

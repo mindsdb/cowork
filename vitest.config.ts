@@ -114,6 +114,8 @@ export default defineConfig({
           environment: 'happy-dom',
           include: [
             'src/renderer/cowork/code/useCodingCatalog.test.tsx',
+            'src/renderer/cowork/code/CodeComposer.test.tsx',
+            'src/renderer/cowork/code/CodeView.test.tsx',
             'src/renderer/cowork/code/NewTaskPanel.test.tsx',
             'src/renderer/cowork/code/ProjectSettingsModal.test.tsx',
           ],

@@ -112,6 +112,15 @@ describe('inline artifact workspace payload', () => {
       capabilities: { role: 'owner', canEdit: true, canComment: true },
     });
   });
+
+  // ENG-2171: the line under the title is the display path, and it used to be
+  // the stored path verbatim, conversation id and `.anton` folder included.
+  it('shows the path below .anton/artifacts, not the storage path', () => {
+    const stored = 'conversations/d4b2c4ec-2cd0-441c-a94c-e201781d9a7e/.anton/artifacts/q3-deck/index.html';
+    const card = artifactStepToCard(artifactStep({ file_path: stored, path: stored }), '/proj');
+    expect(card.preview).toEqual([{ heading: 'q3-deck/index.html' }]);
+    expect(card.canonicalPath).toBe(`/proj/${stored}`);
+  });
 });
 
 const taskWithArtifact = (step) => ({

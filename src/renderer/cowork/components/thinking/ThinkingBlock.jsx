@@ -60,8 +60,10 @@ export function ThinkingBlock({
   onActivateStep,
 }) {
   const hasSteps = steps.length > 0;
+  // ToolProgress rows count: the block that appears below an answered
+  // question may hold nothing but a tool's step lines (ENG-2981).
   const hasInspectableSteps = useMemo(
-    () => steps.some((s) => s._isScratchpad || s._isToolCall),
+    () => steps.some((s) => s._isScratchpad || s._isToolCall || s.badge === 'ToolProgress'),
     [steps]
   );
   const hasLiveThought = isActive && Boolean(currentThought?.text);

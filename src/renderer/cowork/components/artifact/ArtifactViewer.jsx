@@ -24,6 +24,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
@@ -39,6 +40,7 @@ import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
+import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -194,6 +196,20 @@ export function ArtifactViewer({
   // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
   // postMessage. Both stay dormant when comments are disabled.
   const iframeRef = useRef(null);
+  // Reset key, not a URL: the srcdoc branch swaps `previewDoc` and leaves
+  // `previewUrl` empty, so keying on the URL alone would carry the previous
+  // document's errors onto a new one in org mode.
+  //
+  // Gated on a preview actually being mounted, not just on `open`: text and
+  // image artifacts never mount an iframe, so `iframeRef.current` stays null
+  // and the sender check below degrades to "accept anyone" — and the HTML
+  // comparison view mounts its own `sandbox="allow-scripts"` frames of
+  // agent-written HTML that could otherwise post into this channel. Same
+  // rationale as the comments bridge's `commentsOpen` gate below.
+  const diagnostics = usePreviewDiagnostics(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
+  });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
     onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
@@ -312,6 +328,9 @@ export function ArtifactViewer({
       const requested = await workspace.addressWithAgent({
         thread,
         conversationId: targetConversationId,
+        // Already normalized to { message, file, line } and capped by the hook;
+        // the server caps again and owns the prompt's size.
+        previewErrors: diagnostics.errors,
       });
       if (requested) {
         let started;
@@ -366,6 +385,13 @@ export function ArtifactViewer({
     : artifact?.capabilities
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
+  // Unlike canManage, a client-side guess must never override the card's
+  // server-sent role: a guessed reviewer would hide "Another member" on the
+  // user's own artifact, and a guessed owner would hide it on a colleague's.
+  // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
+  const authorship = artifactAuthorship(
+    (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
+  );
 
   // Image artifacts skip the HTML mount pipeline entirely (there's no server
   // dir to register for iframe serving) and load straight from the artifact's
@@ -853,6 +879,7 @@ export function ArtifactViewer({
     >
       <ArtifactViewerHeader
         title={title}
+        authorship={authorship}
         workspace={workspace}
         review={headerReview}
         publication={publication}
@@ -887,6 +914,15 @@ export function ArtifactViewer({
         >
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
+      )}
+      {diagnostics.errors.length > 0 && !diagnostics.dismissed && (
+        <div className="artifact-workspace-notice" role="status">
+          <span>
+            {`The preview reported an error: ${diagnostics.errors[0].message}`}
+            {diagnostics.errors.length > 1 && ` (+${diagnostics.errors.length - 1} more)`}
+          </span>
+          <button type="button" onClick={diagnostics.dismiss}>Dismiss</button>
+        </div>
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather
           than taking over the canvas the way a current one does. */}

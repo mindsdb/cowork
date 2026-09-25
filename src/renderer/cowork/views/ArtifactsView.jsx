@@ -42,6 +42,7 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
+import { artifactAuthorship } from '../lib/artifactAuthorship';
 import {
   PageHeader,
   FilterRow,
@@ -52,6 +53,7 @@ import {
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
+import { surfaceCopy } from '../lib/surface';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
@@ -262,6 +264,9 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
   // Open the live thing: published URL, else served URL, else local file. In org
   // mode the last fallback is skipped — there is no local file the user can reach,
@@ -334,7 +339,13 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         </div>
 
         <div className="flex min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            authorship={authorship}
+          />
         </div>
       </div>
 
@@ -501,6 +512,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
+  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
+  // own artifact, so ArtifactStatus renders exactly what it did before.
+  const authorship = artifactAuthorship(artifact.capabilities);
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
@@ -605,10 +619,18 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           )}
         </div>
 
-        {/* Status — query container so the access chip drops to icon-only
-            when the column gets tight (frees room for "Unpublished changes"). */}
+        {/* Status — access chip, "Unshared changes" and the authorship tag
+            flow inline and wrap inside the cell. The container query that
+            used to collapse the chip is gone (ENG-1475). */}
         <div className="cw-status-cell flex items-center min-w-0">
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
+          <ArtifactStatus
+            artifact={artifact}
+            phase={phase}
+            publishable={publishable}
+            onRetry={onRetry}
+            inlineChanges
+            authorship={authorship}
+          />
         </div>
 
         {/* Updated + open + ⋯ */}
@@ -931,7 +953,7 @@ export default function ArtifactsView({
     >
       <PageHeader
         title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
+        subtitle={`Documents, dashboards, and code ${agentLabel} produces. To get a web link for a page or document, open it and choose Share.`}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
@@ -965,7 +987,14 @@ export default function ArtifactsView({
         <EmptyState
           icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
           title="No artifacts yet"
-          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+          // Second line (ENG-2169): the two apps keep separate artifacts, so
+          // someone looking for work made in the other one is told where it is.
+          description={(
+            <>
+              {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+              <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
+            </>
+          )}
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
