@@ -2,13 +2,14 @@ import { useCallback, useState } from 'react';
 
 import { codingApi, type CodingSession } from './api';
 
-type CodeManagementRoute = 'projects' | 'connectors' | 'skills' | null;
+type CodeManagementRoute = 'projects' | 'tasks' | 'connectors' | 'skills' | null;
 
 export function useCodeWorkspace(openCode: () => void) {
   const [sessions, setSessions] = useState<CodingSession[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState(false);
   const [managementRoute, setManagementRoute] = useState<CodeManagementRoute>(null);
+  const [tasksProjectId, setTasksProjectId] = useState<string | null>(null);
 
   const openNewTask = useCallback(() => {
     setNewTask(true);
@@ -19,6 +20,13 @@ export function useCodeWorkspace(openCode: () => void) {
   const openProjects = useCallback(() => {
     setNewTask(false);
     setManagementRoute('projects');
+    openCode();
+  }, [openCode]);
+
+  const openTasks = useCallback((projectId: string | null = null) => {
+    setNewTask(false);
+    setTasksProjectId(projectId);
+    setManagementRoute('tasks');
     openCode();
   }, [openCode]);
 
@@ -58,12 +66,16 @@ export function useCodeWorkspace(openCode: () => void) {
     sessions,
     selectedId,
     newTask,
+    managementRoute,
+    tasksProjectId,
+    tasksOpen: managementRoute === 'tasks',
     projectsOpen: managementRoute === 'projects',
     connectorsOpen: managementRoute === 'connectors',
     skillsOpen: managementRoute === 'skills',
     setSessions,
     openNewTask,
     openProjects,
+    openTasks,
     openConnectors,
     openSkills,
     selectSession,

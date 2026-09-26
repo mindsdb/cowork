@@ -241,6 +241,7 @@ export default function Sidebar({
   onSetCodingSessionPinned,
   onNewCodingTask,
   onOpenCodingProjects,
+  onOpenCodingTasks,
   onOpenCodingConnectors,
   onOpenCodingSkills,
   onOpenSearch,
@@ -658,6 +659,12 @@ export default function Sidebar({
                 label="Projects"
                 onClick={onOpenCodingProjects}
                 active={activeCodeRoute === 'projects'}
+              />
+              <NavItem
+                icon={Ico.list(15)}
+                label="All tasks"
+                onClick={onOpenCodingTasks}
+                active={activeCodeRoute === 'tasks'}
               />
               <NavItem
                 icon={Ico.link(15)}

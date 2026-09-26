@@ -120,7 +120,7 @@ vi.mock('./CodeConnectorsView', () => ({
   ),
 }));
 vi.mock('./CodeProjectsView', () => ({
-  CodeProjectsView: ({ onEdit }: { onEdit: (id: string) => void }) => <button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button>,
+  CodeProjectsView: ({ onEdit, onOpen }: { onEdit: (id: string) => void; onOpen: (id: string) => void }) => <><button type="button" onClick={() => onEdit('project-1')}>Edit project stub</button><button type="button" onClick={() => onOpen('project-1')}>View project tasks stub</button></>,
 }));
 vi.mock('./ProjectSettingsModal', () => ({
   ProjectSettingsModal: ({ open, suspended, onOpenConnectors }: { open: boolean; suspended?: boolean; onOpenConnectors?: () => void }) => (
@@ -249,6 +249,39 @@ describe('CodeView session-list reconciliation', () => {
       refresh: vi.fn(async () => {}),
       refreshReview: vi.fn(async () => {}),
     }));
+  });
+
+  it('opens project history instead of starting a task when a project is selected', async () => {
+    const onOpenTasks = vi.fn();
+    const { props } = renderCode({ projectsOpen: true, onOpenTasks });
+    fireEvent.click(screen.getByRole('button', { name: 'View project tasks stub' }));
+    expect(onOpenTasks).toHaveBeenCalledWith('project-1');
+    await act(async () => {});
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the task browser open during polling and opens a task without creating one', async () => {
+    const existing = session('existing');
+    mocks.sessions.mockResolvedValue({ items: [existing] });
+    const { props } = renderCode({ sessions: [existing], selectedId: 'existing', tasksOpen: true });
+    await waitFor(() => expect(mocks.sessions).toHaveBeenCalledWith(true));
+    expect(mocks.useCodingSession).toHaveBeenLastCalledWith(null, true);
+    expect(screen.queryByText('Delete menu action')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument();
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Task existing' }));
+    expect(props.onSelectionChange).toHaveBeenCalledWith('existing', false);
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.turn).not.toHaveBeenCalled();
+  });
+
+  it('creates a draft with the browsed project selected', async () => {
+    const { props } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
+    const newTaskButton = await screen.findByRole('button', { name: 'New task' });
+    await waitFor(() => expect(newTaskButton).not.toBeDisabled());
+    fireEvent.click(newTaskButton);
+    expect(mocks.projectsSetSelectedId).toHaveBeenCalledWith('project-1');
+    expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
   });
 
   it('does not send a Build turn while a Plan draft waits for refreshed capabilities', async () => {

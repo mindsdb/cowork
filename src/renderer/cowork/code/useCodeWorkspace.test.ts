@@ -37,6 +37,24 @@ function codingSession(pinned = false): CodingSession {
 describe('useCodeWorkspace', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('keeps all tasks and project tasks in the Code navigation lifecycle', () => {
+    const openCode = vi.fn();
+    const { result } = renderHook(() => useCodeWorkspace(openCode));
+    act(() => result.current.selectSession('task-1'));
+    act(() => result.current.openTasks('project-1'));
+    expect(result.current).toMatchObject({ tasksOpen: true, tasksProjectId: 'project-1', newTask: false, selectedId: 'task-1' });
+    act(() => result.current.openTasks());
+    expect(result.current).toMatchObject({ tasksOpen: true, tasksProjectId: null });
+    act(() => result.current.openNewTask());
+    expect(result.current).toMatchObject({ tasksOpen: false, newTask: true });
+    act(() => result.current.openProjects());
+    expect(result.current).toMatchObject({ tasksOpen: false, projectsOpen: true });
+    act(() => result.current.openTasks());
+    act(() => result.current.changeSelection('task-2'));
+    expect(result.current).toMatchObject({ managementRoute: null, selectedId: 'task-2', newTask: false });
+    expect(openCode).toHaveBeenCalledTimes(6);
+  });
+
   it('owns pin mutations and reconciles the canonical task collection', async () => {
     const openCode = vi.fn();
     const updated = codingSession(true);
