@@ -12,6 +12,7 @@ export function RepositoryBranchSelect({
   local,
   disabled,
   onChange,
+  onBranchesLoaded,
 }: {
   projectId: string;
   resourceId: string;
@@ -21,8 +22,8 @@ export function RepositoryBranchSelect({
   local: boolean;
   disabled: boolean;
   onChange: (value: string) => void;
+  onBranchesLoaded: (branches: string[]) => void;
 }) {
-  const [remoteBranches, setRemoteBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const load = async (open: boolean) => {
@@ -30,7 +31,7 @@ export function RepositoryBranchSelect({
     setLoading(true);
     setError('');
     try {
-      setRemoteBranches((await codingApi.repositoryBranches(projectId, resourceId)).items);
+      onBranchesLoaded((await codingApi.repositoryBranches(projectId, resourceId)).items);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : 'Could not load branches. Open the picker to retry.',
@@ -39,7 +40,7 @@ export function RepositoryBranchSelect({
       setLoading(false);
     }
   };
-  const options = [...new Set([...(value ? [value] : []), ...branches, ...remoteBranches])].filter(
+  const options = [...new Set([...(value ? [value] : []), ...branches])].filter(
     (branch) => !branch.endsWith('/HEAD'),
   );
   return (

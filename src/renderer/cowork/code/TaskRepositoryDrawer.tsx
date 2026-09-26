@@ -49,6 +49,7 @@ export function TaskRepositoryDrawer({
   const branchId = useId();
   const [ids, setIds] = useState(selectedIds);
   const [draft, setDraft] = useState(setup);
+  const [remoteBranches, setRemoteBranches] = useState<Record<string, string[]>>({});
   const byId = new Map(statuses.map((status) => [status.resource_id, status]));
   const availability = new Map(resourceStates.map((item) => [item.resource.id, item.availability]));
   const repositories = resources.filter(
@@ -58,7 +59,10 @@ export function TaskRepositoryDrawer({
   const invalidBranch = branchNameIssue(draft.branch || '');
   const conflictingName =
     draft.branch &&
-    statuses.some((status) => ids.includes(status.resource_id) && status.branches.includes(draft.branch!));
+    repositories.some((resource) =>
+      [...(byId.get(resource.id)?.branches || []), ...(remoteBranches[resource.id] || [])].includes(draft.branch!),
+    );
+  const unavailable = statuses.some((status) => ids.includes(status.resource_id) && !status.available);
   const issue =
     invalidBranch || (conflictingName ? 'That branch already exists. Choose a new task branch name.' : '');
   useEffect(() => {
@@ -140,7 +144,7 @@ export function TaskRepositoryDrawer({
               (resource.kind === 'repository' ? resource.default_branch : null) ||
               state?.branch ||
               '';
-            const branches = [...new Set([...(base ? [base] : []), ...(state?.branches || [])])];
+            const branches = [...new Set([...(base ? [base] : []), ...(state?.branches || []), ...(remoteBranches[resource.id] || [])])];
             return (
               <div className="code-repository-row" key={resource.id}>
                 <label>
@@ -179,6 +183,9 @@ export function TaskRepositoryDrawer({
                     branches={branches}
                     local={state?.local === true}
                     disabled={!checked || loading || !!error}
+                    onBranchesLoaded={(branches) =>
+                      setRemoteBranches((current) => ({ ...current, [resource.id]: branches }))
+                    }
                     onChange={(value) =>
                       setDraft({ ...draft, base_branches: { ...draft.base_branches, [resource.id]: value } })
                     }
@@ -257,7 +264,7 @@ export function TaskRepositoryDrawer({
         </span>
         <Button
           variant="primary"
-          disabled={!ids.length || !!issue || (local && (loading || !!error))}
+          disabled={!ids.length || !!issue || (local && (loading || !!error || unavailable))}
           onClick={apply}
         >
           Apply to task

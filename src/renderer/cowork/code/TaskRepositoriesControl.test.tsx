@@ -217,6 +217,30 @@ describe('task repository setup', () => {
     await user.click(screen.getByRole('combobox', { name: 'Start Application from' }));
     expect(await screen.findByText('feature/remote')).toBeVisible();
     expect(codingApi.repositoryBranches).toHaveBeenCalledWith('project', 'app');
+    await user.click(screen.getByRole('option', { name: 'feature/remote' }));
+    await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/remote');
+    expect(screen.getByText(/That branch already exists/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Apply to task' })).toBeDisabled();
+    await user.clear(screen.getByRole('textbox', { name: /New branch/ }));
+    await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/new');
+    expect(screen.getByRole('button', { name: 'Apply to task' })).toBeEnabled();
+  });
+
+  it.each(['deselect', 'refresh'])('blocks an unavailable selected repository until %s resolves it', async resolution => {
+    vi.mocked(codingApi.repositoryStatus).mockResolvedValueOnce({ items: [
+      { ...items[0], available: false, detail: 'The checkout is not a Git repository.' }, items[1],
+    ] });
+    const { user, onApply } = setup();
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    await screen.findByText('The checkout is not a Git repository.');
+    const apply = screen.getByRole('button', { name: 'Apply to task' });
+    expect(apply).toBeDisabled();
+    await user.click(apply);
+    expect(onApply).not.toHaveBeenCalled();
+    await user.click(screen.getByRole(resolution === 'refresh' ? 'button' : 'checkbox', {
+      name: resolution === 'refresh' ? 'Refresh' : /Include Application/,
+    }));
+    await waitFor(() => expect(apply).toBeEnabled());
   });
 });
 
