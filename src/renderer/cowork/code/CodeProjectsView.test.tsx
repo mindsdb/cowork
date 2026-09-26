@@ -44,7 +44,7 @@ const projects: CodeProject[] = [
 ];
 
 describe('CodeProjectsView', () => {
-  it('searches projects and opens the chosen project in a new task', async () => {
+  it('searches projects and opens the chosen project task list', async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
     render(
@@ -61,7 +61,7 @@ describe('CodeProjectsView', () => {
 
     await user.type(screen.getByRole('textbox', { name: 'Search projects' }), 'atlas');
     expect(screen.queryByText('MindsHub')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Start a task in Project Atlas' }));
+    await user.click(screen.getByRole('button', { name: 'View tasks in Project Atlas' }));
     expect(onOpen).toHaveBeenCalledWith('atlas');
   });
 

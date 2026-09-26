@@ -1421,11 +1421,15 @@ function AppCore() {
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
+    tasksOpen: codeTasksOpen,
+    tasksProjectId: codeTasksProjectId,
+    managementRoute: codeManagementRoute,
     connectorsOpen: codeConnectorsOpen,
     skillsOpen: codeSkillsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
+    openTasks: openCodingTasks,
     openConnectors: openCodingConnectors,
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
@@ -4676,7 +4680,7 @@ function AppCore() {
           activeWorkspace={effectiveWorkspaceMode}
           showWorkspaceSwitch={codeModeEnabled}
           activeCodeRoute={effectiveWorkspaceMode === 'code'
-            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            ? codeManagementRoute
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4684,7 +4688,7 @@ function AppCore() {
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeManagementRoute
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4698,6 +4702,7 @@ function AppCore() {
           onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
+          onOpenCodingTasks={() => openCodingTasks()}
           onOpenCodingConnectors={openCodingConnectors}
           onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
@@ -5158,6 +5163,8 @@ function AppCore() {
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
+              tasksOpen={codeTasksOpen}
+              tasksProjectId={codeTasksProjectId}
               connectorsOpen={codeConnectorsOpen}
               skillsOpen={codeSkillsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
@@ -5169,6 +5176,7 @@ function AppCore() {
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
               onOpenProjects={openCodingProjects}
+              onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}

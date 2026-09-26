@@ -11,8 +11,9 @@
 
 import { useEffect } from 'react';
 
-export function useCollectionShortcut(searchRef) {
+export function useCollectionShortcut(searchRef, enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -21,5 +22,5 @@ export function useCollectionShortcut(searchRef) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [searchRef]);
+  }, [searchRef, enabled]);
 }

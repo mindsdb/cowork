@@ -13,6 +13,7 @@ export function SearchInput({
   onChange,
   inputRef,
   placeholder = 'Search',
+  ariaLabel = placeholder,
   shortcut = '⌘K',
 }) {
   return (
@@ -29,6 +30,7 @@ export function SearchInput({
       <input
         ref={inputRef}
         type="text"
+        aria-label={ariaLabel}
         value={value || ''}
         onChange={(e) => onChange?.(e.target.value)}
         placeholder={placeholder}

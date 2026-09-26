@@ -11,6 +11,7 @@ import { TaskAttentionBar } from './TaskAttentionBar';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
+import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
@@ -53,6 +54,8 @@ export default function CodeView({
   selectedId,
   newTask,
   projectsOpen = false,
+  tasksOpen = false,
+  tasksProjectId = null,
   connectorsOpen = false,
   skillsOpen = false,
   defaultEngineId,
@@ -65,6 +68,7 @@ export default function CodeView({
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
   onOpenProjects = () => {},
+  onOpenTasks = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
   active = true,
@@ -76,6 +80,8 @@ export default function CodeView({
   selectedId: string | null;
   newTask: boolean;
   projectsOpen?: boolean;
+  tasksOpen?: boolean;
+  tasksProjectId?: string | null;
   connectorsOpen?: boolean;
   skillsOpen?: boolean;
   defaultEngineId: string;
@@ -89,6 +95,7 @@ export default function CodeView({
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
   onOpenProjects?: () => void;
+  onOpenTasks?: (projectId?: string | null) => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
   active?: boolean;
@@ -128,7 +135,8 @@ export default function CodeView({
   const [recoveryError, setRecoveryError] = useState('');
   const [referenceRequest, setReferenceRequest] = useState<{ id: number; sessionId: string; item: InputReference } | null>(null);
   const catalog = useCodingCatalog();
-  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
+  const managementOpen = projectsOpen || tasksOpen || connectorsOpen || skillsOpen;
+  const detail = useCodingSession(newTask || managementOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
   // The session list already contains enough information to render the task
   // shell. Keep it interactive while detailed history and review data load in
@@ -139,7 +147,7 @@ export default function CodeView({
     active,
     sessions,
     selectedId,
-    newTask: newTask || projectsOpen || connectorsOpen || skillsOpen,
+    newTask: newTask || managementOpen,
     currentSession: session,
     onSessionsChange,
     onSelectionChange,
@@ -214,7 +222,7 @@ export default function CodeView({
     setRecoveryComputerId('');
     setRecoveryError('');
     setReferenceRequest(null);
-  }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
+  }, [newTask, projectsOpen, tasksOpen, connectorsOpen, skillsOpen, selectedId]);
 
   // Changing view closes the project editor, except when the Connectors view
   // is handing the user back to the project they were editing.
@@ -223,7 +231,7 @@ export default function CodeView({
     const resumeId = resumeProjectEditorId.current;
     resumeProjectEditorId.current = null;
     setProjectEditor(resumeId ? { id: resumeId } : null);
-  }, [newTask, projectsOpen, skillsOpen, selectedId]);
+  }, [newTask, projectsOpen, tasksOpen, tasksProjectId, skillsOpen, selectedId]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
@@ -318,7 +326,7 @@ export default function CodeView({
           onClose={() => { if (!recoveringTaskId) setRecoveryPlan(null); }}
           onConfirm={(option) => { if (selectedId) void performRecovery(selectedId, option); }}
         />
-        {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
+        {!newTask && !managementOpen && selectedId && taskBarSession && (
           <TaskBar
             session={taskBarSession}
             git={detail.git}
@@ -404,12 +412,28 @@ export default function CodeView({
             selectedId={projects.selectedId}
             loading={projects.loading}
             error={projects.error}
-            onOpen={(id) => {
+            onOpen={onOpenTasks}
+            onCreate={() => setProjectEditor({ id: null })}
+            onEdit={(id) => setProjectEditor({ id })}
+          />
+        ) : tasksOpen ? (
+          <CodeTasksView
+            key={tasksProjectId || 'all'}
+            active={active}
+            sessions={sessions}
+            projects={projects.projects}
+            projectId={tasksProjectId}
+            loading={taskList.loading || projects.loading}
+            error={taskList.error || projects.error}
+            onOpen={(id) => onSelectionChange(id, false)}
+            onOpenProject={onOpenTasks}
+            onNewTask={(id) => {
               projects.setSelectedId(id);
               onSelectionChange(null, true);
             }}
-            onCreate={() => setProjectEditor({ id: null })}
-            onEdit={(id) => setProjectEditor({ id })}
+            onEditProject={(id) => setProjectEditor({ id })}
+            onBack={onOpenProjects}
+            onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
         ) : taskList.loading && !sessions.length ? (
           <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
