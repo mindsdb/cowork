@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -216,6 +216,29 @@ describe('fetchRecommendedModels', () => {
   it('returns null on failure so callers keep the lists they have', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     expect(await fetchRecommendedModels({ refresh: true })).toBeNull();
+  });
+});
+
+describe('testProviders', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('passes the probe refusal reasons through as the sidecar sent them', async () => {
+    const body = {
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+      providerStatusReasons: { 'minds-cloud': { code: 'rate_limited', resetAt: null } },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(body)));
+    expect(await testProviders([{ type: 'minds-cloud' }])).toEqual(body);
+  });
+
+  it('answers a failed request with every result map empty, the reasons included', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const result = await testProviders([{ type: 'minds-cloud' }]);
+    expect(result).toMatchObject({ providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {} });
+    expect(result.error).toBeTruthy();
   });
 });
 
@@ -526,6 +549,26 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const task = await fetchSession('c1');
     const err = task.messages.find((m) => m.role === 'error');
     expect(err.requestId).toBe('corr-abc');
+  });
+
+  it("carries a hosted billing stop's reset instant onto its error row", async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        {
+          type: 'response.failed',
+          code: 'free_serving_paused',
+          error: 'Free MindsHub Air is paused.',
+          request_id: 'corr-hosted',
+          reset_at: '2099-01-02T00:00:00Z',
+        },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
   });
 });
 

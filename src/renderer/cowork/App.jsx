@@ -1203,11 +1203,12 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
-            // ENG-1537 review: this local trailer is reached when
-            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
-            // MORE likely precisely when the gateway is rate-limiting. Without
-            // these the rate-limit card loses its gate and the allowance card
-            // always reads "resets on next month".
+            /* ENG-1537 review: this local trailer is reached when
+               loadSessionMessagesWithRetry gives up after 3 attempts — which is
+               MORE likely precisely when the gateway is rate-limiting. Without
+               these the rate-limit card loses its gate, and the allowance and
+               paused cards lose the time the gate sent on a desktop or a
+               hosted turn. */
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
@@ -1268,6 +1269,10 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Why a row above is unavailable, so an admin-restricted model reads
+    // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
+    // in step with modelEnabled).
+    modelDisabledReasons: settings.modelDisabledReasons,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
@@ -1278,7 +1283,7 @@ function AppCore() {
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1813,11 +1818,13 @@ function AppCore() {
   // it has one, else whatever the home composer currently shows.
   const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
-  // "Switch to MindsHub Air" escape hatch on the model-denial card
-  // (ENG-1304): offered only while Air itself is payable — the free monthly
-  // grant covers Air, so it's the one model an empty wallet can usually
-  // still run. `modelEnabled` is the same availability map the Settings
-  // picker tags rows with (absent id ⇒ available).
+  /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
+     cards (ENG-1304): offered only while Air itself is payable — the free
+     allowance covers Air, so it's the one model an empty wallet can usually
+     still run. `modelEnabled` is the same availability map the Settings
+     picker tags rows with (absent id ⇒ available). Whether the allowance has
+     room right now is ChatView's call (BalanceEmptyCard reads the hub usage);
+     this gate only says Air is offered and not locked. */
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);

@@ -80,6 +80,17 @@ const noLimitBox = () => {
 const expandAdvanced = () => fireEvent.click(screen.getByRole('button', { name: 'Advanced Settings' }));
 
 describe('SettingsView — Max tokens per task', () => {
+  it('explains the cap without calling the allowance monthly or measured in tokens', () => {
+    /* The free allowance refills on its own schedule, not each month, and the
+       app shows it as a share left rather than a token count, so the old
+       subtitle was wrong on both counts. */
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    expandAdvanced();
+    const subtitle = screen.getByText(/^The most tokens Anton may spend on one request/);
+    expect(subtitle).toHaveTextContent('free allowance or balance');
+    expect(subtitle.textContent).not.toMatch(/monthly|of the month|measured in/i);
+  });
+
   it('writes the top of the range when "No limit" is ticked', () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);

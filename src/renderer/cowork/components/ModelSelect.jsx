@@ -65,7 +65,7 @@
 // since the footer is plain content, not a selectable item (see
 // ui/Combobox.jsx's `footer` slot docs).
 //
-// Option shape: { value, label, disabled?, locked?, title?, tag?, maker?, provider?, pin? }.
+// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
@@ -77,6 +77,9 @@
 //     it beside `disabled: true`, and this component turns it into the "Add
 //     credits" button on the row — see `creditsAction` below for why the
 //     button lives here rather than in either builder.
+//   - `restricted`: an org admin's model rule blocks this model. Disabled,
+//     tagged "Restricted" with an explanatory `title`, and never `locked`, so
+//     no "Add credits" button attaches: credits cannot lift an admin rule.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape

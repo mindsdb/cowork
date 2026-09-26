@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
 // (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
@@ -640,6 +643,32 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'billing_opened');
     expect(event.properties.trigger).toBe('token_limit');
+  });
+
+  it('billing_opened: every trigger a renderer call site sends is named in the EVENTS vocabulary', () => {
+    /* The comment on EVENTS.BILLING_OPENED is the list a funnel query is
+       written from. A trigger that is sent but not listed there is a cohort
+       nobody knows to filter on, or to exclude. Reads the source, because the
+       vocabulary is a comment and the call sites pass string literals. */
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const rendererRoot = path.resolve(here, '../..');
+    const vocabularyLine = fs.readFileSync(path.join(here, 'analytics.js'), 'utf8')
+      .split('\n')
+      .find((line) => line.includes('BILLING_OPENED:'));
+    const vocabulary = new Set([...vocabularyLine.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+
+    const sent = new Set();
+    for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
+      if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
+      const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
+      for (const call of src.matchAll(/trackBillingOpened\(([^)]*)\)/g)) {
+        for (const literal of call[1].matchAll(/'([a-z_]+)'/g)) sent.add(literal[1]);
+      }
+    }
+
+    // Guards the sweep itself: a path or regex that matched nothing would pass.
+    expect(sent.has('token_limit')).toBe(true);
+    expect([...sent].filter((trigger) => !vocabulary.has(trigger))).toEqual([]);
   });
 
   it('billing_opened records an unnamed trigger as unknown, never as a real one', async () => {
