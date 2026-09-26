@@ -4,6 +4,9 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CodingEvent, CodingSession } from './api';
 import { EventTimeline } from './EventTimeline';
 import { indexLatestEvents } from './useCodingSession';
+import { copyText } from '../lib/clipboard';
+
+vi.mock('../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 
 
 beforeAll(() => {
@@ -52,6 +55,21 @@ function timelineProps(events: CodingEvent[]) {
 
 
 describe('EventTimeline', () => {
+  it('copies a complete streamed answer, not the prompt or activity around it', async () => {
+    const events = [
+      event(1, 'user_message', 'Please change the code'),
+      event(2, 'command', 'npm test'),
+      { ...event(3, 'agent_message', '**Done.**\n\n'), item_id: 'answer', turn_id: 'turn', phase: 'started' as const },
+      { ...event(4, 'agent_message', '```js\nconst a = 1;\n```'), item_id: 'answer', turn_id: 'turn' },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+    expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+    expect(copyText).toHaveBeenLastCalledWith('**Done.**\n\n```js\nconst a = 1;\n```');
+    expect(screen.getByRole('button', { name: 'Copy js code' })).toBeInTheDocument();
+  });
+
   it('reads the terminal error from the index instead of scanning the transcript on each render', () => {
     const events = Array.from({ length: 6_000 }, (_, index) => event(index + 1, index % 2 ? 'error' : 'agent_message', `Event ${index + 1}`));
     let indexReads = 0;
