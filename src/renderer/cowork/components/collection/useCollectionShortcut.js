@@ -15,12 +15,15 @@ export function useCollectionShortcut(searchRef, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
+      if (searchRef?.current && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        searchRef?.current?.focus();
+        // Claim local search before App's bubbling global-search listener,
+        // regardless of which view mounted first.
+        e.stopPropagation();
+        searchRef.current.focus();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [searchRef, enabled]);
 }
