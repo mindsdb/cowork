@@ -25,6 +25,7 @@ export const emptyRepositorySetup = (): TaskRepositorySetup => ({
 export function branchNameIssue(value: string): string {
   if (!value) return '';
   return value.length > 255 ||
+    value === 'HEAD' ||
     value === '@' ||
     value.startsWith('-') ||
     /[\s~^:?*\[\\\x00-\x1f\x7f]/.test(value) ||

@@ -319,10 +319,10 @@ describe('task repository setup', () => {
   });
 });
 
-it.each(['bad name', 'x..y', 'x.lock', '-option', 'a//b', 'a\\b', 'a@{b', 'a/', 'a.'])(
+it.each(['HEAD', 'bad name', 'x..y', 'x.lock', '-option', 'a//b', 'a\\b', 'a@{b', 'a/', 'a.'])(
   'rejects invalid branch %s',
   (name) => expect(branchNameIssue(name)).not.toBe(''),
 );
-it.each(['', 'feat/qa-123', 'release/1.2.3'])('accepts branch %s', (name) =>
+it.each(['', 'feat/qa-123', 'release/1.2.3', 'head', 'feature/HEAD'])('accepts branch %s', (name) =>
   expect(branchNameIssue(name)).toBe(''),
 );
