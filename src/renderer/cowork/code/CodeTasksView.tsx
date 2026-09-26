@@ -10,7 +10,7 @@ import './code-tasks.css';
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
   { value: 'attention', label: 'Needs attention' },
-  { value: 'accent', label: 'Working' },
+  { value: 'accent', label: 'In progress' },
   { value: 'success', label: 'Completed' },
   { value: 'danger', label: 'Failed' },
   { value: 'neutral', label: 'Ready or stopped' },
@@ -56,15 +56,20 @@ export function CodeTasksView({
   const canCreate = !newTaskProjectId || projects.some(item => item.id === newTaskProjectId);
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
-    return sessions.filter(task => (
+    return sessions.filter(task => {
+      const tone = codingSessionStatus(task).tone;
+      // Queued work is in progress even though its status dot is neutral.
+      const group = tone === 'neutral' && task.run_status === 'queued' ? 'accent' : tone;
+      return (
       (archiveFilter === 'archived' ? task.archived : !task.archived)
       && (scope === 'all' || (scope === 'none' ? !task.project_id : task.project_id === scope))
       && (statusFilter === 'all' || (statusFilter === 'attention'
-        ? ['warning', 'danger'].includes(codingSessionStatus(task).tone)
-        : codingSessionStatus(task).tone === statusFilter))
+        ? ['warning', 'danger'].includes(group)
+        : group === statusFilter))
       && (!search || [task.title, task.project_id ? projectNames.get(task.project_id) : '', task.repository_root, task.source_path]
         .some(value => value?.toLowerCase().includes(search)))
-    )).sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
+      );
+    }).sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
   }, [sessions, scope, archiveFilter, statusFilter, query, projectNames]);
   const hasFilters = !!query || statusFilter !== 'all' || (!projectId && projectFilter !== 'all');
 

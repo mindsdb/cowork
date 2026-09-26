@@ -141,4 +141,19 @@ describe('CodeTasksView', () => {
     expect(props.onOpenProject).toHaveBeenCalledWith('p1');
     expect(props.onOpen).not.toHaveBeenCalled();
   });
+
+  it('includes queued work in progress while keeping offline work under attention', async () => {
+    const { user } = setup({ sessions: [
+      task('Queued build', { status: 'ready', run_status: 'queued' }),
+      task('Offline build', { status: 'ready', run_status: 'queued', computer_status: 'offline' }),
+      task('Ready build', { status: 'ready' }),
+    ] });
+    await select(user, 'Filter by status', 'In progress');
+    expect(screen.getByRole('button', { name: 'Queued build' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Offline build' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ready build' })).not.toBeInTheDocument();
+    await select(user, 'Filter by status', 'Needs attention');
+    expect(screen.getByRole('button', { name: 'Offline build' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Queued build' })).not.toBeInTheDocument();
+  });
 });
