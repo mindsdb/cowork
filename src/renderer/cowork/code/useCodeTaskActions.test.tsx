@@ -33,6 +33,13 @@ function renderActions({
 
 
 describe('useCodeTaskActions', () => {
+  it('forwards per-task repository choices without updating project defaults', async () => {
+    createSession.mockClear();
+    const {result} = renderActions();
+    const repositorySetup = {branch:'feat/qa',base_branches:{app:'staging'},include_local_changes:true};
+    await act(async () => {await result.current.create({projectId:'p',prompt:'Read',engineId:'codex',model:'gpt',permissionMode:'supervised',attachments:[],sourceContexts:[],resourceIds:['app'],repositorySetup});});
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({project_id:'p',resource_ids:['app'],repository_setup:repositorySetup}));
+  });
   it('sends exactly one project workspace selector when creating tasks', async () => {
     createSession.mockClear();
     const { result } = renderActions();

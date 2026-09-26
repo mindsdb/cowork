@@ -23,6 +23,7 @@ import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
+import type { TaskRepositorySetup } from './repositorySetupModels';
 
 
 interface NewTaskDraftOptions {
@@ -40,14 +41,22 @@ interface NewTaskDraftOptions {
 }
 
 
-function projectFolderIssue(items: ProjectFolderInspection[]): string {
+async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup): Promise<string> {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
     return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
   }
-  const missingBranch = items.find((item) => !item.base_branch_available);
-  if (missingBranch) {
-    return `${missingBranch.folder.name} cannot find its ${missingBranch.folder.base_branch} base branch. Update it in Project settings.`;
+  for (const item of items) {
+    const branch = setup?.base_branches[item.folder.id] || item.folder.base_branch;
+    // projectFolders checks the configured base. A different task base must
+    // be checked against Git too; a saved picker value is not proof it exists.
+    const available = branch && branch !== item.folder.base_branch
+      ? (await codingApi.repositoryBranches(projectId, item.folder.id)).items.includes(branch)
+      : item.base_branch_available;
+    if (!available) {
+      const location = setup ? 'Repositories & folders' : 'Project settings';
+      return `${item.folder.name} cannot find its ${branch} base branch. Update it in ${location}.`;
+    }
   }
   return '';
 }
@@ -116,6 +125,15 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
+  const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
+  const [repositoryChoice, setRepositoryChoice] = useState<{
+    key: string;
+    setup: TaskRepositorySetup;
+  } | null>(null);
+  const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
+  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) =>
+    setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
+  const resourceScopeKey = JSON.stringify(resourceIds);
 
   const engines = codingCatalog.engines;
   const engineLoading = codingCatalog.enginesLoading;
@@ -158,14 +176,15 @@ export function useNewTaskDraft({
       return () => { active = false; };
     }
     setFoldersLoading(true);
-    codingApi.projectFolders(selectedProject.id).then(({ items }) => {
+    codingApi.projectFolders(selectedProject.id).then(async ({ items }) => {
       if (!active) return;
-      setFolderIssue(projectFolderIssue(items));
+      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup);
+      if (active) setFolderIssue(issue);
     }).catch((reason) => {
       if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
     }).finally(() => { if (active) setFoldersLoading(false); });
     return () => { active = false; };
-  }, [selectedProject]);
+  }, [selectedProject, resourceScopeKey, repositorySetup]);
 
   useEffect(() => {
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
@@ -332,6 +351,7 @@ export function useNewTaskDraft({
       sourceContexts,
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
+      ...(repositorySetup ? { repositorySetup } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -339,6 +359,8 @@ export function useNewTaskDraft({
   };
 
   return {
+    repositorySetup,
+    setRepositorySetup,
     prompt,
     setPrompt,
     catalogError: catalogError || codingCatalog.error || codingCatalog.modelError(engineId),

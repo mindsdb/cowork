@@ -47,6 +47,11 @@ vi.mock('./api', () => ({
     engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
     models: codingModels,
     projectFolders,
+    repositoryStatus: vi.fn(async () => ({ items: [
+      { resource_id: 'cowork', local:true, available:true, branch:'staging', branches:['staging','main'], changes:['file.ts'], change_count:1, detail:'' },
+      { resource_id: 'server', local:true, available:true, branch:'staging', branches:['staging','main'], changes:[], change_count:0, detail:'' },
+    ] })),
+    repositoryBranches: vi.fn(async () => ({ items: ['staging', 'main'] })),
     projectResources: vi.fn(async () => ({ items: [
       { resource: { kind: 'repository', id: 'cowork', name: 'cowork', source_url: 'https://github.com/mindsdb/cowork.git', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'cowork', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
       { resource: { kind: 'repository', id: 'server', name: 'cowork-server', source_url: 'https://github.com/mindsdb/cowork-server.git', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'server', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
@@ -146,6 +151,7 @@ const projectProps = {
 
 describe('NewTaskPanel', () => {
   beforeEach(() => {
+    vi.mocked(codingApi.repositoryBranches).mockReset().mockResolvedValue({ items: ['staging', 'main'] });
     vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
     pickCodeFolder.mockReset();
     pickCodeFolder.mockResolvedValue({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' });
@@ -679,7 +685,7 @@ describe('NewTaskPanel', () => {
     expect(onProjectChange).toHaveBeenCalledWith(null);
   });
 
-  it('closes the resource menu before opening another composer picker', async () => {
+  it('dismisses the repository drawer before opening another composer picker', async () => {
     const user = userEvent.setup();
     render(
       <NewTaskPanel
@@ -694,13 +700,14 @@ describe('NewTaskPanel', () => {
       />,
     );
 
-    const resourcePicker = await screen.findByLabelText('Choose task resources');
-    await user.click(resourcePicker);
-    expect(screen.getByText('Task resources')).toBeVisible();
+    await waitFor(() => expect(screen.getByLabelText('Repositories and folders')).toBeEnabled());
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    expect(screen.getByRole('dialog', {name:'Repositories & folders'})).toBeVisible();
+    await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('combobox', { name: 'Code Project' }));
 
-    expect(screen.getByText('Task resources')).not.toBeVisible();
+    expect(screen.queryByRole('dialog', {name:'Repositories & folders'})).not.toBeInTheDocument();
     expect(screen.getByText('Project')).toBeVisible();
   });
 
@@ -720,9 +727,14 @@ describe('NewTaskPanel', () => {
       />,
     );
 
-    await user.click(await screen.findByLabelText('Choose task resources'));
+    await waitFor(() => expect(screen.getByLabelText('Repositories and folders')).toBeEnabled());
+    await user.click(screen.getByLabelText('Repositories and folders'));
     await user.click(screen.getByRole('checkbox', { name: /cowork-server/i }));
-    expect(screen.getByLabelText('Choose task resources')).toHaveTextContent('1 of 2 resources');
+    await user.type(screen.getByRole('textbox', {name:/New branch/}), 'feat/desktop-only');
+    await user.click(screen.getByRole('radio', {name:/Include my local changes/}));
+    await waitFor(() => expect(screen.getByRole('button', {name:'Apply to task'})).toBeEnabled());
+    await user.click(screen.getByRole('button', {name:'Apply to task'}));
+    expect(screen.getByLabelText('Repositories and folders')).toHaveTextContent('1 resource');
 
     view.rerender(
       <NewTaskPanel
@@ -740,7 +752,7 @@ describe('NewTaskPanel', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Choose task resources')).toHaveTextContent('1 of 2 resources');
+    expect(screen.getByLabelText('Repositories and folders')).toHaveTextContent('1 resource');
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Change the desktop only');
     await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: /start task/i }));
@@ -748,6 +760,7 @@ describe('NewTaskPanel', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       projectId: project.id,
       resourceIds: ['cowork'],
+      repositorySetup: {branch:'feat/desktop-only',base_branches:{cowork:'staging'},include_local_changes:true},
     })));
   });
 
@@ -807,6 +820,70 @@ describe('NewTaskPanel', () => {
     expect(await screen.findByText(/cowork-server is unavailable/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { chosen: 'staging', available: ['main'], blocked: true },
+    { chosen: 'main', available: ['main'], blocked: false },
+    { chosen: 'main', available: [], blocked: true },
+  ])('validates the applied base branch before enabling Start: $chosen / $available', async ({ chosen, available, blocked }) => {
+    projectFolders.mockResolvedValue({ items: [{
+      folder: project.folders[0],
+      inspection: { path: project.folders[0].path, exists: true, is_directory: true, is_git: true, dirty: false },
+      base_branch_available: false,
+    }] });
+    vi.mocked(codingApi.repositoryBranches).mockResolvedValue({ items: available });
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Read this repository');
+    expect(await screen.findByText(/cowork cannot find its staging base branch/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    if (chosen !== 'staging') {
+      await user.click(screen.getByRole('combobox', { name: 'Start cowork from' }));
+      await user.click(screen.getByRole('option', { name: chosen }));
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply to task' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+    const start = screen.getByRole('button', { name: /start task/i });
+    if (blocked) {
+      expect(await screen.findByText(new RegExp(`cowork cannot find its ${chosen} base branch`))).toBeInTheDocument();
+      expect(start).toBeDisabled();
+      await user.click(start);
+      expect(onCreate).not.toHaveBeenCalled();
+    } else {
+      await waitFor(() => expect(start).toBeEnabled());
+      await user.click(start);
+      expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+        repositorySetup: expect.objectContaining({ base_branches: { cowork: 'main', server: 'staging' } }),
+      }));
+    }
+  });
+
+  it('keeps Start blocked while a new base is being checked, and allows retry after a failed check', async () => {
+    let rejectCheck!: (reason: Error) => void;
+    vi.mocked(codingApi.repositoryBranches).mockImplementationOnce(() => new Promise((_, reject) => { rejectCheck = reject; }));
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {});
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Read this repository');
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    await user.click(screen.getByRole('combobox', { name: 'Start cowork from' }));
+    await user.click(screen.getByRole('option', { name: 'main' }));
+    await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+    await waitFor(() => expect(codingApi.repositoryBranches).toHaveBeenCalledWith(project.id, 'cowork'));
+    const start = screen.getByRole('button', { name: /start task/i });
+    expect(start).toBeDisabled();
+    await act(async () => rejectCheck(new Error('Could not check branches. Try again.')));
+    expect(await screen.findByText('Could not check branches. Try again.')).toBeInTheDocument();
+    expect(start).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+    await user.click(screen.getByLabelText('Repositories and folders'));
+    await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(screen.queryByText('Could not check branches. Try again.')).not.toBeInTheDocument();
   });
 
   it('starts from the composer with the platform keyboard shortcut', async () => {

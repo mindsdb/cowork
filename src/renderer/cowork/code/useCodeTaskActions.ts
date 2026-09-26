@@ -130,6 +130,7 @@ export function useCodeTaskActions({
       const created = await codingApi.create({
         ...workspace,
         resource_ids: input.resourceIds,
+        ...(input.repositorySetup ? { repository_setup: input.repositorySetup } : {}),
         computer_id: input.computerId,
         prompt: input.prompt,
         engine_id: input.engineId,

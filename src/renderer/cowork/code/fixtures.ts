@@ -429,6 +429,21 @@ export function getCodeFixtureApi() {
         base_branch_available: true,
       })),
     }),
+    repositoryStatus: async (id: string) => ({
+      items: (projects.find((item) => item.id === id)?.resources || [])
+        .filter((resource) => resource.kind === 'repository')
+        .map((resource) => ({
+          resource_id: resource.id, available: true, local: !!resource.local_path,
+          branch: resource.default_branch || 'staging',
+          branches: [...new Set([resource.default_branch || 'staging', 'main'])],
+          changes: [], change_count: 0, detail: '',
+        })),
+    }),
+    repositoryBranches: async (id: string, resourceId: string) => {
+      const resource = projects.find((item) => item.id === id)?.resources?.find((item) => item.id === resourceId);
+      return { items: resource?.kind === 'repository' ? [...new Set([resource.default_branch || 'staging', 'main'])] : [] };
+    },
+    repositoryDiff: async (_id: string, _resourceId: string): Promise<{ files: DiffFile[] }> => ({ files: [] }),
     projectResources: async (id: string) => ({
       items: (projects.find((item) => item.id === id)?.resources || []).map((resource) => ({
         resource: copy(resource),
