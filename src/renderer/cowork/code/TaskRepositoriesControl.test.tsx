@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { codingApi, type ProjectResource } from './api';
@@ -241,6 +241,81 @@ describe('task repository setup', () => {
       name: resolution === 'refresh' ? 'Refresh' : /Include Application/,
     }));
     await waitFor(() => expect(apply).toBeEnabled());
+  });
+
+  describe('remote task branch validation', () => {
+    beforeEach(() => {
+      vi.mocked(codingApi.repositoryStatus).mockResolvedValue({ items: [
+        { ...items[0], local: false, branch: null, branches: [], changes: [], change_count: 0, detail: 'Downloaded when the task starts' },
+        items[1],
+      ] });
+    });
+
+    it('checks remote branches on Apply without opening a picker, and allows a unique name', async () => {
+      vi.mocked(codingApi.repositoryBranches).mockResolvedValue({ items: ['main', 'feature/existing'] });
+      const { user, onApply } = setup();
+      await user.click(screen.getByLabelText('Repositories and folders'));
+      await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/existing');
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      expect(await screen.findByText(/That branch already exists/)).toBeVisible();
+      expect(onApply).not.toHaveBeenCalled();
+      expect(codingApi.repositoryBranches).toHaveBeenCalledWith('project', 'app');
+      expect(codingApi.repositoryBranches).toHaveBeenCalledTimes(1);
+      await user.clear(screen.getByRole('textbox', { name: /New branch/ }));
+      await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/new');
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      await waitFor(() => expect(onApply).toHaveBeenCalledWith(['app', 'api', 'notes'], {
+        branch: 'feature/new', base_branches: { app: 'staging', api: 'main' }, include_local_changes: false,
+      }));
+    });
+
+    it('holds choices while checking and lets a failed check be retried', async () => {
+      let reject!: (error: Error) => void;
+      vi.mocked(codingApi.repositoryBranches).mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }))
+        .mockResolvedValue({ items: ['main'] });
+      const { user, onApply } = setup();
+      await user.click(screen.getByLabelText('Repositories and folders'));
+      await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/new');
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      expect(screen.getByRole('button', { name: /Checking branches/ })).toBeDisabled();
+      expect(screen.getByRole('textbox', { name: /New branch/ })).toBeDisabled();
+      expect(screen.getByLabelText('Include Application')).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('combobox', { name: 'Start Application from' })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /Include my local changes/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
+      expect(onApply).not.toHaveBeenCalled();
+      await act(async () => reject(new Error('Connection lost')));
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection lost.*Apply again to retry/);
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      await waitFor(() => expect(onApply).toHaveBeenCalledOnce());
+    });
+
+    it('never applies a late result after the drawer is closed', async () => {
+      let resolve!: (result: { items: string[] }) => void;
+      vi.mocked(codingApi.repositoryBranches).mockReturnValue(new Promise(done => { resolve = done; }));
+      const { user, onApply } = setup();
+      await user.click(screen.getByLabelText('Repositories and folders'));
+      await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/new');
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      await user.keyboard('{Escape}');
+      await act(async () => resolve({ items: ['main'] }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('does not check unselected remote repositories or automatic task names', async () => {
+      const { user, onApply } = setup();
+      await user.click(screen.getByLabelText('Repositories and folders'));
+      await user.click(screen.getByLabelText('Include Application'));
+      await user.type(screen.getByRole('textbox', { name: /New branch/ }), 'feature/new');
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      expect(onApply).toHaveBeenCalledOnce();
+      expect(codingApi.repositoryBranches).not.toHaveBeenCalled();
+      await user.click(screen.getByLabelText('Repositories and folders'));
+      await user.click(screen.getByRole('button', { name: 'Apply to task' }));
+      expect(onApply).toHaveBeenCalledTimes(2);
+      expect(codingApi.repositoryBranches).not.toHaveBeenCalled();
+    });
   });
 });
 

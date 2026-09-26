@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { GitBranch, Folder, RefreshCw, ShieldCheck } from 'lucide-react';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
@@ -6,7 +6,7 @@ import Alert from '../components/ui/Alert';
 import { Input } from '../components/ui/Input';
 import Spinner from '../components/ui/Spinner';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import type { CodeComputer, ProjectResource, ProjectResourceState } from './api';
+import { codingApi, type CodeComputer, type ProjectResource, type ProjectResourceState } from './api';
 import { RepositoryLocalChanges } from './RepositoryLocalChanges';
 import { RepositoryBranchSelect } from './RepositoryBranchSelect';
 import { branchNameIssue, type RepositoryStatus, type TaskRepositorySetup } from './repositorySetupModels';
@@ -50,6 +50,13 @@ export function TaskRepositoryDrawer({
   const [ids, setIds] = useState(selectedIds);
   const [draft, setDraft] = useState(setup);
   const [remoteBranches, setRemoteBranches] = useState<Record<string, string[]>>({});
+  const [checkingBranches, setCheckingBranches] = useState(false);
+  const [branchCheckError, setBranchCheckError] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const byId = new Map(statuses.map((status) => [status.resource_id, status]));
   const availability = new Map(resourceStates.map((item) => [item.resource.id, item.availability]));
   const repositories = resources.filter(
@@ -69,7 +76,28 @@ export function TaskRepositoryDrawer({
     if (!repositories.length)
       setDraft((current) => ({ ...current, branch: null, include_local_changes: false }));
   }, [repositories.length]);
-  const apply = () => {
+  const apply = async () => {
+    if (checkingBranches) return;
+    const remoteRepositories = repositories.filter(resource => !byId.get(resource.id)?.local);
+    if (local && draft.branch && remoteRepositories.length) {
+      setCheckingBranches(true);
+      setBranchCheckError('');
+      try {
+        const loaded = await Promise.all(remoteRepositories.map(async resource =>
+          [resource.id, (await codingApi.repositoryBranches(projectId, resource.id)).items] as const,
+        ));
+        if (!mounted.current) return;
+        setRemoteBranches(current => ({ ...current, ...Object.fromEntries(loaded) }));
+        if (loaded.some(([, branches]) => branches.includes(draft.branch!))) return;
+      } catch (reason) {
+        if (mounted.current) setBranchCheckError(
+          `${reason instanceof Error ? reason.message : 'Could not check remote branches.'} Apply again to retry.`,
+        );
+        return;
+      } finally {
+        if (mounted.current) setCheckingBranches(false);
+      }
+    }
     const bases: Record<string, string> = {};
     for (const resource of repositories) {
       const branch =
@@ -112,13 +140,14 @@ export function TaskRepositoryDrawer({
               placeholder="feat/repo-status"
               value={draft.branch || ''}
               onChange={(value) => setDraft({ ...draft, branch: value || null })}
-              disabled={!repositories.length}
+              disabled={!repositories.length || checkingBranches}
               aria-invalid={!!issue}
               aria-describedby={`${branchId}-hint`}
             />
             <small id={`${branchId}-hint`} className={issue ? 'is-error' : ''}>
               {issue || 'Created in each selected repository. Leave blank for an automatic name.'}
             </small>
+            {branchCheckError && <Alert variant="danger">{branchCheckError}</Alert>}
           </div>
         )}
         <section className="code-repository-list" aria-label="Include in this task">
@@ -152,7 +181,7 @@ export function TaskRepositoryDrawer({
                     size="sm"
                     checked={checked}
                     aria-label={`Include ${resource.name}`}
-                    disabled={checked && ids.length === 1}
+                    disabled={checkingBranches || (checked && ids.length === 1)}
                     onCheckedChange={() =>
                       setIds(checked ? ids.filter((id) => id !== resource.id) : [...ids, resource.id])
                     }
@@ -182,7 +211,7 @@ export function TaskRepositoryDrawer({
                     value={base}
                     branches={branches}
                     local={state?.local === true}
-                    disabled={!checked || loading || !!error}
+                    disabled={!checked || loading || !!error || checkingBranches}
                     onBranchesLoaded={(branches) =>
                       setRemoteBranches((current) => ({ ...current, [resource.id]: branches }))
                     }
@@ -207,7 +236,7 @@ export function TaskRepositoryDrawer({
                   'Local checkout status'
                 )}
               </span>
-              <Button size="sm" variant="subtle" disabled={loading} onClick={onRefresh}>
+              <Button size="sm" variant="subtle" disabled={loading || checkingBranches} onClick={onRefresh}>
                 <RefreshCw size={13} />
                 Refresh
               </Button>
@@ -222,7 +251,7 @@ export function TaskRepositoryDrawer({
               />
             ))}
             {repositories.length > 0 && (
-              <fieldset className="code-repository-policy">
+              <fieldset className="code-repository-policy" disabled={checkingBranches}>
                 <legend>Local changes</legend>
                 <label className={!draft.include_local_changes ? 'is-selected' : ''}>
                   <input
@@ -264,10 +293,11 @@ export function TaskRepositoryDrawer({
         </span>
         <Button
           variant="primary"
-          disabled={!ids.length || !!issue || (local && (loading || !!error || unavailable))}
+          disabled={checkingBranches || !ids.length || !!issue || (local && (loading || !!error || unavailable))}
+          aria-busy={checkingBranches}
           onClick={apply}
         >
-          Apply to task
+          {checkingBranches ? <><Spinner /> Checking branches…</> : 'Apply to task'}
         </Button>
       </ModalFooter>
     </Modal>
