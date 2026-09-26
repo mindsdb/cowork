@@ -40,6 +40,26 @@ describe('collection search shortcut routing', () => {
     expect(screen.queryByRole('textbox')).not.toBe(document.activeElement);
   });
 
+  it('leaves global search available when its mounted workspace becomes hidden', () => {
+    const view = render(<section><Collection /></section>);
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    const input = screen.getByRole('textbox');
+    input.blur();
+    view.rerender(<section hidden><Collection /></section>);
+    expect(fireEvent.keyDown(document.body, { key: 'k', metaKey: true })).toBe(true);
+    expect(input).not.toHaveFocus();
+  });
+
+  it('focuses only the visible collection when both workspaces remain mounted', () => {
+    const view = render(<><section hidden><Collection /></section><section><Collection /></section></>);
+    const [cowork, code] = view.container.querySelectorAll('input');
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    expect(code).toHaveFocus();
+    view.rerender(<><section><Collection /></section><section hidden><Collection /></section></>);
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    expect(cowork).toHaveFocus();
+  });
+
   it.each([{ shiftKey: true }, { altKey: true }, { ctrlKey: false }])('leaves other shortcuts alone: %j', modifiers => {
     render(<Collection />);
     expect(fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true, ...modifiers })).toBe(true);
