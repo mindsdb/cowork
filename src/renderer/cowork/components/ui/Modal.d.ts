@@ -14,6 +14,8 @@ export interface ModalProps {
   height?: string | number;
   maxHeight?: string | number;
   fullBleed?: boolean;
+  placement?: 'center' | 'left';
+  leftOffset?: number;
   children?: ReactNode;
 }
 

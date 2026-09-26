@@ -96,6 +96,8 @@ export function Modal({
   // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
   // and Esc dismissal a hand-rolled full-screen <div> would drop.
   fullBleed = false,
+  placement = 'center',
+  leftOffset = 0,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
@@ -135,7 +137,10 @@ export function Modal({
         <Dialog.Viewport
           style={{
             position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            ...(placement === 'left' ? {
+              paddingLeft: `max(8px, min(${leftOffset}px, calc(100vw - ${typeof width === 'number' ? `${width}px` : width || sz.width} - 8px)))`,
+            } : {}),
             WebkitAppRegion: 'no-drag',
           }}
         >

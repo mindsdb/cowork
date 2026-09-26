@@ -23,6 +23,7 @@ import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
+import type { TaskRepositorySetup } from './repositorySetupModels';
 
 
 interface NewTaskDraftOptions {
@@ -40,12 +41,12 @@ interface NewTaskDraftOptions {
 }
 
 
-function projectFolderIssue(items: ProjectFolderInspection[]): string {
+function projectFolderIssue(items: ProjectFolderInspection[], setup?: TaskRepositorySetup): string {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
     return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
   }
-  const missingBranch = items.find((item) => !item.base_branch_available);
+  const missingBranch = items.find((item) => !item.base_branch_available && !setup?.base_branches[item.folder.id]);
   if (missingBranch) {
     return `${missingBranch.folder.name} cannot find its ${missingBranch.folder.base_branch} base branch. Update it in Project settings.`;
   }
@@ -116,6 +117,15 @@ export function useNewTaskDraft({
     executionIssue,
     refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
+  const repositoryKey = JSON.stringify([selectedProject?.id, computerId, projectResources]);
+  const [repositoryChoice, setRepositoryChoice] = useState<{
+    key: string;
+    setup: TaskRepositorySetup;
+  } | null>(null);
+  const repositorySetup = repositoryChoice?.key === repositoryKey ? repositoryChoice.setup : undefined;
+  const setRepositorySetup = (setup: TaskRepositorySetup | undefined) =>
+    setRepositoryChoice(setup ? {key: repositoryKey, setup} : null);
+  const resourceScopeKey = JSON.stringify(resourceIds);
 
   const engines = codingCatalog.engines;
   const engineLoading = codingCatalog.enginesLoading;
@@ -160,12 +170,12 @@ export function useNewTaskDraft({
     setFoldersLoading(true);
     codingApi.projectFolders(selectedProject.id).then(({ items }) => {
       if (!active) return;
-      setFolderIssue(projectFolderIssue(items));
+      setFolderIssue(projectFolderIssue(items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup));
     }).catch((reason) => {
       if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
     }).finally(() => { if (active) setFoldersLoading(false); });
     return () => { active = false; };
-  }, [selectedProject]);
+  }, [selectedProject, resourceScopeKey, repositorySetup]);
 
   useEffect(() => {
     setEngineId(selectedProject?.default_engine_id || defaultEngineId);
@@ -332,6 +342,7 @@ export function useNewTaskDraft({
       sourceContexts,
       ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
       ...(selectedProject ? { computerId } : {}),
+      ...(repositorySetup ? { repositorySetup } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -339,6 +350,8 @@ export function useNewTaskDraft({
   };
 
   return {
+    repositorySetup,
+    setRepositorySetup,
     prompt,
     setPrompt,
     catalogError: catalogError || codingCatalog.error || codingCatalog.modelError(engineId),
