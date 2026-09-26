@@ -7,3 +7,6 @@
 .code-child-work strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-size: 11px; }
 .code-child-work p { margin: 2px 0 0; color: var(--ink-4); font-size: 9.5px; line-height: 1.4; }
 .code-child-work__status { margin-top: 2px; color: var(--ink-4); font-size: 9px; }
+
+.code-response-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--ink-4); font: 12px/1.5 var(--font-body); }
+.code-response-actions .is-error { color: var(--danger); }

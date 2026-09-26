@@ -15,6 +15,7 @@ declare const Ico: {
   close: IconRenderer;
   code: IconRenderer;
   computer: IconRenderer;
+  copy: IconRenderer;
   cube: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
