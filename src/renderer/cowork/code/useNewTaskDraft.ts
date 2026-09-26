@@ -41,14 +41,22 @@ interface NewTaskDraftOptions {
 }
 
 
-function projectFolderIssue(items: ProjectFolderInspection[], setup?: TaskRepositorySetup): string {
+async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup): Promise<string> {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
     return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
   }
-  const missingBranch = items.find((item) => !item.base_branch_available && !setup?.base_branches[item.folder.id]);
-  if (missingBranch) {
-    return `${missingBranch.folder.name} cannot find its ${missingBranch.folder.base_branch} base branch. Update it in Project settings.`;
+  for (const item of items) {
+    const branch = setup?.base_branches[item.folder.id] || item.folder.base_branch;
+    // projectFolders checks the configured base. A different task base must
+    // be checked against Git too; a saved picker value is not proof it exists.
+    const available = branch && branch !== item.folder.base_branch
+      ? (await codingApi.repositoryBranches(projectId, item.folder.id)).items.includes(branch)
+      : item.base_branch_available;
+    if (!available) {
+      const location = setup ? 'Repositories & folders' : 'Project settings';
+      return `${item.folder.name} cannot find its ${branch} base branch. Update it in ${location}.`;
+    }
   }
   return '';
 }
@@ -168,9 +176,10 @@ export function useNewTaskDraft({
       return () => { active = false; };
     }
     setFoldersLoading(true);
-    codingApi.projectFolders(selectedProject.id).then(({ items }) => {
+    codingApi.projectFolders(selectedProject.id).then(async ({ items }) => {
       if (!active) return;
-      setFolderIssue(projectFolderIssue(items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup));
+      const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup);
+      if (active) setFolderIssue(issue);
     }).catch((reason) => {
       if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
     }).finally(() => { if (active) setFoldersLoading(false); });
