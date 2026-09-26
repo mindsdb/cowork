@@ -140,7 +140,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       usage={hubUsage({ limit: 100, used: 100, remaining: 0, resetsAt: refill })}
     />);
 
-    const copy = `Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(refill)}.`;
+    const copy = `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(refill)}.`;
     await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
 
     await user.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);

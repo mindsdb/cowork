@@ -1203,11 +1203,12 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
-            // ENG-1537 review: this local trailer is reached when
-            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
-            // MORE likely precisely when the gateway is rate-limiting. Without
-            // these the rate-limit card loses its gate and the allowance card
-            // always reads "resets on next month".
+            /* ENG-1537 review: this local trailer is reached when
+               loadSessionMessagesWithRetry gives up after 3 attempts — which is
+               MORE likely precisely when the gateway is rate-limiting. Without
+               these the rate-limit card loses its gate, and the allowance and
+               paused cards lose the time the gate sent on a desktop or a
+               hosted turn. */
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,

@@ -53,7 +53,7 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
@@ -1128,10 +1128,10 @@ function refillClause(resetAt, lead) {
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
-  /* A hosted turn arrives here with no reset_at: its failure reaches the
-     client as an exception name alone. The hub usage read carries the same
-     allowance's refill, so the free way forward still has a time, and it
-     says when the org has no grant to refill at all. */
+  /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
+     cowork-server that predates it arrives with none, and the hub usage read
+     carries the same allowance's refill, so the free way forward still has a
+     time. The read also says when the org has no grant to refill at all. */
   return (
     <ActionCard
       deleting={deleting}
@@ -1181,13 +1181,23 @@ function switchToAirButtons(onSwitchToAir) {
  * read says which limit fired, and the fixed copy is the fallback whenever that
  * read has nothing to speak from.
  *
+ * The card stays in the task long after the stop, and `usage` is the read as
+ * it is now. Once that read shows a wallet that can pay (a balance that
+ * `isBalanceEmpty` does not flag), as after a top up, today's allowance says
+ * nothing about why this task stopped, so neither branch below speaks from it.
+ * A read with no balance says nothing about the wallet either way:
+ * cowork-server's `HubUsageView` leaves it null when the wallet read fails or
+ * the caller may not see the wallet, as in a starter-tier org. The stop stands
+ * then, and both branches stay open.
+ *
  * - The free allowance has room. auth's `access.py` always lets a free-bucket
  *   model run while its allowance lasts, whatever the wallet holds, so the stop
  *   was a priced model. Offer the switch, when the caller has one.
  * - The free allowance is spent and its refill time is usable. Name both
- *   resources and the free way forward.
+ *   resources and the free way forward, in `allowanceStopCopy`'s words, which
+ *   the spent-allowance card uses for the same state.
  * - Anything else (usage dark, no grant, uncapped, no usable time, no switch
- *   to offer): the fixed copy, exactly as before.
+ *   to offer, a wallet that can pay now): the fixed copy, exactly as before.
  *
  * `usage` is the `/hub/usage/` view (null outside the provider).
  */
@@ -1195,6 +1205,7 @@ export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
   const free = freeAllowanceState(usage);
+  const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
     label: 'Add funds',
@@ -1212,11 +1223,11 @@ export function BalanceEmptyCard({
   // gateway's wording predates pay as you go.
   let body = 'Your balance ran out before this task finished. Add funds before starting another task.';
   let buttons = [addFunds];
-  if (free.status === 'has_room' && onSwitchToAir) {
+  if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
     body = "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.";
     buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
-  } else if (free.status === 'spent' && refill) {
-    body = `Your balance is empty and your free MindsHub Air allowance is used up. Add funds to keep working, or wait for it to refill at ${refill}.`;
+  } else if (!walletPaysNow && free.status === 'spent' && refill) {
+    body = allowanceStopCopy({ usage });
   }
   return (
     <ActionCard
@@ -1237,9 +1248,11 @@ export function BalanceEmptyCard({
  * free-Air spend fuse tripped (`free_air_daily_spend_fuse_exceeded`, issued by
  * auth's `entitlements/views/inference_authorize.py`). It stops only orgs whose
  * wallet cannot pay, it is not this user's allowance, and it lifts at the next
- * UTC midnight, which the gate sends as reset_at. So the card says it is not
- * their allowance, names when it lifts, and offers the one thing that gets
- * them working before then.
+ * UTC midnight, which the gate sends as reset_at on a desktop or a hosted turn.
+ * So the card says it is not their allowance, names when it lifts, and offers
+ * the one thing that gets them working before then. A hosted turn from a
+ * cowork-server that predates reset_at there carries none, and the card then
+ * says it lifts when the daily budget resets.
  */
 export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,

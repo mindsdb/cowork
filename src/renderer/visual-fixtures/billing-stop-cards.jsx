@@ -58,6 +58,9 @@ const SPENT = emptyWallet({ limit: 100, used: 100, remaining: 0, resetsAt: REFIL
 /* An org with no free grant: cowork-server sends limit 0 and no refill time
    when auth reports free_grant_eligible false. */
 const NO_GRANT = emptyWallet({ limit: 0, used: 0, remaining: 0, resetsAt: null });
+/* The ROOM org after a top up: the old stop card is still in the task, and
+   today's read shows a wallet that can pay. */
+const TOPPED_UP = { ...ROOM, balance: { usd: 20, canConsume: true, hasToppedUp: true, alert: null } };
 const DARK = { reachable: false };
 
 const noop = () => {};
@@ -76,18 +79,28 @@ const CASES = [
   },
   {
     id: 'token-limit-fallback',
-    label: 'Drained wallet with hub usage dark (also no grant, uncapped, or no usable time): the fixed copy.',
+    label: 'Drained wallet with hub usage dark (also no grant, uncapped, no usable time, or no switch to offer): the fixed copy.',
     render: () => <BalanceEmptyCard {...COMMON} usage={DARK} isBillingOwner onSwitchToAir={noop} />,
   },
   {
+    id: 'token-limit-after-top-up',
+    label: 'A drained-wallet stop seen again after a top up, with free allowance left: the wallet can pay now, so the fixed copy and no Switch to MindsHub Air.',
+    render: () => <BalanceEmptyCard {...COMMON} usage={TOPPED_UP} isBillingOwner onSwitchToAir={noop} />,
+  },
+  {
     id: 'allowance-exhausted-gate-time',
-    label: 'Free allowance spent, with the refill time the gate sent (a desktop turn).',
+    label: 'Free allowance spent, with the refill time the gate sent on the failure (a desktop turn, or a hosted one on a current cowork-server).',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={GATE_REFILL} usage={SPENT} isBillingOwner />,
   },
   {
     id: 'allowance-exhausted-hub-time',
-    label: 'Free allowance spent, no time from the gate (a hosted turn): the refill time comes from hub usage.',
+    label: 'Free allowance spent, no time on the failure (a hosted turn from an older cowork-server): the refill time comes from hub usage.',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={null} usage={SPENT} isBillingOwner />,
+  },
+  {
+    id: 'allowance-exhausted-no-time',
+    label: 'Free allowance spent with no usable time anywhere (none on the failure, hub usage dark): funds only, and no refill promised.',
+    render: () => <AllowanceExhaustedCard {...COMMON} resetAt={null} usage={DARK} isBillingOwner />,
   },
   {
     id: 'allowance-exhausted-no-grant',
@@ -101,7 +114,7 @@ const CASES = [
   },
   {
     id: 'free-paused-no-time',
-    label: 'The same pause with no usable time (a hosted turn).',
+    label: 'The same pause with no usable time (a hosted turn from an older cowork-server).',
     render: () => <FreeServingPausedCard {...COMMON} resetAt={null} isBillingOwner />,
   },
   {

@@ -190,20 +190,23 @@ function _failedEventMeta(events) {
   return {
     code: ev.code || null,
     message: ev.error || ev.message || '',
-    // Carry the card context so a RELOADED failure renders the same affordance
-    // as the live one. Without these, reconnectable is undefined on reload and
-    // the provider_overloaded / provider_auth cards mis-nudge a managed user
-    // toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
-    // App.jsx's failedEventMeta (the two hydrate paths must agree on this).
+    /* Carry the card context so a RELOADED failure renders the same affordance
+       as the live one. Without these, reconnectable is undefined on reload and
+       the provider_overloaded / provider_auth cards mis-nudge a managed user
+       toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
+       failedEventMeta in lib/conversationHistory.js (the two hydrate paths
+       must agree on this). */
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
-    // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
+    // ENG-1537 — see lib/conversationHistory.js's failedEventMeta; the two paths must agree.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
+    /* included_allowance_exhausted and free_serving_paused: when the free
+       allowance refills or the fuse lifts, as the gate's opaque ISO string,
+       on a desktop or a hosted turn. A cowork-server that predates it on
+       hosted failures sends none, and the card falls back. Formatted at
+       render time: the server deliberately doesn't parse it, since only the
+       client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
@@ -1405,10 +1408,10 @@ export async function setActiveHubWorkspace(workspaceId) {
 }
 
 /**
- * The signed-in account's free monthly tokens, paid balance, and auto top up
- * state (ENG-1782). Never throws: signed out, an unreachable sidecar, and an
- * old sidecar with no such route all answer the same dark shape, and the
- * composer notice and Settings tab render nothing for it.
+ * The signed-in account's free MindsHub Air allowance, paid balance, and auto
+ * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * and an old sidecar with no such route all answer the same dark shape, and
+ * the composer notice and Settings tab render nothing for it.
  */
 export async function fetchHubUsage() {
   try {

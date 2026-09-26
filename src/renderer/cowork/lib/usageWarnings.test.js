@@ -11,6 +11,7 @@ import {
   formatResetDate,
   formatResetTime,
   freeAllowanceState,
+  isBalanceEmpty,
   allowanceStopCopy,
   freeServingPausedCopy,
   NO_FREE_GRANT_SENTENCE,
@@ -567,6 +568,24 @@ describe('NO_FREE_GRANT_SENTENCE', () => {
   });
 });
 
+describe('isBalanceEmpty', () => {
+  it.each([
+    ['depleted', { usd: 0, canConsume: false, alert: 'depleted' }],
+    ['flagged depleted while auth still lets it draw', { usd: 0, canConsume: true, alert: 'depleted' }],
+    ['barred from drawing with no alert', { usd: 0.4, canConsume: false, alert: null }],
+  ])('reads a wallet %s as empty', (_label, balance) => {
+    expect(isBalanceEmpty(balance)).toBe(true);
+  });
+
+  it.each([
+    ['funded', { usd: 20, canConsume: true, alert: null }],
+    ['low but still payable', { usd: 3, canConsume: true, alert: 'low' }],
+    ['missing from the read', null],
+  ])('does not read a wallet %s as empty', (_label, balance) => {
+    expect(isBalanceEmpty(balance)).toBe(false);
+  });
+});
+
 describe('allowanceStopCopy', () => {
   const SOON = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
   const LATER = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
@@ -580,7 +599,7 @@ describe('allowanceStopCopy', () => {
 
   it("names the gate's refill time for an org with a grant", () => {
     expect(allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
-      .toBe(`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
   });
 
   it('falls back to the hub usage refill time when the gate sent none', () => {
@@ -588,9 +607,21 @@ describe('allowanceStopCopy', () => {
       .toMatch(new RegExp(`refill at ${formatResetTime(LATER)}\.$`));
   });
 
-  it("keeps the gate's time when hub usage is unknown, and drops the clause when there is no time at all", () => {
+  it("keeps the gate's time when hub usage is unknown", () => {
     expect(allowanceStopCopy({ resetAt: SOON, usage: null })).toMatch(new RegExp(`refill at ${formatResetTime(SOON)}\.$`));
-    expect(allowanceStopCopy({})).toBe('Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill.');
+  });
+
+  it.each([
+    ['no time from the gate and hub usage unreachable', { usage: { reachable: false } }],
+    ['no time from the gate and no hub usage at all', {}],
+    ['an uncapped grant with no time from the gate', { usage: usage({ freeTokens: { limit: -1, used: 3, resetsAt: null } }) }],
+    ['a time from the gate that is already past', { resetAt: new Date(Date.now() - 3600 * 1000).toISOString(), usage: null }],
+  ])('offers funds alone, and promises no refill, with %s', (_label, args) => {
+    /* Without a usable time nothing says the allowance refills at all, and
+       the org may have no grant to refill. */
+    const copy = allowanceStopCopy(args);
+    expect(copy).toBe('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.');
+    expect(copy).not.toMatch(/refill|wait/i);
   });
 
   it('never states the size or the length of the allowance, and uses no em-dash', () => {

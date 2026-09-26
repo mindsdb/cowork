@@ -12,14 +12,15 @@ import {
   formatResetDate,
   formatResetTime,
   FREE_TOKENS_LOW_FRACTION,
+  isBalanceEmpty,
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
 
-// Settings → Usage (ENG-1782). The lightweight view of what the console's
-// billing page shows: free monthly Air tokens with their reset date, the paid
-// balance with this period's credit spend, and auto top up when it matters. No
-// per-model breakdown. Every action opens the MindsHub console, where funds and
-// auto top up are actually managed.
+/* Settings → Usage (ENG-1782). The lightweight view of what the console's
+   billing page shows: the free MindsHub Air allowance with when it refills, the
+   paid balance with this period's credit spend, and auto top up when it
+   matters. No per-model breakdown. Every action opens the MindsHub console,
+   where funds and auto top up are actually managed. */
 
 const CARD = 'border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] px-[18px] py-4';
 
@@ -116,7 +117,7 @@ function periodLabel(spend) {
 
 function BalanceCard({ balance, auto, spend, isBillingOwner }) {
   if (!balance) return null;
-  const empty = balance.alert === 'depleted' || balance.canConsume === false;
+  const empty = isBalanceEmpty(balance);
   const low = !empty && balance.alert === 'low';
   const amountTone = empty ? 'text-danger-text' : low ? 'text-warning-text' : 'text-ink';
   const autoLine = autoTopUpLine(auto);

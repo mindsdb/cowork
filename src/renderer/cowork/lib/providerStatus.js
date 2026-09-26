@@ -134,7 +134,7 @@ export const PROBE_POLICY_UNAVAILABLE_SENTENCE = 'Billing is temporarily unavail
    a refill time: the row has no room to be wrong about one. */
 const PROBE_REASON_ROW_COPY = {
   wallet_empty: 'No credits available. Add funds to use MindsHub.',
-  included_allowance_exhausted: 'No free allowance left, and the balance is empty.',
+  included_allowance_exhausted: 'No free MindsHub Air tokens available, and the balance is empty.',
   free_air_daily_spend_fuse_exceeded: 'Free MindsHub Air is paused right now.',
   rate_limited: PROBE_RATE_LIMITED_SENTENCE,
   policy_unavailable: PROBE_POLICY_UNAVAILABLE_SENTENCE,

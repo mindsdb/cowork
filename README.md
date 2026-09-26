@@ -367,11 +367,7 @@ have drifted before: a fix that moved the MindsHub probe onto the free model
 landed in the sidecar and left main probing a paid one, and probing a paid model
 means an account with an empty wallet is told its working key is invalid.
 
-The rule both copies follow: probe `mindshub_air`, whose usage draws the monthly
-included allowance rather than the wallet, so the result reports reachability and
-key validity instead of billing state. For `openai-compatible` and `anthropic` a
-model the caller asked for explicitly is sent as asked; `provider: 'minds'` always
-sends the probe model and ignores `model` on both copies.
+The rule both copies follow: probe `mindshub_air`, whose usage draws the free included allowance rather than the wallet, so the result reports reachability and key validity instead of billing state. For `openai-compatible` and `anthropic` a model the caller asked for explicitly is sent as asked; `provider: 'minds'` always sends the probe model and ignores `model` on both copies.
 
 Which copy a given build actually runs is decided by the onboarding screen, not by
 the platform alone. The MindsHub card renders a pasted-key form on web and
@@ -855,31 +851,9 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
 
-A task that stops on a billing limit gets a card in its timeline, and the card
-names the limit that fired. The drained-wallet card (`token_limit`) reads the
-same usage view through `freeAllowanceState` in `lib/usageWarnings.js`. With free
-allowance left, it says the priced model is what stopped and offers Switch to
-MindsHub Air. With the allowance spent, it names both resources and the refill
-time. With nothing to go on (usage unreachable, no grant, an uncapped grant, or
-no usable time), it keeps the fixed balance copy. The spent-allowance card
-(`included_allowance_exhausted`) takes its refill time from the usage view when
-the failure carries none, which is every hosted web turn. For an org with no free
-grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when
-auth reports `free_grant_eligible: false`), `freeAllowanceState` answers
-`no_grant` and the card shows the console's no-grant sentence
-(`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent.
-`free_serving_paused` has its own card: auth's daily spend fuse has paused free
-MindsHub Air for every org that cannot pay, which is not the user's allowance, so
-the card says so and names when it lifts. `model_restricted` is not a billing
-stop but shares the page: an org admin's model rule refused the model, so the
-card names the model and an admin, and offers Open Settings only.
+A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when auth reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: auth's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only.
 
-To see those cards, open `/billing-stop-fixture.html` under the same dev server.
-It renders the drained-wallet card in each usage state, the spent-allowance card
-with and without the gate's refill time and for an org with no grant, the paused
-card with and without a time, the restricted-model card with and without a model
-name, and the connect-a-provider card, all from the components ChatView renders.
-`?theme=dark` works the same way, and each case has a fixed `id` for cropping.
+To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
 Settings > Agent tests each configured provider through the sidecar's
 `/settings/test-providers`. For a failed MindsHub probe the sidecar adds

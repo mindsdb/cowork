@@ -37,7 +37,7 @@ const EVENTS = {
   // change to label any of them:
   //
   //   before ENG-1537   token_limit only — a drained wallet (ENG-385)
-  //   ENG-1537 onward   + included_allowance_exhausted, a spent free monthly
+  //   ENG-1537 onward   + included_allowance_exhausted, a spent free
   //                     allowance. Counted, but carrying no `reason`
   //   this change       + model_access_denied, the legacy per-model credit
   //                     denial (ENG-1533). All three now carry `reason`

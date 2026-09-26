@@ -142,7 +142,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
   it('says the task stopped and names both resources, never a bare "out of tokens"', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
     expect(screen.getByText('Task stopped')).toBeInTheDocument();
-    expect(screen.getByText(/free Air allowance is used up and your balance is empty/)).toBeInTheDocument();
+    expect(screen.getByText(/Your free MindsHub Air allowance is used up and your balance is empty\./)).toBeInTheDocument();
     expect(screen.queryByText(/out of tokens/i)).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
@@ -183,13 +183,15 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
     ['absent', undefined],
     ['malformed', 'not-a-date'],
     ['already past', new Date(Date.now() - 86_400_000).toISOString()],
-  ])('drops the refill clause rather than naming a schedule when the instant is %s', (_label, resetAt) => {
-    // Never "Invalid Date", and never a stale time on a reloaded conversation.
-    // The clause goes entirely rather than falling back to "next month": the
-    // allowance refills on a fixed-duration window, so a monthly promise is
-    // one the response never made.
+  ])('offers funds alone, promising no refill, when the instant is %s', (_label, resetAt) => {
+    /* Never "Invalid Date", and never a stale time on a reloaded conversation.
+       The refill goes entirely rather than falling back to "next month": the
+       allowance refills on a fixed-duration window, so a monthly promise is
+       one the response never made, and with no time at all nothing says this
+       org has a grant to refill. */
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
-    expect(screen.getByText(/Add funds to keep working, or wait for it to refill\./)).toBeInTheDocument();
+    expect(stopCard().getByText('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
+    expect(stopCard().queryByText(/refill/)).toBeNull();
     expect(screen.queryByText(/next month/)).toBeNull();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
@@ -198,9 +200,10 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
 describe('included_allowance_exhausted refill time from hub usage', () => {
   const BODY = 'Free allowance used up.';
 
-  it('names the hub usage refill time when the failure carries none, as a hosted turn does', () => {
-    // A hosted turn's failure reaches the client as an exception name alone,
-    // so m.resetAt is null. The hub usage read knows the same refill.
+  it('names the hub usage refill time when the failure carries none, as a hosted turn from an older cowork-server does', () => {
+    /* A cowork-server that predates reset_at on hosted failures sends a
+       hosted turn's failure with none, so m.resetAt is null. The hub usage
+       read knows the same refill. */
     const resetsAt = inHours(2);
     render(withUsage(
       hubUsage({ remaining: 0, used: 100, resetsAt }),
@@ -220,12 +223,13 @@ describe('included_allowance_exhausted refill time from hub usage', () => {
     expect(stopCard().queryByText(new RegExp(`refill at ${formatResetTime(fromHub)}\\.`))).toBeNull();
   });
 
-  it('drops the clause when neither the gate nor a reachable hub read has a time', () => {
+  it('offers funds alone, promising no refill, when neither the gate nor a reachable hub read has a time', () => {
     render(withUsage(
       { reachable: false },
       <ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />,
     ));
-    expect(stopCard().getByText(/Add funds to keep working, or wait for it to refill\./)).toBeInTheDocument();
+    expect(stopCard().getByText('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
+    expect(stopCard().queryByText(/refill/)).toBeNull();
   });
 });
 
@@ -353,11 +357,11 @@ describe('token_limit card names the limit that fired', () => {
     expect(stopCard().getByText(TODAYS_BALANCE_COPY)).toBeInTheDocument();
   });
 
-  it('free allowance spent: names both resources and the refill time', () => {
+  it("free allowance spent: names both resources and the refill time, in the spent-allowance card's words", () => {
     const resetsAt = inHours(4);
     renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }));
     expect(stopCard().getByText(
-      `Your balance is empty and your free MindsHub Air allowance is used up. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
+      `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
     )).toBeInTheDocument();
     // Air is spent too, so switching to it would be another dead end.
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
@@ -370,6 +374,44 @@ describe('token_limit card names the limit that fired', () => {
   ])('free allowance spent but the refill time is %s: the fixed copy, no half-sentence', (_label, resetsAt) => {
     renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }));
     expect(stopCard().getByText(TODAYS_BALANCE_COPY)).toBeInTheDocument();
+  });
+
+  /* The card stays in the task after a top up, and the read it speaks from is
+     today's. Once the wallet can pay, today's allowance is not why this task
+     stopped, and resending its message on Air would only replay an old turn. */
+  const FUNDED = { usd: 20, canConsume: true, hasToppedUp: true, alert: null };
+
+  it('an old stop after a top up, with Air room: the fixed copy and no switch', () => {
+    renderStop(hubUsage({ remaining: 80 }, { balance: FUNDED }));
+    expect(stopCard().getByText(TODAYS_BALANCE_COPY)).toBeInTheDocument();
+    expect(stopCard().queryByText(/this model can't run/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+    expect(stopCard().getByRole('button', { name: 'Add funds' })).toBeEnabled();
+  });
+
+  it('an old stop after a top up, with the allowance spent: the fixed copy and no refill time', () => {
+    const resetsAt = inHours(4);
+    renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }, { balance: FUNDED }));
+    expect(stopCard().getByText(TODAYS_BALANCE_COPY)).toBeInTheDocument();
+    expect(stopCard().queryByText(/refill/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+  });
+
+  /* A read with no balance is not a funded wallet: cowork-server sends none
+     when its wallet read fails or the caller may not see the wallet, as in a
+     starter-tier org, the free users the switch is most for. */
+  it('a read with no balance still offers the switch while Air has room', () => {
+    renderStop(hubUsage({ remaining: 80 }, { balance: null }));
+    expect(stopCard().getByText("Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.")).toBeInTheDocument();
+    expect(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' })).toBeEnabled();
+  });
+
+  it('a read with no balance still names both resources once the allowance is spent', () => {
+    const resetsAt = inHours(4);
+    renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }, { balance: null }));
+    expect(stopCard().getByText(
+      `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
+    )).toBeInTheDocument();
   });
 
   it.each([
@@ -413,6 +455,31 @@ describe('free_serving_paused card', () => {
       "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
     )).toBeInTheDocument();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+
+  it('names the time on a reloaded hosted turn whose failure carries reset_at', () => {
+    /* The hosted failure frame as cowork-server persists it: the anton
+       exception's code and message, the turn's request id, and the gate's
+       reset instant. Spans the real hydrate, so a reload that dropped
+       reset_at would fall back to the no-time sentence here. */
+    const lifts = inHours(6);
+    const messages = hydrateMessagesFromServerEvents([
+      { role: 'user', content: 'draw me a chart' },
+      {
+        role: 'assistant', content: '', events: [{
+          type: 'response.failed',
+          code: 'free_serving_paused',
+          error: BODY,
+          request_id: 'corr-hosted',
+          reset_at: lifts,
+        }],
+      },
+    ]);
+    render(<ChatView task={taskWith(messages)} />);
+    expect(screen.getByText(
+      `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/until the daily budget resets/)).toBeNull();
   });
 
   it('is not the drained-wallet card and offers only funds', () => {

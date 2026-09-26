@@ -550,6 +550,26 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const err = task.messages.find((m) => m.role === 'error');
     expect(err.requestId).toBe('corr-abc');
   });
+
+  it("carries a hosted billing stop's reset instant onto its error row", async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        {
+          type: 'response.failed',
+          code: 'free_serving_paused',
+          error: 'Free MindsHub Air is paused.',
+          request_id: 'corr-hosted',
+          reset_at: '2099-01-02T00:00:00Z',
+        },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
+  });
 });
 
 // ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──

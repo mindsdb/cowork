@@ -180,26 +180,42 @@ export function freeAllowanceState(usage) {
   return { status: f.available ? 'has_room' : 'spent', resetsAt };
 }
 
+/** Whether a hub usage `balance` says the wallet cannot pay: auth flagged it
+ *  depleted, or said it cannot be drawn on. The one place that rule is
+ *  written, for the composer bar, the drained-wallet card and Settings > Usage
+ *  alike. A missing balance is not an empty one, because a read without it
+ *  says nothing about the wallet. */
+export function isBalanceEmpty(balance) {
+  return !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
+}
+
 /** What a stop on `included_allowance_exhausted` says, for the stopped-task
- *  card and the Settings probe notice alike.
+ *  card and the Settings probe notice alike. The drained-wallet card's
+ *  spent-allowance branch describes the same state, so it uses this too.
  *
  *  An org with no free grant is told that, in the console's words, and never a
  *  refill time. Otherwise the refill time is the gate's (`resetAt`), falling
- *  back to the hub usage read's, and the clause is dropped when neither is a
- *  usable future instant. */
+ *  back to the hub usage read's. When neither is a usable future instant, the
+ *  sentence offers funds alone: nothing then says the allowance refills at
+ *  all, and the org may have no grant to refill. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (free.status === 'no_grant') {
     return `${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`;
   }
+  const stopped = 'Your free MindsHub Air allowance is used up and your balance is empty.';
   const time = formatResetTime(resetAt || free.resetsAt);
-  return `Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${time ? ` at ${time}` : ''}.`;
+  return time
+    ? `${stopped} Add funds to keep working, or wait for it to refill at ${time}.`
+    : `${stopped} Add funds to keep working.`;
 }
 
 /** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
  *  on a turn, `free_air_daily_spend_fuse_exceeded` on the Settings probe). The
  *  fuse lifts at the next UTC midnight, which the gate sends as its reset
- *  instant; without a usable one the sentence names the event instead. */
+ *  instant, on a desktop or a hosted turn. Without a usable one (a hosted turn
+ *  from a cowork-server that predates it, say) the sentence names the event
+ *  instead. */
 export function freeServingPausedCopy(resetAt) {
   const until = formatResetTime(resetAt) || 'the daily budget resets';
   return `Free MindsHub Air is paused for everyone until ${until}. This doesn't use your allowance. Add funds to keep working now.`;
@@ -282,7 +298,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
   const isAir = model === MINDSHUB_AIR_MODEL_ID;
   const isPaidModel = isExplicitPaidModel(model);
   const f = freeState(free);
-  const balanceEmpty = !!balance && (balance.alert === 'depleted' || balance.canConsume === false);
+  const balanceEmpty = isBalanceEmpty(balance);
   const balanceLow = !!balance && !balanceEmpty && balance.alert === 'low';
   // A wallet the next task falls through to once the allowance is gone. Air
   // running out never stops someone who has one, so the standing figure has

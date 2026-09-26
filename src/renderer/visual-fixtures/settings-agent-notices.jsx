@@ -78,6 +78,12 @@ const PROBE_CASES = [
     usage: SPENT,
   },
   {
+    id: 'probe-allowance-no-time',
+    label: 'The same refusal with no usable time (none from the gate, hub usage dark): funds only, and no refill promised.',
+    detail: 'HTTP 429',
+    reason: reason('included_allowance_exhausted'),
+  },
+  {
     id: 'probe-allowance-no-grant',
     label: 'The same refusal for an org with no free grant: the console\'s no-grant sentence, and no refill time.',
     detail: 'HTTP 429',
@@ -114,7 +120,7 @@ const PROBE_CASES = [
    after the reason reaches it. */
 const ROW_CASES = [
   { id: 'row-legacy-429', label: 'Providers row, no reason: every 429 reads "Rate limited".', detail: 'HTTP 429', reason: null },
-  { id: 'row-allowance', label: 'Providers row, spent allowance.', detail: 'HTTP 429', reason: reason('included_allowance_exhausted', REFILL) },
+  { id: 'row-allowance', label: 'Providers row, free allowance refused (spent, or no grant at all).', detail: 'HTTP 429', reason: reason('included_allowance_exhausted', REFILL) },
   { id: 'row-paused', label: 'Providers row, daily fuse.', detail: 'HTTP 429', reason: reason('free_air_daily_spend_fuse_exceeded', FUSE_LIFTS) },
   { id: 'row-rate-limited', label: 'Providers row, velocity limit.', detail: 'HTTP 429', reason: reason('rate_limited') },
   { id: 'row-wallet-empty', label: 'Providers row, empty wallet.', detail: 'HTTP 402', reason: reason('wallet_empty') },
