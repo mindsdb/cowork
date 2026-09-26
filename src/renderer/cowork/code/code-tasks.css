@@ -1,5 +1,6 @@
 .code-tasks-view { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding-bottom: 32px; container-type: inline-size; }
 .code-tasks-view__back { padding: 16px 32px 0; }
+.code-tasks-view__header h1 { overflow-wrap: anywhere; }
 .code-tasks-view__actions { display: flex; align-items: center; gap: 8px; }
 .code-tasks-view__project-filter { max-width: min(260px, 100%); }
 .code-tasks-view__body { margin: 20px 32px 0; }
@@ -27,7 +28,8 @@
 .code-task-status.is-success i { background: var(--success); }
 .code-task-status.is-danger i { background: var(--danger); }
 @container (max-width: 640px) {
-  .code-tasks-table thead { display: none; }
+  .code-tasks-view__header--project > div > div { flex-direction: column; gap: 12px; }
+  .code-tasks-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .code-tasks-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 14px 0; border-top: 1px solid var(--line); }
   .code-tasks-table td { border: 0; padding: 0; }
   .code-tasks-table__title { grid-column: 1 / -1; }

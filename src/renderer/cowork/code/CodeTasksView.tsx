@@ -71,14 +71,14 @@ export function CodeTasksView({
   return (
     <main className="code-tasks-view">
       {projectId && <div className="code-tasks-view__back"><Button variant="subtle" size="sm" onClick={onBack}>{Ico.chevLeft(13)} Projects</Button></div>}
-      <PageHeader
+      <div className={`code-tasks-view__header${projectId ? ' code-tasks-view__header--project' : ''}`}><PageHeader
         title={projectId ? projectNames.get(projectId) || 'Unavailable project' : 'All tasks'}
         subtitle={projectId ? 'Coding tasks in this project.' : undefined}
         actions={<div className="code-tasks-view__actions">
           {project && <Button icon variant="subtle" aria-label={`Edit ${project.name}`} onClick={() => onEditProject(project.id)}>{Ico.settings(15)}</Button>}
           <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(13)} New task</Button>
         </div>}
-      />
+      /></div>
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
         sort={<>
