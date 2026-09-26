@@ -62,6 +62,39 @@ describe('CodeTasksView', () => {
     expect(props.onBack).toHaveBeenCalledOnce();
   });
 
+  it('distinguishes same-named projects by location and creates in the selected project', async () => {
+    const { user, props } = setup({ projects: projects.map((item, index) => ({
+      ...item, resources: [{ kind: 'local_folder', id: 'source', name: 'Source', path: index ? '/work/mobile' : '/work/web', computer_id: 'local', commands: [] }],
+    })) });
+    await select(user, 'Filter by project', 'MindsHub — /work/mobile');
+    expect(screen.getByRole('combobox', { name: 'Filter by project' })).toHaveTextContent('MindsHub — /work/mobile');
+    expect(screen.getByRole('button', { name: 'Approval needed' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Older task' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'New task' }));
+    expect(props.onNewTask).toHaveBeenCalledWith('p2');
+  });
+
+  it('distinguishes duplicate names even when their locations match or are missing', async () => {
+    const { user } = setup({ sessions: [], projects: [
+      ...projects.map(item => ({ ...item, resources: [{ kind: 'local_folder' as const, id: 'source', name: 'Source', path: '/work/shared', computer_id: 'local', commands: [] }] })),
+      project('p3', 'Empty'), project('p4', 'Empty'), project('p5', 'Unique'),
+    ] });
+    await user.click(screen.getByRole('combobox', { name: 'Filter by project' }));
+    for (const label of ['MindsHub — /work/shared (p1)', 'MindsHub — /work/shared (p2)', 'Empty — p3', 'Empty — p4', 'Unique']) {
+      expect(screen.getByRole('option', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('uses task locations to distinguish removed projects without changing their names', async () => {
+    const { user } = setup({ projects: [], sessions: [
+      task('One', { project_id: 'p1', project_name: 'Archived project', repository_root: '/work/one' }),
+      task('Two', { project_id: 'p2', project_name: 'Archived project', source_path: '/work/two' }),
+    ] });
+    await select(user, 'Filter by project', 'Archived project — /work/two');
+    expect(screen.getByRole('button', { name: 'Two' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New task' })).toBeDisabled();
+  });
+
   it('combines search and status filters and clears them', async () => {
     const { user } = setup();
     await select(user, 'Filter by status', 'Needs attention');

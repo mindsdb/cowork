@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, useCollectionShortcut } from '../components/collection';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
-import { type CodeProject, type CodingSession } from './api';
+import { projectResources, type CodeProject, type CodingSession } from './api';
 import { codingSessionStatus, relativeTime } from './presentation';
 import './code-tasks.css';
 
@@ -50,6 +50,26 @@ export function CodeTasksView({
     for (const project of projects) names.set(project.id, project.name);
     return names;
   }, [projects, sessions]);
+  const projectOptions = useMemo(() => {
+    const nameCounts = new Map<string, number>();
+    for (const name of projectNames.values()) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+    const options = Array.from(projectNames, ([value, name]) => {
+      if (nameCounts.get(name) === 1) return { value, label: name };
+      const project = projects.find(item => item.id === value);
+      const resource = project && projectResources(project)[0];
+      const task = sessions.find(item => item.project_id === value);
+      const location = resource
+        ? resource.kind === 'repository' ? resource.local_path || resource.source_url || resource.name : resource.path
+        : task?.repository_root || task?.source_path;
+      return { value, label: `${name} — ${location || value}` };
+    });
+    // Shared locations (or missing metadata) must not reintroduce ambiguity.
+    return options.map(option => {
+      const label = options.some(other => other.value !== option.value && other.label === option.label)
+        ? `${option.label} (${option.value})` : option.label;
+      return { ...option, label, title: label };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }, [projects, sessions, projectNames]);
   const project = projects.find(item => item.id === projectId);
   const scope = projectId || projectFilter;
   const newTaskProjectId = scope === 'all' || scope === 'none' ? null : scope;
@@ -89,7 +109,7 @@ export function CodeTasksView({
         sort={<>
           {!projectId && <Select className="code-tasks-view__project-filter" variant="pill" label="Project" ariaLabel="Filter by project" value={projectFilter} onValueChange={setProjectFilter} options={[
             { value: 'all', label: 'All projects' }, { value: 'none', label: 'No project' },
-            ...Array.from(projectNames, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
+            ...projectOptions,
           ]} />}
           <Select variant="pill" label="Status" ariaLabel="Filter by status" value={statusFilter} onValueChange={setStatusFilter} options={STATUS_OPTIONS} />
           <Select variant="pill" label="Show" ariaLabel="Task history" value={archiveFilter} onValueChange={setArchiveFilter} options={[
