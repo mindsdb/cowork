@@ -108,9 +108,9 @@ export default {
         'border-02':    'var(--line-2)',
       },
       fontFamily: {
-        body:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
-        mono:    ['"JetBrains Mono"', 'monospace'],
+        body:    ['var(--font-body)'],
+        display: ['var(--font-display)'],
+        mono:    ['var(--font-mono)'],
       },
       fontSize: {
         // Design-system type scale (from globals.css tokens)
