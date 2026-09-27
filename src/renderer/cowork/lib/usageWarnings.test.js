@@ -604,11 +604,12 @@ describe('allowanceStopCopy', () => {
 
   it('falls back to the hub usage refill time when the gate sent none', () => {
     expect(allowanceStopCopy({ resetAt: null, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
-      .toMatch(new RegExp(`refill at ${formatResetTime(LATER)}\.$`));
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(LATER)}.`);
   });
 
   it("keeps the gate's time when hub usage is unknown", () => {
-    expect(allowanceStopCopy({ resetAt: SOON, usage: null })).toMatch(new RegExp(`refill at ${formatResetTime(SOON)}\.$`));
+    expect(allowanceStopCopy({ resetAt: SOON, usage: null }))
+      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
   });
 
   it.each([
