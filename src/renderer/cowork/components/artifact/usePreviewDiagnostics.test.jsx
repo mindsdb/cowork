@@ -117,6 +117,60 @@ describe('usePreviewDiagnostics', () => {
       .toBe('Blocked by the page security policy (script-src): https://cdn.example/x.js');
   });
 
+  it('reports a stylesheet the policy blocked once, not twice', () => {
+    /* One blocked <link> fires the policy report and then the element's
+       error event. Both are the same failed load. */
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+    const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap';
+
+    send(frame, { type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url });
+    send(frame, { type: 'resource', tagName: 'LINK', url });
+
+    expect(screen.getByTestId('count').textContent).toBe('1');
+    expect(screen.getByTestId('first').textContent)
+      .toBe(`Blocked by the page security policy (style-src-elem): ${url}`);
+  });
+
+  it('replaces a failed script with the policy report that explains it', () => {
+    /* A static synchronous <script src> fires in the other order: the
+       element's error event first, then the policy report. */
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+    const url = 'https://cdn.example/echarts.js';
+
+    send(frame, { type: 'resource', tagName: 'SCRIPT', url });
+    send(frame, { type: 'csp', violatedDirective: 'script-src-elem', blockedURI: url });
+
+    expect(screen.getByTestId('count').textContent).toBe('1');
+    expect(screen.getByTestId('first').textContent)
+      .toBe(`Blocked by the page security policy (script-src-elem): ${url}`);
+  });
+
+  it('pairs a policy report with its element when the element URL has a fragment', () => {
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'csp', violatedDirective: 'img-src', blockedURI: 'https://images.example.com/hero.png' });
+    send(frame, { type: 'resource', tagName: 'IMG', url: 'https://images.example.com/hero.png#top' });
+
+    expect(screen.getByTestId('count').textContent).toBe('1');
+  });
+
+  it('keeps failures for different loads apart', () => {
+    /* Inline violations carry no URL to pair on, and a failed load with no
+       policy report behind it (a 404) is its own failure. */
+    render(<Harness />);
+    const frame = screen.getByTitle('Draft preview');
+
+    send(frame, { type: 'csp', violatedDirective: 'script-src-elem', blockedURI: 'inline' });
+    send(frame, { type: 'csp', violatedDirective: 'style-src-attr', blockedURI: 'inline' });
+    send(frame, { type: 'csp', violatedDirective: 'script-src-elem', blockedURI: 'https://cdn.example/a.js' });
+    send(frame, { type: 'resource', tagName: 'SCRIPT', url: 'https://cdn.example/b.js' });
+
+    expect(screen.getByTestId('count').textContent).toBe('4');
+  });
+
   it('ignores a message type outside the known four', () => {
     render(<Harness />);
     const frame = screen.getByTitle('Draft preview');
