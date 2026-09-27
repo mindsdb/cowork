@@ -190,20 +190,23 @@ function _failedEventMeta(events) {
   return {
     code: ev.code || null,
     message: ev.error || ev.message || '',
-    // Carry the card context so a RELOADED failure renders the same affordance
-    // as the live one. Without these, reconnectable is undefined on reload and
-    // the provider_overloaded / provider_auth cards mis-nudge a managed user
-    // toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
-    // App.jsx's failedEventMeta (the two hydrate paths must agree on this).
+    /* Carry the card context so a RELOADED failure renders the same affordance
+       as the live one. Without these, reconnectable is undefined on reload and
+       the provider_overloaded / provider_auth cards mis-nudge a managed user
+       toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
+       failedEventMeta in lib/conversationHistory.js (the two hydrate paths
+       must agree on this). */
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
-    // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
+    // ENG-1537 — see lib/conversationHistory.js's failedEventMeta; the two paths must agree.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
+    /* included_allowance_exhausted and free_serving_paused: when the free
+       allowance refills or the fuse lifts, as the gate's opaque ISO string,
+       on a desktop or a hosted turn. A cowork-server that predates it on
+       hosted failures sends none, and the card falls back. Formatted at
+       render time: the server deliberately doesn't parse it, since only the
+       client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
@@ -1405,10 +1408,10 @@ export async function setActiveHubWorkspace(workspaceId) {
 }
 
 /**
- * The signed-in account's free monthly tokens, paid balance, and auto top up
- * state (ENG-1782). Never throws: signed out, an unreachable sidecar, and an
- * old sidecar with no such route all answer the same dark shape, and the
- * composer notice and Settings tab render nothing for it.
+ * The signed-in account's free MindsHub Air allowance, paid balance, and auto
+ * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * and an old sidecar with no such route all answer the same dark shape, and
+ * the composer notice and Settings tab render nothing for it.
  */
 export async function fetchHubUsage() {
   try {
@@ -1431,9 +1434,10 @@ export async function fetchSettings() {
       } catch { /* leave defaults */ }
       /* Overlay the live model list + effort capability. modelEfforts is the
          single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. modelEnabled marks the models MindsHub's
-         wallet can't currently pay for so the picker greys them with an "add
-         credits" prompt (absent id ⇒ available), and modelLabels carries the
+         iff it has an entry here. modelEnabled marks the models MindsHub says
+         can't run right now so the picker greys them (absent id ⇒ available),
+         modelDisabledReasons says why (an admin's model rule reads
+         "Restricted", anything else an "add credits" prompt), and modelLabels carries the
          policy's display name per id (absent ⇒ id-derived at the render site).
          mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
          we-have rule; SettingsView's on-open refresh goes through the same
@@ -1566,12 +1570,27 @@ export async function validateSettings() {
   return req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
 }
 
+/**
+ * @typedef {{
+ *   providerStatus: Record<string, string>,
+ *   providerStatusDetails: Record<string, string>,
+ *   providerStatusReasons?: Record<string, import('./lib/providerStatus.js').ProbeDenialReason>,
+ *   error?: string,
+ * }} ProviderTestResult
+ *   `providerStatusReasons` is absent from a sidecar too old to classify the
+ *   probe, which keeps the Settings notice on its legacy detail check. A
+ *   sidecar that sends it classified every type in `providerStatus`, so a
+ *   reported type with no entry was not refused by MindsHub, and the Settings
+ *   notice shows no billing copy for it.
+ */
+
+/** @returns {Promise<ProviderTestResult>} */
 export async function testProviders(providers) {
   const body = Array.isArray(providers) ? { providers } : {};
   try {
     return await req('/settings/test-providers', { method: 'POST', body: JSON.stringify(body) });
   } catch (err) {
-    return { providerStatus: {}, providerStatusDetails: {}, error: err?.message || 'Test failed' };
+    return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
   }
 }
 

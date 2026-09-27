@@ -255,18 +255,20 @@ export function failedEventMeta(events) {
     message: ev.error || ev.message || '',
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
-    // model-403 (model_access_denied / model_disabled): which model the
-    // gateway rejected, so the card can name it. `failedModel` locally —
-    // "model" is too overloaded in message objects.
+    // model-403 (model_access_denied / model_disabled / model_restricted):
+    // which model the gateway rejected, so the card can name it.
+    // `failedModel` locally — "model" is too overloaded in message objects.
     failedModel: ev.model ?? null,
     // rate_limited: the gateway's own Retry-After, in seconds, so the card can
     // time-gate its Retry. Null when the gateway sent no hint — the
     // card then offers an ungated Retry rather than inventing an interval.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone.
+    /* included_allowance_exhausted and free_serving_paused: when the free
+       allowance refills or the fuse lifts, as the gate's opaque ISO string,
+       on a desktop or a hosted turn. A cowork-server that predates it on
+       hosted failures sends none, and the card falls back. Formatted at
+       render time: the server deliberately doesn't parse it, since only the
+       client knows the viewer's timezone. */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads

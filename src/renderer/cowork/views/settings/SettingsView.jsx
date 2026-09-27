@@ -2,12 +2,14 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked } from '../../lib/modelCatalog';
+import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
-import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
+import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, PROBE_POLICY_UNAVAILABLE_SENTENCE, PROBE_RATE_LIMITED_SENTENCE } from '../../lib/providerStatus';
+import { useHubUsageContext } from '../../lib/hubUsageContext';
+import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy } from '../../lib/usageWarnings';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -63,6 +65,116 @@ const COLOR_SWATCH_INPUT =
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+
+/* The notice under each Settings > Agent role row after the MindsHub health
+   probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
+   fixture.
+
+   Two stacked lines for the billing stops (ENG-1248): the state and its funds
+   action read first on their own line, and the BYOK escape hatch sits under
+   it. Inline, the escape hatch diluted the one action that matters when the
+   wallet is empty. The velocity limit and a billing outage get one muted line
+   and no billing action: money fixes neither.
+
+   `usage` is the `/hub/usage/` view, which decides the allowance copy (a
+   refill time, or the no-grant sentence). */
+export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
+  const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
+  if (notice.kind === 'no_credits') {
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger font-semibold">No credits available. </span>
+          <button
+            type="button"
+            // Recorded before the navigation, so web and
+            // desktop count identically. `host.openExternal` is
+            // always defined and already falls back to window.open
+            // internally (platform/host.ts), with noopener —
+            // guarding it here was dead code that would have opened
+            // an unhardened window if it ever had run.
+            onClick={() => {
+              trackBillingOpened('no_credits_notice');
+              return host.openExternal(MINDS_BILLING_URL);
+            }}
+            className={LINK_BTN}
+          >Top up balance →</button>
+        </div>
+        {byok}
+      </div>
+    );
+  }
+  if (notice.kind === 'allowance_used' || notice.kind === 'paused') {
+    const allowance = notice.kind === 'allowance_used';
+    /* The same sentences the stopped-task cards use for the same stops. Each
+       gets its own trigger, apart from the card's: a funnel reads a failed
+       Settings test and a stopped task as different moments. */
+    const body = allowance
+      ? allowanceStopCopy({ resetAt: notice.resetAt, usage })
+      : freeServingPausedCopy(notice.resetAt);
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger">{body} </span>
+          <button
+            type="button"
+            onClick={() => {
+              // Literal triggers inline, so the analytics vocabulary sweep sees them.
+              trackBillingOpened(allowance ? 'allowance_used_notice' : 'free_air_paused_notice');
+              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            }}
+            className={LINK_BTN}
+          >Add funds →</button>
+        </div>
+        {byok}
+      </div>
+    );
+  }
+  if (notice.kind === 'slow_down') {
+    return (
+      <div className="text-[12px] leading-[1.6] text-ink-3">
+        {`${PROBE_RATE_LIMITED_SENTENCE} This isn't a credits problem.`}
+      </div>
+    );
+  }
+  if (notice.kind === 'billing_unavailable') {
+    return (
+      <div className="text-[12px] leading-[1.6] text-ink-3">
+        {PROBE_POLICY_UNAVAILABLE_SENTENCE}
+      </div>
+    );
+  }
+  return null;
+}
+
+/* The line under a role's picker when the CURRENT model cannot run. The
+   stored pin is never rewritten, so a wallet that drains, or an admin rule
+   that lands, leaves the user sitting on a model they can no longer run. This
+   names it and gives the way out. A restricted model has no billing way out,
+   so its line has no link. Exported for the visual fixture. */
+export function UnavailableModelHint({ label, restricted }) {
+  if (restricted) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {label} is restricted by an admin in your organization. Choose another model.
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11.5px] text-ink-3">
+      {label} needs credits.{' '}
+      <button
+        type="button"
+        onClick={() => {
+          trackBillingOpened('locked_model_hint');
+          return host.openExternal(MINDS_BILLING_URL);
+        }}
+        className={LINK_BTN}
+      >Top up your balance</button>
+      {' '}to use it.
+    </div>
+  );
+}
 
 // Numeric input for the Advanced Settings agent budgets. State keeps the
 // server's string form (settings round-trip as strings; the page-wide dirty
@@ -659,6 +771,11 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
+  // The `/hub/usage/` view App polls: the probe notice reads it for the
+  // allowance copy and the funds link. Null outside the provider (tests).
+  const hubUsageCtx = useHubUsageContext();
+  const hubUsage = hubUsageCtx?.usage || null;
+  const isBillingOwner = !!hubUsage?.isBillingOwner;
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -719,7 +836,7 @@ export default function SettingsView({
   // Exclude transient test-result fields from the dirty check — they're not
   // user-editable settings and flip during Save itself, causing the button to
   // re-enable immediately after a successful save+test cycle.
-  const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
+  const { providerStatus: _ps, providerStatusDetails: _psd, providerStatusReasons: _psr, ...settingsForDirty } = settings;
   const currentJson = JSON.stringify(settingsForDirty);
   const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
   // Parsed view of the saved snapshot. The Advanced Settings budget inputs
@@ -891,10 +1008,13 @@ export default function SettingsView({
       if (settingKey) setSetting(settingKey, value);
       const nextStatus = { ...(settings.providerStatus || {}) };
       const nextDetails = { ...(settings.providerStatusDetails || {}) };
+      const nextReasons = { ...(settings.providerStatusReasons || {}) };
       delete nextStatus[type];
       delete nextDetails[type];
+      delete nextReasons[type];
       setSetting('providerStatus', nextStatus);
       setSetting('providerStatusDetails', nextDetails);
+      setSetting('providerStatusReasons', nextReasons);
     }
     if (key === 'baseUrl' && (type === 'openai-compatible' || type === 'gemini')) {
       setSetting('openaiBaseUrl', value);
@@ -960,6 +1080,27 @@ export default function SettingsView({
     if (result && result.providerStatusDetails) {
       const currentDetails = settingsRef.current?.providerStatusDetails || {};
       setSetting('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
+    }
+    /* Reasons are replaced per type, not merged: every type this result
+       reports a status for loses its held reason first, then takes the new
+       one if there is one. A spread merge would keep a stale "paused" after a
+       re-test that failed for some other reason. A request that failed
+       outright reports no status, so it leaves every held reason alone, as it
+       does the statuses beside them.
+       A sidecar that sends the reasons map has classified every type it
+       reports, so a reported type with no entry is held as null: tested, and
+       not a MindsHub refusal. A sidecar that predates the map sends no key,
+       and its types are left with no entry, which keeps mindsProbeNotice on
+       its legacy detail check for them. */
+    if (result && result.providerStatus) {
+      const reported = Object.keys(result.providerStatus);
+      const held = settingsRef.current?.providerStatusReasons || {};
+      const nextReasons = Object.fromEntries(Object.entries(held).filter(([type]) => !reported.includes(type)));
+      const sent = result.providerStatusReasons;
+      if (sent && typeof sent === 'object') {
+        for (const type of reported) nextReasons[type] = sent[type] || null;
+      }
+      setSetting('providerStatusReasons', nextReasons);
     }
     return result;
   };
@@ -1066,7 +1207,7 @@ export default function SettingsView({
       // "Saved" until the user makes another edit. settingsRef tracks
       // the latest re-rendered value (the closure's `settings` is the
       // pre-save copy and stale by now).
-      const { providerStatus: _ps2, providerStatusDetails: _psd2, ...savedForDirty } = settingsRef.current || {};
+      const { providerStatus: _ps2, providerStatusDetails: _psd2, providerStatusReasons: _psr2, ...savedForDirty } = settingsRef.current || {};
       setLastSavedJson(JSON.stringify(savedForDirty));
       setSaved(true);
       setTimeout(() => setTested(false), 2400);
@@ -1176,6 +1317,7 @@ export default function SettingsView({
                 const st = deriveProviderStatus(p.type, {
                   providerStatus: settings.providerStatus || {},
                   providerStatusDetails: settings.providerStatusDetails || {},
+                  providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
                   isSsoConnected,
                   testInProgress: testing,
@@ -1183,7 +1325,9 @@ export default function SettingsView({
                 });
                 const status = st.checking ? 'testing' : st.settled;
                 const detail = configured ? st.detail : '';
-                const friendlyError = friendlyProviderError(detail);
+                // The probe's reason names which MindsHub limit a 402/429 was,
+                // which the detail string alone cannot.
+                const friendlyError = friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
@@ -1483,6 +1627,7 @@ export default function SettingsView({
                   const st = deriveProviderStatus(curType, {
                     providerStatus: settings.providerStatus || {},
                     providerStatusDetails: settings.providerStatusDetails || {},
+                    providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
                     isSsoConnected,
                     testInProgress: testing,
@@ -1490,13 +1635,13 @@ export default function SettingsView({
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;
                   const providerFailed = st.failed;
-                  const providerFailDetail = st.detail;
-                  const isNoCredits = providerFailed && !st.checking && curType === 'minds-cloud'
-                    && (providerFailDetail.includes('402')
-                      || providerFailDetail.includes('429')
-                      || providerFailDetail.toLowerCase().includes('credit')
-                      || providerFailDetail.toLowerCase().includes('quota'));
-                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits && !st.checking;
+                  // Which MindsHub refusal the last probe hit, from the
+                  // sidecar's reason, or the legacy detail check when an older
+                  // sidecar sends no reasons map (see mindsProbeNotice).
+                  const probeNotice = providerFailed && !st.checking && curType === 'minds-cloud'
+                    ? mindsProbeNotice({ reason: st.reason, detail: st.detail })
+                    : null;
+                  const providerUnusable = (providerUnconfigured || providerFailed) && !probeNotice && !st.checking;
                   const providerCheckingNotice = st.checking;
                   const providerWarnId = `agent-model-${role}-provider`;
 
@@ -1538,31 +1683,8 @@ export default function SettingsView({
                     <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
                   );
 
-                  // Two stacked lines (ENG-1248): the credit state + top-up
-                  // action reads first on its own line, the BYOK escape hatch
-                  // sits under it. Inline, the escape hatch diluted the one
-                  // action that matters when the wallet is empty.
-                  const noCreditsNotice = isNoCredits ? (
-                    <div className="text-[12px] leading-[1.6] grid gap-px">
-                      <div>
-                        <span className="text-danger font-semibold">No credits available. </span>
-                        <button
-                          type="button"
-                          // ENG-1533: recorded before the navigation, so web and
-                          // desktop count identically. `host.openExternal` is
-                          // always defined and already falls back to window.open
-                          // internally (platform/host.ts), with noopener —
-                          // guarding it here was dead code that would have opened
-                          // an unhardened window if it ever had run.
-                          onClick={() => {
-                            trackBillingOpened('no_credits_notice');
-                            return host.openExternal(MINDS_BILLING_URL);
-                          }}
-                          className={LINK_BTN}
-                        >Top up balance →</button>
-                      </div>
-                      <div className="text-ink-3">Or add your own provider and API key below.</div>
-                    </div>
+                  const probeNoticeNode = probeNotice ? (
+                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} />
                   ) : null;
 
                   const subtitle = role === 'planning'
@@ -1576,7 +1698,7 @@ export default function SettingsView({
                       });
 
                   return (
-                    <Section title={label} subtitle={subtitle} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={subtitle} notice={probeNoticeNode}>
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
@@ -1631,7 +1753,11 @@ export default function SettingsView({
                             const modelOptions = buildModelOptions(
                               curModel, modelList, allowOther, showStalePin, modelEnabled,
                               settings.modelLabels || {},
-                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                              {
+                                modelProviders: settings.modelProviders,
+                                modelFamilies: settings.modelFamilies,
+                                modelDisabledReasons: settings.modelDisabledReasons,
+                              },
                             );
                             return (
                               <>
@@ -1707,27 +1833,16 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                              {/* The stored pin is never rewritten, so a wallet
-                                  that drains leaves the user sitting on a model
-                                  they can no longer run. This names it and gives
-                                  the way out. It covers only the CURRENT model —
-                                  a locked row the user is merely looking at
-                                  carries its own "Add credits" button instead.
-                                  Outside the <label> so it doesn't leak into the
-                                  combobox's accessible name. */}
+                              {/* It covers only the CURRENT model: a locked row
+                                  the user is merely looking at carries its own
+                                  "Add credits" button, and a restricted row its
+                                  own tooltip. Outside the <label> so it doesn't
+                                  leak into the combobox's accessible name. */}
                               {!inputMode && !!curModel && isLocked(curModel) && (
-                                <div className="text-[11.5px] text-ink-3">
-                                  {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      trackBillingOpened('locked_model_hint');
-                                      return host.openExternal(MINDS_BILLING_URL);
-                                    }}
-                                    className={LINK_BTN}
-                                  >Top up your balance</button>
-                                  {' '}to use it.
-                                </div>
+                                <UnavailableModelHint
+                                  label={displayModelLabel(curModel, settings.modelLabels || {})}
+                                  restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                />
                               )}
                             </>);
                           })()
@@ -1845,7 +1960,7 @@ export default function SettingsView({
             {'maxTurnTokens' in settings && (
               <Section
                 title="Max tokens per task"
-                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you. Tokens are what your plan's monthly allowance is measured in, so a task that gets stuck can use up a large share of the month without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you, so a task that gets stuck can't use up a large share of your free allowance or balance without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
@@ -2279,8 +2394,9 @@ export default function SettingsView({
     />
   );
 
-  // Usage (ENG-1782): free monthly tokens, balance, auto top up. Reads the
-  // usage App polls (HubUsageContext); every action deep-links to the console.
+  /* Usage (ENG-1782): the free MindsHub Air allowance, balance, auto top up.
+     Reads the usage App polls (HubUsageContext); every action deep-links to
+     the console. */
   const renderUsageSection = () => (
     <UsageSection
       isSsoConnected={isSsoConnected}

@@ -54,7 +54,8 @@ import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -1146,14 +1147,20 @@ function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = fa
   );
 }
 
-// ── AllowanceExhaustedCard: the free monthly grant, not a drained wallet ───
+// ── AllowanceExhaustedCard: the free allowance, not a drained wallet ───────
 // ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
 // free-bucket model on an org that has NEVER topped up, so this user has not
-// spent money — they used the monthly grant, and it resets. Two things follow,
+// spent money — they used the free allowance, and it refills. Two things follow,
 // and the old shared out-of-credits card got both wrong: the reset date is a
 // genuinely free way forward (hiding it while asking for money is the defect),
 // and "unlock" is literally true, because non-free models need a wallet this
 // org doesn't have.
+//
+// One branch names no refill at all: an org with no free grant (the hub usage
+// read's limit is 0, from auth's `free_grant_eligible: false`) has nothing to
+// wait for, so the card says so in the console's words and asks for funds.
+// `allowanceStopCopy` in lib/usageWarnings writes both branches, shared with
+// the Settings probe notice.
 //
 // The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
@@ -1165,6 +1172,190 @@ function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = fa
 function refillClause(resetAt, lead) {
   const time = formatResetTime(resetAt);
   return time ? `${lead} at ${time}` : lead;
+}
+
+export function AllowanceExhaustedCard({
+  time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
+}) {
+  /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
+     cowork-server that predates it arrives with none, and the hub usage read
+     carries the same allowance's refill, so the free way forward still has a
+     time. The read also says when the org has no grant to refill at all. */
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      // The gate only issues this code when the org has no
+      // balance to fall onto, so the turn ended.
+      title="Task stopped"
+      body={allowanceStopCopy({ resetAt, usage })}
+      buttons={[
+        {
+          label: 'Add funds',
+          // The click, not an impression — same rule as
+          // the drained-wallet card. token_cap_hit already
+          // counts this impression once per receipt in the stream
+          // adapter, so every route to billing is counted exactly
+          // once and this one is not the exception.
+          onClick: () => {
+            trackBillingOpened('included_allowance_exhausted');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          },
+          primary: true,
+        },
+        // Only offer auto top up when it isn't already on.
+        ...(usage?.autoTopUp?.enabled ? [] : [{
+          label: USAGE_ACTIONS.setUpAutoTopUp.label,
+          onClick: () => {
+            trackBillingOpened('included_allowance_exhausted');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
+          },
+        }]),
+      ]}
+    />
+  );
+}
+
+/* "Switch to MindsHub Air": resend the failed message on Air. One action for
+   every card that offers it, and nothing when the caller has no switch to give
+   (Air locked, no message to resend, or the task is already on Air). */
+function switchToAirButtons(onSwitchToAir) {
+  return onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : [];
+}
+
+/*
+ * Drained wallet (`token_limit`): the gate's 402 `wallet_empty`, and any
+ * billing stop a hosted turn can only report by exception type. The hub usage
+ * read says which limit fired, and the fixed copy is the fallback whenever that
+ * read has nothing to speak from.
+ *
+ * The card stays in the task long after the stop, and `usage` is the read as
+ * it is now. Once that read shows a wallet that can pay (a balance that
+ * `isBalanceEmpty` does not flag), as after a top up, today's allowance says
+ * nothing about why this task stopped, so neither branch below speaks from it.
+ * A read with no balance says nothing about the wallet either way:
+ * cowork-server's `HubUsageView` leaves it null when the wallet read fails or
+ * the caller may not see the wallet, as in a starter-tier org. The stop stands
+ * then, and both branches stay open.
+ *
+ * - The free allowance has room. auth's `access.py` always lets a free-bucket
+ *   model run while its allowance lasts, whatever the wallet holds, so the stop
+ *   was a priced model. Offer the switch, when the caller has one.
+ * - The free allowance is spent and its refill time is usable. Name both
+ *   resources and the free way forward, in `allowanceStopCopy`'s words, which
+ *   the spent-allowance card uses for the same state.
+ * - Anything else (usage dark, no grant, uncapped, no usable time, no switch
+ *   to offer, a wallet that can pay now): the fixed copy, exactly as before.
+ *
+ * `usage` is the `/hub/usage/` view (null outside the provider).
+ */
+export function BalanceEmptyCard({
+  time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
+}) {
+  const free = freeAllowanceState(usage);
+  const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
+  const refill = formatResetTime(free.resetsAt);
+  const addFunds = {
+    label: 'Add funds',
+    // The click, not an impression. token_cap_hit
+    // already counts the impression once per receipt in the
+    // stream adapter; an impression here would re-fire on
+    // every paint.
+    onClick: () => {
+      trackBillingOpened('token_limit');
+      host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+    },
+    primary: true,
+  };
+  // Fixed copy, not the server string: the
+  // gateway's wording predates pay as you go.
+  let body = 'Your balance ran out before this task finished. Add funds before starting another task.';
+  let buttons = [addFunds];
+  if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
+    body = "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.";
+    buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
+  } else if (!walletPaysNow && free.status === 'spent' && refill) {
+    body = allowanceStopCopy({ usage });
+  }
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      // A billing failure ends the turn; there is no resume,
+      // so this is "stopped", never "paused".
+      title="Task stopped"
+      body={body}
+      buttons={buttons}
+    />
+  );
+}
+
+/*
+ * Free MindsHub Air paused for everyone (`free_serving_paused`): auth's daily
+ * free-Air spend fuse tripped (`free_air_daily_spend_fuse_exceeded`, issued by
+ * auth's `entitlements/views/inference_authorize.py`). It stops only orgs whose
+ * wallet cannot pay, it is not this user's allowance, and it lifts at the next
+ * UTC midnight, which the gate sends as reset_at on a desktop or a hosted turn.
+ * So the card says it is not their allowance, names when it lifts, and offers
+ * the one thing that gets them working before then. A hosted turn from a
+ * cowork-server that predates reset_at there carries none, and the card then
+ * says it lifts when the daily budget resets.
+ */
+export function FreeServingPausedCard({
+  time, agentLabel, resetAt, isBillingOwner, deleting = false,
+}) {
+  /* The sentence lives in lib/usageWarnings because the Settings probe notice
+     says the same thing about the same fuse. */
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      title="Free MindsHub Air is paused"
+      body={freeServingPausedCopy(resetAt)}
+      buttons={[
+        {
+          label: 'Add funds',
+          /* The click only, like the other stopped-task cards. Its own
+             trigger: a fleet-wide pause is not this user running out. */
+          onClick: () => {
+            trackBillingOpened('free_serving_paused');
+            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          },
+          primary: true,
+        },
+      ]}
+    />
+  );
+}
+
+/* No provider connected (`provider_required`). HomeView renders the same card
+   on the home screen and its first sentence must read the same. */
+export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) {
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      title="Connect a provider to start chatting"
+      body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
+      buttons={[
+        {
+          label: 'Start for free',
+          // The click only. Whether this card deserves an
+          // impression event of its own is an open
+          // question, and is not settled here.
+          onClick: () => {
+            trackBillingOpened('connect_provider');
+            host.openExternal(MINDS_BILLING_URL);
+          },
+          primary: true,
+        },
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+      ]}
+    />
+  );
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
@@ -1396,6 +1587,13 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * these as access problems, which under pay as you go misdescribes an empty
  * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
  * window.opens on web); Open Settings routes there on both shells.
+ *
+ * A third flavor is current, not legacy: `model_restricted`, an org admin's
+ * model rule. The gateway names it on its 403 (`X-MindsHub-Deny-Detail` /
+ * `error.deny_detail`) and cowork-server relays it as this code. Money cannot
+ * unlock it, so the card offers Open Settings only: no Top up, no Air switch.
+ * A hosted turn cannot name the model, so the title falls back to
+ * "This model is restricted".
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
@@ -1412,6 +1610,20 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+  if (code === 'model_restricted') {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        title={`${label} is restricted`}
+        body="An admin in your organization restricted this model. Choose another model in Settings."
+        buttons={[
+          { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+        ]}
+      />
+    );
+  }
   const denied = code === 'model_access_denied';
   // One handler for both button rows, so the recorded trigger always matches the
   // card that was actually rendered (ENG-1533). Both rows offer Top up balance,
@@ -1442,10 +1654,10 @@ export function ModelUnavailableCard({
       buttons={denied
         ? [
             { label: 'Top up balance', onClick: openBilling, primary: true },
-            // Only while Air can still run (free monthly grant or a payable
+            // Only while Air can still run (free allowance or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
-            ...(onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : []),
+            ...switchToAirButtons(onSwitchToAir),
           ]
         : [
             { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
@@ -1717,6 +1929,8 @@ export default function ChatView({
   // stopped-task cards offer auto top up. Null outside the provider (tests).
   const hubUsage = useHubUsageContext();
   const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
+  // The model the next send in this task uses, which the Air switch would change.
+  const taskModelId = typeof model === 'string' ? model : model?.id ?? null;
   // Usage alerts sit at the turn they happened in (lib/usageNoticePlacement).
   // Computed out here because the last bucket renders below the streaming turn,
   // a sibling of these rows. Keyed by identity: a positional key would collide.
@@ -2244,32 +2458,37 @@ export default function ChatView({
                 // Single CTA on purpose (ENG-1169): the out-of-credits
                 // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
+                  const balancePrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
-                    <ActionCard
+                    <BalanceEmptyCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      // A billing failure ends the turn; there is no resume,
-                      // so this is "stopped", never "paused" (ENG-1782).
-                      title="Task stopped"
-                      // Fixed copy, not the server string (ENG-1304) — the
-                      // gateway's wording predates pay as you go.
-                      body="Your balance ran out before this task finished. Add funds before starting another task."
-                      buttons={[
-                        {
-                          label: 'Add funds',
-                          // ENG-1533: the click, not an impression. token_cap_hit
-                          // already counts the impression once per receipt in the
-                          // stream adapter; an impression here would re-fire on
-                          // every paint.
-                          onClick: () => {
-                            trackBillingOpened('token_limit');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
-                          },
-                          primary: true,
-                        },
-                      ]}
+                      usage={hubUsage?.usage}
+                      isBillingOwner={isBillingOwner}
+                      /* The switch resends the failed message on Air, so it
+                         needs one to resend, and a task already on Air has
+                         nothing to switch to. */
+                      onSwitchToAir={
+                        onSwitchToAirAndResend && balancePrevUserText && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(balancePrevUserText)
+                          : undefined
+                      }
+                    />
+                  );
+                }
+                /* Free MindsHub Air paused fleet-wide by auth's daily spend
+                   fuse: not this user's allowance, and funds get them going. */
+                if (m.code === 'free_serving_paused') {
+                  return (
+                    <FreeServingPausedCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      resetAt={m.resetAt}
+                      isBillingOwner={isBillingOwner}
                     />
                   );
                 }
@@ -2292,8 +2511,11 @@ export default function ChatView({
                  * gateways report wallet denials as `token_limit`, rendered
                  * by the out-of-credits card above. Offer Top up balance and,
                  * while Air is payable, a one-click switch that resends the
-                 * failed message on it — never "try again". */
-                if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                 * failed message on it — never "try again".
+                 *
+                 * `model_restricted` shares the card: an org admin's model
+                 * rule, which the card answers with Open Settings only. */
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
                   const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
@@ -2363,16 +2585,13 @@ export default function ChatView({
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
                         : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      // Open Settings only. A "Switch to MindsHub Air" button was
-                      // tried here and removed: it routes through
-                      // handleSendInTask's `modelOverride`, which the in-process
-                      // harness ignores entirely (stream_response takes no
-                      // `model` — harness.py), so the turn would rerun on the
-                      // same dead id while the composer chip claimed otherwise.
-                      // The neighbouring model-denial card has the same latent
-                      // problem; making that switch real is a product decision
-                      // (it means writing the global planning_model setting),
-                      // tracked separately rather than faked here.
+                      /* Open Settings only. cowork-server does apply a turn's
+                         own model (the request's `model`, handed to
+                         providers.build_llm_client as `model_override`), so a
+                         "Switch to MindsHub Air" here would move this one task.
+                         The dead id lives in the planning_model setting, though,
+                         and every new task would fail on it again, so the card
+                         sends the user to where the id is set. */
                       buttons={[
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
                       ]}
@@ -2489,44 +2708,20 @@ export default function ChatView({
                     />
                   );
                 }
-                // Spent FREE monthly allowance (gateway 429
+                // Spent FREE allowance (gateway 429
                 // `included_allowance_exhausted`): not a drained wallet, so it
-                // names the reset date as a free alternative and says what
+                // names the refill time as a free alternative and says what
                 // credits actually unlock (ENG-1537).
                 if (m.code === 'included_allowance_exhausted') {
                   return (
-                    <ActionCard
+                    <AllowanceExhaustedCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      // The gate only issues this code when the org has no
-                      // balance to fall onto, so the turn ended (ENG-1782).
-                      title="Task stopped"
-                      body={`Your free Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill${refillClause(m.resetAt, '')}.`}
-                      buttons={[
-                        {
-                          label: 'Add funds',
-                          // ENG-1533: the click, not an impression — same rule as
-                          // the drained-wallet card above. token_cap_hit already
-                          // counts this impression once per receipt in the stream
-                          // adapter, so every route to billing is counted exactly
-                          // once and this one is not the exception.
-                          onClick: () => {
-                            trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
-                          },
-                          primary: true,
-                        },
-                        // Only offer auto top up when it isn't already on.
-                        ...(hubUsage?.usage?.autoTopUp?.enabled ? [] : [{
-                          label: USAGE_ACTIONS.setUpAutoTopUp.label,
-                          onClick: () => {
-                            trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
-                          },
-                        }]),
-                      ]}
+                      resetAt={m.resetAt}
+                      usage={hubUsage?.usage}
+                      isBillingOwner={isBillingOwner}
                     />
                   );
                 }
@@ -2576,26 +2771,11 @@ export default function ChatView({
               }
               if (m.role === 'provider_required') {
                 return (
-                  <ActionCard
+                  <ConnectProviderCard
                     key={i}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
-                    title="Connect a provider to start chatting"
-                    body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
-                    buttons={[
-                      {
-                        label: 'Start for free',
-                        // ENG-1533: the click only. Whether this card deserves an
-                        // impression event of its own is an open ENG-1305
-                        // question, and is not settled here.
-                        onClick: () => {
-                          trackBillingOpened('connect_provider');
-                          host.openExternal(MINDS_BILLING_URL);
-                        },
-                        primary: true,
-                      },
-                      { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
-                    ]}
+                    onOpenSettings={onOpenSettings}
                   />
                 );
               }

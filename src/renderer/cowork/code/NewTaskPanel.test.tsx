@@ -316,6 +316,32 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
+  it('says an admin restricted a project default model, and never mentions credits', async () => {
+    const user = userEvent.setup();
+    const restrictedProject = { ...project, default_model: 'fable' };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={{ ...modelMeta, modelDisabledReasons: { fable: 'model_restricted' } }}
+        projects={[restrictedProject]}
+        selectedProjectId={restrictedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText('An admin restricted this model. Choose another model.')).toBeInTheDocument();
+    expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
   it.each(['local', 'shared'])('preserves the draft, project, attachments, permissions and chosen model during %s catalogue refresh', async (source) => {
     const user = userEvent.setup();
     const onCreate = vi.fn(async () => {});
