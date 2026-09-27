@@ -14,15 +14,28 @@ const MAX_ERRORS = 20;
 // than the server would have kept anyway.
 const MAX_MESSAGE_LENGTH = 300;
 
-// Every report becomes the same shape, so the banner, the dedup key and the
-// payload sent to the agent all read one record type. Returns null for a
-// type we don't recognize or a report too empty to say anything useful.
+/**
+ * One report from the preview frame. Every report becomes this shape, so the
+ * banner, the dedup key and the payload sent to the agent all read one record
+ * type. The server reads only message, file and line.
+ *
+ * @typedef {object} PreviewDiagnostic
+ * @property {'error' | 'resource' | 'csp'} type  The shim's report type.
+ * @property {string} message
+ * @property {string} file
+ * @property {number} line
+ * @property {string} url  The resource that failed to load; '' for a script error.
+ */
+
+/* Returns null for a type we don't recognize or a report too empty to say
+   anything useful. */
+/** @returns {PreviewDiagnostic | null} */
 function normalize(data) {
   if (data.type === 'resource') {
-    const kind = String(data.tagName || 'resource').toLowerCase();
+    const tag = String(data.tagName || 'resource').toLowerCase();
     const url = String(data.url || '').trim();
     if (!url) return null;
-    return { message: `Failed to load ${kind} ${url}`, file: '', line: 0 };
+    return { type: 'resource', message: `Failed to load ${tag} ${url}`, file: '', line: 0, url };
   }
   if (data.type === 'csp') {
     const directive = String(data.violatedDirective || '').trim();
@@ -30,16 +43,66 @@ function normalize(data) {
     if (!directive && !blockedUri) return null;
     const target = directive ? ` (${directive})` : '';
     const source = blockedUri ? `: ${blockedUri}` : '';
-    return { message: `Blocked by the page security policy${target}${source}`, file: '', line: 0 };
+    return {
+      type: 'csp',
+      message: `Blocked by the page security policy${target}${source}`,
+      file: '',
+      line: 0,
+      url: blockedUri,
+    };
   }
   if (data.type === 'error') {
     return {
+      type: 'error',
       message: String(data.message || ''),
       file: String(data.file || ''),
       line: Number(data.line) || 0,
+      url: '',
     };
   }
   return null;
+}
+
+/* A policy report drops the URL's #fragment; the element's own src/href
+   keeps it. Compare without it so the two reports of one load still meet. */
+function withoutFragment(url) {
+  return url.split('#')[0];
+}
+
+/*
+ * One blocked <script>, <link> or <img> reaches us twice: the policy's
+ * violation report and the element's own error event, in either order
+ * (Chrome sends the error event first for a static synchronous
+ * <script src>, and the policy report first for async, module and inserted
+ * scripts, stylesheets and images). Both describe one failed load, so the
+ * list keeps one entry for it, and the policy sentence wins because it says
+ * why the load failed. A load that failed for any other reason (a 404, a
+ * dropped connection) has no policy report and keeps its own entry.
+ *
+ * Pairing needs the same URL on both sides. For a data: or blob: URL the
+ * policy report carries only the scheme, so those pairs stay two entries.
+ */
+/**
+ * @param {PreviewDiagnostic[]} prev
+ * @param {PreviewDiagnostic} entry
+ * @returns {PreviewDiagnostic[]}
+ */
+function addEntry(prev, entry) {
+  const partner = { csp: 'resource', resource: 'csp' }[entry.type];
+  const url = partner ? withoutFragment(entry.url) : '';
+  const same = url
+    ? prev.findIndex((e) => e.type === partner && withoutFragment(e.url) === url)
+    : -1;
+  if (same >= 0) {
+    if (entry.type === 'resource') return prev;
+    const next = prev.slice();
+    next[same] = entry;
+    return next;
+  }
+  if (prev.length >= MAX_ERRORS) return prev;
+  const duplicate = prev.some((e) => e.message === entry.message
+    && e.file === entry.file && e.line === entry.line);
+  return duplicate ? prev : [...prev, entry];
 }
 
 function signature(errors) {
@@ -77,12 +140,7 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
       const entry = normalize(data);
       if (!entry || !entry.message) return;
       entry.message = entry.message.slice(0, MAX_MESSAGE_LENGTH);
-      setErrors((prev) => {
-        if (prev.length >= MAX_ERRORS) return prev;
-        const duplicate = prev.some((e) => e.message === entry.message
-          && e.file === entry.file && e.line === entry.line);
-        return duplicate ? prev : [...prev, entry];
-      });
+      setErrors((prev) => addEntry(prev, entry));
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

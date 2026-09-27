@@ -328,8 +328,8 @@ export function ArtifactViewer({
       const requested = await workspace.addressWithAgent({
         thread,
         conversationId: targetConversationId,
-        // Already normalized to { message, file, line } and capped by the hook;
-        // the server caps again and owns the prompt's size.
+        // Normalized, folded and capped by the hook; the server reads
+        // message, file and line, caps again and owns the prompt's size.
         previewErrors: diagnostics.errors,
       });
       if (requested) {

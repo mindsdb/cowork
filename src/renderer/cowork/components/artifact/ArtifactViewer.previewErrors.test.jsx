@@ -149,6 +149,25 @@ describe('ArtifactViewer preview error notice', () => {
       .toHaveTextContent('(+1 more)');
   });
 
+  it('counts a blocked stylesheet as one error, not two', async () => {
+    /* The shape web showed on every HTML preview: one blocked <link> sends a
+       policy report and a failed-load report for the same URL. */
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    const frame = await screen.findByTitle('Launch brief');
+    const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap';
+    const post = (data) => fireEvent(window, new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'anton-preview', ...data },
+    }));
+
+    post({ type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url });
+    post({ type: 'resource', tagName: 'LINK', url });
+
+    const notice = await screen.findByText(/The preview reported an error/);
+    expect(notice).toHaveTextContent(`Blocked by the page security policy (style-src-elem): ${url}`);
+    expect(notice).not.toHaveTextContent('more)');
+  });
+
   it('ignores preview messages for a text artifact, which never mounts an iframe', async () => {
     // No iframe means iframeRef.current is permanently null, which used to
     // make the sender check degrade to "accept anyone" — the hook must not
