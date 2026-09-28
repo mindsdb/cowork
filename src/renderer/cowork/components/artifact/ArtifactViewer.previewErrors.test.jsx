@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -79,7 +79,19 @@ vi.mock('./workspace/ArtifactSourceEditor', () => ({ ArtifactSourceEditor: () =>
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
-vi.mock('./ArtifactViewerHeader', () => ({ ArtifactViewerHeader: () => null }));
+// Shows what the viewer hands the header, so this file stays about the wiring
+// from the hook to the header. The button and its popover are covered in
+// ArtifactViewerHeader.previewErrors.test.jsx.
+vi.mock('./ArtifactViewerHeader', () => ({
+  ArtifactViewerHeader: ({ diagnostics }) => (
+    <div data-testid="header-diagnostics" data-dismissed={String(diagnostics.dismissed)}>
+      <ul>
+        {diagnostics.errors.map((error, index) => <li key={index}>{error.message}</li>)}
+      </ul>
+      <button type="button" onClick={diagnostics.dismiss}>Dismiss</button>
+    </div>
+  ),
+}));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
@@ -96,7 +108,16 @@ const artifact = {
   capabilities: { role: 'owner', canEdit: true },
 };
 
-describe('ArtifactViewer preview error notice', () => {
+const postFromPreview = (source, data) => fireEvent(window, new MessageEvent('message', {
+  source,
+  data: { source: 'anton-preview', ...data },
+}));
+const scriptError = (message) => ({ type: 'error', message, file: 'a.html', line: 1 });
+const headerDiagnostics = () => screen.getByTestId('header-diagnostics');
+const headerErrors = () => within(headerDiagnostics()).queryAllByRole('listitem')
+  .map((item) => item.textContent);
+
+describe('ArtifactViewer preview errors', () => {
   beforeEach(() => {
     loadArtifactDraftDocument.mockReset();
     loadArtifactDraftDocument.mockResolvedValue({
@@ -108,45 +129,33 @@ describe('ArtifactViewer preview error notice', () => {
     previewArtifact.mockResolvedValue({ content: 'hello preview text', truncated: false, mime: 'text/markdown' });
   });
 
-  it('announces a preview error without hiding the page that produced it', async () => {
+  it('hands a preview error to the header without hiding the page that produced it', async () => {
     // The page rendered; only its script died. Replacing the canvas with an
     // error would hide exactly what the user is trying to understand.
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
     const frame = await screen.findByTitle('Launch brief');
 
-    fireEvent(window, new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: {
-        source: 'anton-preview',
-        type: 'error',
-        message: "SecurityError: Failed to read the 'localStorage' property",
-        file: 'a.html',
-        line: 44,
-      },
-    }));
+    postFromPreview(frame.contentWindow, {
+      ...scriptError("SecurityError: Failed to read the 'localStorage' property"),
+      line: 44,
+    });
 
-    // By text, not by role: ArtifactViewer already has two elements with
-    // role="status" (lines 899 and 943), so a role query becomes ambiguous
-    // as soon as either condition changes. The accessible name of a div with
-    // this role is not computed from its content, so { name } would not help.
-    expect(await screen.findByText(/The preview reported an error/))
-      .toHaveTextContent("SecurityError: Failed to read the 'localStorage' property");
+    await vi.waitFor(() => expect(headerErrors())
+      .toEqual(["SecurityError: Failed to read the 'localStorage' property"]));
     expect(screen.getByTitle('Launch brief')).toBeInTheDocument();
+    // ENG-3002: the header is the only place the message appears. The banner
+    // that used to sit between the header and the page repeated it.
+    expect(screen.getAllByText(/Failed to read the 'localStorage' property/)).toHaveLength(1);
   });
 
-  it('counts the errors beyond the first', async () => {
+  it('hands the header every error, not just the first', async () => {
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
     const frame = await screen.findByTitle('Launch brief');
-    const post = (message) => fireEvent(window, new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: { source: 'anton-preview', type: 'error', message, file: 'a.html', line: 1 },
-    }));
 
-    post('first');
-    post('second');
+    postFromPreview(frame.contentWindow, scriptError('first'));
+    postFromPreview(frame.contentWindow, scriptError('second'));
 
-    expect(await screen.findByText(/The preview reported an error/))
-      .toHaveTextContent('(+1 more)');
+    await vi.waitFor(() => expect(headerErrors()).toEqual(['first', 'second']));
   });
 
   it('counts a blocked stylesheet as one error, not two', async () => {
@@ -155,17 +164,24 @@ describe('ArtifactViewer preview error notice', () => {
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
     const frame = await screen.findByTitle('Launch brief');
     const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap';
-    const post = (data) => fireEvent(window, new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: { source: 'anton-preview', ...data },
-    }));
 
-    post({ type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url });
-    post({ type: 'resource', tagName: 'LINK', url });
+    postFromPreview(frame.contentWindow, { type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url });
+    postFromPreview(frame.contentWindow, { type: 'resource', tagName: 'LINK', url });
 
-    const notice = await screen.findByText(/The preview reported an error/);
-    expect(notice).toHaveTextContent(`Blocked by the page security policy (style-src-elem): ${url}`);
-    expect(notice).not.toHaveTextContent('more)');
+    await vi.waitFor(() => expect(headerErrors())
+      .toEqual([`Blocked by the page security policy (style-src-elem): ${url}`]));
+  });
+
+  it("wires the header's Dismiss to the hook", async () => {
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    const frame = await screen.findByTitle('Launch brief');
+    postFromPreview(frame.contentWindow, scriptError('boom'));
+    await vi.waitFor(() => expect(headerErrors()).toEqual(['boom']));
+    expect(headerDiagnostics()).toHaveAttribute('data-dismissed', 'false');
+
+    fireEvent.click(within(headerDiagnostics()).getByRole('button', { name: 'Dismiss' }));
+
+    expect(headerDiagnostics()).toHaveAttribute('data-dismissed', 'true');
   });
 
   it('ignores preview messages for a text artifact, which never mounts an iframe', async () => {
@@ -183,17 +199,8 @@ describe('ArtifactViewer preview error notice', () => {
     await screen.findByText('hello preview text');
     expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
 
-    fireEvent(window, new MessageEvent('message', {
-      source: window,
-      data: {
-        source: 'anton-preview',
-        type: 'error',
-        message: 'should never surface',
-        file: 'a.html',
-        line: 1,
-      },
-    }));
+    postFromPreview(window, scriptError('should never surface'));
 
-    expect(screen.queryByText(/The preview reported an error/)).not.toBeInTheDocument();
+    expect(headerErrors()).toEqual([]);
   });
 });
