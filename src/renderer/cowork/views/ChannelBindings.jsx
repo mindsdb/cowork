@@ -5,7 +5,7 @@
 // known chat id. When `channelType` is given the panel is scoped to that one
 // channel: rows are filtered and new routes are created on it.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Badge, Button, Tooltip } from '../components/ui';
@@ -28,9 +28,13 @@ export default function ChannelBindings({ plugins = [], channelType = null, refr
   const [draft, setDraft] = useState(BLANK);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Refreshes can overlap (mount, Refresh, save/delete); only the latest may set state.
+  const refreshAttemptRef = useRef(0);
 
   async function refresh() {
+    const attemptId = ++refreshAttemptRef.current;
     const [b, p] = await Promise.all([fetchChannelBindings(), fetchProjects()]);
+    if (refreshAttemptRef.current !== attemptId) return;
     setBindings(b);
     setProjects(p);
     setEdits({});

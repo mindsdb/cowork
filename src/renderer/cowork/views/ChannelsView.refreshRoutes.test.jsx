@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Routes are created server side on a chat's first message, so the header
@@ -32,6 +32,7 @@ vi.mock('../api', () => ({
   fetchProjects: vi.fn(async () => []),
 }));
 
+import { fetchChannelBindings } from '../api';
 import ChannelsView from './ChannelsView';
 
 describe('ChannelsView — header Refresh', () => {
@@ -57,5 +58,22 @@ describe('ChannelsView — header Refresh', () => {
 
     expect(await screen.findByText(ROUTE.external_group_id)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('chat / group id')).toHaveValue('987');
+  });
+
+  it('keeps the newer route list when an older fetch resolves last', async () => {
+    let resolveMountFetch;
+    fetchChannelBindings
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveMountFetch = resolve; }))
+      .mockImplementationOnce(async () => [ROUTE]);
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    await waitFor(() => expect(resolveMountFetch).toBeDefined());
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByText(ROUTE.external_group_id)).toBeInTheDocument();
+
+    await act(async () => { resolveMountFetch([]); });
+
+    expect(screen.getByText(ROUTE.external_group_id)).toBeInTheDocument();
   });
 });
