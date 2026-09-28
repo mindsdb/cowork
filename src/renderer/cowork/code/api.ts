@@ -374,6 +374,12 @@ export interface ProjectActionPage {
   preview_pending?: boolean;
 }
 
+/** Commands a task can run, within its own folders, after adopting the project's current settings. */
+export interface ProjectCommandRefresh {
+  validate_count: number;
+  run_count: number;
+}
+
 export interface ProjectFolderInspection {
   folder: ProjectFolder;
   inspection: WorkspaceInspection;
@@ -907,6 +913,8 @@ const liveCodingApi = {
       method: 'POST', body: JSON.stringify(body),
     }),
   projectActions: (id: string) => requestJson<ProjectActionPage>(`/sessions/${encodeURIComponent(id)}/project-actions`),
+  /** Copies the project's current commands onto an existing task; its resource scope stays frozen. */
+  refreshProjectCommands: (id: string) => requestJson<ProjectCommandRefresh>(`/sessions/${encodeURIComponent(id)}/project-commands/refresh`, { method: 'POST' }),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
   updateDeliveryPolicy: (id: string, body: DeliveryAutomationPolicy) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/delivery-policy`, {
     method: 'PUT', body: JSON.stringify(body),
