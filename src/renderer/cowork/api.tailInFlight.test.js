@@ -141,10 +141,18 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
   });
 
   it('reports interrupted instead of onDone when the connection closes with no terminal event', async () => {
+    let sentCreated = false;
+    const enc = new TextEncoder();
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       status: 200,
-      body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+      body: { getReader: () => ({ read: async () => {
+        if (sentCreated) return { done: true, value: undefined };
+        sentCreated = true;
+        return { done: false, value: enc.encode(
+          'data: {"type":"response.created","user_message_id":"user-current"}\n\n',
+        ) };
+      } }) },
     })));
 
     const result = await new Promise((resolve) => {
@@ -155,7 +163,7 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     });
 
     expect(result.kind).toBe('error');
-    expect(result.event?.code).toBe('interrupted');
+    expect(result.event).toEqual({ code: 'interrupted', user_message_id: 'user-current' });
   });
 
   it('ends quietly with onDone when the turn was cancelled, even with no local abort', async () => {

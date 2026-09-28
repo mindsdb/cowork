@@ -996,12 +996,34 @@ describe('req() timeout scoping', () => {
 
   it('fetchSession does not time out by default either', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal('fetch', _abortAwareFetch(12_000, { id: 'c1' }));
+    const delayed = _abortAwareFetch(12_000, { id: 'c1' });
+    vi.stubGlobal('fetch', vi.fn((url, options) => String(url).endsWith('/items')
+      ? _abortAwareFetch(12_000, [])(url, options)
+      : delayed(url, options)));
 
     const resultPromise = fetchSession('c1');
     await vi.advanceTimersByTimeAsync(12_000);
 
     expect(await resultPromise).not.toBeNull();
+  });
+
+  it('does not replace history with an empty transcript when only the items request times out', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((url, options) => {
+      if (!String(url).endsWith('/items')) return Promise.resolve(jsonRes({ id: 'c1' }));
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        }, { once: true });
+      });
+    }));
+
+    const resultPromise = fetchSession('c1', { timeoutMs: 10_000 });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await resultPromise).toBeNull();
   });
 
   it('a scoped timeout still fires when headers arrive but the body stalls', async () => {

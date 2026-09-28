@@ -453,8 +453,10 @@ export async function fetchSession(id, { timeoutMs } = {}) {
       req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
       req(`/conversations/${encodeURIComponent(id)}/items`, { timeoutMs }).catch(() => null),
     ]);
-    if (!meta) return null;
-    return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
+    // A failed transcript read is unavailable, not an empty conversation.
+    // Recovery must keep the visible transcript and its interruption notice.
+    if (!meta || !Array.isArray(msgs)) return null;
+    return _conversationToTask(meta, msgs);
   } catch {
     return null;
   }
@@ -530,6 +532,11 @@ const STREAM_IDLE_TIMEOUT_MS = 300_000;
 // new id via the first onChunk/onProgress/onDone callback's second arg.
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
+  let userMessageId = null;
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
   let cid = conversationId || null;
   // Same idle timer as tailInFlight — a fresh turn stuck behind a dead
   // proxy connection had none before this.
@@ -612,6 +619,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           switch (msg.type) {
             case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
               cid = msg.conversation_id || msg.response?.id || cid;
               break;
             case 'response.output_text.delta':
@@ -641,7 +649,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
               return;
             case 'response.cancelled':
               // Someone pressed Stop (here, in another tab, or a teammate):
@@ -656,18 +664,18 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       // Closed with no response.completed/failed — onDone here used to render
       // partial text as a finished answer. Distinct from stream_error below:
       // that's a drop mid-read, this is a clean close with no terminal.
-      onError?.('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
       // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
       // as an AbortError too, so check idledOut first to tell it apart from
       // a caller-initiated cancel (Stop button, new send, navigation).
       if (idledOut) {
         cancelResponse(cid);
-        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         // Distinct code from tailInFlight's reconnect_error: this is a dropped
         // connection on the initial send, not a reconnect attempt.
-        onError?.(err.message, { code: 'stream_error' });
+        reportError(err.message, { code: 'stream_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -722,6 +730,11 @@ export function tailInFlight(conversationId, {
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  let userMessageId = null;
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
   // Bumped per real producer frame; cleared in the finally so a cleanly
   // finished tail leaves no dangling timer.
   let idleTimer = null;
@@ -771,6 +784,7 @@ export function tailInFlight(conversationId, {
           onEvent?.(msg);
           switch (msg.type) {
             case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
               cid = msg.conversation_id || cid;
               break;
             case 'response.output_text.delta':
@@ -800,7 +814,7 @@ export function tailInFlight(conversationId, {
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
               return;
             case 'response.cancelled':
               // Someone pressed Stop (here, in another tab, or a teammate):
@@ -814,7 +828,7 @@ export function tailInFlight(conversationId, {
       }
       // Closed with no response.completed/failed — same as _streamResponse's
       // main stream: the tail must not report a partial answer as finished.
-      onError?.('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
       // An idle-timeout abort surfaces as an AbortError too, but unlike a
       // caller-initiated abort (a new send or navigation) it must release the
@@ -826,9 +840,9 @@ export function tailInFlight(conversationId, {
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
         cancelResponse(conversationId);
-        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        onError?.(err.message, { code: 'reconnect_error' });
+        reportError(err.message, { code: 'reconnect_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
