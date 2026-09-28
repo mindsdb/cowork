@@ -181,6 +181,7 @@ function activityEvents(running: boolean): CodingEvent[] {
     next('agent_message', 6, { item_id: 'm1', text: 'Validation lives in `validation.ts` and runs on submit. Next I’ll check which rules the tests cover.' }),
     ...approved('a1', 7, 'npm test -- validation --reporter=json'),
     shell('c4', 9, 'npm test -- validation --reporter=json', 'unknown'),
+    next('error', 10, { title: 'Agent error', text: 'Reconnecting... 1/2', phase: 'failed' }),
     next('reasoning', 12, { item_id: 'r2' }),
     ...approved('a2', 13, 'npx vitest related src/checkout/validation.ts'),
     shell('c5', 15, 'npx vitest related src/checkout/validation.ts', 'unknown'),

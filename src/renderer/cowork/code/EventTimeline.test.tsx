@@ -112,12 +112,33 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline {...timelineProps(events)} session={{ ...session('failed'), last_error: 'Connection unavailable' }} />);
 
-    expect(screen.getByText('Connection retried 5 times')).toBeInTheDocument();
+    expect(screen.getByText('Retried 5 times')).toBeInTheDocument();
     expect(screen.getAllByText('Failed')).toHaveLength(1);
     expect(screen.getByText('Connection unavailable')).toBeInTheDocument();
     expect(screen.queryByText('Attempt 1 failed')).toBeNull();
-    fireEvent.click(screen.getByText('Connection retried 5 times'));
+    fireEvent.click(screen.getByText('Retried 5 times'));
     expect(screen.getByText('Attempt 5 failed')).toBeInTheDocument();
+  });
+
+  it('folds a recovered retry into the work around it', () => {
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: 'git fetch' } },
+      event(2, 'error', 'Reconnecting... 1/2'),
+      { ...event(3, 'command', ''), item_id: 'c2', data: { command: 'git status' } },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(container.querySelectorAll('.code-activity-group')).toHaveLength(1);
+    expect(screen.getByText('Ran 2 commands and retried once')).toBeInTheDocument();
+    expect(container.querySelector('.code-activity-group.is-failed')).toBeNull();
+    expect(container.querySelector('.code-activity-group[open]')).toBeNull();
+  });
+
+  it('names a reconnect in progress on the live status line', () => {
+    const events = [event(1, 'user_message', 'Go'), event(2, 'error', 'Reconnecting... 1/2')];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting… 1/2');
   });
 
   it('offers one recovery action for a preserved remote run', () => {

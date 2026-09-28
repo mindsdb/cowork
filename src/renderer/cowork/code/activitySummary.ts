@@ -9,9 +9,9 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 // user's own message, and housekeeping such as context compaction.
 const IGNORED_ITEM_TYPES = new Set(['userMessage', 'contextCompaction']);
 
-type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool';
+type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'retry';
 
-const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool'];
+const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'retry'];
 
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
@@ -20,6 +20,7 @@ const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   search: (count) => `searched ${count} ${count === 1 ? 'time' : 'times'}`,
   list: (count) => `listed ${count} ${count === 1 ? 'folder' : 'folders'}`,
   tool: (count) => `used ${count} ${count === 1 ? 'tool' : 'tools'}`,
+  retry: (count) => (count === 1 ? 'retried once' : `retried ${count} times`),
 };
 
 interface CommandAction {
@@ -70,6 +71,7 @@ function actionKinds(event: CodingEvent): ActionKind[] {
     return Array.from({ length: Math.max(1, changes) }, () => 'edit' as const);
   }
   if (event.type === 'tool') return ['tool'];
+  if (event.type === 'error') return ['retry'];
   if (event.type !== 'command') return [];
   const actions = commandActions(event);
   if (!actions.length || actions.some((action) => !['read', 'search', 'listFiles'].includes(action.type))) return ['command'];
@@ -159,6 +161,9 @@ function presentTense(event: CodingEvent): string {
 
 
 export function liveStatusLabel(events: CodingEvent[]): string {
+  // Codex reports each reconnect attempt, e.g. "Reconnecting... 1/2".
+  const latest = events.at(-1);
+  if (latest?.type === 'error') return latest.text.replace(/\.\.\./g, '…') || 'Reconnecting…';
   const current = latestPerItem(events);
   for (let index = current.length - 1; index >= 0; index -= 1) {
     const event = current[index];

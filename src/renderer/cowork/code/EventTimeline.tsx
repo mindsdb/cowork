@@ -17,8 +17,7 @@ const TIMELINE_WINDOW_SIZE = 300;
 
 type TimelineItem =
   | { kind: 'event'; event: CodingEvent }
-  | { kind: 'activity'; events: CodingEvent[] }
-  | { kind: 'errors'; events: CodingEvent[] };
+  | { kind: 'activity'; events: CodingEvent[] };
 
 
 function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
@@ -73,12 +72,12 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // stay inside the activity group instead of splitting it. The pending
   // request is already shown by the approval card; a denial stays visible.
   const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
-  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval ? 'activity' : event.type === 'error' ? 'errors' : 'event';
+  // A dropped connection that Codex retries is part of the work too. A turn
+  // that ends on the error gets the outcome card instead.
+  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' ? 'activity' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
-  } else if (kind === 'errors' && previousItem?.kind === 'errors') {
-    previousItem.events.push(event);
-  } else if (kind === 'activity' || kind === 'errors') {
+  } else if (kind === 'activity') {
     items.push({ kind, events: [event] });
   } else {
     items.push({ kind: 'event', event });
@@ -166,8 +165,15 @@ function activityRows(events: CodingEvent[]): CodingEvent[] {
 }
 
 
+function rowTitle(event: CodingEvent): string {
+  if (event.type === 'approval' && event.phase === 'completed') return approvalOutcome(event);
+  if (event.type === 'error') return event.text || 'The connection dropped and the agent retried.';
+  return eventSummary(event);
+}
+
+
 function rowDetail(event: CodingEvent): string {
-  if (event.type === 'approval' && event.phase === 'completed') return '';
+  if ((event.type === 'approval' && event.phase === 'completed') || event.type === 'error') return '';
   const detail = event.type === 'reasoning' ? reasoningSummary(event) : event.text;
   return detail && detail !== eventSummary(event) ? detail : '';
 }
@@ -175,11 +181,14 @@ function rowDetail(event: CodingEvent): string {
 
 function ActivityGroup({ events }: { events: CodingEvent[] }) {
   const rows = activityRows(events);
-  const failed = events.some((event) => event.phase === 'failed');
+  // Retries are recoverable, so they neither count as failures nor force
+  // the group open.
+  const failures = events.filter((event) => event.phase === 'failed' && event.type !== 'error').length;
+  const failed = failures > 0;
   const [open, setOpen] = useState(failed);
   useEffect(() => { if (failed) setOpen(true); }, [failed]);
   const detail = [
-    failed ? `${events.filter((event) => event.phase === 'failed').length} failed` : '',
+    failed ? `${failures} failed` : '',
     durationLabel(events),
   ].filter(Boolean).join(' · ');
   return (
@@ -197,9 +206,9 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
         <div className="code-activity-group__body">
           {rows.map((event) => (
             <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
-              <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
+              <span className="code-activity-row__kind">{event.type === 'error' ? 'retry' : event.type.replace('_', ' ')}</span>
               <div>
-                <strong>{event.type === 'approval' && event.phase === 'completed' ? approvalOutcome(event) : eventSummary(event)}</strong>
+                <strong>{rowTitle(event)}</strong>
                 {rowDetail(event) && <pre>{rowDetail(event)}</pre>}
               </div>
             </div>
@@ -260,23 +269,6 @@ function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) 
       <WorkingIndicator label={label} />
       {Number.isFinite(startedAt) && <span className="code-running-indicator__elapsed">{elapsedLabel(now - startedAt)}</span>}
     </div>
-  );
-}
-
-
-function ErrorGroup({ events }: { events: CodingEvent[] }) {
-  const [open, setOpen] = useState(false);
-  const attempts = events.length;
-  const latest = events[events.length - 1];
-  return (
-    <details className="code-retry-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>
-        <span>{Ico.refresh(12)}</span>
-        <span>{attempts > 1 ? `Connection retried ${attempts} times` : latest.title || 'Agent retry'}</span>
-        <span className="code-retry-group__chevron">{Ico.chevDown(11)}</span>
-      </summary>
-      {open && <div>{latest.text || 'The agent could not complete this attempt.'}</div>}
-    </details>
   );
 }
 
@@ -509,14 +501,13 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
-          // Telemetry alone, such as a token-usage update between two
-          // messages, has nothing to open.
-          if (item.kind === 'activity') return activityRows(item.events).length ? <ActivityGroup key={key} events={item.events} /> : null;
-          if (item.kind === 'errors') {
-            const retryEvents = terminalErrorSeq == null
+          if (item.kind === 'activity') {
+            const groupEvents = terminalErrorSeq == null
               ? item.events
               : item.events.filter((event) => event.seq !== terminalErrorSeq);
-            return retryEvents.length ? <ErrorGroup key={key} events={retryEvents} /> : null;
+            // Telemetry alone, such as a token-usage update between two
+            // messages, has nothing to open.
+            return activityRows(groupEvents).length ? <ActivityGroup key={key} events={groupEvents} /> : null;
           }
           return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
         })}

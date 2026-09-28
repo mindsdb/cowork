@@ -63,6 +63,11 @@ describe('activityHeadline', () => {
     expect(activityHeadline([command('c1', [{ type: 'read', command: 'cat a' }, { type: 'unknown', command: 'wc -l' }])])).toBe('Ran 1 command');
   });
 
+  it('counts retries after the work', () => {
+    expect(activityHeadline([command('c1', [{ type: 'unknown', command: 'ls' }]), event({ type: 'error', phase: 'failed', seq: 2 })])).toBe('Ran 1 command and retried once');
+    expect(activityHeadline([event({ type: 'error', phase: 'failed', seq: 1 }), event({ type: 'error', phase: 'failed', seq: 2 })])).toBe('Retried 2 times');
+  });
+
   it('describes groups that hold no countable actions', () => {
     expect(activityHeadline([event({ type: 'reasoning' })])).toBe('Thought it through');
     expect(activityHeadline([event({ type: 'approval', phase: 'pending' })])).toBe('Asked for approval');
