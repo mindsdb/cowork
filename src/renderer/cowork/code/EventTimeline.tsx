@@ -11,7 +11,6 @@ import {
   displayCommand,
   exitCode,
   fileChanges,
-  isCompaction,
   isIgnoredActivity,
   isPlanUpdate,
   liveStatusLabel,
@@ -68,10 +67,6 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // user their unconfirmed instruction did reach the agent.
   if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
   if (isIgnoredActivity(event)) return;
-  if (isCompaction(event)) {
-    if (event.phase === 'completed') items.push({ kind: 'event', event });
-    return;
-  }
 
   const previousItem = items.at(-1);
   const previousEvent = lastEvent(previousItem);
@@ -215,6 +210,7 @@ const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
   tool: Ico.cube,
   image: Ico.image,
   thought: Ico.brain,
+  compact: Ico.list,
   plan: Ico.taskCheck,
   retry: Ico.refresh,
   approval: Ico.key,
@@ -342,9 +338,16 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
   // A lone step's headline already names it, so the group opens straight
   // onto its detail instead of repeating the line.
   const [only] = rows;
-  const single = rows.length === 1 && activityHeadline(events) === stepHeadline(only)
-    ? (only.kind === 'change' ? changeDetail(only.change) : stepDetail(only.event))
-    : undefined;
+  const headline = activityHeadline(events);
+  const sole = rows.length === 1 && headline === stepHeadline(only)
+    ? (only.kind === 'change' ? changeLabel(only.change) : stepLabel(only.event))
+    : null;
+  const single = sole ? (only.kind === 'change' ? changeDetail(only.change) : stepDetail(only.event)) : undefined;
+  // Like the step rows, a single step's target reads darker than its verb.
+  const copy = sole
+    ? <span className="code-activity-group__copy">{sole.verb && <>{sole.verb} </>}<span className="code-activity-group__target">{sole.target}</span></span>
+    : <span className="code-activity-group__copy">{headline}</span>;
+  if (sole && !single) return <div className="code-activity-group"><div className="code-activity-group__line">{copy}</div></div>;
   return (
     <details
       className={`code-activity-group${failed ? ' is-failed' : ''}`}
@@ -352,7 +355,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span className="code-activity-group__copy">{activityHeadline(events)}</span>
+        {copy}
         {failed && <small>{failures} failed</small>}
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
@@ -592,7 +595,6 @@ function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyab
       </article>
     );
   }
-  if (isCompaction(event)) return <div className="code-compaction">{Ico.list(12)}<span>Context automatically compacted</span></div>;
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
   if (event.type === 'approval' && event.data.decision === 'deny') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>Approval denied</strong></div></div>;

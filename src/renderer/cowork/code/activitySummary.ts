@@ -8,9 +8,9 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 // Codex echoes the user's own message back as an item. It is not work.
 const IGNORED_ITEM_TYPES = new Set(['userMessage']);
 
-type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'retry';
+type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'compact' | 'retry';
 
-const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'retry'];
+const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'compact', 'retry'];
 
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
@@ -20,6 +20,7 @@ const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   list: (count) => `listed ${count} ${count === 1 ? 'folder' : 'folders'}`,
   tool: (count) => `used ${count} ${count === 1 ? 'tool' : 'tools'}`,
   plan: () => 'updated the plan',
+  compact: () => 'compacted context',
   retry: (count) => (count === 1 ? 'retried once' : `retried ${count} times`),
 };
 
@@ -56,7 +57,7 @@ export function isIgnoredActivity(event: CodingEvent): boolean {
 
 
 // Compaction drops earlier context, which explains why the agent may re-read
-// files afterwards, so it gets a line of its own rather than a step.
+// files afterwards, so group headlines name it rather than count it as a tool.
 export function isCompaction(event: CodingEvent): boolean {
   return event.type === 'tool' && text(event.data.type) === 'contextCompaction';
 }
@@ -77,6 +78,7 @@ function actionKinds(event: CodingEvent): ActionKind[] {
     const changes = Array.isArray(event.data.changes) ? event.data.changes.length : 0;
     return Array.from({ length: Math.max(1, changes) }, () => 'edit' as const);
   }
+  if (isCompaction(event)) return ['compact'];
   if (event.type === 'tool') return ['tool'];
   if (event.type === 'error') return ['retry'];
   if (isPlanUpdate(event)) return ['plan'];
@@ -164,6 +166,7 @@ function presentTense(event: CodingEvent): string {
     const path = text(event.data.path) || event.title;
     return path ? `Editing ${path.split(/[\\/]/).at(-1)}` : 'Editing files';
   }
+  if (isCompaction(event)) return 'Compacting context';
   if (event.type === 'tool' && text(event.data.tool)) return `Calling ${text(event.data.tool)}`;
   if (event.type === 'tool') return event.title ? `Using ${event.title}` : 'Using a tool';
   const actions = commandActions(event);
@@ -198,7 +201,7 @@ function basename(path: string): string {
 }
 
 
-export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'retry' | 'approval';
+export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'compact' | 'retry' | 'approval';
 
 export interface StepLabel {
   icon: StepIcon;
@@ -226,6 +229,7 @@ export function stepLabel(event: CodingEvent): StepLabel {
     return { icon: 'retry', verb: 'Retried', target: `after the connection dropped${attempt ? ` (${attempt})` : ''}` };
   }
   if (event.type === 'approval') return { icon: 'approval', verb: 'Asked to run', target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
+  if (isCompaction(event)) return { icon: 'compact', verb: 'Compacted context', target: '' };
   if (event.type === 'tool') {
     if (text(event.data.type) === 'imageView') return { icon: 'image', verb: 'Viewed', target: basename(event.title) || 'an image' };
     const tool = text(event.data.tool);

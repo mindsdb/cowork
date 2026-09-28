@@ -49,6 +49,12 @@ function event(seq: number, type: CodingEvent['type'], text: string): CodingEven
 }
 
 
+// A single step's headline styles its verb and target apart.
+function headline(text: string) {
+  return (_: string, element: Element | null) => !!element?.classList.contains('code-activity-group__copy') && element.textContent === text;
+}
+
+
 function timelineProps(events: CodingEvent[]) {
   return { events, latestEvents: indexLatestEvents(events) };
 }
@@ -424,7 +430,7 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline {...timelineProps(command)} session={session('completed')} />);
 
-    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.getByText(headline('Ran npm test'))).toBeInTheDocument();
   });
 
   it('does not leave progress-only telemetry looking active after the turn ends', () => {
@@ -484,7 +490,7 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...timelineProps([command])} session={session('completed')} />);
 
     expect(screen.queryByText('very large command output')).toBeNull();
-    fireEvent.click(screen.getByText('Ran npm test'));
+    fireEvent.click(screen.getByText(headline('Ran npm test')));
     expect(screen.getByText('very large command output')).toBeInTheDocument();
   });
 
@@ -541,17 +547,40 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...timelineProps([change])} session={session('completed')} />);
 
     // A lone step opens straight onto its detail.
-    fireEvent.click(screen.getByText('Created notes.md'));
+    fireEvent.click(screen.getByText(headline('Created notes.md')));
     expect(screen.queryByRole('button', { name: /Created notes\.md/ })).toBeNull();
     expect(screen.getByText('/work/shop/notes.md')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'File diff' })).toHaveTextContent('+second');
   });
 
-  it('marks context compaction with a line of its own', () => {
+  it('names context compaction in the headline without splitting the work', () => {
     const compaction = (seq: number, phase: CodingEvent['phase']) => ({ ...event(seq, 'tool', ''), item_id: 'k1', phase, data: { type: 'contextCompaction' } });
-    render(<EventTimeline {...timelineProps([compaction(1, 'started'), compaction(2, 'completed')])} session={session('running')} />);
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: 'npm test' } },
+      compaction(2, 'started'),
+      compaction(3, 'completed'),
+      { ...event(4, 'command', ''), item_id: 'c2', data: { command: 'npm run lint' } },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
 
-    expect(screen.getAllByText('Context automatically compacted')).toHaveLength(1);
+    expect(container.querySelectorAll('.code-activity-group')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Ran 2 commands and compacted context'));
+    expect(screen.getAllByText('Compacted context')).toHaveLength(1);
+  });
+
+  it('names compaction on the live status line while it runs', () => {
+    const compaction = { ...event(2, 'tool', ''), item_id: 'k1', phase: 'started' as const, data: { type: 'contextCompaction' } };
+    render(<EventTimeline {...timelineProps([event(1, 'user_message', 'Go'), compaction])} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Compacting context');
+  });
+
+  it('shows a lone step with nothing to open as a plain line', () => {
+    const tool = { ...event(1, 'tool', ''), item_id: 't1', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue' } };
+    const { container } = render(<EventTimeline {...timelineProps([tool])} session={session('completed')} />);
+
+    expect(container.querySelector('.code-activity-group summary')).toBeNull();
+    expect(container.querySelector('.code-activity-group__line')).toHaveTextContent('Called linear · get_issue');
   });
 
   it('folds a finished turn under how long it worked, and lists the files it changed', () => {
@@ -565,12 +594,12 @@ describe('EventTimeline', () => {
       { ...event(5, 'agent_message', 'Fixed a.ts.'), item_id: 'answer', timestamp: '2026-08-21T09:04:36Z' },
     ];
     const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} onOpenReview={onOpenReview} />);
-    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.getByText(headline('Ran npm test'))).toBeInTheDocument();
     expect(screen.queryByText(/^Worked for/)).toBeNull();
 
     view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} onOpenReview={onOpenReview} />);
     expect(screen.getByText('Worked for 4m 36s')).toBeInTheDocument();
-    expect(screen.queryByText('Ran npm test')).toBeNull();
+    expect(screen.queryByText(headline('Ran npm test'))).toBeNull();
     expect(screen.queryByText('Tests fail; fixing a.ts.')).toBeNull();
     expect(screen.getByText('Fixed a.ts.')).toBeInTheDocument();
     expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
@@ -579,7 +608,7 @@ describe('EventTimeline', () => {
     expect(onOpenReview).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByText('Worked for 4m 36s'));
-    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.getByText(headline('Ran npm test'))).toBeInTheDocument();
     expect(screen.getByText('Tests fail; fixing a.ts.')).toBeInTheDocument();
   });
 
@@ -587,7 +616,7 @@ describe('EventTimeline', () => {
     const events = [event(1, 'user_message', 'Fix a'), { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test' } }];
     render(<EventTimeline {...timelineProps(events)} session={session('cancelled')} />);
 
-    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.getByText(headline('Ran npm test'))).toBeInTheDocument();
     expect(screen.queryByText(/^Worked/)).toBeNull();
   });
 
