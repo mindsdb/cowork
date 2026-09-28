@@ -152,3 +152,36 @@ describe('preview window authorship tag', () => {
     expect(screen.queryByText('Another member')).toBeNull();
   });
 });
+
+// ENG-3002: the preview's own errors are a header button on both deployments.
+// The button itself is covered in PreviewErrorsButton.test.jsx.
+describe('preview errors button', () => {
+  const diagnostics = {
+    errors: [{ message: 'boom', file: 'a.html', line: 1 }],
+    dismissed: false,
+    dismiss: vi.fn(),
+  };
+
+  it.each([true, false])('is offered with orgMode=%s', (org) => {
+    setOrgMode(org);
+    render(<ArtifactViewerHeader {...props} diagnostics={diagnostics} />);
+
+    expect(screen.getByRole('button', { name: 'Preview errors, 1' })).toBeInTheDocument();
+  });
+});
+
+// IconButton renders aria-pressed only for a real toggle.
+describe('top-bar toggle semantics', () => {
+  it('keeps aria-pressed on the comments switch', () => {
+    render(<ArtifactViewerHeader {...props} />);
+
+    expect(screen.getByRole('button', { name: 'Comments' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('leaves it off plain actions', () => {
+    render(<ArtifactViewerHeader {...props} />);
+
+    expect(screen.getByRole('button', { name: 'Close' })).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('button', { name: 'More actions' })).not.toHaveAttribute('aria-pressed');
+  });
+});
