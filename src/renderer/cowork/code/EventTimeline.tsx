@@ -13,7 +13,10 @@ import {
   fileChanges,
   isCompaction,
   isIgnoredActivity,
+  isPlanUpdate,
   liveStatusLabel,
+  planPosition,
+  planSteps,
   reasoningHeading,
   reasoningSummary,
   stepFailed,
@@ -94,9 +97,10 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // stay inside the activity group instead of splitting it. The pending
   // request is already shown by the approval card; a denial stays visible.
   const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
-  // A dropped connection that Codex retries is part of the work too. A turn
-  // that ends on the error gets the outcome card instead.
-  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' ? 'activity' : 'event';
+  // A dropped connection that Codex retries is part of the work too, and so
+  // is the turn's checklist. A turn that ends on the error gets the outcome
+  // card instead, and a proposed plan from plan mode stays a card.
+  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' || isPlanUpdate(event) ? 'activity' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
   } else if (kind === 'activity') {
@@ -175,10 +179,13 @@ function activityRows(events: CodingEvent[]): ActivityRow[] {
   const decided = new Set(events.filter((event) => event.type === 'approval' && event.phase === 'completed').map((event) => event.data.approvalId));
   const latest = new Map<string, CodingEvent>();
   for (const event of events) if (event.item_id) latest.set(event.item_id, event);
+  // Each checklist update is the whole list, so only the latest is kept.
+  const latestPlan = events.filter(isPlanUpdate).at(-1);
   const rows: ActivityRow[] = [];
   const seen = new Set<string>();
   for (const event of events) {
     if (event.type === 'usage' || event.type === 'diff') continue;
+    if (isPlanUpdate(event) && event !== latestPlan) continue;
     if (event.type === 'reasoning' && !reasoningSummary(event)) continue;
     if (event.type === 'approval' && (event.phase === 'completed' || decided.has(event.data.approvalId))) continue;
     const id = event.item_id || `seq-${event.seq}`;
@@ -208,6 +215,7 @@ const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
   tool: Ico.cube,
   image: Ico.image,
   thought: Ico.brain,
+  plan: Ico.taskCheck,
   retry: Ico.refresh,
   approval: Ico.key,
 };
@@ -256,6 +264,15 @@ function stepDetail(event: CodingEvent): (() => ReactNode) | undefined {
         <pre className="code-step__command"><span aria-hidden="true">$ </span>{displayCommand(event)}</pre>
         {stepFailed(event) && code !== null && <div className="code-step__exit">Exit code {code}</div>}
         {output && <pre className="code-step__output">{output}</pre>}
+      </div>
+    );
+  }
+  if (isPlanUpdate(event)) {
+    const explanation = typeof event.data.explanation === 'string' ? event.data.explanation : '';
+    return () => (
+      <div className="code-step__plan">
+        {explanation && <p>{explanation}</p>}
+        <PlanSteps event={event} />
       </div>
     );
   }
@@ -460,6 +477,21 @@ function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?:
 }
 
 
+// The current turn's checklist, which can sit in an earlier group than the
+// work in progress.
+function latestTurnPlan(items: TimelineItem[]): CodingEvent | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'event' && item.event.type === 'user_message') return undefined;
+    if (item.kind === 'activity') {
+      const plan = item.events.filter(isPlanUpdate).at(-1);
+      if (plan) return plan;
+    }
+  }
+  return undefined;
+}
+
+
 function turnStartedAt(items: TimelineItem[]): number {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -479,7 +511,7 @@ function elapsedLabel(milliseconds: number): string {
 
 // The one moving part while the agent works, matching chat mode's thinking
 // header: what the agent is doing now, and how long this turn has taken.
-function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) {
+function LiveStatus({ label, step, startedAt }: { label: string; step: string; startedAt: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -488,32 +520,35 @@ function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) 
   return (
     <div className="code-running-indicator" role="status">
       <WorkingIndicator label={label} />
+      {step && <span className="code-running-indicator__elapsed">{step}</span>}
       {Number.isFinite(startedAt) && <span className="code-running-indicator__elapsed">{elapsedLabel(now - startedAt)}</span>}
     </div>
   );
 }
 
 
+function PlanSteps({ event }: { event: CodingEvent }) {
+  return (
+    <>
+      {planSteps(event).map((step, index) => (
+        <div className="code-plan__step" key={`${event.seq}-${index}`}>
+          <span className={`code-plan__dot is-${step.status}`} aria-hidden="true">{step.status === 'completed' ? '✓' : ''}</span>
+          <span>{step.step}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+
+// A plan proposed in plan mode, which the user decides on.
 function PlanEvent({ event }: { event: CodingEvent }) {
-  const plan = Array.isArray(event.data.plan) ? event.data.plan : [];
   return (
     <section className="code-plan">
       <div className="code-plan__heading">{event.title || 'Plan'}</div>
-      {plan.length ? plan.map((raw, index) => {
-        const step = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-        const rawStatus = typeof step.status === 'string' ? step.status : '';
-        const status = rawStatus === 'completed'
-          ? 'completed'
-          : rawStatus === 'inProgress' || rawStatus === 'in_progress' || rawStatus === 'running'
-            ? 'in_progress'
-            : 'pending';
-        return (
-          <div className="code-plan__step" key={`${event.seq}-${index}`}>
-            <span className={`code-plan__dot is-${status}`} aria-hidden="true">{status === 'completed' ? '✓' : ''}</span>
-            <span>{typeof step.step === 'string' ? step.step : 'Plan step'}</span>
-          </div>
-        );
-      }) : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
+      {isPlanUpdate(event)
+        ? <PlanSteps event={event} />
+        : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
     </section>
   );
 }
@@ -766,6 +801,7 @@ export const EventTimeline = memo(function EventTimeline({
         {session.status === 'running' && (
           <LiveStatus
             label={session.task_mode === 'plan' && !liveEvents.length ? 'Exploring and preparing a plan…' : liveStatusLabel(liveEvents)}
+            step={planPosition(latestTurnPlan(items))}
             startedAt={turnStartedAt(items)}
           />
         )}

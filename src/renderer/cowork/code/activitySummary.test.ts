@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CodingEvent } from './api';
-import { activityHeadline, displayCommand, fileChanges, isCompaction, isIgnoredActivity, liveStatusLabel, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
+import { activityHeadline, displayCommand, fileChanges, isCompaction, isIgnoredActivity, liveStatusLabel, planPosition, stepFailed, stepLabel, turnDiffFiles } from './activitySummary';
 
 
 function event(overrides: Partial<CodingEvent>): CodingEvent {
@@ -120,6 +120,27 @@ describe('stepLabel', () => {
     expect(stepFailed(event({ data: { exitCode: 1 } }))).toBe(true);
     expect(stepFailed(event({ data: { exitCode: 0 } }))).toBe(false);
     expect(stepFailed(event({ type: 'error', phase: 'failed' }))).toBe(false);
+  });
+});
+
+
+describe('plan updates', () => {
+  const plan = (statuses: string[]) => event({
+    type: 'plan',
+    phase: 'progress',
+    data: { plan: statuses.map((status, index) => ({ step: `Step ${index + 1}`, status })) },
+  });
+
+  it('counts a checklist update as finished work', () => {
+    expect(stepLabel(plan(['completed', 'inProgress', 'pending']))).toEqual({ icon: 'plan', verb: 'Updated the plan', target: '· 1 of 3 done' });
+    expect(activityHeadline([command('c1', [{ type: 'read', command: 'cat a.ts', name: 'a.ts' }]), { ...plan(['pending']), seq: 2 }])).toBe('Read 1 file and updated the plan');
+  });
+
+  it('names the step in progress, or the next one', () => {
+    expect(planPosition(plan(['completed', 'inProgress', 'pending']))).toBe('Step 2 of 3');
+    expect(planPosition(plan(['completed', 'pending']))).toBe('Step 2 of 2');
+    expect(planPosition(plan(['completed', 'completed']))).toBe('');
+    expect(planPosition(undefined)).toBe('');
   });
 });
 

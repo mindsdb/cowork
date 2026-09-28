@@ -311,6 +311,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-step__shell .code-step__output { border-top: 1px solid var(--line); }
 .code-step__exit { padding: 6px 10px 0; border-top: 1px solid var(--line); color: var(--danger); font: 11px var(--font-mono); }
 .code-step__exit + .code-step__output { border-top: 0; color: var(--danger); }
+.code-step__plan { padding: 6px 10px 7px; }
+.code-step__plan p { margin: 2px 0 6px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
 .code-step__thought { margin: 0; padding: 8px 10px; color: var(--ink-3); white-space: pre-line; font-size: 12px; line-height: 1.5; }
 .code-step__diff-path { padding: 6px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: 11px var(--font-mono); }
 .code-step__diff .code-diff-patch { max-height: 280px; }

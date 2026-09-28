@@ -8,9 +8,9 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 // Codex echoes the user's own message back as an item. It is not work.
 const IGNORED_ITEM_TYPES = new Set(['userMessage']);
 
-type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'retry';
+type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'retry';
 
-const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'retry'];
+const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'retry'];
 
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
@@ -19,6 +19,7 @@ const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   search: (count) => `searched ${count} ${count === 1 ? 'time' : 'times'}`,
   list: (count) => `listed ${count} ${count === 1 ? 'folder' : 'folders'}`,
   tool: (count) => `used ${count} ${count === 1 ? 'tool' : 'tools'}`,
+  plan: () => 'updated the plan',
   retry: (count) => (count === 1 ? 'retried once' : `retried ${count} times`),
 };
 
@@ -78,6 +79,7 @@ function actionKinds(event: CodingEvent): ActionKind[] {
   }
   if (event.type === 'tool') return ['tool'];
   if (event.type === 'error') return ['retry'];
+  if (isPlanUpdate(event)) return ['plan'];
   if (event.type !== 'command') return [];
   const actions = commandActions(event);
   if (!actions.length || actions.some((action) => !['read', 'search', 'listFiles'].includes(action.type))) return ['command'];
@@ -124,8 +126,9 @@ export function activityHeadline(events: CodingEvent[]): string {
 }
 
 
+// A plan update always arrives as progress, but each one is complete.
 function isLive(event: CodingEvent): boolean {
-  return event.phase === 'started' || event.phase === 'progress';
+  return !isPlanUpdate(event) && (event.phase === 'started' || event.phase === 'progress');
 }
 
 
@@ -195,7 +198,7 @@ function basename(path: string): string {
 }
 
 
-export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'retry' | 'approval';
+export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'retry' | 'approval';
 
 export interface StepLabel {
   icon: StepIcon;
@@ -211,6 +214,11 @@ export function stepLabel(event: CodingEvent): StepLabel {
     const changes = fileChanges(event);
     if (changes.length === 1) return { icon: 'edit', ...changeLabel(changes[0]) };
     return { icon: 'edit', verb: 'Edited', target: `${changes.length} files` };
+  }
+  if (isPlanUpdate(event)) {
+    const steps = planSteps(event);
+    const done = steps.filter((step) => step.status === 'completed').length;
+    return { icon: 'plan', verb: 'Updated the plan', target: steps.length ? `· ${done} of ${steps.length} done` : '' };
   }
   if (event.type === 'reasoning') return { icon: 'thought', verb: '', target: reasoningHeading(event) || 'Thought it through' };
   if (event.type === 'error') {
@@ -322,4 +330,41 @@ export function turnDiffFiles(diff: string): TurnFileDiff[] {
     const body = section.split('\n').filter((line) => !line.startsWith('+++') && !line.startsWith('---')).join('\n');
     return { path, ...lineCounts(body) };
   });
+}
+
+
+export interface PlanStep {
+  step: string;
+  status: 'completed' | 'in_progress' | 'pending';
+}
+
+
+// Codex keeps a checklist for the turn and resends all of it whenever a step
+// moves. A proposed plan from plan mode streams as text instead.
+export function isPlanUpdate(event: CodingEvent): boolean {
+  return event.type === 'plan' && Array.isArray(event.data.plan);
+}
+
+
+export function planSteps(event: CodingEvent): PlanStep[] {
+  const raw = Array.isArray(event.data.plan) ? event.data.plan : [];
+  return raw.map((item) => {
+    const step = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const status = text(step.status);
+    return {
+      step: text(step.step) || 'Plan step',
+      status: status === 'completed'
+        ? 'completed'
+        : status === 'inProgress' || status === 'in_progress' || status === 'running' ? 'in_progress' : 'pending',
+    };
+  });
+}
+
+
+// "Step 2 of 4" for the step being worked on, or the next one to start.
+export function planPosition(event: CodingEvent | undefined): string {
+  const steps = event ? planSteps(event) : [];
+  const current = steps.findIndex((step) => step.status === 'in_progress');
+  const index = current >= 0 ? current : steps.findIndex((step) => step.status === 'pending');
+  return index >= 0 ? `Step ${index + 1} of ${steps.length}` : '';
 }

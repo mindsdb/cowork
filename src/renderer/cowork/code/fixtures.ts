@@ -188,9 +188,19 @@ function activityEvents(running: boolean): CodingEvent[] {
   const events = [
     next('user_message', 0, { title: 'You', text: 'Where does checkout validation run, and is it covered by tests?' }),
     next('reasoning', 1, { item_id: 'r1' }),
+    next('plan', 1, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'inProgress' },
+      { step: 'Check which rules the tests cover', status: 'pending' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
     shell('c1', 2, 'rg -n "validateCheckout" src', 'search', { query: 'validateCheckout', path: 'src' }),
     shell('c2', 3, 'cat src/checkout/validation.ts', 'read', { name: 'validation.ts', path: 'src/checkout/validation.ts' }),
     shell('c3', 4, 'cat src/checkout/CheckoutForm.tsx', 'read', { name: 'CheckoutForm.tsx', path: 'src/checkout/CheckoutForm.tsx' }),
+    next('plan', 5, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'completed' },
+      { step: 'Check which rules the tests cover', status: 'inProgress' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
     next('agent_message', 6, { item_id: 'm1', text: 'Validation lives in `validation.ts` and runs on submit. Next I’ll check which rules the tests cover.' }),
     ...approved('a1', 7, 'npm test -- validation --reporter=json'),
     shell('c4', 9, 'npm test -- validation', 'unknown', {}, 'completed', 'FAIL  src/checkout/validation.test.ts\n  ● rejects an empty postcode\n\n    Cannot find module \'./fixtures/address\' from \'validation.test.ts\'\n\nTests: 1 failed, 11 passed, 12 total', 1),
@@ -201,6 +211,14 @@ function activityEvents(running: boolean): CodingEvent[] {
     next('tool', 16, { item_id: 't1', title: 'Mcp tool call', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue', result: { content: [{ type: 'text', text: '{"identifier":"ENG-412","title":"Checkout loses the draft after a 503"}' }] } } }),
     next('agent_message', 18, { item_id: 'm2', text: 'The field rules are covered, but no test exercises a failed request. Checking the API client next.' }),
     shell('c6', 19, 'cat src/checkout/api.ts', 'read', { name: 'api.ts', path: 'src/checkout/api.ts' }),
+    next('plan', 19, { title: 'Plan updated', phase: 'progress', data: {
+      explanation: 'The field rules are covered. The failed-request path in api.ts has no test.',
+      plan: [
+        { step: 'Find where checkout validation runs', status: 'completed' },
+        { step: 'Check which rules the tests cover', status: 'completed' },
+        { step: 'Cover the failed-request path', status: 'inProgress' },
+      ],
+    } }),
     next('tool', 20, { item_id: 'k1', title: 'Context compaction', data: { type: 'contextCompaction' } }),
   ];
   if (running) {

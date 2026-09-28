@@ -591,6 +591,55 @@ describe('EventTimeline', () => {
     expect(screen.queryByText(/^Worked/)).toBeNull();
   });
 
+  function planUpdate(seq: number, statuses: string[], explanation = ''): CodingEvent {
+    return {
+      ...event(seq, 'plan', ''),
+      title: 'Plan updated',
+      phase: 'progress',
+      data: { explanation, plan: statuses.map((status, index) => ({ step: `Step ${index + 1}`, status })) },
+    };
+  }
+
+  it('folds checklist updates into the work, keeping only the latest', () => {
+    const events = [
+      event(1, 'user_message', 'Fix a'),
+      planUpdate(2, ['inProgress', 'pending', 'pending']),
+      { ...event(3, 'command', ''), item_id: 'c1', data: { command: 'npm test' } },
+      planUpdate(4, ['completed', 'inProgress', 'pending'], 'Tests fail on the parser.'),
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('cancelled')} />);
+
+    expect(container.querySelector('.code-plan')).toBeNull();
+    expect(container.querySelectorAll('.code-activity-group')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Ran 1 command and updated the plan'));
+    const plan = screen.getByRole('button', { name: /Updated the plan · 1 of 3 done/ });
+    expect(screen.getAllByText('Updated the plan')).toHaveLength(1);
+    fireEvent.click(plan);
+    expect(screen.getByText('Tests fail on the parser.')).toBeInTheDocument();
+    expect(screen.getByText('Step 3')).toBeInTheDocument();
+  });
+
+  it('keeps a proposed plan as its own card', () => {
+    const proposed = { ...event(1, 'plan', '1. Split the parser\n2. Add tests'), title: 'Proposed plan', item_id: 'p1', phase: 'progress' as const };
+    const { container } = render(<EventTimeline {...timelineProps([proposed])} session={session('completed')} />);
+
+    expect(container.querySelector('.code-plan')).not.toBeNull();
+    expect(screen.getByText('Proposed plan')).toBeInTheDocument();
+  });
+
+  it('names the plan step on the live status line', () => {
+    const events = [
+      event(1, 'user_message', 'Fix a'),
+      planUpdate(2, ['completed', 'inProgress', 'pending']),
+      { ...event(3, 'agent_message', 'Parser next.'), item_id: 'note' },
+      { ...event(4, 'command', ''), item_id: 'c1', phase: 'started' as const, data: { command: 'npm test' } },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Running npm test');
+    expect(screen.getByRole('status')).toHaveTextContent('Step 2 of 3');
+  });
+
   it('keeps a denial visible in the transcript', () => {
     const denial = { ...event(1, 'approval', 'Deny'), title: 'Approval resolved', data: { approvalId: 'a1', decision: 'deny' } };
     render(<EventTimeline {...timelineProps([denial])} session={session('cancelled')} />);

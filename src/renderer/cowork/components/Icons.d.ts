@@ -43,6 +43,7 @@ declare const Ico: {
   settings: IconRenderer;
   slider: IconRenderer;
   stop: IconRenderer;
+  taskCheck: IconRenderer;
   trash: IconRenderer;
   user: IconRenderer;
 };
