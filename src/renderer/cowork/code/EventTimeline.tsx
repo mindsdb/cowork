@@ -3,6 +3,8 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { activityHeadline, approvalOutcome, displayCommand, isIgnoredActivity, liveStatusLabel, reasoningSummary } from './activitySummary';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
@@ -15,8 +17,7 @@ const TIMELINE_WINDOW_SIZE = 300;
 
 type TimelineItem =
   | { kind: 'event'; event: CodingEvent }
-  | { kind: 'activity'; events: CodingEvent[] }
-  | { kind: 'errors'; events: CodingEvent[] };
+  | { kind: 'activity'; events: CodingEvent[] };
 
 
 function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
@@ -45,6 +46,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // A late-confirmed follow-up is the one success worth a line: it tells the
   // user their unconfirmed instruction did reach the agent.
   if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
+  if (isIgnoredActivity(event)) return;
 
   const previousItem = items.at(-1);
   const previousEvent = lastEvent(previousItem);
@@ -66,12 +68,16 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
     return;
   }
 
-  const kind = ACTIVITY_TYPES.has(event.type) ? 'activity' : event.type === 'error' ? 'errors' : 'event';
+  // Approvals the user granted are part of the work they unblocked, so they
+  // stay inside the activity group instead of splitting it. The pending
+  // request is already shown by the approval card; a denial stays visible.
+  const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
+  // A dropped connection that Codex retries is part of the work too. A turn
+  // that ends on the error gets the outcome card instead.
+  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' ? 'activity' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
-  } else if (kind === 'errors' && previousItem?.kind === 'errors') {
-    previousItem.events.push(event);
-  } else if (kind === 'activity' || kind === 'errors') {
+  } else if (kind === 'activity') {
     items.push({ kind, events: [event] });
   } else {
     items.push({ kind: 'event', event });
@@ -138,6 +144,7 @@ function durationLabel(events: CodingEvent[]): string {
 
 
 function eventSummary(event: CodingEvent): string {
+  if (event.type === 'command') return displayCommand(event);
   const data = event.data;
   for (const key of ['command', 'path', 'name', 'message', 'status']) {
     const value = data[key];
@@ -147,17 +154,41 @@ function eventSummary(event: CodingEvent): string {
 }
 
 
-function ActivityGroup({ events, active }: { events: CodingEvent[]; active: boolean }) {
-  const failed = events.some((event) => event.phase === 'failed');
+// A granted approval shows as its decision beside the command it unblocked.
+// Its request is only kept when no decision followed, e.g. before a denial.
+function activityRows(events: CodingEvent[]): CodingEvent[] {
+  const decided = new Set(events.filter((event) => event.type === 'approval' && event.phase === 'completed').map((event) => event.data.approvalId));
+  return events.filter((event) => {
+    if (event.type === 'usage' || (event.type === 'reasoning' && !reasoningSummary(event))) return false;
+    return event.type !== 'approval' || event.phase === 'completed' || !decided.has(event.data.approvalId);
+  });
+}
+
+
+function rowTitle(event: CodingEvent): string {
+  if (event.type === 'approval' && event.phase === 'completed') return approvalOutcome(event);
+  if (event.type === 'error') return event.text || 'The connection dropped and the agent retried.';
+  return eventSummary(event);
+}
+
+
+function rowDetail(event: CodingEvent): string {
+  if ((event.type === 'approval' && event.phase === 'completed') || event.type === 'error') return '';
+  const detail = event.type === 'reasoning' ? reasoningSummary(event) : event.text;
+  return detail && detail !== eventSummary(event) ? detail : '';
+}
+
+
+function ActivityGroup({ events }: { events: CodingEvent[] }) {
+  const rows = activityRows(events);
+  // Retries are recoverable, so they neither count as failures nor force
+  // the group open.
+  const failures = events.filter((event) => event.phase === 'failed' && event.type !== 'error').length;
+  const failed = failures > 0;
   const [open, setOpen] = useState(failed);
   useEffect(() => { if (failed) setOpen(true); }, [failed]);
-  const inProgress = active && events.some((event) => event.phase === 'progress' || event.phase === 'started');
-  const fileCount = events.filter((event) => event.type === 'file_change' || event.type === 'diff').length;
-  const commandCount = events.filter((event) => event.type === 'command' || event.type === 'tool').length;
-  const latest = events[events.length - 1];
-  const counts = [
-    commandCount ? `${commandCount} ${commandCount === 1 ? 'action' : 'actions'}` : '',
-    fileCount ? `${fileCount} ${fileCount === 1 ? 'change' : 'changes'}` : '',
+  const detail = [
+    failed ? `${failures} failed` : '',
     durationLabel(events),
   ].filter(Boolean).join(' · ');
   return (
@@ -167,23 +198,18 @@ function ActivityGroup({ events, active }: { events: CodingEvent[]; active: bool
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span className="code-activity-group__icon">
-          {inProgress ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}
-        </span>
-        <span className="code-activity-group__copy">
-          <span>{inProgress ? eventSummary(latest) : failed ? 'Some agent activity failed' : 'Agent activity'}</span>
-          <small>{counts || 'Details'}</small>
-        </span>
+        <span className="code-activity-group__copy">{activityHeadline(events)}</span>
+        {detail && <small>{detail}</small>}
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
       {open && (
         <div className="code-activity-group__body">
-          {events.map((event) => (
+          {rows.map((event) => (
             <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
-              <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
+              <span className="code-activity-row__kind">{event.type === 'error' ? 'retry' : event.type.replace('_', ' ')}</span>
               <div>
-                <strong>{eventSummary(event)}</strong>
-                {event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
+                <strong>{rowTitle(event)}</strong>
+                {rowDetail(event) && <pre>{rowDetail(event)}</pre>}
               </div>
             </div>
           ))}
@@ -194,19 +220,55 @@ function ActivityGroup({ events, active }: { events: CodingEvent[]; active: bool
 }
 
 
-function ErrorGroup({ events }: { events: CodingEvent[] }) {
-  const [open, setOpen] = useState(false);
-  const attempts = events.length;
-  const latest = events[events.length - 1];
+// Only a turn's answer is worth copying. Agent messages earlier in the turn
+// are progress notes between steps, and a live turn has no answer yet.
+function answerSeqs(items: TimelineItem[], turnActive: boolean): Set<number> {
+  const answers = new Set<number>();
+  let lastMessageSeq: number | undefined;
+  const closeTurn = () => {
+    if (lastMessageSeq !== undefined) answers.add(lastMessageSeq);
+    lastMessageSeq = undefined;
+  };
+  for (const item of items) {
+    if (item.kind !== 'event') continue;
+    if (item.event.type === 'user_message') closeTurn();
+    else if (item.event.type === 'agent_message') lastMessageSeq = item.event.seq;
+  }
+  if (!turnActive) closeTurn();
+  return answers;
+}
+
+
+function turnStartedAt(items: TimelineItem[]): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'event' && item.event.type === 'user_message') return Date.parse(item.event.timestamp);
+  }
+  return Number.NaN;
+}
+
+
+function elapsedLabel(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+
+// The one moving part while the agent works, matching chat mode's thinking
+// header: what the agent is doing now, and how long this turn has taken.
+function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, []);
   return (
-    <details className="code-retry-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>
-        <span>{Ico.refresh(12)}</span>
-        <span>{attempts > 1 ? `Connection retried ${attempts} times` : latest.title || 'Agent retry'}</span>
-        <span className="code-retry-group__chevron">{Ico.chevDown(11)}</span>
-      </summary>
-      {open && <div>{latest.text || 'The agent could not complete this attempt.'}</div>}
-    </details>
+    <div className="code-running-indicator" role="status">
+      <WorkingIndicator label={label} />
+      {Number.isFinite(startedAt) && <span className="code-running-indicator__elapsed">{elapsedLabel(now - startedAt)}</span>}
+    </div>
   );
 }
 
@@ -257,7 +319,7 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 }
 
 
-function TimelineEvent({ event }: { event: CodingEvent }) {
+function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyable?: boolean }) {
   if (event.type === 'user_message') {
     return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
   }
@@ -270,12 +332,13 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
           complete={event.phase === 'completed'}
           animateStreamingWords={false}
         />
-        <CopyResponseButton text={event.text} />
+        {copyable && <CopyResponseButton text={event.text} />}
       </article>
     );
   }
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
+  if (event.type === 'approval' && event.data.decision === 'deny') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>Approval denied</strong></div></div>;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Follow-up delivered'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
@@ -426,7 +489,9 @@ export const EventTimeline = memo(function EventTimeline({
   const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   const latestError = latestEvents.error?.latest;
   const terminalErrorSeq = hasRecoveryCard ? latestError?.seq : undefined;
-  const active = isActiveStatus(session.status);
+  const answers = answerSeqs(items, isActiveStatus(session.status));
+  const lastItem = items.at(-1);
+  const liveEvents = lastItem?.kind === 'activity' ? lastItem.events : [];
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   useEffect(() => {
@@ -459,17 +524,21 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
-          if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} active={active} />;
-          if (item.kind === 'errors') {
-            const retryEvents = terminalErrorSeq == null
+          if (item.kind === 'activity') {
+            const groupEvents = terminalErrorSeq == null
               ? item.events
               : item.events.filter((event) => event.seq !== terminalErrorSeq);
-            return retryEvents.length ? <ErrorGroup key={key} events={retryEvents} /> : null;
+            // Telemetry alone, such as a token-usage update between two
+            // messages, has nothing to open.
+            return activityRows(groupEvents).length ? <ActivityGroup key={key} events={groupEvents} /> : null;
           }
-          return <TimelineEvent key={key} event={item.event} />;
+          return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
         })}
         {session.status === 'running' && (
-          <div className="code-running-indicator"><Spinner className="text-sm" /><span>{session.task_mode === 'plan' ? 'Exploring and preparing a plan…' : 'The coding agent is working…'}</span></div>
+          <LiveStatus
+            label={session.task_mode === 'plan' && !liveEvents.length ? 'Exploring and preparing a plan…' : liveStatusLabel(liveEvents)}
+            startedAt={turnStartedAt(items)}
+          />
         )}
         <TaskOutcome
           session={session}

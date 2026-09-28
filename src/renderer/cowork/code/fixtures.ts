@@ -153,12 +153,67 @@ function sideSessions(count = 9): CodingSession[] {
 }
 
 
+// A research turn shaped like a real Codex run: parsed shell commands, one
+// approval per network call, reasoning between steps, and short interim
+// messages before the answer.
+function activityEvents(running: boolean): CodingEvent[] {
+  let seq = 0;
+  // A live turn is timed against the clock, so start it just now.
+  const start = running ? Date.now() - 24_000 : Date.parse('2026-08-21T19:30:00Z');
+  const at = (second: number) => new Date(start + second * 1_000).toISOString();
+  const next = (type: CodingEvent['type'], second: number, values: Partial<CodingEvent> = {}) => event(++seq, type, { timestamp: at(second), ...values });
+  const shell = (id: string, second: number, command: string, actionType: string, extra: Record<string, string> = {}, phase: CodingEvent['phase'] = 'completed') => next('command', second, {
+    item_id: id,
+    phase,
+    title: `/bin/zsh -lc '${command}'`,
+    data: { command: `/bin/zsh -lc '${command}'`, commandActions: [{ type: actionType, command, ...extra }], exitCode: 0 },
+  });
+  const approved = (id: string, second: number, command: string) => [
+    next('approval', second, { title: 'Run command', text: `/bin/zsh -lc '${command}'`, phase: 'pending', data: { approvalId: id, kind: 'command' } }),
+    next('approval', second + 1, { title: 'Approval resolved', text: 'Approve once', data: { approvalId: id, decision: 'approve_once' } }),
+  ];
+  const events = [
+    next('user_message', 0, { title: 'You', text: 'Where does checkout validation run, and is it covered by tests?' }),
+    next('reasoning', 1, { item_id: 'r1' }),
+    shell('c1', 2, 'rg -n "validateCheckout" src', 'search', { query: 'validateCheckout', path: 'src' }),
+    shell('c2', 3, 'cat src/checkout/validation.ts', 'read', { name: 'validation.ts', path: 'src/checkout/validation.ts' }),
+    shell('c3', 4, 'cat src/checkout/CheckoutForm.tsx', 'read', { name: 'CheckoutForm.tsx', path: 'src/checkout/CheckoutForm.tsx' }),
+    next('agent_message', 6, { item_id: 'm1', text: 'Validation lives in `validation.ts` and runs on submit. Next I’ll check which rules the tests cover.' }),
+    ...approved('a1', 7, 'npm test -- validation --reporter=json'),
+    shell('c4', 9, 'npm test -- validation --reporter=json', 'unknown'),
+    next('error', 10, { title: 'Agent error', text: 'Reconnecting... 1/2', phase: 'failed' }),
+    next('reasoning', 12, { item_id: 'r2' }),
+    ...approved('a2', 13, 'npx vitest related src/checkout/validation.ts'),
+    shell('c5', 15, 'npx vitest related src/checkout/validation.ts', 'unknown'),
+    next('agent_message', 18, { item_id: 'm2', text: 'The field rules are covered, but no test exercises a failed request. Checking the API client next.' }),
+    shell('c6', 19, 'cat src/checkout/api.ts', 'read', { name: 'api.ts', path: 'src/checkout/api.ts' }),
+  ];
+  if (running) {
+    events.push(
+      next('reasoning', 21, { item_id: 'r3', text: '**Tracing the failed-request path**\n\nFollowing submitCheckout into the error handler.' }),
+      shell('c7', 22, 'rg -n "catch|onError" src/checkout', 'search', { query: 'catch|onError', path: 'src/checkout' }, 'started'),
+    );
+    return events;
+  }
+  events.push(next('agent_message', 26, {
+    item_id: 'm3',
+    text: 'Checkout validation runs in `src/checkout/validation.ts` when the form submits. The field rules are covered by `validation.test.ts`. The failed-request path in `api.ts` has no test, so a server error that clears the draft would go unnoticed.',
+  }));
+  return events;
+}
+
+
 function fixtureState(name: string) {
   let primary = session();
   let events = [...BASE_EVENTS];
   let files = [...FILES];
 
-  if (name === 'running' || name === 'sidebar') {
+  if (name === 'activity' || name === 'activity-running') {
+    const running = name === 'activity-running';
+    primary = session({ status: running ? 'running' : 'completed', active_turn_id: running ? 'turn-1' : null, updated_at: NOW });
+    events = activityEvents(running);
+    files = [];
+  } else if (name === 'running' || name === 'sidebar') {
     primary = session({ status: 'running', active_turn_id: 'turn-1', updated_at: NOW });
     events = BASE_EVENTS.slice(0, 8).map((item) => item.seq === 8 ? { ...item, phase: 'progress' as const } : item);
   } else if (name === 'approval') {

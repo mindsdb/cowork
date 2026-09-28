@@ -70,6 +70,24 @@ describe('EventTimeline', () => {
     expect(screen.getByRole('button', { name: 'Copy js code' })).toBeInTheDocument();
   });
 
+  it('offers copy only on the answer, not on progress notes or a live turn', () => {
+    const events = [
+      event(1, 'user_message', 'Find the bug'),
+      { ...event(2, 'agent_message', 'Checking the parser first.'), item_id: 'note-1' },
+      event(3, 'command', 'rg parse src'),
+      { ...event(4, 'agent_message', 'The parser drops trailing commas.'), item_id: 'answer-1' },
+      event(5, 'user_message', 'Fix it'),
+      { ...event(6, 'agent_message', 'Editing the parser now.'), item_id: 'note-2' },
+    ];
+    const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+    expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(1);
+    expect(screen.getByText('The parser drops trailing commas.').closest('article')).toContainElement(screen.getByRole('button', { name: 'Copy response' }));
+
+    view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+    expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(2);
+    expect(screen.getByText('Checking the parser first.').closest('article')?.querySelector('button')).toBeNull();
+  });
+
   it('reads the terminal error from the index instead of scanning the transcript on each render', () => {
     const events = Array.from({ length: 6_000 }, (_, index) => event(index + 1, index % 2 ? 'error' : 'agent_message', `Event ${index + 1}`));
     let indexReads = 0;
@@ -94,12 +112,33 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline {...timelineProps(events)} session={{ ...session('failed'), last_error: 'Connection unavailable' }} />);
 
-    expect(screen.getByText('Connection retried 5 times')).toBeInTheDocument();
+    expect(screen.getByText('Retried 5 times')).toBeInTheDocument();
     expect(screen.getAllByText('Failed')).toHaveLength(1);
     expect(screen.getByText('Connection unavailable')).toBeInTheDocument();
     expect(screen.queryByText('Attempt 1 failed')).toBeNull();
-    fireEvent.click(screen.getByText('Connection retried 5 times'));
+    fireEvent.click(screen.getByText('Retried 5 times'));
     expect(screen.getByText('Attempt 5 failed')).toBeInTheDocument();
+  });
+
+  it('folds a recovered retry into the work around it', () => {
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: 'git fetch' } },
+      event(2, 'error', 'Reconnecting... 1/2'),
+      { ...event(3, 'command', ''), item_id: 'c2', data: { command: 'git status' } },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(container.querySelectorAll('.code-activity-group')).toHaveLength(1);
+    expect(screen.getByText('Ran 2 commands and retried once')).toBeInTheDocument();
+    expect(container.querySelector('.code-activity-group.is-failed')).toBeNull();
+    expect(container.querySelector('.code-activity-group[open]')).toBeNull();
+  });
+
+  it('names a reconnect in progress on the live status line', () => {
+    const events = [event(1, 'user_message', 'Go'), event(2, 'error', 'Reconnecting... 1/2')];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting… 1/2');
   });
 
   it('offers one recovery action for a preserved remote run', () => {
@@ -381,7 +420,7 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline {...timelineProps(command)} session={session('completed')} />);
 
-    expect(screen.getByText('Agent activity')).toBeInTheDocument();
+    expect(screen.getByText('Ran 1 command')).toBeInTheDocument();
     expect(screen.queryByText('Run tests', { selector: 'summary span' })).toBeNull();
   });
 
@@ -392,10 +431,30 @@ describe('EventTimeline', () => {
       phase: 'progress' as const,
     };
 
-    render(<EventTimeline {...timelineProps([usage])} session={session('completed')} />);
+    const { container } = render(<EventTimeline {...timelineProps([usage])} session={session('completed')} />);
 
-    expect(screen.getByText('Agent activity')).toBeInTheDocument();
-    expect(screen.queryByText('Usage updated', { selector: 'summary span' })).toBeNull();
+    expect(container.querySelector('.code-activity-group')).toBeNull();
+    expect(screen.queryByText('Usage updated')).toBeNull();
+  });
+
+  it('shows no group for telemetry between two messages', () => {
+    const events = [
+      { ...event(1, 'agent_message', 'Checking the docs.'), item_id: 'note-1' },
+      { ...event(2, 'usage', ''), phase: 'progress' as const },
+      { ...event(3, 'reasoning', ''), item_id: 'r1', data: { summary: [] } },
+      { ...event(4, 'agent_message', 'Found it.'), item_id: 'answer' },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(container.querySelector('.code-activity-group')).toBeNull();
+  });
+
+  it('opens a reasoning group onto the summary from the finished item', () => {
+    const reasoning = { ...event(1, 'reasoning', ''), item_id: 'r1', data: { summary: ['**Tracing the error path**\n\nThe handler clears the draft.'] } };
+    render(<EventTimeline {...timelineProps([reasoning])} session={session('completed')} />);
+
+    fireEvent.click(screen.getByText('Thought it through'));
+    expect(screen.getByText(/The handler clears the draft\./)).toBeInTheDocument();
   });
 
   it('keeps a pinned timeline at the bottom when a streamed item grows in place', () => {
@@ -421,8 +480,43 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...timelineProps([command])} session={session('completed')} />);
 
     expect(screen.queryByText('very large command output')).toBeNull();
-    fireEvent.click(screen.getByText('Agent activity'));
+    fireEvent.click(screen.getByText('Ran 1 command'));
     expect(screen.getByText('very large command output')).toBeInTheDocument();
+  });
+
+  it('keeps granted approvals inside the work they unblocked', () => {
+    const approvalId = { approvalId: 'approval-1' };
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: `/bin/zsh -lc 'ls'` } },
+      { ...event(2, 'approval', `/bin/zsh -lc 'curl https://example.com'`), title: 'Run command', phase: 'pending' as const, data: approvalId },
+      { ...event(3, 'approval', 'Approve once'), title: 'Approval resolved', data: { ...approvalId, decision: 'approve_once' } },
+      { ...event(4, 'command', ''), item_id: 'c2', data: { command: `/bin/zsh -lc 'curl https://example.com'` } },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(screen.getByText('Ran 2 commands')).toBeInTheDocument();
+    expect(screen.queryByText('Approval resolved')).toBeNull();
+    fireEvent.click(screen.getByText('Ran 2 commands'));
+    expect(screen.getByText('Approve once')).toBeInTheDocument();
+    expect(screen.getAllByText('curl https://example.com')).toHaveLength(1);
+  });
+
+  it('keeps a denial visible in the transcript', () => {
+    const denial = { ...event(1, 'approval', 'Deny'), title: 'Approval resolved', data: { approvalId: 'a1', decision: 'deny' } };
+    render(<EventTimeline {...timelineProps([denial])} session={session('cancelled')} />);
+
+    expect(screen.getByText('Approval denied')).toBeInTheDocument();
+  });
+
+  it('shows one live status line naming what the agent is doing', () => {
+    const events = [
+      event(1, 'user_message', 'Run the tests'),
+      { ...event(2, 'command', ''), item_id: 'c1', phase: 'started' as const, data: { command: `/bin/zsh -lc 'npm test'` } },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Running npm test');
+    expect(screen.queryByText('The coding agent is working…')).toBeNull();
   });
 
   it('shows parallel Codex work as one compact, live status card', () => {
