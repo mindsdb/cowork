@@ -78,6 +78,13 @@ describe('liveStatusLabel', () => {
     expect(liveStatusLabel([command('c1', [{ type: 'unknown', command: 'npm test' }], 'progress')])).toBe('Running npm test');
   });
 
+  it('reads a summary that arrives on the finished reasoning item', () => {
+    const summarized = (summary: unknown) => event({ type: 'reasoning', data: { summary } });
+    expect(liveStatusLabel([summarized(['**Tracing the error path**\n\nFollowing the handler.'])])).toBe('Tracing the error path');
+    expect(liveStatusLabel([summarized([{ type: 'summary_text', text: 'I need to check the API client. Then the tests.' }])])).toBe('I need to check the API client.');
+    expect(liveStatusLabel([summarized([`Looking at ${'the checkout form '.repeat(8)}`])])).toHaveLength(80);
+  });
+
   it('falls back to the latest reasoning heading, then to thinking', () => {
     const done = command('c1', [{ type: 'unknown', command: 'npm test' }]);
     expect(liveStatusLabel([done, event({ type: 'reasoning', text: '**Checking the docs**\n\nLooking for…' })])).toBe('Checking the docs');

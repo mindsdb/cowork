@@ -116,12 +116,30 @@ function isLive(event: CodingEvent): boolean {
 }
 
 
-// Reasoning summaries open with a bold heading such as "**Checking the docs**".
-// Codex uses that heading as its status line; it is the model's own plain
-// description of what it is doing.
+const STATUS_MAX_LENGTH = 80;
+
+
+// A summary streams in as text deltas, or arrives whole on the finished
+// reasoning item, depending on the model.
+function reasoningSummary(event: CodingEvent): string {
+  if (event.text) return event.text;
+  const summary = event.data.summary;
+  if (!Array.isArray(summary)) return '';
+  return summary
+    .map((part) => (typeof part === 'string' ? part : part && typeof part === 'object' ? text((part as Record<string, unknown>).text) : ''))
+    .join('\n');
+}
+
+
+// GPT summaries open with a bold heading such as "**Checking the docs**", and
+// Codex uses that heading as its status line. Claude's summaries are plain
+// prose, so they fall back to their first sentence.
 function reasoningHeading(event: CodingEvent): string {
-  const match = event.text.match(/\*\*([^*\n]+)\*\*/);
-  return match ? match[1].trim() : '';
+  const summary = reasoningSummary(event).trim();
+  const heading = summary.match(/\*\*([^*\n]+)\*\*/);
+  if (heading) return heading[1].trim();
+  const sentence = summary.split(/(?<=[.!?])\s|\n/)[0]?.trim() || '';
+  return sentence.length > STATUS_MAX_LENGTH ? `${sentence.slice(0, STATUS_MAX_LENGTH - 1).trimEnd()}…` : sentence;
 }
 
 
