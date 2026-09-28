@@ -35,10 +35,11 @@ const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
 // The web-fallback OAuth routes' "service" slug and the "X connected"
 // success title both come from the connector's own spec (oauth.service_id,
-// label) rather than a hardcoded per-engine map, so any OAuth-builtin
-// connector works here without a code change.
-function getBrowserOAuthMethod(spec) {
-  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
+// label) rather than a hardcoded per-engine map, so any OAuth connector works
+// here without a code change. Looked up by the method actually chosen: the
+// OAuth method isn't always `browser_oauth_builtin` (HubSpot's is `mcp`).
+function getOAuthMethod(spec, methodId) {
+  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null) || null;
 }
 
 const FONT_BODY = 'var(--font-body)';
@@ -327,15 +328,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         return;
       }
 
-      // Web fallback — server-side redirect flow. HubSpot's 'mcp' method has
-      // no browser_oauth_builtin/service_id entry yet (Stage 3, not built) —
-      // say so plainly instead of a generic "not configured" message that
-      // reads like a setup mistake rather than a genuine platform gap.
-      const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
+      // Web fallback — server-side redirect flow.
+      const serviceId = getOAuthMethod(spec, authMethod)?.oauth?.service_id;
       if (!serviceId) {
-        setError(authMethod === 'mcp'
-          ? `${providerLabel} isn't available on the web yet — try the desktop app.`
-          : `No OAuth configuration for "${engine}".`);
+        setError(`No OAuth configuration for "${engine}".`);
         setBusy(false);
         return;
       }
@@ -926,12 +922,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   return;
                 }
 
-                // Web fallback — see the matching comment in handleAction above.
+                // Web fallback — server-side redirect flow.
                 const serviceId = method?.oauth?.service_id;
                 if (!serviceId) {
-                  setError(methodId === 'mcp'
-                    ? `${providerLabel} isn't available on the web yet — try the desktop app.`
-                    : `No OAuth configuration for "${engine}".`);
+                  setError(`No OAuth configuration for "${engine}".`);
                   setBusy(false);
                   return;
                 }
