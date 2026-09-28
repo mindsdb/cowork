@@ -114,6 +114,14 @@ export function Combobox({
     <BaseCombobox.Root
       items={groups}
       value={selected}
+      // No null guard here, unlike `Select` (ENG-2416). Base UI's Combobox
+      // never reconciles the selection against the item list, so shrinking
+      // `groups` under the current value cannot emit a spurious change:
+      // every `setSelectedValue` call in @base-ui/react 1.8 is user-driven
+      // (item press, typeahead, Clear, chip removal, autofill). The one
+      // path that emits null on its own, clearing the input text, only
+      // runs when the input sits outside the popup, which this wrapper
+      // never does. `Combobox.test.jsx` pins the shrink case.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       open={open}
       onOpenChange={onOpenChange}
