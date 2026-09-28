@@ -91,5 +91,21 @@ export function useProjectActions(sessionId: string | null | undefined) {
     }
   }, [sessionId]);
 
-  return { actions, busy, previewUrl, previewPending, run };
+  // Re-read the catalogue on demand, for when the task's commands change
+  // underneath an open session (adopting Project settings from Review).
+  const refresh = useCallback(async () => {
+    if (!sessionId) return;
+    const requestedSession = sessionId;
+    try {
+      const page = await codingApi.projectActions(requestedSession);
+      if (activeSession.current !== requestedSession) return;
+      setActions(page.items);
+      setPreviewUrl(page.preview_url || null);
+      setPreviewPending(!!page.preview_pending);
+    } catch {
+      // Leave the last known catalogue in place; the next session change reloads it.
+    }
+  }, [sessionId]);
+
+  return { actions, busy, previewUrl, previewPending, run, refresh };
 }

@@ -604,6 +604,13 @@ export default function CodeView({
                 false,
                 true,
               ))?.items || []}
+              onAdoptProjectCommands={async () => {
+                const refreshed = await runResult(() => codingApi.refreshProjectCommands(session.id), false, true);
+                if (!refreshed) throw new Error('Project commands were not updated.');
+                // Run actions read the same task snapshot, so they change too.
+                await project.refresh();
+                return refreshed;
+              }}
               connections={projects.selected?.connections || []}
               onDraftPullRequests={async (title, body, connectionName, drafts) => (await runResult(async () => {
                 const result = await codingApi.draftPullRequests(session.id, { title, body, drafts, connection_name: connectionName, confirmed: true });
