@@ -70,6 +70,24 @@ describe('EventTimeline', () => {
     expect(screen.getByRole('button', { name: 'Copy js code' })).toBeInTheDocument();
   });
 
+  it('offers copy only on the answer, not on progress notes or a live turn', () => {
+    const events = [
+      event(1, 'user_message', 'Find the bug'),
+      { ...event(2, 'agent_message', 'Checking the parser first.'), item_id: 'note-1' },
+      event(3, 'command', 'rg parse src'),
+      { ...event(4, 'agent_message', 'The parser drops trailing commas.'), item_id: 'answer-1' },
+      event(5, 'user_message', 'Fix it'),
+      { ...event(6, 'agent_message', 'Editing the parser now.'), item_id: 'note-2' },
+    ];
+    const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+    expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(1);
+    expect(screen.getByText('The parser drops trailing commas.').closest('article')).toContainElement(screen.getByRole('button', { name: 'Copy response' }));
+
+    view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+    expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(2);
+    expect(screen.getByText('Checking the parser first.').closest('article')?.querySelector('button')).toBeNull();
+  });
+
   it('reads the terminal error from the index instead of scanning the transcript on each render', () => {
     const events = Array.from({ length: 6_000 }, (_, index) => event(index + 1, index % 2 ? 'error' : 'agent_message', `Event ${index + 1}`));
     let indexReads = 0;

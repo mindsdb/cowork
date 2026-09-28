@@ -203,6 +203,25 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
 }
 
 
+// Only a turn's answer is worth copying. Agent messages earlier in the turn
+// are progress notes between steps, and a live turn has no answer yet.
+function answerSeqs(items: TimelineItem[], turnActive: boolean): Set<number> {
+  const answers = new Set<number>();
+  let lastMessageSeq: number | undefined;
+  const closeTurn = () => {
+    if (lastMessageSeq !== undefined) answers.add(lastMessageSeq);
+    lastMessageSeq = undefined;
+  };
+  for (const item of items) {
+    if (item.kind !== 'event') continue;
+    if (item.event.type === 'user_message') closeTurn();
+    else if (item.event.type === 'agent_message') lastMessageSeq = item.event.seq;
+  }
+  if (!turnActive) closeTurn();
+  return answers;
+}
+
+
 function turnStartedAt(items: TimelineItem[]): number {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -300,7 +319,7 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 }
 
 
-function TimelineEvent({ event }: { event: CodingEvent }) {
+function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyable?: boolean }) {
   if (event.type === 'user_message') {
     return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
   }
@@ -313,7 +332,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
           complete={event.phase === 'completed'}
           animateStreamingWords={false}
         />
-        <CopyResponseButton text={event.text} />
+        {copyable && <CopyResponseButton text={event.text} />}
       </article>
     );
   }
@@ -447,6 +466,7 @@ export const EventTimeline = memo(function EventTimeline({
   const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   const latestError = latestEvents.error?.latest;
   const terminalErrorSeq = hasRecoveryCard ? latestError?.seq : undefined;
+  const answers = answerSeqs(items, isActiveStatus(session.status));
   const lastItem = items.at(-1);
   const liveEvents = lastItem?.kind === 'activity' ? lastItem.events : [];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -488,7 +508,7 @@ export const EventTimeline = memo(function EventTimeline({
               : item.events.filter((event) => event.seq !== terminalErrorSeq);
             return retryEvents.length ? <ErrorGroup key={key} events={retryEvents} /> : null;
           }
-          return <TimelineEvent key={key} event={item.event} />;
+          return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
         })}
         {session.status === 'running' && (
           <LiveStatus
