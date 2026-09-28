@@ -491,99 +491,101 @@ export default function CodeView({
                 }}
                 onOpenReview={can('review') ? openReview : undefined}
               />
-              {session.pending_question && <QuestionCard
-                key={session.pending_question.id}
-                pending={session.pending_question}
-                busy={resolvingQuestionId === session.pending_question.id}
-                onAnswer={async answers => {
-                  // An input request can arrive while a steer RPC is waiting
-                  // on Codex's reader. Answering must remain independently usable.
-                  const questionId = session.pending_question!.id;
-                  setResolvingQuestionId(questionId);
-                  try { await runAction(() => codingApi.answerQuestion(session.id, questionId, answers), true, true); }
-                  finally { setResolvingQuestionId(current => current === questionId ? null : current); }
-                }}
-              />}
-              {session.task_mode === 'plan' && session.status === 'completed' && <PlanDecision
-                key={`plan-${session.id}`}
-                busy={busy}
-                onBuild={() => runAction(() => codingApi.modeTurn(session.id, 'Implement the plan we just reviewed. Verify the result and report what changed.', 'build', session.event_count), true, true)}
-                onRevise={changes => runAction(() => codingApi.turn(session.id, changes), true, true)}
-              />}
-              {approval && !session.pending_question && (
-                <ApprovalCard
-                  approval={approval}
-                  busy={!!resolvingApprovalId}
-                  onDecision={(decision) => {
-                    // The user's decision is final from the UI's perspective.
-                    // Remove the card synchronously, then reconcile with the
-                    // server; a failed request restores it with the error shown.
-                    setResolvingApprovalId(approval.id);
-                    void runAction(
-                      () => codingApi.approve(session.id, approval.id, decision),
-                      true,
-                      true,
-                    ).catch(() => {}).finally(() => setResolvingApprovalId(null));
+              <div className={`code-composer-dock${!!session.pending_question || (session.task_mode === 'plan' && session.status === 'completed') || !!approval ? ' has-decision' : ''}`}>
+                {session.pending_question && <QuestionCard
+                  key={session.pending_question.id}
+                  pending={session.pending_question}
+                  busy={resolvingQuestionId === session.pending_question.id}
+                  onAnswer={async answers => {
+                    // An input request can arrive while a steer RPC is waiting
+                    // on Codex's reader. Answering must remain independently usable.
+                    const questionId = session.pending_question!.id;
+                    setResolvingQuestionId(questionId);
+                    try { await runAction(() => codingApi.answerQuestion(session.id, questionId, answers), true, true); }
+                    finally { setResolvingQuestionId(current => current === questionId ? null : current); }
+                  }}
+                />}
+                {session.task_mode === 'plan' && session.status === 'completed' && <PlanDecision
+                  key={`plan-${session.id}`}
+                  busy={busy}
+                  onBuild={() => runAction(() => codingApi.modeTurn(session.id, 'Implement the plan we just reviewed. Verify the result and report what changed.', 'build', session.event_count), true, true)}
+                  onRevise={changes => runAction(() => codingApi.turn(session.id, changes), true, true)}
+                />}
+                {approval && !session.pending_question && (
+                  <ApprovalCard
+                    approval={approval}
+                    busy={!!resolvingApprovalId}
+                    onDecision={(decision) => {
+                      // The user's decision is final from the UI's perspective.
+                      // Remove the card synchronously, then reconcile with the
+                      // server; a failed request restores it with the error shown.
+                      setResolvingApprovalId(approval.id);
+                      void runAction(
+                        () => codingApi.approve(session.id, approval.id, decision),
+                        true,
+                        true,
+                      ).catch(() => {}).finally(() => setResolvingApprovalId(null));
+                    }}
+                  />
+                )}
+                <CodeComposer
+                  key={`composer-${session.id}`}
+                  session={session}
+                  busy={busy}
+                  supportsPlanning={session.computer_is_local !== false && catalog.engines.find(engine => engine.id === session.engine_id)?.features?.planning === 'supported'}
+                  planningLoading={session.computer_is_local !== false && catalog.enginesLoading}
+                  onModeSend={(prompt, mode, attachments) => runAction(
+                    () => codingApi.modeTurn(session.id, prompt, mode, session.event_count, attachments), true, true,
+                  )}
+                  onSend={(prompt, delivery, attachments) => runAction(
+                    () => delivery === 'steer'
+                      ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
+                      : delivery === 'queue'
+                        ? codingApi.queue(session.id, prompt, attachments)
+                        : codingApi.turn(session.id, prompt, attachments),
+                    true,
+                    true,
+                  )}
+                  onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
+                  commands={commands}
+                  onPermissionChange={(permissionMode) => runAction(
+                    () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
+                    true,
+                  )}
+                  onSteerQueued={(instructionId) => runAction(
+                    () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                    true,
+                  )}
+                  history={history}
+                  // The effect that clears this runs after the next task's composer
+                  // has already mounted and merged it.
+                  referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
+                  onRemoveQueued={(instructionId) => runAction(
+                    () => codingApi.removeQueued(session.id, instructionId),
+                    true,
+                  )}
+                  onClientCommand={(command) => {
+                    if (command.client_action === 'terminal') {
+                      setTerminalOpen(true);
+                      return;
+                    }
+                    if (command.client_action === 'controls') {
+                      setControlsOpen(true);
+                      return;
+                    }
+                    if (command.client_action === 'skills' || command.client_action === 'mcp') {
+                      setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
+                      setExtensionsOpen(true);
+                      return;
+                    }
+                    if (command.client_action === 'fork') {
+                      void forkTask();
+                      return;
+                    }
+                    setActionError(`/${command.name} controls are not available in this build yet.`);
                   }}
                 />
-              )}
-              <CodeComposer
-                key={`composer-${session.id}`}
-                session={session}
-                busy={busy}
-                supportsPlanning={session.computer_is_local !== false && catalog.engines.find(engine => engine.id === session.engine_id)?.features?.planning === 'supported'}
-                planningLoading={session.computer_is_local !== false && catalog.enginesLoading}
-                onModeSend={(prompt, mode, attachments) => runAction(
-                  () => codingApi.modeTurn(session.id, prompt, mode, session.event_count, attachments), true, true,
-                )}
-                onSend={(prompt, delivery, attachments) => runAction(
-                  () => delivery === 'steer'
-                    ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
-                    : delivery === 'queue'
-                      ? codingApi.queue(session.id, prompt, attachments)
-                      : codingApi.turn(session.id, prompt, attachments),
-                  true,
-                  true,
-                )}
-                onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
-                commands={commands}
-                onPermissionChange={(permissionMode) => runAction(
-                  () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
-                  true,
-                )}
-                onSteerQueued={(instructionId) => runAction(
-                  () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
-                  true,
-                )}
-                history={history}
-                // The effect that clears this runs after the next task's composer
-                // has already mounted and merged it.
-                referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
-                onRemoveQueued={(instructionId) => runAction(
-                  () => codingApi.removeQueued(session.id, instructionId),
-                  true,
-                )}
-                onClientCommand={(command) => {
-                  if (command.client_action === 'terminal') {
-                    setTerminalOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'controls') {
-                    setControlsOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'skills' || command.client_action === 'mcp') {
-                    setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
-                    setExtensionsOpen(true);
-                    return;
-                  }
-                  if (command.client_action === 'fork') {
-                    void forkTask();
-                    return;
-                  }
-                  setActionError(`/${command.name} controls are not available in this build yet.`);
-                }}
-              />
+              </div>
               {can('terminal') && terminalOpen && <TaskTerminal sessionId={session.id} focusTerminalId={terminalFocusId} onClose={() => setTerminalOpen(false)} />}
             </section>
             {can('review') && <ReviewPanel
