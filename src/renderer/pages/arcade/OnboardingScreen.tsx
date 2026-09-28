@@ -480,8 +480,7 @@ export default function OnboardingScreen({
       ...existing,
       ...buildProviderEnv(byokProvider, key, customBaseUrl, resolvedModel),
     };
-    // Memory prefs are edited in Settings and live in the DB; the .env copy is
-    // stale, and the server supplies the defaults for a fresh install.
+    // Stale .env copies; see the memory note on ENV_TO_SETTING in syncSettings.
     delete merged.ANTON_MEMORY_MODE;
     delete merged.ANTON_EPISODIC_MEMORY;
     // Continuing past the auth screen records terms consent (the standalone

@@ -644,7 +644,7 @@ describe('OnboardingScreen — signing in leaves memory settings alone', () => {
     expectNoMemoryWrite();
   });
 
-  it('bring-your-own-key after a refused key does not re-send the stale .env memory keys', async () => {
+  it('bring-your-own-key after a refused key leaves the stale .env memory keys out of its payload', async () => {
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: false, upgradeRequired: true }));
     render(<OnboardingScreen onComplete={() => {}} />);
     (await screen.findByRole('button', { name: /Create a free account/ })).click();
