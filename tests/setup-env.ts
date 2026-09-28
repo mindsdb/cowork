@@ -24,7 +24,7 @@ if (typeof document !== 'undefined' && document.compatMode !== 'CSS1Compat') {
 
 // Prefixes and exact names that must never leak into a test.
 const SCRUB_PREFIXES = ['COWORK_SERVER_', 'ANTON_'];
-const SCRUB_EXACT = ['DEV_MODE', 'COWORK_ALLOWED_ORIGINS'];
+const SCRUB_EXACT = ['DEV_MODE', 'COWORK_ALLOWED_ORIGINS', 'VITE_SKIP_AUTH'];
 const SCRUB_SUFFIXES = ['_API_KEY', '_TOKEN', '_SECRET'];
 
 function scrubEnv(): void {
@@ -38,6 +38,11 @@ function scrubEnv(): void {
     }
   }
 }
+
+// Also scrub once at setup time: a value inherited from the developer's shell
+// can reach import.meta.env when the first test module evaluates, which is
+// before any beforeEach hook runs.
+scrubEnv();
 
 beforeEach(scrubEnv);
 
