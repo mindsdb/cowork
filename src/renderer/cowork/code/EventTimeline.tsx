@@ -290,6 +290,9 @@ interface FailureRecovery {
   addCredits?: boolean;
   // A limit on the whole organization does not lift on another model.
   hideModelChoice?: boolean;
+  // The turn stopped, but only until a short limit lifts. It reads as a wait,
+  // not as a failure of the product.
+  temporary?: boolean;
 }
 
 const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
@@ -308,8 +311,9 @@ const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   },
   rate_limited: {
     title: () => 'MindsHub is receiving requests too quickly',
-    body: 'Wait a moment, then send a message to continue in this task.',
+    body: 'This turn stopped. Wait a moment, then continue in this task.',
     hideModelChoice: true,
+    temporary: true,
   },
   included_allowance_exhausted: {
     title: () => 'Your included allowance is used up',
@@ -365,8 +369,8 @@ function TaskOutcome({
         : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
-    <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
-      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+    <section className={`code-task-outcome ${recovery?.temporary ? 'is-waiting' : `is-${status.tone}`}${recoverable ? ' is-recovery' : ''}`}>
+      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recovery?.temporary ? Ico.clock(12) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
         <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
         <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>

@@ -267,11 +267,14 @@ describe('EventTimeline', () => {
     expect(screen.getByText('server returned 404 model not found')).toBeVisible();
   });
 
-  it('tells the user to wait out a rate limit without offering a model change or credits', () => {
-    render(<EventTimeline {...failedTask('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests')} />);
+  it('shows a rate limit as a wait, not a failure, without offering a model change or credits', () => {
+    const { container } = render(<EventTimeline {...failedTask('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests')} />);
 
     expect(screen.getByText('MindsHub is receiving requests too quickly')).toBeInTheDocument();
-    expect(screen.getByText('Wait a moment, then send a message to continue in this task.')).toBeInTheDocument();
+    expect(screen.getByText('This turn stopped. Wait a moment, then continue in this task.')).toBeInTheDocument();
+    expect(container.querySelector('.code-task-outcome.is-waiting')).not.toBeNull();
+    expect(container.querySelector('.code-task-outcome.is-danger')).toBeNull();
+    expect(screen.getByText(/429 Too Many Requests/)).not.toBeVisible();
     expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reopen task' })).not.toBeInTheDocument();
@@ -287,6 +290,7 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...failedTask(code, 'upstream 429')} onAddCredits={onAddCredits} />);
 
     expect(screen.getByText(title)).toBeInTheDocument();
+    expect(document.querySelector('.code-task-outcome.is-danger')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
     expect(onAddCredits).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeInTheDocument();
