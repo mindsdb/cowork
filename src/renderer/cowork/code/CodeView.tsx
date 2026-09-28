@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
@@ -106,6 +106,11 @@ export default function CodeView({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  const openReview = useCallback(() => {
+    setReviewOpen(true);
+    setFilesOpen(false);
+    setPreviewOpen(false);
+  }, []);
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -484,6 +489,7 @@ export default function CodeView({
                   trackBillingOpened('token_limit');
                   void openCodeExternalUrl(MINDS_BILLING_URL);
                 }}
+                onOpenReview={can('review') ? openReview : undefined}
               />
               {session.pending_question && <QuestionCard
                 key={session.pending_question.id}

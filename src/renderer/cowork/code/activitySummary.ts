@@ -5,9 +5,8 @@ import type { CodingEvent } from './api';
 // every row, so showing it only pushes the part that differs off-screen.
 const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 
-// Items Codex reports that are not work the user asked about: its echo of the
-// user's own message, and housekeeping such as context compaction.
-const IGNORED_ITEM_TYPES = new Set(['userMessage', 'contextCompaction']);
+// Codex echoes the user's own message back as an item. It is not work.
+const IGNORED_ITEM_TYPES = new Set(['userMessage']);
 
 type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'retry';
 
@@ -52,6 +51,13 @@ function commandActions(event: CodingEvent): CommandAction[] {
 
 export function isIgnoredActivity(event: CodingEvent): boolean {
   return event.type === 'tool' && IGNORED_ITEM_TYPES.has(text(event.data.type));
+}
+
+
+// Compaction drops earlier context, which explains why the agent may re-read
+// files afterwards, so it gets a line of its own rather than a step.
+export function isCompaction(event: CodingEvent): boolean {
+  return event.type === 'tool' && text(event.data.type) === 'contextCompaction';
 }
 
 
@@ -102,9 +108,14 @@ export function activityHeadline(events: CodingEvent[]): string {
   const counts = new Map<ActionKind, number>();
   // The live status line already names the action in progress, so the
   // headline only counts what has finished.
-  for (const event of latestPerItem(events)) {
-    if (isLive(event)) continue;
+  const finished = latestPerItem(events).filter((event) => !isLive(event) && actionKinds(event).length);
+  for (const event of finished) {
     for (const kind of actionKinds(event)) counts.set(kind, (counts.get(kind) || 0) + 1);
+  }
+  // One action reads better by name than as a count, e.g. "Read api.ts".
+  if (finished.length === 1 && actionKinds(finished[0]).length === 1 && finished[0].type !== 'error') {
+    const step = stepLabel(finished[0]);
+    return [step.verb, step.target].filter(Boolean).join(' ');
   }
   const phrases = ACTION_ORDER.filter((kind) => counts.get(kind)).map((kind) => ACTION_PHRASE[kind](counts.get(kind) || 0));
   if (phrases.length) return sentence(phrases);
@@ -136,7 +147,7 @@ export function reasoningSummary(event: CodingEvent): string {
 // GPT summaries open with a bold heading such as "**Checking the docs**", and
 // Codex uses that heading as its status line. Claude's summaries are plain
 // prose, so they fall back to their first sentence.
-function reasoningHeading(event: CodingEvent): string {
+export function reasoningHeading(event: CodingEvent): string {
   const summary = reasoningSummary(event).trim();
   const heading = summary.match(/\*\*([^*\n]+)\*\*/);
   if (heading) return heading[1].trim();
@@ -150,6 +161,7 @@ function presentTense(event: CodingEvent): string {
     const path = text(event.data.path) || event.title;
     return path ? `Editing ${path.split(/[\\/]/).at(-1)}` : 'Editing files';
   }
+  if (event.type === 'tool' && text(event.data.tool)) return `Calling ${text(event.data.tool)}`;
   if (event.type === 'tool') return event.title ? `Using ${event.title}` : 'Using a tool';
   const actions = commandActions(event);
   const [first] = actions;
@@ -178,9 +190,136 @@ export function liveStatusLabel(events: CodingEvent[]): string {
 }
 
 
-export function approvalOutcome(event: CodingEvent): string {
-  const decision = text(event.data.decision);
-  if (decision === 'approve_session') return 'Approved for this task';
-  if (decision === 'deny') return 'Denied';
-  return event.text || 'Approved';
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
+}
+
+
+export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'retry' | 'approval';
+
+export interface StepLabel {
+  icon: StepIcon;
+  verb: string;
+  target: string;
+}
+
+
+// One finished step in the past tense, e.g. "Read validation.ts" or
+// "Ran npm test". The verb and target are styled apart.
+export function stepLabel(event: CodingEvent): StepLabel {
+  if (event.type === 'file_change') {
+    const changes = fileChanges(event);
+    if (changes.length === 1) return { icon: 'edit', ...changeLabel(changes[0]) };
+    return { icon: 'edit', verb: 'Edited', target: `${changes.length} files` };
+  }
+  if (event.type === 'reasoning') return { icon: 'thought', verb: '', target: reasoningHeading(event) || 'Thought it through' };
+  if (event.type === 'error') {
+    const attempt = event.text.match(/\d+\/\d+/)?.[0];
+    return { icon: 'retry', verb: 'Retried', target: `after the connection dropped${attempt ? ` (${attempt})` : ''}` };
+  }
+  if (event.type === 'approval') return { icon: 'approval', verb: 'Asked to run', target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
+  if (event.type === 'tool') {
+    if (text(event.data.type) === 'imageView') return { icon: 'image', verb: 'Viewed', target: basename(event.title) || 'an image' };
+    const tool = text(event.data.tool);
+    const server = text(event.data.server);
+    if (tool) return { icon: 'tool', verb: 'Called', target: server ? `${server} · ${tool}` : tool };
+    return { icon: 'tool', verb: 'Used', target: event.title || 'a tool' };
+  }
+  const actions = commandActions(event);
+  const [first] = actions;
+  if (actions.length === 1 && first.type === 'read') return { icon: 'read', verb: 'Read', target: first.name || basename(first.path) || displayCommand(event) };
+  if (actions.length === 1 && first.type === 'search') return { icon: 'search', verb: first.query ? 'Searched for' : 'Searched', target: first.query };
+  if (actions.length === 1 && first.type === 'listFiles') return { icon: 'list', verb: 'Listed', target: first.path || 'files' };
+  return { icon: 'command', verb: 'Ran', target: displayCommand(event) };
+}
+
+
+export function commandOutput(event: CodingEvent): string {
+  return (text(event.data.aggregatedOutput) || event.text).replace(/\n+$/, '');
+}
+
+
+export function exitCode(event: CodingEvent): number | null {
+  return typeof event.data.exitCode === 'number' ? event.data.exitCode : null;
+}
+
+
+export function stepFailed(event: CodingEvent): boolean {
+  if (event.type === 'error') return false;
+  const code = exitCode(event);
+  return event.phase === 'failed' || (code !== null && code !== 0);
+}
+
+
+export interface FileChange {
+  path: string;
+  kind: 'add' | 'update' | 'delete';
+  patch: string;
+  additions: number;
+  deletions: number;
+}
+
+
+function lineCounts(patch: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('+') && !line.startsWith('+++')) additions += 1;
+    else if (line.startsWith('-') && !line.startsWith('---')) deletions += 1;
+  }
+  return { additions, deletions };
+}
+
+
+// Codex sends an update as a unified diff, but an added or deleted file as
+// its whole content. Both are turned into a patch the diff view can read.
+function asPatch(kind: FileChange['kind'], diff: string): string {
+  if (kind === 'update' || !diff) return diff;
+  const lines = diff.replace(/\n$/, '').split('\n');
+  const sign = kind === 'add' ? '+' : '-';
+  const header = kind === 'add' ? `@@ -0,0 +1,${lines.length} @@` : `@@ -1,${lines.length} +0,0 @@`;
+  return [header, ...lines.map((line) => `${sign}${line}`)].join('\n');
+}
+
+
+export function fileChanges(event: CodingEvent): FileChange[] {
+  const raw = Array.isArray(event.data.changes) ? event.data.changes : [];
+  const changes = raw
+    .filter((change): change is Record<string, unknown> => !!change && typeof change === 'object')
+    .map((change) => {
+      const rawKind = change.kind && typeof change.kind === 'object' ? text((change.kind as Record<string, unknown>).type) : text(change.kind);
+      const kind: FileChange['kind'] = rawKind === 'add' || rawKind === 'delete' ? rawKind : 'update';
+      const patch = asPatch(kind, text(change.diff));
+      return { path: text(change.path), kind, patch, ...lineCounts(patch) };
+    });
+  if (changes.length) return changes;
+  const path = text(event.data.path) || event.text || event.title;
+  return [{ path, kind: 'update', patch: '', additions: 0, deletions: 0 }];
+}
+
+
+export function changeLabel(change: FileChange): { verb: string; target: string } {
+  const verb = change.kind === 'add' ? 'Created' : change.kind === 'delete' ? 'Deleted' : 'Edited';
+  return { verb, target: basename(change.path) || 'a file' };
+}
+
+
+export interface TurnFileDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+
+// Codex keeps one cumulative diff for the turn and resends it as it grows,
+// so the latest copy lists every file the turn changed.
+export function turnDiffFiles(diff: string): TurnFileDiff[] {
+  return diff.split(/^(?=diff --git )/m).filter((section) => section.startsWith('diff --git ')).map((section) => {
+    const target = section.match(/^\+\+\+ (?:b\/)?(.+)$/m)?.[1];
+    const source = section.match(/^--- (?:a\/)?(.+)$/m)?.[1];
+    const header = section.match(/^diff --git a\/(.+?) b\/(.+)$/m)?.[2];
+    const path = (target && target !== '/dev/null' ? target : source && source !== '/dev/null' ? source : header) || '';
+    const body = section.split('\n').filter((line) => !line.startsWith('+++') && !line.startsWith('---')).join('\n');
+    return { path, ...lineCounts(body) };
+  });
 }

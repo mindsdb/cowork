@@ -85,6 +85,9 @@ describe('EventTimeline', () => {
 
     view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
     expect(screen.getAllByRole('button', { name: 'Copy response' })).toHaveLength(2);
+    // Finished turns fold their progress notes away with the work.
+    expect(screen.queryByText('Checking the parser first.')).toBeNull();
+    fireEvent.click(screen.getAllByText(/^Worked for/)[0]);
     expect(screen.getByText('Checking the parser first.').closest('article')?.querySelector('button')).toBeNull();
   });
 
@@ -117,7 +120,7 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Connection unavailable')).toBeInTheDocument();
     expect(screen.queryByText('Attempt 1 failed')).toBeNull();
     fireEvent.click(screen.getByText('Retried 5 times'));
-    expect(screen.getByText('Attempt 5 failed')).toBeInTheDocument();
+    expect(screen.getAllByText('after the connection dropped')).toHaveLength(5);
   });
 
   it('folds a recovered retry into the work around it', () => {
@@ -366,7 +369,8 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.queryByText('Raw completed notification')).toBeNull();
-    expect(screen.getAllByText('Completed')).toHaveLength(1);
+    // A finished turn needs no card; the header already says so.
+    expect(screen.queryByText('Completed')).toBeNull();
   });
 
   it('shows the answer to /status where the command was sent', () => {
@@ -415,13 +419,12 @@ describe('EventTimeline', () => {
     const command = [
       { ...event(1, 'command', ''), item_id: 'command-1', phase: 'started' as const, title: 'Run tests' },
       { ...event(2, 'command', 'tests passed'), item_id: 'command-1', phase: 'progress' as const },
-      { ...event(3, 'command', ''), item_id: 'command-1', phase: 'completed' as const, title: 'Run tests' },
+      { ...event(3, 'command', ''), item_id: 'command-1', phase: 'completed' as const, title: 'Run tests', data: { command: 'npm test' } },
     ];
 
     render(<EventTimeline {...timelineProps(command)} session={session('completed')} />);
 
-    expect(screen.getByText('Ran 1 command')).toBeInTheDocument();
-    expect(screen.queryByText('Run tests', { selector: 'summary span' })).toBeNull();
+    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
   });
 
   it('does not leave progress-only telemetry looking active after the turn ends', () => {
@@ -454,7 +457,8 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...timelineProps([reasoning])} session={session('completed')} />);
 
     fireEvent.click(screen.getByText('Thought it through'));
-    expect(screen.getByText(/The handler clears the draft\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Tracing the error path/ }));
+    expect(screen.getByText('The handler clears the draft.')).toBeInTheDocument();
   });
 
   it('keeps a pinned timeline at the bottom when a streamed item grows in place', () => {
@@ -476,11 +480,11 @@ describe('EventTimeline', () => {
   });
 
   it('does not mount large activity details until the user opens them', () => {
-    const command = { ...event(1, 'command', 'very large command output'), title: 'Run tests' };
+    const command = { ...event(1, 'command', 'very large command output'), data: { command: 'npm test' } };
     render(<EventTimeline {...timelineProps([command])} session={session('completed')} />);
 
     expect(screen.queryByText('very large command output')).toBeNull();
-    fireEvent.click(screen.getByText('Ran 1 command'));
+    fireEvent.click(screen.getByText('Ran npm test'));
     expect(screen.getByText('very large command output')).toBeInTheDocument();
   });
 
@@ -497,8 +501,94 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Ran 2 commands')).toBeInTheDocument();
     expect(screen.queryByText('Approval resolved')).toBeNull();
     fireEvent.click(screen.getByText('Ran 2 commands'));
-    expect(screen.getByText('Approve once')).toBeInTheDocument();
+    // The command it unblocked already shows; the grant adds nothing.
+    expect(screen.queryByText('Approve once')).toBeNull();
     expect(screen.getAllByText('curl https://example.com')).toHaveLength(1);
+  });
+
+  it('opens a failed command onto its exit code and output', () => {
+    const failed = {
+      ...event(1, 'command', ''),
+      item_id: 'c1',
+      data: { command: `/bin/zsh -lc 'ls /missing'`, exitCode: 1, aggregatedOutput: 'ls: /missing: No such file or directory\n' },
+    };
+    const { container } = render(<EventTimeline {...timelineProps([failed])} session={session('completed')} />);
+
+    expect(screen.getByText('1 failed')).toBeInTheDocument();
+    expect(container.querySelector('.code-activity-group.is-failed[open]')).not.toBeNull();
+    expect(screen.getByText('Exit code 1')).toBeInTheDocument();
+    expect(screen.getByText('ls: /missing: No such file or directory')).toBeInTheDocument();
+  });
+
+  it('marks a failed step inside a larger group', () => {
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: 'npm test', exitCode: 1, aggregatedOutput: 'boom' } },
+      { ...event(2, 'command', ''), item_id: 'c2', data: { command: 'npm run lint', exitCode: 0 } },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(container.querySelector('.code-step.is-failed')).toHaveTextContent('Ran npm test');
+    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(screen.queryByText('Exit code 0')).toBeNull();
+  });
+
+  it('opens a file change onto its diff', () => {
+    const change = {
+      ...event(1, 'file_change', ''),
+      item_id: 'f1',
+      data: { changes: [{ path: '/work/shop/notes.md', kind: { type: 'add' }, diff: 'first\nsecond\n' }] },
+    };
+    render(<EventTimeline {...timelineProps([change])} session={session('completed')} />);
+
+    // A lone step opens straight onto its detail.
+    fireEvent.click(screen.getByText('Created notes.md'));
+    expect(screen.queryByRole('button', { name: /Created notes\.md/ })).toBeNull();
+    expect(screen.getByText('/work/shop/notes.md')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'File diff' })).toHaveTextContent('+second');
+  });
+
+  it('marks context compaction with a line of its own', () => {
+    const compaction = (seq: number, phase: CodingEvent['phase']) => ({ ...event(seq, 'tool', ''), item_id: 'k1', phase, data: { type: 'contextCompaction' } });
+    render(<EventTimeline {...timelineProps([compaction(1, 'started'), compaction(2, 'completed')])} session={session('running')} />);
+
+    expect(screen.getAllByText('Context automatically compacted')).toHaveLength(1);
+  });
+
+  it('folds a finished turn under how long it worked, and lists the files it changed', () => {
+    const onOpenReview = vi.fn();
+    const diff = ['diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1 +1,2 @@', '-x', '+y', '+z'].join('\n');
+    const events: CodingEvent[] = [
+      { ...event(1, 'user_message', 'Fix a'), timestamp: '2026-08-21T09:00:00Z' },
+      { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test' } },
+      { ...event(3, 'agent_message', 'Tests fail; fixing a.ts.'), item_id: 'note' },
+      { ...event(4, 'diff', diff), phase: 'progress' },
+      { ...event(5, 'agent_message', 'Fixed a.ts.'), item_id: 'answer', timestamp: '2026-08-21T09:04:36Z' },
+    ];
+    const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} onOpenReview={onOpenReview} />);
+    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.queryByText(/^Worked for/)).toBeNull();
+
+    view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} onOpenReview={onOpenReview} />);
+    expect(screen.getByText('Worked for 4m 36s')).toBeInTheDocument();
+    expect(screen.queryByText('Ran npm test')).toBeNull();
+    expect(screen.queryByText('Tests fail; fixing a.ts.')).toBeNull();
+    expect(screen.getByText('Fixed a.ts.')).toBeInTheDocument();
+    expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
+    expect(screen.getByText('src/a.ts')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(onOpenReview).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByText('Worked for 4m 36s'));
+    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.getByText('Tests fail; fixing a.ts.')).toBeInTheDocument();
+  });
+
+  it('keeps the work of a turn that ended without an answer in view', () => {
+    const events = [event(1, 'user_message', 'Fix a'), { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test' } }];
+    render(<EventTimeline {...timelineProps(events)} session={session('cancelled')} />);
+
+    expect(screen.getByText('Ran npm test')).toBeInTheDocument();
+    expect(screen.queryByText(/^Worked/)).toBeNull();
   });
 
   it('keeps a denial visible in the transcript', () => {
@@ -517,6 +607,7 @@ describe('EventTimeline', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Running npm test');
     expect(screen.queryByText('The coding agent is working…')).toBeNull();
+    expect(screen.queryByText('npm test', { selector: '.code-step__target' })).toBeNull();
   });
 
   it('shows parallel Codex work as one compact, live status card', () => {
