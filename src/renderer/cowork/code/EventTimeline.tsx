@@ -288,6 +288,8 @@ interface FailureRecovery {
   title: (modelName: string) => string;
   body: string;
   addCredits?: boolean;
+  // A limit on the whole organization does not lift on another model.
+  hideModelChoice?: boolean;
 }
 
 const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
@@ -303,6 +305,21 @@ const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   model_unavailable: {
     title: (modelName) => `${modelName} is not available`,
     body: 'Choose another model, then continue in this task.',
+  },
+  rate_limited: {
+    title: () => 'MindsHub is receiving requests too quickly',
+    body: 'Wait a moment, then send a message to continue in this task.',
+    hideModelChoice: true,
+  },
+  included_allowance_exhausted: {
+    title: () => 'Your included allowance is used up',
+    body: 'Add credits to continue now, or wait for the allowance to refill, then continue in this task.',
+    addCredits: true,
+  },
+  free_air_daily_spend_fuse_exceeded: {
+    title: () => 'Free MindsHub Air is paused',
+    body: 'It resumes when the daily budget resets. Add credits or choose another model to continue now.',
+    addCredits: true,
   },
 };
 
@@ -361,10 +378,12 @@ function TaskOutcome({
         )}
       </div>
       {recovery ? (
-        <div className="code-task-outcome__actions">
-          <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>
-          {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
-        </div>
+        (!recovery.hideModelChoice || recovery.addCredits) && (
+          <div className="code-task-outcome__actions">
+            {!recovery.hideModelChoice && <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>}
+            {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
+          </div>
+        )
       ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
           {recoveryInProgress ? 'Reopening…' : 'Reopen task'}

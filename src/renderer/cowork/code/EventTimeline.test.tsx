@@ -267,6 +267,31 @@ describe('EventTimeline', () => {
     expect(screen.getByText('server returned 404 model not found')).toBeVisible();
   });
 
+  it('tells the user to wait out a rate limit without offering a model change or credits', () => {
+    render(<EventTimeline {...failedTask('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests')} />);
+
+    expect(screen.getByText('MindsHub is receiving requests too quickly')).toBeInTheDocument();
+    expect(screen.getByText('Wait a moment, then send a message to continue in this task.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reopen task' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Failure details'));
+    expect(screen.getByText(/429 Too Many Requests/)).toBeVisible();
+  });
+
+  it.each([
+    ['included_allowance_exhausted', 'Your included allowance is used up'],
+    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused'],
+  ])('offers credits when %s blocks the turn until a reset', (code, title) => {
+    const onAddCredits = vi.fn();
+    render(<EventTimeline {...failedTask(code, 'upstream 429')} onAddCredits={onAddCredits} />);
+
+    expect(screen.getByText(title)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+    expect(onAddCredits).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Choose model' })).toBeInTheDocument();
+  });
+
   it('keeps the generic paused-task recovery for failure codes it does not know', () => {
     render(<EventTimeline {...failedTask('runtime_crashed', 'worker exited with code 137')} />);
 
