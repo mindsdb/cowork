@@ -586,3 +586,78 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     expect(screen.queryByText(/Working in/)).toBeNull();
   });
 });
+
+// Memory prefs are changed in Settings and live only in the DB, so a sign-in
+// that writes them resets the user's choice. The server supplies the defaults.
+describe('OnboardingScreen — signing in leaves memory settings alone', () => {
+  const STALE_ENV = { ANTON_MEMORY_MODE: 'autopilot', ANTON_EPISODIC_MEMORY: 'true' };
+
+  beforeEach(() => {
+    hostMock.isWeb = false;
+    hostMock.isElectron = true;
+    hostMock.openExternal = vi.fn();
+    hostMock.saveSettings = vi.fn(async () => true);
+    hostMock.readSettings = vi.fn(async () => ({ ...STALE_ENV }));
+    hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    hostMock.mindshubSignup = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [], activeOrgId: null }));
+    hostMock.mindshubSetUserKey = vi.fn(async () => ({ ok: true, supported: true }));
+    keycloakMock.authenticated = false;
+    syncSettingsToDb.mockClear();
+    syncSettingsToDb.mockResolvedValue(true);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  const everyWrittenLine = () => [
+    ...hostMock.saveSettings.mock.calls.flatMap(([content]) => content.split('\n')),
+    ...syncSettingsToDb.mock.calls.flatMap(([lines]) => lines),
+  ];
+
+  const expectNoMemoryWrite = () => {
+    const lines = everyWrittenLine();
+    expect(lines.some((l) => l.startsWith('ANTON_MEMORY_MODE='))).toBe(false);
+    expect(lines.some((l) => l.startsWith('ANTON_EPISODIC_MEMORY='))).toBe(false);
+  };
+
+  it('MindsHub sign-in writes neither memory key', async () => {
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true }));
+    render(<OnboardingScreen onComplete={() => {}} />);
+    (await screen.findByRole('button', { name: /Create a free account/ })).click();
+
+    await waitFor(() => expect(syncSettingsToDb).toHaveBeenCalled());
+    expect(everyWrittenLine()).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    expectNoMemoryWrite();
+  });
+
+  it('a pasted MindsHub key writes neither memory key', async () => {
+    hostMock.isWeb = true;
+    hostMock.isElectron = false;
+    hostMock.checkConfigured = vi.fn(async () => ({ configured: false, provider: '' }));
+    render(<OnboardingScreen onComplete={() => {}} />);
+    await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText('mdb_...'), { target: { value: 'mdb_test_key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(syncSettingsToDb).toHaveBeenCalled());
+    expect(everyWrittenLine()).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    expectNoMemoryWrite();
+  });
+
+  it('bring-your-own-key after a refused key does not re-send the stale .env memory keys', async () => {
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: false, upgradeRequired: true }));
+    render(<OnboardingScreen onComplete={() => {}} />);
+    (await screen.findByRole('button', { name: /Create a free account/ })).click();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Custom' }));
+    fireEvent.change(screen.getByPlaceholderText('http://localhost:11434/v1'), {
+      target: { value: 'http://localhost:11434/v1' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter model name...'), { target: { value: 'llama3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(syncSettingsToDb).toHaveBeenCalled());
+    expect(everyWrittenLine()).toContain('ANTON_PLANNING_PROVIDER=openai-compatible');
+    expectNoMemoryWrite();
+  });
+});
