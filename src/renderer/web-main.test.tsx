@@ -195,6 +195,8 @@ describe('web-main loading view while Keycloak initializes', () => {
   ])('applies the %s %s onboarding look before App mounts', async (skin, theme, preset) => {
     skinState.skin = skin;
     window.localStorage.setItem('anton.theme', theme);
+    // A preset from an earlier look must be replaced or cleared, not left behind.
+    document.body.dataset.arcadePreset = 'stale';
     keycloakState.initialized = false;
     await renderOnHost('cowork.mindshub.ai');
     expect(document.body.dataset.arcadePreset).toBe(preset);
