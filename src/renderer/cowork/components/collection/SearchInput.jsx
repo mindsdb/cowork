@@ -13,10 +13,11 @@ export function SearchInput({
   onChange,
   inputRef,
   placeholder = 'Search',
+  ariaLabel = placeholder,
   shortcut = '⌘K',
 }) {
   return (
-    <div style={{
+    <div className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent" style={{
       flex: '0 1 320px', minWidth: 220,
       display: 'inline-flex', alignItems: 'center', gap: 8,
       padding: '7px 11px', borderRadius: 7,
@@ -29,6 +30,7 @@ export function SearchInput({
       <input
         ref={inputRef}
         type="text"
+        aria-label={ariaLabel}
         value={value || ''}
         onChange={(e) => onChange?.(e.target.value)}
         placeholder={placeholder}

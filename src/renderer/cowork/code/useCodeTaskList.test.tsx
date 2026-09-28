@@ -73,6 +73,19 @@ describe('useCodeTaskList', () => {
     sessions.mockResolvedValue({ items: [] });
   });
 
+  it('retries list errors without navigating away from the task browser', async () => {
+    sessions.mockRejectedValueOnce(new Error('Offline'));
+    const view = renderTaskList(true);
+    await act(async () => {});
+    expect(view.result.current.error).toBe('Offline');
+    sessions.mockResolvedValueOnce({ items: [codingSession()] });
+    await act(async () => view.result.current.retry());
+    expect(view.result.current).toMatchObject({ loading: false, error: '' });
+    expect(view.onSelectionChange).not.toHaveBeenCalled();
+    expect(view.onSessionsChange).toHaveBeenCalledWith([codingSession()]);
+    expect(sessions).toHaveBeenLastCalledWith(true);
+  });
+
   it('does not replace a management surface when an empty task refresh finishes', async () => {
     const pending = deferred<{ items: CodingSession[] }>();
     sessions.mockReturnValueOnce(pending.promise);

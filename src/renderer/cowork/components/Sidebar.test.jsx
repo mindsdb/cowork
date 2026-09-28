@@ -90,18 +90,22 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
   it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
     hostMock.isWeb = false;
     const onOpenCodingProjects = vi.fn();
+    const onOpenCodingTasks = vi.fn();
     const onOpenCodingConnectors = vi.fn();
     render(
       <Sidebar
         {...baseProps}
         activeWorkspace="code"
         onOpenCodingProjects={onOpenCodingProjects}
+        onOpenCodingTasks={onOpenCodingTasks}
         onOpenCodingConnectors={onOpenCodingConnectors}
       />,
     );
     screen.getByRole('button', { name: 'Projects' }).click();
+    screen.getByRole('button', { name: 'All tasks' }).click();
     screen.getByRole('button', { name: 'Connectors' }).click();
     expect(onOpenCodingProjects).toHaveBeenCalledOnce();
+    expect(onOpenCodingTasks).toHaveBeenCalledOnce();
     expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
     expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
