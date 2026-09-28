@@ -21,7 +21,7 @@ import { Select } from '../components/ui';
 const TRIGGERS = ['always', 'mention_only', 'regex'];
 const BLANK = { channel_type: '', external_group_id: '', display_name: '', trigger_rule: 'always', trigger_pattern: '', anton_project_id: '' };
 
-export default function ChannelBindings({ plugins = [], channelType = null }) {
+export default function ChannelBindings({ plugins = [], channelType = null, refreshToken = 0 }) {
   const [bindings, setBindings] = useState([]);
   const [projects, setProjects] = useState([]);
   const [edits, setEdits] = useState({});   // id -> partial patch
@@ -36,7 +36,8 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
     setEdits({});
     setLoading(false);
   }
-  useEffect(() => { refresh(); }, []);
+  // A new refreshToken refetches in place, so a half-typed manual route survives.
+  useEffect(() => { refresh(); }, [refreshToken]);
 
   function editField(id, name, value) {
     setEdits((e) => ({ ...e, [id]: { ...(e[id] || {}), [name]: value } }));

@@ -335,7 +335,7 @@ export default function ChannelsView() {
   const [statusByType, setStatusByType] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState(null);
-  // Bumped by Refresh so the Routes panel remounts and refetches its bindings.
+  // Bumped by Refresh so the Routes panel refetches its bindings.
   const [refreshCount, setRefreshCount] = useState(0);
 
   async function refresh() {
@@ -415,7 +415,8 @@ export default function ChannelsView() {
                   onChanged={refresh}
                 />
                 <ChannelBindings
-                  key={`routes-${selected.channel_type}-${refreshCount}`}
+                  key={`routes-${selected.channel_type}`}
+                  refreshToken={refreshCount}
                   plugins={plugins}
                   channelType={selected.channel_type}
                 />

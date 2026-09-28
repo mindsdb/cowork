@@ -46,4 +46,16 @@ describe('ChannelsView — header Refresh', () => {
     expect(await screen.findByText(ROUTE.external_group_id)).toBeInTheDocument();
     expect(screen.queryByText(/No routes yet/)).not.toBeInTheDocument();
   });
+
+  it('keeps a half-typed manual route across Refresh', async () => {
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+
+    const chatId = await screen.findByPlaceholderText('chat / group id');
+    await user.type(chatId, '987');
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect(await screen.findByText(ROUTE.external_group_id)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('chat / group id')).toHaveValue('987');
+  });
 });
