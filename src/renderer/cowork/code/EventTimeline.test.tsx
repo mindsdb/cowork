@@ -352,7 +352,7 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline {...timelineProps(command)} session={session('completed')} />);
 
-    expect(screen.getByText('Agent activity')).toBeInTheDocument();
+    expect(screen.getByText('Ran 1 command')).toBeInTheDocument();
     expect(screen.queryByText('Run tests', { selector: 'summary span' })).toBeNull();
   });
 
@@ -392,8 +392,43 @@ describe('EventTimeline', () => {
     render(<EventTimeline {...timelineProps([command])} session={session('completed')} />);
 
     expect(screen.queryByText('very large command output')).toBeNull();
-    fireEvent.click(screen.getByText('Agent activity'));
+    fireEvent.click(screen.getByText('Ran 1 command'));
     expect(screen.getByText('very large command output')).toBeInTheDocument();
+  });
+
+  it('keeps granted approvals inside the work they unblocked', () => {
+    const approvalId = { approvalId: 'approval-1' };
+    const events = [
+      { ...event(1, 'command', ''), item_id: 'c1', data: { command: `/bin/zsh -lc 'ls'` } },
+      { ...event(2, 'approval', `/bin/zsh -lc 'curl https://example.com'`), title: 'Run command', phase: 'pending' as const, data: approvalId },
+      { ...event(3, 'approval', 'Approve once'), title: 'Approval resolved', data: { ...approvalId, decision: 'approve_once' } },
+      { ...event(4, 'command', ''), item_id: 'c2', data: { command: `/bin/zsh -lc 'curl https://example.com'` } },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(screen.getByText('Ran 2 commands')).toBeInTheDocument();
+    expect(screen.queryByText('Approval resolved')).toBeNull();
+    fireEvent.click(screen.getByText('Ran 2 commands'));
+    expect(screen.getByText('Approve once')).toBeInTheDocument();
+    expect(screen.getAllByText('curl https://example.com')).toHaveLength(1);
+  });
+
+  it('keeps a denial visible in the transcript', () => {
+    const denial = { ...event(1, 'approval', 'Deny'), title: 'Approval resolved', data: { approvalId: 'a1', decision: 'deny' } };
+    render(<EventTimeline {...timelineProps([denial])} session={session('cancelled')} />);
+
+    expect(screen.getByText('Approval denied')).toBeInTheDocument();
+  });
+
+  it('shows one live status line naming what the agent is doing', () => {
+    const events = [
+      event(1, 'user_message', 'Run the tests'),
+      { ...event(2, 'command', ''), item_id: 'c1', phase: 'started' as const, data: { command: `/bin/zsh -lc 'npm test'` } },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Running npm test');
+    expect(screen.queryByText('The coding agent is working…')).toBeNull();
   });
 
   it('shows parallel Codex work as one compact, live status card', () => {

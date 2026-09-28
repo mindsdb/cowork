@@ -3,6 +3,8 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { activityHeadline, approvalOutcome, displayCommand, isIgnoredActivity, liveStatusLabel } from './activitySummary';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
@@ -45,6 +47,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // A late-confirmed follow-up is the one success worth a line: it tells the
   // user their unconfirmed instruction did reach the agent.
   if (event.type === 'command_result' && event.phase !== 'failed' && event.data.delivery !== 'confirmed') return;
+  if (isIgnoredActivity(event)) return;
 
   const previousItem = items.at(-1);
   const previousEvent = lastEvent(previousItem);
@@ -66,7 +69,11 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
     return;
   }
 
-  const kind = ACTIVITY_TYPES.has(event.type) ? 'activity' : event.type === 'error' ? 'errors' : 'event';
+  // Approvals the user granted are part of the work they unblocked, so they
+  // stay inside the activity group instead of splitting it. The pending
+  // request is already shown by the approval card; a denial stays visible.
+  const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
+  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval ? 'activity' : event.type === 'error' ? 'errors' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
   } else if (kind === 'errors' && previousItem?.kind === 'errors') {
@@ -138,6 +145,7 @@ function durationLabel(events: CodingEvent[]): string {
 
 
 function eventSummary(event: CodingEvent): string {
+  if (event.type === 'command') return displayCommand(event);
   const data = event.data;
   for (const key of ['command', 'path', 'name', 'message', 'status']) {
     const value = data[key];
@@ -147,17 +155,23 @@ function eventSummary(event: CodingEvent): string {
 }
 
 
-function ActivityGroup({ events, active }: { events: CodingEvent[]; active: boolean }) {
+// A granted approval shows as its decision beside the command it unblocked.
+// Its request is only kept when no decision followed, e.g. before a denial.
+function activityRows(events: CodingEvent[]): CodingEvent[] {
+  const decided = new Set(events.filter((event) => event.type === 'approval' && event.phase === 'completed').map((event) => event.data.approvalId));
+  return events.filter((event) => {
+    if (event.type === 'usage' || (event.type === 'reasoning' && !event.text)) return false;
+    return event.type !== 'approval' || event.phase === 'completed' || !decided.has(event.data.approvalId);
+  });
+}
+
+
+function ActivityGroup({ events }: { events: CodingEvent[] }) {
   const failed = events.some((event) => event.phase === 'failed');
   const [open, setOpen] = useState(failed);
   useEffect(() => { if (failed) setOpen(true); }, [failed]);
-  const inProgress = active && events.some((event) => event.phase === 'progress' || event.phase === 'started');
-  const fileCount = events.filter((event) => event.type === 'file_change' || event.type === 'diff').length;
-  const commandCount = events.filter((event) => event.type === 'command' || event.type === 'tool').length;
-  const latest = events[events.length - 1];
-  const counts = [
-    commandCount ? `${commandCount} ${commandCount === 1 ? 'action' : 'actions'}` : '',
-    fileCount ? `${fileCount} ${fileCount === 1 ? 'change' : 'changes'}` : '',
+  const detail = [
+    failed ? `${events.filter((event) => event.phase === 'failed').length} failed` : '',
     durationLabel(events),
   ].filter(Boolean).join(' · ');
   return (
@@ -167,29 +181,58 @@ function ActivityGroup({ events, active }: { events: CodingEvent[]; active: bool
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span className="code-activity-group__icon">
-          {inProgress ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}
-        </span>
-        <span className="code-activity-group__copy">
-          <span>{inProgress ? eventSummary(latest) : failed ? 'Some agent activity failed' : 'Agent activity'}</span>
-          <small>{counts || 'Details'}</small>
-        </span>
+        <span className="code-activity-group__copy">{activityHeadline(events)}</span>
+        {detail && <small>{detail}</small>}
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
       {open && (
         <div className="code-activity-group__body">
-          {events.map((event) => (
+          {activityRows(events).map((event) => (
             <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
               <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
               <div>
-                <strong>{eventSummary(event)}</strong>
-                {event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
+                <strong>{event.type === 'approval' && event.phase === 'completed' ? approvalOutcome(event) : eventSummary(event)}</strong>
+                {!(event.type === 'approval' && event.phase === 'completed') && event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
               </div>
             </div>
           ))}
         </div>
       )}
     </details>
+  );
+}
+
+
+function turnStartedAt(items: TimelineItem[]): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'event' && item.event.type === 'user_message') return Date.parse(item.event.timestamp);
+  }
+  return Number.NaN;
+}
+
+
+function elapsedLabel(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+
+// The one moving part while the agent works, matching chat mode's thinking
+// header: what the agent is doing now, and how long this turn has taken.
+function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div className="code-running-indicator" role="status">
+      <WorkingIndicator label={label} />
+      {Number.isFinite(startedAt) && <span className="code-running-indicator__elapsed">{elapsedLabel(now - startedAt)}</span>}
+    </div>
   );
 }
 
@@ -276,6 +319,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
   }
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
+  if (event.type === 'approval' && event.data.decision === 'deny') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>Approval denied</strong></div></div>;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Follow-up delivered'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
@@ -403,7 +447,8 @@ export const EventTimeline = memo(function EventTimeline({
   const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   const latestError = latestEvents.error?.latest;
   const terminalErrorSeq = hasRecoveryCard ? latestError?.seq : undefined;
-  const active = isActiveStatus(session.status);
+  const lastItem = items.at(-1);
+  const liveEvents = lastItem?.kind === 'activity' ? lastItem.events : [];
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   useEffect(() => {
@@ -436,7 +481,7 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
-          if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} active={active} />;
+          if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} />;
           if (item.kind === 'errors') {
             const retryEvents = terminalErrorSeq == null
               ? item.events
@@ -446,7 +491,10 @@ export const EventTimeline = memo(function EventTimeline({
           return <TimelineEvent key={key} event={item.event} />;
         })}
         {session.status === 'running' && (
-          <div className="code-running-indicator"><Spinner className="text-sm" /><span>{session.task_mode === 'plan' ? 'Exploring and preparing a plan…' : 'The coding agent is working…'}</span></div>
+          <LiveStatus
+            label={session.task_mode === 'plan' && !liveEvents.length ? 'Exploring and preparing a plan…' : liveStatusLabel(liveEvents)}
+            startedAt={turnStartedAt(items)}
+          />
         )}
         <TaskOutcome
           session={session}
