@@ -605,10 +605,14 @@ export default function CodeView({
                 true,
               ))?.items || []}
               onAdoptProjectCommands={async () => {
-                const refreshed = await runResult(() => codingApi.refreshProjectCommands(session.id), false, true);
+                const refreshed = await runResult(async () => {
+                  const summary = await codingApi.refreshProjectCommands(session.id);
+                  // Run actions read the same task snapshot, so re-read them
+                  // before the panel reports what is now available.
+                  await project.refresh();
+                  return summary;
+                }, false, true);
                 if (!refreshed) throw new Error('Project commands were not updated.');
-                // Run actions read the same task snapshot, so they change too.
-                await project.refresh();
                 return refreshed;
               }}
               connections={projects.selected?.connections || []}
