@@ -1,5 +1,6 @@
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
+import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
 import type {
   CodeComputer,
   ComputerStatus,
@@ -51,6 +52,7 @@ export interface PendingQuestion {
 }
 
 export interface SessionCreateBody {
+  repository_setup?: TaskRepositorySetup;
   task_mode?: TaskMode;
   path?: string;
   project_id?: string;
@@ -72,6 +74,7 @@ export interface SessionCreateBody {
 }
 
 interface CreateCodeTaskBase {
+  repositorySetup?: TaskRepositorySetup;
   taskMode?: TaskMode;
   prompt: string;
   engineId: string;
@@ -770,6 +773,9 @@ const liveCodingApi = {
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
+  repositoryStatus: (id: string) => requestJson<{ items: RepositoryStatus[] }>(`/projects/${encodeURIComponent(id)}/repository-status`),
+  repositoryBranches: (id: string, resourceId: string) => requestJson<{ items: string[] }>(`/projects/${encodeURIComponent(id)}/repositories/${encodeURIComponent(resourceId)}/branches`),
+  repositoryDiff: (id: string, resourceId: string) => requestJson<{ files: DiffFile[] }>(`/projects/${encodeURIComponent(id)}/repositories/${encodeURIComponent(resourceId)}/diff`),
   projectResources: (id: string) => requestJson<{ items: ProjectResourceState[] }>(`/projects/${encodeURIComponent(id)}/resources`),
   projectComputers: (id: string, resourceIds: string[] | undefined, engineId?: string) => {
     const query = new URLSearchParams();
