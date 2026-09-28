@@ -288,6 +288,11 @@ interface FailureRecovery {
   title: (modelName: string) => string;
   body: string;
   addCredits?: boolean;
+  // A limit on the whole organization does not lift on another model.
+  hideModelChoice?: boolean;
+  // The turn stopped, but only until a short limit lifts. It reads as a wait,
+  // not as a failure of the product.
+  temporary?: boolean;
 }
 
 const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
@@ -303,6 +308,22 @@ const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   model_unavailable: {
     title: (modelName) => `${modelName} is not available`,
     body: 'Choose another model, then continue in this task.',
+  },
+  rate_limited: {
+    title: () => 'MindsHub is receiving requests too quickly',
+    body: 'This turn stopped. Wait a moment, then continue in this task.',
+    hideModelChoice: true,
+    temporary: true,
+  },
+  included_allowance_exhausted: {
+    title: () => 'Your included allowance is used up',
+    body: 'Add credits to continue now, or wait for the allowance to refill, then continue in this task.',
+    addCredits: true,
+  },
+  free_air_daily_spend_fuse_exceeded: {
+    title: () => 'Free MindsHub Air is paused',
+    body: 'It resumes when the daily budget resets. Add credits or choose another model to continue now.',
+    addCredits: true,
   },
 };
 
@@ -348,8 +369,8 @@ function TaskOutcome({
         : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
-    <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
-      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+    <section className={`code-task-outcome ${recovery?.temporary ? 'is-waiting' : `is-${status.tone}`}${recoverable ? ' is-recovery' : ''}`}>
+      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recovery?.temporary ? Ico.clock(12) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
         <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
         <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
@@ -361,10 +382,12 @@ function TaskOutcome({
         )}
       </div>
       {recovery ? (
-        <div className="code-task-outcome__actions">
-          <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>
-          {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
-        </div>
+        (!recovery.hideModelChoice || recovery.addCredits) && (
+          <div className="code-task-outcome__actions">
+            {!recovery.hideModelChoice && <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>}
+            {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
+          </div>
+        )
       ) : recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
           {recoveryInProgress ? 'Reopening…' : 'Reopen task'}

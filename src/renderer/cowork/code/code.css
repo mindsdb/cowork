@@ -320,6 +320,8 @@
 .code-task-outcome.is-success .code-task-outcome__icon { color: var(--ok); background: var(--ok-bg); }
 .code-task-outcome.is-danger { border-color: var(--danger-border); }
 .code-task-outcome.is-danger .code-task-outcome__icon { color: var(--danger); background: var(--danger-bg); }
+.code-task-outcome.is-waiting { border-color: var(--warning-border); }
+.code-task-outcome.is-waiting .code-task-outcome__icon { color: var(--warning); background: var(--warning-bg); }
 
 /* Approval is causally docked between the conversation and composer. */
 .code-approval { width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 0 auto 8px; padding: 12px; display: flex; flex: none; gap: 11px; border: 1px solid var(--warning-border); border-radius: var(--r-lg); background: var(--warning-bg); color: var(--warning-text); box-shadow: var(--sh-1); }
