@@ -15,6 +15,8 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { ComposerLip } from './ComposerLip';
+import { accountFailure, failureNotice, messageNotice, pickNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -121,6 +123,9 @@ export default function CodeView({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // A dismissed notice stays dismissed for the task it was shown on.
+  const [dismissedNotices, setDismissedNotices] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => { setDismissedNotices(new Set()); }, [selectedId]);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
@@ -254,6 +259,14 @@ export default function CodeView({
   const workspaceWarning = session?.workspace_kind === 'direct_folder'
     ? ''
     : session?.workspace_warning || '';
+  const composerNotice = session ? pickNotice([
+    failureNotice(
+      accountFailure(session, detail.latestEvents.session?.latest, detail.latestEvents.error?.latest, recoveringTaskId === session.id),
+      models.find((model) => model.id === session.model)?.name || session.model,
+    ),
+    messageNotice('error', conversationError),
+    messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
+  ], dismissedNotices) : null;
   const approval = session?.pending_approval?.id === resolvingApprovalId
     ? null
     : session?.pending_approval;
@@ -470,28 +483,28 @@ export default function CodeView({
         ) : session ? (
           <div className="code-workspace">
             <section className="code-conversation">
-              {(conversationError || workspaceWarning) && (
-                <div className="code-notices">
-                  {conversationError && <Alert variant="danger">{conversationError}</Alert>}
-                  {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
-                </div>
-              )}
               <EventTimeline
                 key={`timeline-${session.id}`}
                 events={detail.events}
                 latestEvents={detail.latestEvents}
                 session={session}
-                modelName={models.find((model) => model.id === session.model)?.name || session.model}
                 recovering={recoveringTaskId === session.id}
                 onRecover={() => recoverTask(session.id)}
-                onChooseModel={() => setControlsOpen(true)}
-                onAddCredits={() => {
-                  trackBillingOpened('token_limit');
-                  void openCodeExternalUrl(MINDS_BILLING_URL);
-                }}
                 onOpenReview={can('review') ? openReview : undefined}
               />
               <div className="code-composer-dock">
+                {composerNotice && (
+                  <ComposerLip
+                    key={composerNotice.key}
+                    notice={composerNotice}
+                    onChooseModel={() => setControlsOpen(true)}
+                    onAddCredits={() => {
+                      trackBillingOpened('token_limit');
+                      void openCodeExternalUrl(MINDS_BILLING_URL);
+                    }}
+                    onDismiss={(key) => setDismissedNotices((current) => new Set(current).add(key))}
+                  />
+                )}
                 {session.pending_question && <QuestionCard
                   key={session.pending_question.id}
                   pending={session.pending_question}

@@ -25,6 +25,7 @@ import {
   type StepIcon,
 } from './activitySummary';
 import { DiffPatchView } from './DiffPatchView';
+import { accountFailure } from './composerNotices';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, compactPath, isActiveStatus } from './presentation';
@@ -614,68 +615,18 @@ function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyab
 }
 
 
-interface FailureRecovery {
-  title: (modelName: string) => string;
-  body: string;
-  addCredits?: boolean;
-  // A limit on the whole organization does not lift on another model.
-  hideModelChoice?: boolean;
-  // The turn stopped, but only until a short limit lifts. It reads as a wait,
-  // not as a failure of the product.
-  temporary?: boolean;
-}
-
-const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
-  insufficient_credits: {
-    title: (modelName) => `${modelName} needs credits`,
-    body: 'Add credits or choose another model, then continue in this task.',
-    addCredits: true,
-  },
-  model_authentication_failed: {
-    title: () => 'Your sign-in does not match this server',
-    body: 'Sign in again, or switch back to the environment you signed into, then continue in this task.',
-  },
-  model_unavailable: {
-    title: (modelName) => `${modelName} is not available`,
-    body: 'Choose another model, then continue in this task.',
-  },
-  rate_limited: {
-    title: () => 'MindsHub is receiving requests too quickly',
-    body: 'This turn stopped. Wait a moment, then continue in this task.',
-    hideModelChoice: true,
-    temporary: true,
-  },
-  included_allowance_exhausted: {
-    title: () => 'Your included allowance is used up',
-    body: 'Add credits to continue now, or wait for the allowance to refill, then continue in this task.',
-    addCredits: true,
-  },
-  free_air_daily_spend_fuse_exceeded: {
-    title: () => 'Free MindsHub Air is paused',
-    body: 'It resumes when the daily budget resets. Add credits or choose another model to continue now.',
-    addCredits: true,
-  },
-};
-
-
 function TaskOutcome({
   session,
   latestSession,
   latestError,
-  modelName,
   recovering,
   onRecover,
-  onChooseModel,
-  onAddCredits,
 }: {
   session: CodingSession;
   latestSession: CodingEvent | undefined;
   latestError: CodingEvent | undefined;
-  modelName: string;
   recovering: boolean;
   onRecover: () => Promise<void>;
-  onChooseModel: () => void;
-  onAddCredits: () => void;
 }) {
   const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
   // A finished turn speaks for itself: the answer, its copy button, and the
@@ -684,26 +635,26 @@ function TaskOutcome({
   const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
+  // An account or model limit is about the next send, so the composer lip carries it.
+  if (accountFailure(session, latestSession, latestError, recovering)) return null;
   const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
   const failure = latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string'
     ? latestSession
     : latestError;
-  const code = failure?.data.code;
-  const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
   const technicalDetail = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
   const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = recoverable
-      ? session.computer_status === 'offline'
-        ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
-        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
-      : 'The active turn was stopped. You can continue in the same task.';
+    ? session.computer_status === 'offline'
+      ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
+      : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
+    : 'The active turn was stopped. You can continue in the same task.';
   return (
-    <section className={`code-task-outcome ${recovery?.temporary ? 'is-waiting' : `is-${status.tone}`}${recoverable ? ' is-recovery' : ''}`}>
-      <span className="code-task-outcome__icon">{recovery?.temporary ? Ico.clock(12) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+    <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
+      <span className="code-task-outcome__icon">{recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
+        <strong>{recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
+        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>
@@ -711,14 +662,7 @@ function TaskOutcome({
           </details>
         )}
       </div>
-      {recovery ? (
-        (!recovery.hideModelChoice || recovery.addCredits) && (
-          <div className="code-task-outcome__actions">
-            {!recovery.hideModelChoice && <Button size="sm" variant="tinted" onClick={onChooseModel}>Choose model</Button>}
-            {recovery.addCredits && <Button size="sm" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
-          </div>
-        )
-      ) : recoverable && (
+      {recoverable && (
         <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
           {recoveryInProgress ? 'Reopening…' : 'Reopen task'}
         </Button>
@@ -732,21 +676,15 @@ export const EventTimeline = memo(function EventTimeline({
   events,
   latestEvents,
   session,
-  modelName = '',
   recovering = false,
   onRecover = async () => {},
-  onChooseModel = () => {},
-  onAddCredits = () => {},
   onOpenReview,
 }: {
   events: CodingEvent[];
   latestEvents: LatestEvents;
   session: CodingSession;
-  modelName?: string;
   recovering?: boolean;
   onRecover?: () => Promise<void>;
-  onChooseModel?: () => void;
-  onAddCredits?: () => void;
   onOpenReview?: () => void;
 }) {
   const items = useTimelineItems(events, session.id);
@@ -819,11 +757,8 @@ export const EventTimeline = memo(function EventTimeline({
           session={session}
           latestSession={latestEvents.session?.latest}
           latestError={latestError}
-          modelName={modelName}
           recovering={recovering}
           onRecover={onRecover}
-          onChooseModel={onChooseModel}
-          onAddCredits={onAddCredits}
         />
       </div>
     </div>
@@ -836,7 +771,6 @@ export const EventTimeline = memo(function EventTimeline({
   && left.session.run_status === right.session.run_status
   && left.session.computer_status === right.session.computer_status
   && left.session.last_error === right.session.last_error
-  && left.modelName === right.modelName
   && left.recovering === right.recovering
   && left.onOpenReview === right.onOpenReview
 ));

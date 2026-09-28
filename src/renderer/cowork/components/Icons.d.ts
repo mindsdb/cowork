@@ -46,6 +46,7 @@ declare const Ico: {
   taskCheck: IconRenderer;
   trash: IconRenderer;
   user: IconRenderer;
+  warning: IconRenderer;
 };
 
 export default Ico;

@@ -298,6 +298,27 @@ function fixtureState(name: string) {
     events = BASE_EVENTS.slice(0, 7);
   } else if (name === 'plan-review') {
     primary = session({ status: 'completed', task_mode: 'plan' });
+  } else if (name === 'credits' || name === 'rate-limited') {
+    const code = name === 'credits' ? 'insufficient_credits' : 'rate_limited';
+    primary = session({ status: 'failed', run_status: 'failed', last_error: 'The turn failed.' });
+    events = [...BASE_EVENTS.slice(0, 8), event(11, 'error', {
+      title: 'Agent error',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code, detail: name === 'credits' ? 'server returned 402 Payment Required' : 'exceeded retry limit, last status: 429 Too Many Requests' },
+    })];
+  } else if (name === 'queued') {
+    primary = session({
+      status: 'running',
+      active_turn_id: 'turn-1',
+      updated_at: NOW,
+      workspace_warning: 'The source folder has uncommitted changes that are not in this task’s copy.',
+      queued_instructions: [
+        { id: 'queued-1', prompt: 'Also add a regression test for the saved-card form once this passes.', created_at: NOW },
+        { id: 'queued-2', prompt: 'Then summarize what changed for the PR description.', created_at: NOW },
+      ],
+    });
+    events = BASE_EVENTS.slice(0, 8).map((item) => item.seq === 8 ? { ...item, phase: 'progress' as const } : item);
   } else if (name === 'retry' || name === 'failed') {
     const retryEvents = Array.from({ length: name === 'retry' ? 5 : 1 }, (_, index) => event(11 + index, 'error', {
       title: 'Agent connection lost',
