@@ -222,6 +222,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessLoaded(true);
       // Same self-clobber hazard as the desktop branch below: the broad re-sync
       // effect re-seeds from the prop, so the loaded list has to go back into it.
+      // Once the prop already carries it, a repeat report only churns the
+      // parent — and this runs on every open and window focus (ENG-3070).
+      const propSame = modeFromArtifact(artifact) === nextMode
+        && !!artifact?.orgAllowed === nextOrg
+        && !!artifact?.ownerOnly === !!a.ownerOnly
+        && Array.isArray(artifact?.accessEmails)
+        && artifact.accessEmails.join(',') === nextEmails.join(',');
+      if (propSame) return;
       onChange?.({
         ...artifact,
         accessMode: nextMode,

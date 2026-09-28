@@ -135,6 +135,20 @@ describe('usePublish on Cloud', () => {
     );
   });
 
+  it('does not re-report access the artifact already carries', async () => {
+    // refresh() runs on every open and window focus. Reporting an unchanged
+    // list churns the host's preview state for nothing (ENG-3070).
+    const onChange = vi.fn();
+    const loaded = { ...ORG_ARTIFACT, accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false };
+    const { result } = renderHook(() => usePublish(loaded, { onChange, enabled: true }));
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalled());
+    await act(async () => { await result.current.refresh(); });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(result.current.accessEmails).toEqual(['alice@x.com']);
+  });
+
   it('survives an access read that fails', async () => {
     wsMock.loadArtifactAccess.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));

@@ -64,6 +64,14 @@ import {
 // fall back to a monospace block.
 
 
+// Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
+// carry over from the artifact the report started from.
+function isSameArtifact(a, b) {
+  if (!a || !b) return false;
+  if (a.id || b.id) return a.id === b.id;
+  return (a.path || '') === (b.path || '');
+}
+
 export function ArtifactViewer({
   open,
   artifact,
@@ -147,8 +155,23 @@ export function ArtifactViewer({
 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
-  const pub = usePublish(artifact, { onChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  // The hooks below report back from async work (status refreshes, saves) that
+  // can settle after the viewer closed or moved to another artifact. Hosts
+  // handle onChange by setting their preview state to the updated artifact, so
+  // a late report would reopen a closed viewer or swap the one on screen
+  // (ENG-3070). Refs are written during render so a close is seen immediately.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const artifactRef = useRef(artifact);
+  artifactRef.current = artifact;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const reportChange = useCallback((updated) => {
+    if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
+    onChangeRef.current?.(updated);
+  }, []);
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
+  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
