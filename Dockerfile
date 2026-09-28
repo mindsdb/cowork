@@ -187,4 +187,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:26866/api/v1/health/',timeout=3).status==200 else 1)" \
     || exit 1
 
-CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866"]
+# Bound active-response draining so cowork.server.lifespan can cancel and
+# persist interrupted turns within its five-second budget before Docker's
+# default ten-second stop deadline. Leave the remaining time for teardown.
+CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866", "--timeout-graceful-shutdown", "2"]
