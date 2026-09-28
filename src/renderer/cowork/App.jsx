@@ -93,7 +93,7 @@ import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -1417,6 +1417,11 @@ function AppCore() {
   const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
     ? 'code'
     : 'cowork';
+  // Keyed on the effective mode so every entry point counts once per switch,
+  // and a Code preference that is off never records a visit.
+  useEffect(() => {
+    if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
+  }, [effectiveWorkspaceMode]);
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.

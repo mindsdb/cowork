@@ -108,6 +108,13 @@ const EVENTS = {
   // classified); `model`/`provider_label` only ride along when the failure
   // event names one (the model-403/404 and provider-auth families).
   CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label?, request_id? }
+  // Code Mode. Named apart from the chat events rather than folded into them so
+  // "who uses Code Mode" is one event filter, not an inference from app version
+  // or model. A Code Mode route onto a shared event (billing_opened) carries
+  // `workspace_mode: 'code'` instead.
+  CODE_VIEW_OPENED:         'code_view_opened',         // {}  each switch into the Code workspace
+  CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
+  CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -663,8 +670,59 @@ export function trackTurnFailed(conversationId, event) {
 // Deliberately no impression event alongside any of this: token_cap_hit already
 // fires once per receipt in the stream adapter, and an impression in the render
 // path would re-fire on every paint.
-export function trackBillingOpened(trigger) {
-  capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
+//
+// `workspaceMode` is 'code' when Code Mode sent them and omitted otherwise, so
+// every existing chat-side series keeps its meaning.
+export function trackBillingOpened(trigger, workspaceMode) {
+  capture(EVENTS.BILLING_OPENED, {
+    trigger: trigger || 'unknown',
+    workspace_mode: workspaceMode || undefined,
+  });
+}
+
+// Each switch into the Code workspace, from any entry point. The denominator
+// for Code Mode reach: a person who opens it and never starts a task is a
+// different problem from one who never opens it.
+export function trackCodeViewOpened() {
+  capture(EVENTS.CODE_VIEW_OPENED);
+}
+
+// A Code Mode task was created on the server. Fired on the create response, not
+// the click, so a refused create is not counted as a start. Everything here is
+// read from the created session, which is what actually ran, rather than from
+// the draft. No path, repo name or prompt: those identify a customer's code.
+// `attachmentCount` comes from the request, since the session does not echo
+// attachments back; a fork has none of its own and leaves it out.
+export function trackCodeTaskStarted(session, { origin = 'new', attachmentCount } = {}) {
+  if (!session?.id) return;
+  capture(EVENTS.CODE_TASK_STARTED, {
+    task_id: session.id,
+    origin,
+    engine_id: session.engine_id || 'unknown',
+    model: session.model || 'unknown',
+    reasoning_effort: session.reasoning_effort || undefined,
+    permission_mode: session.permission_mode || undefined,
+    task_mode: session.task_mode || 'build',
+    workspace_kind: session.workspace_kind || 'unknown',
+    in_project: Boolean(session.project_id),
+    computer_is_local: session.computer_is_local !== false,
+    attachment_count: typeof attachmentCount === 'number' ? attachmentCount : undefined,
+    source_context_count: Array.isArray(session.source_contexts) ? session.source_contexts.length : 0,
+  });
+}
+
+// A Code Mode create or fork was refused. `code` is the server's
+// X-MindsHub-Error-Code when it named one, else 'unknown'; `status` is the HTTP
+// status, absent for a client-side failure such as a timeout.
+export function trackCodeTaskStartFailed(origin, input, reason) {
+  capture(EVENTS.CODE_TASK_START_FAILED, {
+    origin: origin || 'new',
+    engine_id: input?.engineId || undefined,
+    model: input?.model || undefined,
+    in_project: input ? Boolean(input.projectId) : undefined,
+    code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
+    status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
 }
 
 // MindsHub declined to provision an LLM key (ENG-1533) — the earliest point a

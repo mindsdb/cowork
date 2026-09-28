@@ -3,13 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
 
-const { createSession } = vi.hoisted(() => ({
-  createSession: vi.fn(async () => ({ id: 'task-created' })),
+const { createSession, analytics } = vi.hoisted(() => ({
+  createSession: vi.fn(async (): Promise<{ id: string }> => ({ id: 'task-created' })),
+  analytics: { trackCodeTaskStarted: vi.fn(), trackCodeTaskStartFailed: vi.fn() },
 }));
 
 vi.mock('./api', () => ({
   codingApi: { create: createSession },
 }));
+vi.mock('../lib/analytics', () => analytics);
 
 import { useCodeTaskActions } from './useCodeTaskActions';
 
@@ -180,5 +182,38 @@ describe('useCodeTaskActions', () => {
     });
 
     expect(result.current.error).toBe('turn rejected');
+  });
+
+  it('reports a created task once, from the created session, with the request attachment count', async () => {
+    createSession.mockClear();
+    analytics.trackCodeTaskStarted.mockClear();
+    const { result } = renderActions();
+    const input = {
+      projectId: 'project-1', prompt: 'Ship it', engineId: 'codex', model: 'gpt', permissionMode: 'supervised' as const,
+      attachments: [{ kind: 'file', path: 'a.png' }] as never[], sourceContexts: [],
+    };
+
+    await act(async () => { await result.current.create(input); });
+
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledOnce();
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledWith({ id: 'task-created' }, { origin: 'new', attachmentCount: 1 });
+    expect(analytics.trackCodeTaskStartFailed).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused create as a failed start, not a start', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const refusal = Object.assign(new Error('Git identity missing'), { status: 409, code: 'git_identity_missing' });
+    createSession.mockRejectedValueOnce(refusal);
+    const { result } = renderActions();
+    const input = {
+      projectId: null, path: '/tmp/work', prompt: 'Ship it', engineId: 'codex', model: 'gpt', permissionMode: 'supervised' as const,
+      attachments: [], sourceContexts: [],
+    };
+
+    await act(async () => { await result.current.create(input); });
+
+    expect(analytics.trackCodeTaskStarted).not.toHaveBeenCalled();
+    expect(analytics.trackCodeTaskStartFailed).toHaveBeenCalledWith('new', input, refusal);
   });
 });

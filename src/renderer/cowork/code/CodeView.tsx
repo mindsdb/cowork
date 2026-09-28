@@ -539,8 +539,8 @@ export default function CodeView({
                       more={lip.more}
                       onShowMore={lip.showNext}
                       onChooseModel={() => setControlsOpen(true)}
-                      onAddCredits={() => {
-                        trackBillingOpened('token_limit');
+                      onAddCredits={(billingTrigger) => {
+                        trackBillingOpened(billingTrigger, 'code');
                         void openCodeExternalUrl(MINDS_BILLING_URL);
                       }}
                       onReopen={() => void recoverTask(session.id)}
