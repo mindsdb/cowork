@@ -40,6 +40,7 @@ declare const Ico: {
   slider: IconRenderer;
   stop: IconRenderer;
   trash: IconRenderer;
+  user: IconRenderer;
 };
 
 export default Ico;

@@ -77,7 +77,7 @@ export const MINDS_LLM_BASE_URL = `${API_HOST}/v1`;
  * paid model is denied for an account whose wallet is empty, and that denial
  * arrives as an ordinary error the probe cannot tell apart from a bad key:
  * onboarding then tells a brand-new user their working key does not work.
- * MindsHub Air draws the monthly included allowance instead of the wallet, so
+ * MindsHub Air draws the free included allowance instead of the wallet, so
  * the probe reports reachability and key validity, which is what it is for.
  *
  * Two copies of this value exist because main is compiled Node with no import

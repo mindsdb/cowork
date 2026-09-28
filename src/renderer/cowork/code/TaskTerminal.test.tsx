@@ -84,6 +84,27 @@ it('starts a task-owned shell, reports state, and stops only the active terminal
 });
 
 
+it('keeps the exit reported by the stream when the stop reply is stale', async () => {
+  const user = userEvent.setup();
+  render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
+  await screen.findByRole('tab', { name: 'Terminal 1, Running' });
+  // The server replies before its exit handler runs, so the reply still says
+  // running, while the stream has already delivered the exit and closed.
+  api.stopTerminal.mockImplementationOnce(async () => {
+    stream.onState?.({ status: 'exited', exit_code: 1 } as { status: string });
+    return { process_id: 'p1', status: 'running', items: [], first_seq: 0, next_seq: 0 } as never;
+  });
+
+  await user.click(screen.getByRole('button', { name: 'Stop terminal' }));
+
+  expect(await screen.findByRole('tab', { name: 'Terminal 1, Exited with code 1' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Stop terminal' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: /Restart/ }));
+  expect(api.startTerminal).toHaveBeenCalledWith('task-1', 'terminal-1', 100, 30, 'auto');
+  expect(await screen.findByRole('tab', { name: 'Terminal 1, Running' })).toBeInTheDocument();
+});
+
+
 it('creates independent tabs and renames them inline', async () => {
   const user = userEvent.setup();
   render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);

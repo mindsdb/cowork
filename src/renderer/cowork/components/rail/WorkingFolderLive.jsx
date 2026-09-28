@@ -27,6 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
@@ -92,6 +93,13 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   const effectiveProject = project || resolvedProject;
 
   const [rows, setRows] = useState([]);
+  // Sticky per project (ENG-2979 fix wave): once any row in a fetched slice
+  // needed the authorship column, keep reserving it for this project even
+  // once a later poll's top-12 slice happens to be owner-only. Recomputing
+  // straight from `rows` on every 3s poll made the column — and every row's
+  // horizontal position — jump as a colleague's artifact entered/left the
+  // slice. Only the project-switch effect below ever turns it back off.
+  const [markerColumn, setMarkerColumn] = useState(false);
   // Bumped on every project switch / streaming-tick load. The async
   // load checks the version against the latest before applying its
   // result, so a request that finishes after a project switch can't
@@ -107,7 +115,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   const applyArtifacts = (proj, list, ticket) => {
     if (ticket !== loadVersion.current) return;
     const all = Array.isArray(list) ? list : [];
-    setRows(all.slice(0, 12));
+    const sliced = all.slice(0, 12);
+    setRows(sliced);
+    if (sliced.some((r) => artifactAuthorship(r.capabilities))) setMarkerColumn(true);
   };
 
   // Project switch — clear immediately, then load. The clear is
@@ -117,6 +127,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
+    setMarkerColumn(false);
     if (!proj?.name || !(proj?.id || proj?.path)) {
       setRows([]);
       return;
@@ -352,6 +363,18 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // information and crowded the file list. The empty-state text below
   // covers the "no active workspace" case implicitly.
 
+  // "Another member" marker column (ENG-2979). Reserved on every row once any
+  // row needs it, so the names stay in one column; an owner-only list (always
+  // the case on Desktop) keeps its three-column grid. Literal class strings —
+  // Tailwind cannot see interpolated ones. `markerColumn` is the sticky flag
+  // set in applyArtifacts; the `||` covers a row set within this same render
+  // before that state commits.
+  const authorships = rows.map((r) => artifactAuthorship(r.capabilities));
+  const hasAuthorshipMarker = markerColumn || authorships.some(Boolean);
+  const rowGridCols = hasAuthorshipMarker
+    ? 'grid-cols-[14px_12px_minmax(0,1fr)_auto]'
+    : 'grid-cols-[14px_minmax(0,1fr)_auto]';
+
   return (
     <div className="pt-2">
       {rowError && (
@@ -366,9 +389,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {rows.map((a) => {
+          {rows.map((a, i) => {
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
+            const authorship = authorships[i];
             return (
               <div
                 key={a.path}
@@ -381,11 +405,12 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                     onOpenArtifact(a);
                   }
                 }}
-                title={`${a.path}${isPublished ? ` · published` : ''}`}
+                title={`${a.path}${isPublished ? ` · published` : ''}${authorship ? ` · ${authorship.label}` : ''}`}
                 className={clsx(
                   'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
                   'cursor-pointer transition-colors hover:bg-surface-2',
-                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
+                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent [font:inherit]',
+                  rowGridCols,
                 )}
               >
                 {/* Icon — picks up the accent color when the artifact
@@ -397,6 +422,21 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                 >
                   {(Ico[iconForRow(a)] || Ico.doc)(13)}
                 </span>
+                {/* Authorship marker (ENG-2979). No Tooltip: the row's native
+                    `title` already names it, and two hints on one hover is what
+                    ui/Tooltip replaced. role="img" so the label is announced. */}
+                {hasAuthorshipMarker && (authorship ? (
+                  <span
+                    role="img"
+                    aria-label={authorship.label}
+                    className="inline-flex"
+                    style={{ color: 'var(--ink-4)' }}
+                  >
+                    {Ico.user(12)}
+                  </span>
+                ) : (
+                  <span aria-hidden="true" />
+                ))}
                 <span className="text-sm text-ink truncate">
                   {a.title || (a.path?.split('/').pop() || '')}
                 </span>

@@ -16,6 +16,10 @@ import {
   saveArtifactSource,
 } from '../../../lib/artifactWorkspaceApi';
 
+// Both of these are client-side guesses, not something the server actually
+// sent — identity-checked below (capabilitiesFromServer) so a surface that
+// cares who really owns the artifact (the ENG-2979 authorship tag) can tell
+// a guess from a server answer instead of trusting either of them.
 const OWNER_CAPABILITIES = {
   role: 'owner',
   canPreview: true,
@@ -23,6 +27,12 @@ const OWNER_CAPABILITIES = {
   canEdit: true,
   canAddressWithAgent: true,
   canResolveComments: true,
+};
+
+const REVIEWER_FALLBACK_CAPABILITIES = {
+  role: 'reviewer',
+  canPreview: true,
+  canComment: true,
 };
 
 // Why a workspace is unavailable, in the user's words. Both land in the same
@@ -84,6 +94,14 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   // copy is behind the agent's revision" - both read as not-equal, and the
   // second wrongly told the owner their edit came first.
   const repairSuperseded = repairPending && repair.superseded === true;
+  // Identity check against the two client guesses above, not a shape check:
+  // a real server response can legitimately carry the same fields as one of
+  // them (e.g. a genuine reviewer), so only "is this the object we fell back
+  // to" tells a guess from an answer. Surfaces that must not trust a guess —
+  // the ENG-2979 authorship tag — read this instead of `capabilities` alone.
+  const capabilitiesFromServer = capabilities != null
+    && capabilities !== OWNER_CAPABILITIES
+    && capabilities !== REVIEWER_FALLBACK_CAPABILITIES;
 
   const refreshHistory = useCallback(async (
     path = source?.path,
@@ -237,7 +255,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     } catch (loadError) {
       if (!isCurrent()) return;
       if (loadError?.status === 403) {
-        setCapabilities(nextCapabilities || { role: 'reviewer', canPreview: true, canComment: true });
+        setCapabilities(nextCapabilities || REVIEWER_FALLBACK_CAPABILITIES);
         setStatus('ready');
       } else if (loadError?.status === 404 || loadError?.status === 422) {
         // Unsupported artifacts can still preview, publish and review.
@@ -381,7 +399,9 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     }
   }, [artifact, onChange, refreshHistory, source]);
 
-  const addressWithAgent = useCallback(async ({ thread, conversationId = null }) => {
+  const addressWithAgent = useCallback(async ({
+    thread, conversationId = null, previewErrors = [],
+  }) => {
     if (!source || !thread) return null;
     const payloadThread = [
       {
@@ -402,6 +422,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       selector: thread.selector || null,
       thread: payloadThread,
       conversationId,
+      previewErrors,
     });
     if (workspaceGeneration.current !== generation) return null;
     setRepair(requested.repair);
@@ -514,6 +535,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     currentRevision,
     revisions,
     capabilities,
+    capabilitiesFromServer,
     commentsReady,
     status,
     unsupportedReason,
@@ -535,8 +557,8 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     decideRepair,
     releaseRepairsForComment,
   }), [
-    addressWithAgent, cancelRepair, capabilities, changeMode, commentsReady, compareRevision, comparison,
-    conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
+    addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
+    compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
     mode, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, revisions, save, source, status,
     supported, unsupportedReason,

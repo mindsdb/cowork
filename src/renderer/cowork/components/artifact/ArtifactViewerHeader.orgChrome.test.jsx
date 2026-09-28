@@ -18,6 +18,7 @@ vi.mock('./publish/PublishMenu', () => ({
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { setOrgMode } from '../../../lib/orgMode';
+import { artifactAuthorship } from '../../lib/artifactAuthorship';
 
 const workspace = {
   supported: true,
@@ -105,5 +106,49 @@ describe('preview window chrome on desktop', () => {
 
     expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument();
+  });
+});
+
+// ENG-2979: the preview says whose artifact it is, right after the title.
+describe('preview window authorship tag', () => {
+  const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('tags another member\'s artifact right after the title', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    const title = document.getElementById('artifact-viewer-title');
+    const tag = screen.getByText('Another member');
+    expect(title.parentElement).toContainElement(tag);
+    expect(follows(title, tag)).toBe(true);
+  });
+
+  // Fix wave (code review): the badge is a direct flex child of the title
+  // zone, no anonymous wrapper span — so `shrink-0` has to land on the pill
+  // itself for a long title to truncate before the tag does.
+  it('gives the tag pill shrink-0, with no wrapper between it and the title', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer' })} />);
+    const title = document.getElementById('artifact-viewer-title');
+    const pill = screen.getByText('Another member').closest('.rounded-full');
+    expect(pill.className).toContain('shrink-0');
+    expect(pill.parentElement).toBe(title.parentElement);
+  });
+
+  it('tags an ownerless artifact', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={artifactAuthorship({ role: 'reviewer', ownerUnknown: true })} />);
+    expect(screen.getByText('Unknown owner')).toBeInTheDocument();
+  });
+
+  it('shows no tag for the viewer\'s own artifact', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...props} authorship={null} />);
+    expect(screen.queryByText('Another member')).toBeNull();
+    expect(screen.queryByText('Unknown owner')).toBeNull();
+  });
+
+  it('shows no tag when the prop is not passed', () => {
+    render(<ArtifactViewerHeader {...props} />);
+    expect(screen.queryByText('Another member')).toBeNull();
   });
 });
