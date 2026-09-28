@@ -95,6 +95,10 @@ on:
         required: false
       POSTHOG_CLIENT_ID:
         required: false
+      HUBSPOT_CLIENT_ID:
+        required: false
+      HUBSPOT_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -145,6 +149,8 @@ jobs:
           SUPABASE_CLIENT_ID: ${{ secrets.SUPABASE_CLIENT_ID }}
           SUPABASE_CLIENT_SECRET: ${{ secrets.SUPABASE_CLIENT_SECRET }}
           POSTHOG_CLIENT_ID: ${{ secrets.POSTHOG_CLIENT_ID }}
+          HUBSPOT_CLIENT_ID: ${{ secrets.HUBSPOT_CLIENT_ID }}
+          HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
 
         run: |
           python -c "
@@ -160,6 +166,7 @@ jobs:
             'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
             'SUPABASE_CLIENT_ID', 'SUPABASE_CLIENT_SECRET',
             'POSTHOG_CLIENT_ID',
+            'HUBSPOT_CLIENT_ID', 'HUBSPOT_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)

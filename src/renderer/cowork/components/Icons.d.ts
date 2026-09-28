@@ -15,6 +15,7 @@ declare const Ico: {
   close: IconRenderer;
   code: IconRenderer;
   computer: IconRenderer;
+  copy: IconRenderer;
   cube: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;
@@ -40,6 +41,7 @@ declare const Ico: {
   slider: IconRenderer;
   stop: IconRenderer;
   trash: IconRenderer;
+  user: IconRenderer;
 };
 
 export default Ico;

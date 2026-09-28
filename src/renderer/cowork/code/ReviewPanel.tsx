@@ -75,6 +75,7 @@ export function ReviewPanel({
   const [branch, setBranch] = useState('');
   const [message, setMessage] = useState('');
   const [applyOpen, setApplyOpen] = useState(false);
+  const [applyError, setApplyError] = useState('');
   const [validationNotice, setValidationNotice] = useState<{ variant: 'info' | 'success' | 'danger'; text: string } | null>(null);
   const [appliedChangeKey, setAppliedChangeKey] = useState('');
   const [width, setWidth] = useState(460);
@@ -103,6 +104,7 @@ export function ReviewPanel({
     setBranch('');
     setMessage('');
     setApplyOpen(false);
+    setApplyError('');
     setValidationNotice(null);
     setAppliedChangeKey('');
   }, [session.id]);
@@ -245,7 +247,7 @@ export function ReviewPanel({
                         ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
                         : results.length
                           ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
-                          : { variant: 'info', text: 'No project checks are configured. Add validation commands in Project settings.' });
+                          : { variant: 'info', text: 'This task has no project checks. Tasks started from this project use the commands saved in Project settings.' });
                     }}>Run checks</Button>
                   </section>
                 )}
@@ -272,7 +274,7 @@ export function ReviewPanel({
                     <div className="code-field-label">Apply locally</div>
                     <p>Copy the reviewed changes back to the original folders.</p>
                   </div>
-                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => setApplyOpen(true)}>
+                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
                     {applied ? 'Applied' : 'Apply locally'}
                   </Button>
                 </section>
@@ -308,13 +310,17 @@ export function ReviewPanel({
           message={`Update ${session.project_name || session.source_path} with the reviewed task changes? Cowork will stop before changing any folder if it finds a conflict.`}
           confirmLabel="Apply changes"
           busy={busy}
+          error={applyError}
           onClose={() => { if (!busy) setApplyOpen(false); }}
           onConfirm={async () => {
+            setApplyError('');
             try {
               await onApply();
               setAppliedChangeKey(changeKey);
               setApplyOpen(false);
-            } catch { /* Keep open when preflight fails. */ }
+            } catch (reason) {
+              setApplyError(reason instanceof Error && reason.message ? reason.message : 'Could not apply changes. Please try again.');
+            }
           }}
         />
       </aside>

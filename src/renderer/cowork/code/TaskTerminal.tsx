@@ -212,7 +212,11 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
     expectedDisconnectsRef.current.add(selected.id);
     try {
       const nextState = await codingApi.stopTerminal(sessionId, selected.id);
-      updateState(selected.id, nextState);
+      // The server answers as soon as it requests termination, usually before the
+      // process has exited, so this reply can still say running. The terminal
+      // stream reports the real exit, and may already have, so a running reply
+      // must not overwrite it.
+      if (nextState.status !== 'running') updateState(selected.id, nextState);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not stop the terminal.');
     } finally {

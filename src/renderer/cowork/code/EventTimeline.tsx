@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
@@ -269,6 +270,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
           complete={event.phase === 'completed'}
           animateStreamingWords={false}
         />
+        <CopyResponseButton text={event.text} />
       </article>
     );
   }

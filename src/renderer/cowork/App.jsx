@@ -80,7 +80,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         listDatasourceConnections} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -474,13 +474,13 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
-    const fresh = await fetchSession(cid);
+    const fresh = await fetchSession(cid, { timeoutMs });
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
@@ -1131,7 +1131,9 @@ function AppCore() {
     if (silent || !cidToCancel) return;
 
     try {
-      const loaded = await loadSessionMessagesWithRetry(cidToCancel, { skipLocalSidecar: true });
+      const loaded = await loadSessionMessagesWithRetry(cidToCancel, {
+        skipLocalSidecar: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+      });
       if (loaded) {
         setTasks((prev) => prev.map((t) =>
           t.id === cidToCancel
@@ -1168,32 +1170,34 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
-    const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
-    // A stream that merely dropped mid-answer can still have finished on the
-    // server — the reload then carries no error message. Gating on the same
-    // check the UI uses means a turn the user actually saw succeed doesn't
-    // also count as a failure. Unlike fireFirstResponse (once per user), this
-    // fires on every failed turn — the failure rate had no measurement at
-    // all before this.
-    const hasError = loaded
-      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
-      : true;
-    // `some()` over the whole history is right for the UI status below, but
-    // it's a permanent yes once any earlier turn in the conversation has
-    // ever failed — worthless as a failure-tracking gate, since it also
-    // counts turns that actually recovered. A server-declared
-    // response.failed (api.js's onError passes the raw SSE message through,
-    // so `type` survives) is authoritative on its own. Only the client-side
-    // transport codes (stream_error, reconnect_error, stalled) need the
-    // reload heuristic, and only against the *last* turn.
-    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
-    const lastTurnFailed = loaded
-      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
-      : true;
-    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
+    const loaded = cid
+      ? await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS })
+      : null;
+    // A successful history GET can still contain only the pending question, or
+    // an older completed turn. Only this turn's persisted terminal can replace
+    // the partial text and transport error. The response.created user message
+    // id ties recovery to this turn even when local history is incomplete.
+    // Without that correlation, keep the error. _turnComplete comes from replaying
+    // response.completed/failed in api.js's _hydrateAssistantEvents.
+    const history = loaded?.messages || [];
+    const lastUserIndex = history.findLastIndex((m) => m.role === 'user');
+    const latestTurn = history.slice(lastUserIndex + 1);
+    const currentTurnLoaded = event?.user_message_id
+      && history[lastUserIndex]?.id === event.user_message_id;
+    const persistedFailure = currentTurnLoaded && latestTurn.some(
+      (m) => m.role === 'error' || m.role === 'provider_required',
+    );
+    const persistedCompletion = currentTurnLoaded && latestTurn.some(
+      (m) => m.role === 'assistant' && m._turnComplete,
+    );
+    // A server-declared failure remains authoritative even if history lags.
+    const recovered = persistedFailure
+      || (event?.type !== 'response.failed' && persistedCompletion);
+    const hasError = history.some((m) => m.role === 'error' || m.role === 'provider_required');
+    if (!recovered || persistedFailure) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
-      if (loaded) {
+      if (recovered) {
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
@@ -1203,7 +1207,13 @@ function AppCore() {
             : {}),
         };
       }
-      const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+      // Keep text already received when the server has not durably sealed it.
+      // The adjacent error trailer identifies this assistant row as partial.
+      const msgs = markActivityDone(removeThinkingPlaceholder(t.messages.flatMap((m) => {
+        if (m.role !== '_streaming') return [m];
+        if (!m.content && !m.steps?.length) return [];
+        return [{ ...m, role: 'assistant', streamStatus: 'error' }];
+      })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
@@ -1215,11 +1225,12 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
-            // ENG-1537 review: this local trailer is reached when
-            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
-            // MORE likely precisely when the gateway is rate-limiting. Without
-            // these the rate-limit card loses its gate and the allowance card
-            // always reads "resets on next month".
+            /* ENG-1537 review: this local trailer is reached when
+               loadSessionMessagesWithRetry gives up after 3 attempts — which is
+               MORE likely precisely when the gateway is rate-limiting. Without
+               these the rate-limit card loses its gate, and the allowance and
+               paused cards lose the time the gate sent on a desktop or a
+               hosted turn. */
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
@@ -1280,6 +1291,10 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Why a row above is unavailable, so an admin-restricted model reads
+    // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
+    // in step with modelEnabled).
+    modelDisabledReasons: settings.modelDisabledReasons,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
@@ -1290,7 +1305,7 @@ function AppCore() {
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1464,11 +1479,15 @@ function AppCore() {
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
+    tasksOpen: codeTasksOpen,
+    tasksProjectId: codeTasksProjectId,
+    managementRoute: codeManagementRoute,
     connectorsOpen: codeConnectorsOpen,
     skillsOpen: codeSkillsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
+    openTasks: openCodingTasks,
     openConnectors: openCodingConnectors,
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
@@ -1857,11 +1876,13 @@ function AppCore() {
   // it has one, else whatever the home composer currently shows.
   const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
-  // "Switch to MindsHub Air" escape hatch on the model-denial card
-  // (ENG-1304): offered only while Air itself is payable — the free monthly
-  // grant covers Air, so it's the one model an empty wallet can usually
-  // still run. `modelEnabled` is the same availability map the Settings
-  // picker tags rows with (absent id ⇒ available).
+  /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
+     cards (ENG-1304): offered only while Air itself is payable — the free
+     allowance covers Air, so it's the one model an empty wallet can usually
+     still run. `modelEnabled` is the same availability map the Settings
+     picker tags rows with (absent id ⇒ available). Whether the allowance has
+     room right now is ChatView's call (BalanceEmptyCard reads the hub usage);
+     this gate only says Air is offered and not locked. */
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
     && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
@@ -4736,7 +4757,7 @@ function AppCore() {
           activeWorkspace={effectiveWorkspaceMode}
           showWorkspaceSwitch={codeModeEnabled}
           activeCodeRoute={effectiveWorkspaceMode === 'code'
-            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
+            ? codeManagementRoute
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4744,7 +4765,7 @@ function AppCore() {
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeManagementRoute
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4758,6 +4779,7 @@ function AppCore() {
           onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
+          onOpenCodingTasks={() => openCodingTasks()}
           onOpenCodingConnectors={openCodingConnectors}
           onOpenCodingSkills={openCodingSkills}
           onOpenSearch={() => setSearchOpen(true)}
@@ -5220,6 +5242,8 @@ function AppCore() {
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
+              tasksOpen={codeTasksOpen}
+              tasksProjectId={codeTasksProjectId}
               connectorsOpen={codeConnectorsOpen}
               skillsOpen={codeSkillsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
@@ -5231,6 +5255,7 @@ function AppCore() {
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}
               onOpenProjects={openCodingProjects}
+              onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
