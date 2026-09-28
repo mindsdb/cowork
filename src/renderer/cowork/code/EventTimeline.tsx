@@ -4,7 +4,7 @@ import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
-import { activityHeadline, approvalOutcome, displayCommand, isIgnoredActivity, liveStatusLabel } from './activitySummary';
+import { activityHeadline, approvalOutcome, displayCommand, isIgnoredActivity, liveStatusLabel, reasoningSummary } from './activitySummary';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
@@ -160,13 +160,21 @@ function eventSummary(event: CodingEvent): string {
 function activityRows(events: CodingEvent[]): CodingEvent[] {
   const decided = new Set(events.filter((event) => event.type === 'approval' && event.phase === 'completed').map((event) => event.data.approvalId));
   return events.filter((event) => {
-    if (event.type === 'usage' || (event.type === 'reasoning' && !event.text)) return false;
+    if (event.type === 'usage' || (event.type === 'reasoning' && !reasoningSummary(event))) return false;
     return event.type !== 'approval' || event.phase === 'completed' || !decided.has(event.data.approvalId);
   });
 }
 
 
+function rowDetail(event: CodingEvent): string {
+  if (event.type === 'approval' && event.phase === 'completed') return '';
+  const detail = event.type === 'reasoning' ? reasoningSummary(event) : event.text;
+  return detail && detail !== eventSummary(event) ? detail : '';
+}
+
+
 function ActivityGroup({ events }: { events: CodingEvent[] }) {
+  const rows = activityRows(events);
   const failed = events.some((event) => event.phase === 'failed');
   const [open, setOpen] = useState(failed);
   useEffect(() => { if (failed) setOpen(true); }, [failed]);
@@ -187,12 +195,12 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
       </summary>
       {open && (
         <div className="code-activity-group__body">
-          {activityRows(events).map((event) => (
+          {rows.map((event) => (
             <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
               <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
               <div>
                 <strong>{event.type === 'approval' && event.phase === 'completed' ? approvalOutcome(event) : eventSummary(event)}</strong>
-                {!(event.type === 'approval' && event.phase === 'completed') && event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
+                {rowDetail(event) && <pre>{rowDetail(event)}</pre>}
               </div>
             </div>
           ))}
@@ -501,7 +509,9 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
-          if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} />;
+          // Telemetry alone, such as a token-usage update between two
+          // messages, has nothing to open.
+          if (item.kind === 'activity') return activityRows(item.events).length ? <ActivityGroup key={key} events={item.events} /> : null;
           if (item.kind === 'errors') {
             const retryEvents = terminalErrorSeq == null
               ? item.events

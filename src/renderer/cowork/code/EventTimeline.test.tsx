@@ -381,10 +381,30 @@ describe('EventTimeline', () => {
       phase: 'progress' as const,
     };
 
-    render(<EventTimeline {...timelineProps([usage])} session={session('completed')} />);
+    const { container } = render(<EventTimeline {...timelineProps([usage])} session={session('completed')} />);
 
-    expect(screen.getByText('Agent activity')).toBeInTheDocument();
-    expect(screen.queryByText('Usage updated', { selector: 'summary span' })).toBeNull();
+    expect(container.querySelector('.code-activity-group')).toBeNull();
+    expect(screen.queryByText('Usage updated')).toBeNull();
+  });
+
+  it('shows no group for telemetry between two messages', () => {
+    const events = [
+      { ...event(1, 'agent_message', 'Checking the docs.'), item_id: 'note-1' },
+      { ...event(2, 'usage', ''), phase: 'progress' as const },
+      { ...event(3, 'reasoning', ''), item_id: 'r1', data: { summary: [] } },
+      { ...event(4, 'agent_message', 'Found it.'), item_id: 'answer' },
+    ];
+    const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(container.querySelector('.code-activity-group')).toBeNull();
+  });
+
+  it('opens a reasoning group onto the summary from the finished item', () => {
+    const reasoning = { ...event(1, 'reasoning', ''), item_id: 'r1', data: { summary: ['**Tracing the error path**\n\nThe handler clears the draft.'] } };
+    render(<EventTimeline {...timelineProps([reasoning])} session={session('completed')} />);
+
+    fireEvent.click(screen.getByText('Thought it through'));
+    expect(screen.getByText(/The handler clears the draft\./)).toBeInTheDocument();
   });
 
   it('keeps a pinned timeline at the bottom when a streamed item grows in place', () => {

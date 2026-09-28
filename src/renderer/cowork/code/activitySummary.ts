@@ -121,7 +121,7 @@ const STATUS_MAX_LENGTH = 80;
 
 // A summary streams in as text deltas, or arrives whole on the finished
 // reasoning item, depending on the model.
-function reasoningSummary(event: CodingEvent): string {
+export function reasoningSummary(event: CodingEvent): string {
   if (event.text) return event.text;
   const summary = event.data.summary;
   if (!Array.isArray(summary)) return '';
