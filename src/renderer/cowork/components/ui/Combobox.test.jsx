@@ -31,19 +31,14 @@ describe('Combobox', () => {
     expect(onValueChange).toHaveBeenCalledWith('high');
   });
 
-  // ENG-2416 asked whether the Combobox path needs the same null guard as
-  // `Select`, whose Base UI primitive (>= 1.7) emits onValueChange(null) when
-  // the selected value drops out of a shrinking option list. Base UI's
-  // Combobox does no such reconciliation, so the wrapper forwards nothing
-  // and the caller's value stands. This pins that, so a future Base UI bump
-  // that adds reconciliation fails here instead of blanking a saved setting.
+  // ENG-2416: Select needed a null guard for this case; Combobox does not.
+  // Pinned so a Base UI bump that changes that fails here.
   it('does not fire onValueChange when options shrink under the value', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
     const { rerender } = render(<Harness value="max" items={FIVE} onValueChange={onValueChange} />);
 
-    // Open and close once so the popup is mounted, which is what let Select
-    // re-register the shrunk list and emit its null.
+    // Open and close once so the popup is mounted, as in the Select case.
     await user.click(screen.getByRole('combobox', { name: 'Effort' }));
     await user.keyboard('{Escape}');
     rerender(<Harness value="high" items={THREE} onValueChange={onValueChange} />);
