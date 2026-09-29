@@ -35,8 +35,8 @@ vi.mock('../components/ui', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    Select: ({ value, onValueChange, options, 'aria-label': label }) => (
-      <select aria-label={label} value={value} onChange={(e) => onValueChange(e.target.value)}>
+    Select: ({ value, onValueChange, options, ariaLabel, 'aria-label': label }) => (
+      <select aria-label={ariaLabel || label} value={value} onChange={(e) => onValueChange(e.target.value)}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     ),
@@ -420,12 +420,18 @@ describe('CompareView', () => {
     expect(api.streamMessage).toHaveBeenCalledTimes(2);
   });
 
-  const target = (name) => within(screen.getByRole('group', { name: 'Send to' })).getByText(name);
+  const target = async (name) => {
+    const picker = screen.getByRole('combobox', { name: 'Send to' });
+    const option = within(picker).getByRole('option', { name });
+    fireEvent.change(picker, { target: { value: option.value } });
+  };
 
   it('picks the target by model name and will not send to both while one is working', async () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     expect(screen.getByRole('button', { name: 'Send' }).disabled).toBe(true);
-    fireEvent.click(target('Qwen'));
+    // Inside the composer, next to Send, like the model pill on Home.
+    expect(screen.getByRole('combobox', { name: 'Send to' }).closest('.composer-toolbar')).toBeTruthy();
+    await target('Qwen');
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(api.streamMessage).toHaveBeenCalledTimes(1);
@@ -433,11 +439,11 @@ describe('CompareView', () => {
 
     // Back to Both while Qwen works: the composer says why instead of
     // offering a box that cannot send.
-    fireEvent.click(target('Both'));
+    await target('Both models');
     expect(screen.getByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
-    fireEvent.click(target('Kimi'));
+    await target('Kimi');
     expect(screen.getByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
   });
 
@@ -447,7 +453,7 @@ describe('CompareView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(api.streamMessage).toHaveBeenCalledTimes(2);
     expect(screen.getByText('You can follow up when both models finish.')).toBeTruthy();
-    expect(screen.queryByRole('group', { name: 'Send to' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Send to' })).toBeNull();
     act(() => openStreams['conv-a'].onDone());
     await waitFor(() => expect(screen.getByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy());
   });

@@ -18,7 +18,6 @@ import { PageHeader } from '../components/collection';
 import { Alert, Badge, Button, CardRow, EmptyState, Select, Spinner, Tooltip } from '../components/ui';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { SearchInput, SortPill } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import Ico from '../components/Icons';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 import { modelMaker } from '../lib/modelCatalog';
@@ -969,21 +968,22 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onChoose={judge}
           />
         )}
-        <div className="flex items-end gap-3 max-md:flex-col max-md:items-stretch">
-          <div className="composer-wrap flex-1 min-w-0 max-w-none">
-            {block ? (
-              // A message cannot go out right now. Say so where the text box
-              // would be, rather than showing a box that looks usable.
-              <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
-                {!block.canSwitch && !block.action && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
-                <span className="flex-1">{block.message}</span>
-                {block.action === 'addFunds' && (
-                  <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
-                    Add funds
-                  </Button>
-                )}
-              </div>
-            ) : (
+        <div className="composer-wrap w-full min-w-0 max-w-none">
+          {block ? (
+            // A message cannot go out right now. Say so where the text box
+            // would be, rather than showing a box that looks usable.
+            <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
+              {!block.canSwitch && !block.action && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
+              <span className="flex-1">{block.message}</span>
+              {block.action === 'addFunds' && (
+                <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
+                  Add funds
+                </Button>
+              )}
+              {block.canSwitch && <SendToPicker target={target} names={names} onChange={setTarget} />}
+            </div>
+          ) : (
+            <>
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -995,31 +995,17 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 }}
                 className="block w-full border-0 outline-0 resize-none bg-transparent font-[family-name:var(--font-sans)] text-[length:var(--text-md)] leading-[1.5] text-strong px-[18px] pt-3.5 pb-1 min-h-[56px] placeholder:text-[color:var(--frost-500)]"
               />
-            )}
-            {!block && (
               <div className="composer-toolbar">
-                <span className="text-xs text-ink-4 px-2">
+                <span className="text-xs text-ink-4 px-2 truncate">
                   {target === 'both' ? 'Both models get this message.' : `Only ${names[target]} gets this; the two will diverge.`}
                 </span>
                 <span className="flex-1" />
+                <SendToPicker target={target} names={names} onChange={setTarget} />
                 <button type="button" className="send-btn" aria-label="Send" disabled={!draft.trim()} onClick={submit}>
                   {Ico.send(15)}
                 </button>
               </div>
-            )}
-          </div>
-          {(!block || block.canSwitch) && (
-            <ToggleGroup
-              value={target}
-              onValueChange={setTarget}
-              aria-label="Send to"
-              className="mb-1.5"
-              options={[
-                { value: 'both', label: 'Both' },
-                { value: 'a', label: names.a },
-                { value: 'b', label: names.b },
-              ]}
-            />
+            </>
           )}
         </div>
       </div>
@@ -1192,6 +1178,26 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
         )}
       </div>
     </section>
+  );
+}
+
+// Who the follow-up goes to, as a pill in the composer's toolbar like the
+// model picker on Home.
+function SendToPicker({ target, names, onChange }) {
+  return (
+    <Select
+      value={target}
+      onValueChange={onChange}
+      options={[
+        { value: 'both', label: 'Both models' },
+        { value: 'a', label: names.a },
+        { value: 'b', label: names.b },
+      ]}
+      variant="unstyled"
+      className="meta-pill"
+      ariaLabel="Send to"
+      menuLabel="Send to"
+    />
   );
 }
 
