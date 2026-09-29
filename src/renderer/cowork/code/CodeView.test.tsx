@@ -444,6 +444,9 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(await screen.findByText('The agent is between turns; queue this instruction instead.')).toBeInTheDocument();
     expect(mocks.steerQueued).toHaveBeenCalledWith(active.id, 'queued-1');
+    // The error takes the lip's one place; the queue waits one step behind it.
+    expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more notice' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
   });

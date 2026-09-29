@@ -16,7 +16,8 @@ import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
 import { ComposerLip } from './ComposerLip';
-import { accountFailure, failureNotice, messageNotice, pickNotice } from './composerNotices';
+import { PromptQueue } from './ComposerMenus';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -40,6 +41,7 @@ import { useProjectActions } from './useProjectActions';
 import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
+import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -123,9 +125,6 @@ export default function CodeView({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  // A dismissed notice stays dismissed for the task it was shown on.
-  const [dismissedNotices, setDismissedNotices] = useState<ReadonlySet<string>>(() => new Set());
-  useEffect(() => { setDismissedNotices(new Set()); }, [selectedId]);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
@@ -259,14 +258,20 @@ export default function CodeView({
   const workspaceWarning = session?.workspace_kind === 'direct_folder'
     ? ''
     : session?.workspace_warning || '';
-  const composerNotice = session ? pickNotice([
+  const latestSessionEvent = detail.latestEvents.session?.latest;
+  const latestErrorEvent = detail.latestEvents.error?.latest;
+  const taskRecovering = !!session && recoveringTaskId === session.id;
+  // One lip at a time, most blocking first; queued follow-ups come last.
+  const lip = useComposerNotice(session ? [
     failureNotice(
-      accountFailure(session, detail.latestEvents.session?.latest, detail.latestEvents.error?.latest, recoveringTaskId === session.id),
+      accountFailure(session, latestSessionEvent, latestErrorEvent, taskRecovering),
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
+    recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
-  ], dismissedNotices) : null;
+    queueNotice(session),
+  ] : [], selectedId);
   const approval = session?.pending_approval?.id === resolvingApprovalId
     ? null
     : session?.pending_approval;
@@ -489,20 +494,38 @@ export default function CodeView({
                 latestEvents={detail.latestEvents}
                 session={session}
                 recovering={recoveringTaskId === session.id}
-                onRecover={() => recoverTask(session.id)}
                 onOpenReview={can('review') ? openReview : undefined}
               />
               <div className="code-composer-dock">
-                {composerNotice && (
+                {lip.notice?.queue ? (
+                  <PromptQueue
+                    items={session.queued_instructions || []}
+                    active={isActiveStatus(session.status) && !session.pending_question && !session.pending_approval}
+                    busy={busy}
+                    onSteer={(instructionId) => runAction(
+                      () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                      true,
+                    )}
+                    onRemove={(instructionId) => runAction(
+                      () => codingApi.removeQueued(session.id, instructionId),
+                      true,
+                    )}
+                    more={lip.more}
+                    onShowMore={lip.showNext}
+                  />
+                ) : lip.notice && (
                   <ComposerLip
-                    key={composerNotice.key}
-                    notice={composerNotice}
+                    key={lip.notice.key}
+                    notice={lip.notice}
+                    more={lip.more}
+                    onShowMore={lip.showNext}
                     onChooseModel={() => setControlsOpen(true)}
                     onAddCredits={() => {
                       trackBillingOpened('token_limit');
                       void openCodeExternalUrl(MINDS_BILLING_URL);
                     }}
-                    onDismiss={(key) => setDismissedNotices((current) => new Set(current).add(key))}
+                    onReopen={() => void recoverTask(session.id)}
+                    onDismiss={lip.dismiss}
                   />
                 )}
                 {session.pending_question && <QuestionCard
@@ -565,18 +588,10 @@ export default function CodeView({
                     () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
                     true,
                   )}
-                  onSteerQueued={(instructionId) => runAction(
-                    () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
-                    true,
-                  )}
                   history={history}
                   // The effect that clears this runs after the next task's composer
                   // has already mounted and merged it.
                   referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
-                  onRemoveQueued={(instructionId) => runAction(
-                    () => codingApi.removeQueued(session.id, instructionId),
-                    true,
-                  )}
                   onClientCommand={(command) => {
                     if (command.client_action === 'terminal') {
                       setTerminalOpen(true);

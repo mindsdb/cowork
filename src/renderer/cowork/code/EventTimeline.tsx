@@ -28,9 +28,12 @@ import { DiffPatchView } from './DiffPatchView';
 import { accountFailure } from './composerNotices';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
-import { CODE_STATUS, codingSessionStatus, compactPath, isActiveStatus } from './presentation';
+import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
 import './event-timeline.css';
+
+
+const RECOVERABLE_RUNS = ['interrupted', 'failed', 'recovering'];
 
 
 const ACTIVITY_TYPES = new Set<CodingEvent['type']>(['reasoning', 'tool', 'command', 'file_change', 'diff', 'usage']);
@@ -620,53 +623,40 @@ function TaskOutcome({
   latestSession,
   latestError,
   recovering,
-  onRecover,
 }: {
   session: CodingSession;
   latestSession: CodingEvent | undefined;
   latestError: CodingEvent | undefined;
   recovering: boolean;
-  onRecover: () => Promise<void>;
 }) {
-  const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  // A paused remote run and its Reopen task action are about the next send,
+  // so the composer lip carries them, as it does account and model limits.
+  if (RECOVERABLE_RUNS.includes(session.run_status || '')) return null;
   // A finished turn speaks for itself: the answer, its copy button, and the
-  // task status in the header. Only stops and failures need a card.
-  if (session.status === 'completed' && !recoverable) return null;
-  const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
-  if (remoteRunActive) return null;
-  if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
-  // An account or model limit is about the next send, so the composer lip carries it.
+  // task status in the header. Only a stop or a failure leaves a card.
+  if (session.status === 'completed') return null;
+  if (['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '')) return null;
+  if (isActiveStatus(session.status) || session.status === 'ready') return null;
   if (accountFailure(session, latestSession, latestError, recovering)) return null;
-  const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
+  const status = CODE_STATUS[session.status];
   const failure = latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string'
     ? latestSession
     : latestError;
   const technicalDetail = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
   const errorDetail = technicalDetail || session.last_error || failure?.text || '';
-  const recoveryInProgress = recovering || session.run_status === 'recovering';
-  const detail = recoverable
-    ? session.computer_status === 'offline'
-      ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
-      : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
-    : 'The active turn was stopped. You can continue in the same task.';
   return (
-    <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
-      <span className="code-task-outcome__icon">{recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+    <section className={`code-task-outcome is-${status.tone}`}>
+      <span className="code-task-outcome__icon">{Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
-        <strong>{recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : detail}</p>
-        {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
+        <strong>{status.label}</strong>
+        <p>The active turn was stopped. You can continue in the same task.</p>
+        {errorDetail && session.status === 'failed' && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>
             <p>{errorDetail}</p>
           </details>
         )}
       </div>
-      {recoverable && (
-        <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
-          {recoveryInProgress ? 'Reopening…' : 'Reopen task'}
-        </Button>
-      )}
     </section>
   );
 }
@@ -677,14 +667,12 @@ export const EventTimeline = memo(function EventTimeline({
   latestEvents,
   session,
   recovering = false,
-  onRecover = async () => {},
   onOpenReview,
 }: {
   events: CodingEvent[];
   latestEvents: LatestEvents;
   session: CodingSession;
   recovering?: boolean;
-  onRecover?: () => Promise<void>;
   onOpenReview?: () => void;
 }) {
   const items = useTimelineItems(events, session.id);
@@ -693,9 +681,10 @@ export const EventTimeline = memo(function EventTimeline({
   const hiddenCount = Math.max(0, items.length - visibleCount);
   const visibleItems = hiddenCount ? items.slice(-visibleCount) : items;
   const latestEventSeq = events.at(-1)?.seq || 0;
-  const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  // A paused run's last error is shown by the composer lip's details, not repeated here.
+  const pausedRun = RECOVERABLE_RUNS.includes(session.run_status || '');
   const latestError = latestEvents.error?.latest;
-  const terminalErrorSeq = hasRecoveryCard ? latestError?.seq : undefined;
+  const terminalErrorSeq = pausedRun ? latestError?.seq : undefined;
   const answers = answerSeqs(items, isActiveStatus(session.status));
   const lastItem = items.at(-1);
   const liveEvents = lastItem?.kind === 'activity' ? lastItem.events : [];
@@ -758,7 +747,6 @@ export const EventTimeline = memo(function EventTimeline({
           latestSession={latestEvents.session?.latest}
           latestError={latestError}
           recovering={recovering}
-          onRecover={onRecover}
         />
       </div>
     </div>

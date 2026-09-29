@@ -78,14 +78,22 @@ export function accountFailure(
   recovering = false,
 ): TurnFailure | null {
   if (recovering || session.run_status === 'recovering' || !turnEndedOnFailure(session)) return null;
-  const failure = latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string'
-    ? latestSession
-    : latestError;
+  const failure = failureEvent(latestSession, latestError);
   const code = failure?.data.code;
   const recovery = typeof code === 'string' ? FAILURE_RECOVERY[code] : undefined;
   if (typeof code !== 'string' || !recovery) return null;
+  return { code, recovery, detail: failureDetail(session, failure) };
+}
+
+
+function failureEvent(latestSession: CodingEvent | undefined, latestError: CodingEvent | undefined): CodingEvent | undefined {
+  return latestSession?.data.status === 'failed' && typeof latestSession.data.code === 'string' ? latestSession : latestError;
+}
+
+
+function failureDetail(session: CodingSession, failure: CodingEvent | undefined): string {
   const technical = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
-  return { code, recovery, detail: technical || session.last_error || failure?.text || '' };
+  return technical || session.last_error || failure?.text || '';
 }
 
 
@@ -94,12 +102,17 @@ export type NoticeTone = 'neutral' | 'warning' | 'danger';
 export interface ComposerNotice {
   key: string;
   tone: NoticeTone;
-  icon: 'clock' | 'warning';
+  icon: 'clock' | 'warning' | 'refresh';
   title: string;
   body?: string;
   detail?: string;
   chooseModel?: boolean;
   addCredits?: boolean;
+  /** The remote run stopped but kept its work; Reopen task restores it. */
+  reopen?: boolean;
+  reopening?: boolean;
+  /** Queued follow-ups take the lip's place instead of a line of text. */
+  queue?: boolean;
   dismissible?: boolean;
 }
 
@@ -129,6 +142,40 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     chooseModel: !recovery.hideModelChoice,
     addCredits: recovery.addCredits,
   };
+}
+
+
+/**
+ * A remote run that stopped with its work preserved, such as when the task
+ * computer went offline. Account and model limits speak for themselves.
+ */
+export function recoveryNotice(
+  session: CodingSession,
+  latestSession: CodingEvent | undefined,
+  latestError: CodingEvent | undefined,
+  recovering = false,
+): ComposerNotice | null {
+  if (!RECOVERABLE_RUNS.includes(session.run_status || '') || isActiveStatus(session.status)) return null;
+  if (accountFailure(session, latestSession, latestError, recovering)) return null;
+  if (recovering || session.run_status === 'recovering') {
+    return { key: 'recovery:reopening', tone: 'neutral', icon: 'refresh', title: 'Reopening task', body: 'Reconnecting to the task files…', reopen: true, reopening: true };
+  }
+  return {
+    key: 'recovery:paused',
+    tone: 'warning',
+    icon: 'refresh',
+    title: 'Task paused',
+    body: session.computer_status === 'offline'
+      ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
+      : 'The turn stopped before it completed. Reopening restores the working copy; send a message to continue the interrupted work.',
+    detail: failureDetail(session, failureEvent(latestSession, latestError)),
+    reopen: true,
+  };
+}
+
+
+export function queueNotice(session: CodingSession): ComposerNotice | null {
+  return session.queued_instructions?.length ? { key: 'queue', tone: 'neutral', icon: 'clock', title: '', queue: true } : null;
 }
 
 

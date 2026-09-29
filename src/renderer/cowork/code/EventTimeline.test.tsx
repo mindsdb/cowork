@@ -108,7 +108,7 @@ describe('EventTimeline', () => {
     });
     const props = { events: counted, latestEvents: indexLatestEvents(events), session: { ...session('failed'), run_status: 'failed' as const } };
     const view = render(<EventTimeline {...props} />);
-    expect(screen.getByText('Event 6000')).toBeInTheDocument();
+    expect(screen.getByText('Event 5999')).toBeInTheDocument();
 
     indexReads = 0;
     view.rerender(<EventTimeline {...props} recovering />);
@@ -150,40 +150,23 @@ describe('EventTimeline', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting… 1/2');
   });
 
-  it('offers one recovery action for a preserved remote run', () => {
-    const onRecover = vi.fn(async () => {});
-    render(
+  it('leaves a paused remote run and its last error to the composer lip', () => {
+    const { container } = render(
       <EventTimeline
-        {...timelineProps([event(1, 'error', 'Computer disconnected')])}
+        {...timelineProps([event(1, 'user_message', 'Go'), event(2, 'error', 'Computer disconnected')])}
         session={{
           ...session('interrupted'),
           run_status: 'interrupted',
           computer_status: 'offline',
           last_error: 'Computer disconnected',
         }}
-        onRecover={onRecover}
       />,
     );
 
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/conversation is safe; reopen it there or choose another compatible computer/)).toBeInTheDocument();
-    expect(screen.getAllByText('Computer disconnected')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen task' }));
-    expect(onRecover).toHaveBeenCalledOnce();
-  });
-
-  it('says that reopening restores the copy but does not continue the interrupted turn', () => {
-    render(
-      <EventTimeline
-        {...timelineProps([])}
-        session={{ ...session('interrupted'), run_status: 'interrupted' }}
-      />,
-    );
-
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/send a message to continue the interrupted work/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
+    expect(container.querySelector('.code-task-outcome')).toBeNull();
+    expect(screen.queryByText('Task paused')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reopen task' })).toBeNull();
+    expect(screen.queryByText('Computer disconnected')).toBeNull();
   });
 
   it('keeps local failures recoverable through the composer instead of a remote-run action', () => {
@@ -211,16 +194,6 @@ describe('EventTimeline', () => {
     const { container } = render(<EventTimeline {...failedTask('insufficient_credits', 'server returned 402')} />);
     expect(container.querySelector('.code-task-outcome')).toBeNull();
     expect(screen.queryByText(/needs credits/)).toBeNull();
-  });
-
-  it('keeps the generic paused-task recovery for failure codes it does not know', () => {
-    render(<EventTimeline {...failedTask('runtime_crashed', 'worker exited with code 137')} />);
-
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText('worker exited with code 137')).toBeVisible();
   });
 
   it('shows an unconfirmed follow-up and the note that it was delivered late', () => {

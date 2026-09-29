@@ -307,6 +307,15 @@ function fixtureState(name: string) {
       phase: 'failed',
       data: { code, detail: name === 'credits' ? 'server returned 402 Payment Required' : 'exceeded retry limit, last status: 429 Too Many Requests' },
     })];
+  } else if (name === 'offline') {
+    primary = session({ status: 'interrupted', run_status: 'interrupted', computer_status: 'offline', last_error: 'Computer disconnected' });
+    events = [...BASE_EVENTS.slice(0, 8), event(11, 'error', { title: 'Agent error', text: 'Computer disconnected', phase: 'failed' })];
+  } else if (name === 'long-notice') {
+    // Long copy for checking that the lip clamps to two lines.
+    primary = session({
+      status: 'completed',
+      workspace_warning: 'The source folder has uncommitted changes that are not in this task’s copy, including edits to the checkout form, the saved-card form, their validation rules, the shared payment fixtures, and the regression tests that cover them. Commit or stash them before merging.',
+    });
   } else if (name === 'queued') {
     primary = session({
       status: 'running',

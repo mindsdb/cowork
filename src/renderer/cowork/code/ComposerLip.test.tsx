@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
 import { ComposerLip } from './ComposerLip';
-import { accountFailure, failureNotice, messageNotice, pickNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, pickNotice, recoveryNotice } from './composerNotices';
 
 
 function session(overrides: Partial<CodingSession> = {}): CodingSession {
@@ -50,7 +50,7 @@ function renderFailure(code: string, detail: string, task = session()) {
   const onAddCredits = vi.fn();
   const notice = failureNotice(accountFailure(task, undefined, failure(code, detail)), 'GPT 5.6 Sol');
   if (!notice) throw new Error(`no notice for ${code}`);
-  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onDismiss={vi.fn()} />);
+  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onReopen={vi.fn()} onDismiss={vi.fn()} />);
   return { ...view, onChooseModel, onAddCredits };
 }
 
@@ -146,8 +146,63 @@ describe('ComposerLip', () => {
     expect(pickNotice([null, error, workspace], new Set([error!.key]))?.key).toBe(workspace?.key);
 
     const onDismiss = vi.fn();
-    render(<ComposerLip notice={workspace!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onDismiss={onDismiss} />);
+    render(<ComposerLip notice={workspace!} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={vi.fn()} onDismiss={onDismiss} />);
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(onDismiss).toHaveBeenCalledWith(workspace!.key);
+  });
+
+  function renderRecovery(task: CodingSession, latestError?: CodingEvent, recovering = false) {
+    const onReopen = vi.fn();
+    const notice = recoveryNotice(task, undefined, latestError, recovering);
+    if (!notice) throw new Error('no recovery notice');
+    render(<ComposerLip notice={notice} onChooseModel={vi.fn()} onAddCredits={vi.fn()} onReopen={onReopen} onDismiss={vi.fn()} />);
+    return { notice, onReopen };
+  }
+
+  it('offers one Reopen task action when the task computer goes offline, with its error behind Details', () => {
+    const { onReopen } = renderRecovery(
+      session({ status: 'interrupted', run_status: 'interrupted', computer_status: 'offline', last_error: 'Computer disconnected' }),
+      { ...failure('', ''), text: 'Computer disconnected', data: {} },
+    );
+
+    expect(screen.getByText('Task paused.')).toBeInTheDocument();
+    expect(screen.getByText(/conversation is safe; reopen it there or choose another compatible computer/)).toBeInTheDocument();
+    expect(screen.queryByText('Computer disconnected')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen task' }));
+    expect(onReopen).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Computer disconnected')).toBeVisible();
+  });
+
+  it('says that reopening restores the copy but does not continue the interrupted turn', () => {
+    renderRecovery(session({ status: 'interrupted', run_status: 'interrupted' }));
+
+    expect(screen.getByText(/send a message to continue the interrupted work/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /resume/i })).toBeNull();
+  });
+
+  it('keeps the generic paused-task recovery for failure codes it does not know', () => {
+    const task = session();
+    const unknown = failure('runtime_crashed', 'worker exited with code 137');
+    expect(failureNotice(accountFailure(task, undefined, unknown), 'GPT 5.6 Sol')).toBeNull();
+    renderRecovery(task, unknown);
+
+    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose model' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('worker exited with code 137')).toBeVisible();
+  });
+
+  it('shows the reconnect in progress with the action held until it finishes', () => {
+    renderRecovery(session({ status: 'interrupted', run_status: 'recovering' }));
+
+    expect(screen.getByText('Reopening task.')).toBeInTheDocument();
+    expect(screen.getByText('Reconnecting to the task files…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopening…' })).toBeDisabled();
+  });
+
+  it('leaves an account limit to its own notice rather than a paused-task one', () => {
+    expect(recoveryNotice(session(), undefined, failure('insufficient_credits', '402'))).toBeNull();
+    expect(recoveryNotice(session({ status: 'running', run_status: 'running' }), undefined, undefined)).toBeNull();
   });
 });
