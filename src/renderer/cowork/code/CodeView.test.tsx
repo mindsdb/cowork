@@ -712,6 +712,22 @@ describe('CodeView session-list reconciliation', () => {
     expect(await screen.findByText('Terminal terminal-preview')).toBeInTheDocument();
   });
 
+  it('keeps an open terminal outside the stage the composer dock floats over', async () => {
+    const active = session('terminal-layout');
+    mocks.runProjectAction.mockReturnValueOnce(deferred().promise);
+    mocks.sessions.mockResolvedValue({ items: [active] });
+
+    const { container } = renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Run project action' }));
+
+    const terminal = screen.getByText('Terminal loading');
+    const stage = container.querySelector('.code-conversation__stage');
+    expect(stage?.querySelector(':scope > .code-composer-dock')).toBeInTheDocument();
+    expect(stage).toContainElement(screen.getByText('Timeline'));
+    expect(stage).not.toContainElement(terminal);
+    expect(stage?.parentElement).toContainElement(terminal);
+  });
+
   it('does not re-render the composer across a reconcile poll that returns identical data', async () => {
     vi.useFakeTimers();
     try {

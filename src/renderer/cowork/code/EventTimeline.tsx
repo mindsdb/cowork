@@ -710,6 +710,17 @@ export const EventTimeline = memo(function EventTimeline({
     // snap a pinned transcript to its new bottom immediately.
     if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
   }, [latestEventSeq, session.status]);
+  // Stay pinned when the dock grows, e.g. a decision tray opens.
+  useEffect(() => {
+    const element = scrollRef.current;
+    const inner = element?.firstElementChild;
+    if (!element || !inner || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
+    });
+    observer.observe(inner, { box: 'border-box' });
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
       ref={scrollRef}

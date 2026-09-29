@@ -2,7 +2,10 @@
    shares its column. Attachments are inset from the composer's edges and
    tuck behind its top border, so they read as part of it rather than as a
    second card. */
-.code-composer-dock { --code-attach-inset: 11px; --code-attach-overlap: 14px; flex: none; display: flex; flex-direction: column; padding: 8px var(--code-gutter) 0; }
+.code-composer-dock { --code-attach-inset: 11px; --code-attach-overlap: 14px; position: absolute; inset: auto 0 0; z-index: 2; display: flex; flex-direction: column; padding: 8px var(--code-gutter) 0; }
+/* Only the cards take the pointer; the transcript around them stays usable. */
+.code-composer-dock, .code-composer-dock .code-composer { pointer-events: none; }
+.code-composer-dock > :not(.code-composer), .code-composer-dock .code-composer > * { pointer-events: auto; }
 .code-composer-dock .code-composer__shell { z-index: 1; }
 /* Everything attached to the composer shares one inset, surface and tuck.
    A later attachment paints over the tucked bottom of the one above it and
