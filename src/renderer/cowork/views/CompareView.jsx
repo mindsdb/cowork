@@ -6,6 +6,7 @@
 // single app-wide stream slot, which holds one turn at a time.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
@@ -27,6 +28,7 @@ import { projectLabel } from '../lib/projectLabel';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, deriveComposerWarning, usageActionUrl } from '../lib/usageWarnings';
 import { trackBillingOpened } from '../lib/analytics';
+import { useUsageBarDismiss } from '../lib/usageBarDismiss';
 import {
   cancelResponse,
   continueComparisonSide,
@@ -110,10 +112,28 @@ function openBilling(action, isBillingOwner, trigger) {
 
 const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
 
+// Closing shares the composer bar's store and keys, so a warning closed on
+// either screen stays closed on both. One that blocks Start has no close: it
+// is the only explanation for the disabled button.
 function CreditNotice({ notice, isBillingOwner, trigger }) {
+  const [dismissed, dismiss] = useUsageBarDismiss();
   if (!notice) return null;
+  const key = notice.dismissKey ?? notice.kind;
+  const closable = !notice.blocks;
+  if (closable && dismissed.includes(key)) return null;
   return (
-    <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="w-full">
+    <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="relative w-full pr-10">
+      {closable && (
+        <button
+          type="button"
+          onClick={() => dismiss(key)}
+          aria-label="Dismiss"
+          title="Dismiss"
+          className="absolute top-1.5 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
+        >
+          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+        </button>
+      )}
       <div className="flex flex-col gap-2">
         <span>{notice.body}</span>
         {notice.actions?.length > 0 && (

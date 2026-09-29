@@ -62,6 +62,9 @@ vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...a
 
 import CompareView, { EXAMPLES, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
+import UsageBar from '../components/UsageBar';
+import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
+import { deriveComposerWarning } from '../lib/usageWarnings';
 
 const models = [{ id: 'kimi', name: 'Kimi' }, { id: 'qwen', name: 'Qwen' }];
 
@@ -131,6 +134,7 @@ beforeEach(() => {
   for (const key of Object.keys(openStreams)) delete openStreams[key];
   api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
   holdStreams();
+  resetUsageBarDismissForTests();
 });
 
 describe('CompareView', () => {
@@ -204,6 +208,33 @@ describe('CompareView', () => {
     fireEvent.change(modelB, { target: { value: 'qwen' } });
     expect(screen.getByText(/uses about twice the credits of one task/)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([false, false]);
+  });
+
+  it('closes a low-balance warning, and the composer bar stays closed with it', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    const { unmount } = render(withUsage(usage(LOW), <CompareView models={models} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('Balance running low')).toBeNull();
+    unmount();
+    const warning = deriveComposerWarning(usage(LOW).usage, { providerType: 'minds-cloud', model: 'kimi' });
+    expect(warning.title).toBe('Balance running low');
+    const { container } = render(<UsageBar warning={warning} />);
+    expect(container.querySelector('[data-usage-notice]')).toBeNull();
+  });
+
+  it('offers no close on the notice that explains a disabled Start', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
   it('holds follow-ups while a side is out of credits, and lets go once funds arrive', async () => {
