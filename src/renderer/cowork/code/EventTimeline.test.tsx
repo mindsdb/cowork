@@ -612,6 +612,33 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Tests fail; fixing a.ts.')).toBeInTheDocument();
   });
 
+  it('keeps a failure closed inside a finished turn, but opens it while the turn is live', () => {
+    const events: CodingEvent[] = [
+      { ...event(1, 'user_message', 'Fix a'), timestamp: '2026-08-21T09:00:00Z' },
+      { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test', exitCode: 1, aggregatedOutput: 'FAIL a.test.ts\n' } },
+      { ...event(3, 'command', ''), item_id: 'c2', data: { command: 'npm run lint', exitCode: 0 } },
+      { ...event(4, 'agent_message', 'Fixed a.ts.'), item_id: 'answer', timestamp: '2026-08-21T09:01:00Z' },
+    ];
+    const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
+    expect(view.container.querySelector('.code-activity-group.is-failed[open]')).not.toBeNull();
+    expect(screen.getByText('Exit code 1')).toBeInTheDocument();
+
+    view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+    fireEvent.click(screen.getByText('Worked for 1m 0s'));
+    const group = view.container.querySelector('.code-activity-group.is-failed');
+    expect(group).not.toBeNull();
+    expect(group).not.toHaveAttribute('open');
+    expect(screen.getByText('1 failed')).toBeInTheDocument();
+    expect(screen.queryByText('Exit code 1')).toBeNull();
+
+    fireEvent.click(screen.getByText('1 failed'));
+    expect(group).toHaveAttribute('open');
+    const step = screen.getByRole('button', { name: /npm test/ });
+    expect(step).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(step);
+    expect(screen.getByText('Exit code 1')).toBeInTheDocument();
+  });
+
   it('keeps the work of a turn that ended without an answer in view', () => {
     const events = [event(1, 'user_message', 'Fix a'), { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test' } }];
     render(<EventTimeline {...timelineProps(events)} session={session('cancelled')} />);

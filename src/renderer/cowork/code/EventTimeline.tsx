@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
@@ -233,10 +233,17 @@ function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb:
 }
 
 
+// A failure opens itself while the turn is live, because it may be what the
+// agent is stuck on. Inside a finished turn's fold it is history the agent
+// already moved past, so it stays closed and keeps only its failed marker.
+const SettledWork = createContext(false);
+
+
 // A step with nothing more to show is a plain line; otherwise the line
-// opens onto its detail. Failed steps open by default.
+// opens onto its detail. Failed steps open by default outside a settled fold.
 function Step({ head, failed = false, detail }: { head: ReactNode; failed?: boolean; detail?: () => ReactNode }) {
-  const [open, setOpen] = useState(failed);
+  const settled = useContext(SettledWork);
+  const [open, setOpen] = useState(failed && !settled);
   const className = `code-step${failed ? ' is-failed' : ''}`;
   if (!detail) return <div className={className}><div className="code-step__head">{head}</div></div>;
   return (
@@ -333,8 +340,9 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
   // the group open.
   const failures = rows.filter((row) => row.kind === 'step' && stepFailed(row.event)).length;
   const failed = failures > 0;
-  const [open, setOpen] = useState(failed);
-  useEffect(() => { if (failed) setOpen(true); }, [failed]);
+  const settled = useContext(SettledWork);
+  const [open, setOpen] = useState(failed && !settled);
+  useEffect(() => { if (failed && !settled) setOpen(true); }, [failed, settled]);
   // A lone step's headline already names it, so the group opens straight
   // onto its detail instead of repeating the line.
   const [only] = rows;
@@ -444,7 +452,7 @@ function WorkedSummary({ label, children }: { label: string; children: () => Rea
         <span>{label}</span>
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
-      {open && <div className="code-worked__body">{children()}</div>}
+      {open && <div className="code-worked__body"><SettledWork.Provider value>{children()}</SettledWork.Provider></div>}
     </details>
   );
 }
