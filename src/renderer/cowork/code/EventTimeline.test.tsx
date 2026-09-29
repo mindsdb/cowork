@@ -454,6 +454,25 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Tests fail; fixing a.ts.')).toBeInTheDocument();
   });
 
+  it('folds a thought that arrives after the answer into the finished turn', () => {
+    const thought = (seq: number, id: string, heading: string): CodingEvent => ({ ...event(seq, 'reasoning', ''), item_id: id, data: { summary: [`**${heading}**`] } });
+    const events: CodingEvent[] = [
+      { ...event(1, 'user_message', 'What version is the server?'), timestamp: '2026-08-21T09:00:00Z' },
+      thought(2, 'r1', 'Checking version'),
+      { ...event(3, 'command', ''), item_id: 'c1', data: { command: 'git describe --tags' } },
+      { ...event(4, 'agent_message', 'It is version 1.2.3.'), item_id: 'answer', timestamp: '2026-08-21T09:00:19Z' },
+      thought(5, 'r2', 'Identifying version from git tag'),
+      { ...event(6, 'usage', ''), phase: 'progress' },
+    ];
+    render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
+
+    expect(screen.getByText('Worked for 19s')).toBeInTheDocument();
+    expect(screen.queryByText('Thought it through')).toBeNull();
+
+    fireEvent.click(screen.getByText('Worked for 19s'));
+    expect(screen.getByText('Thought it through')).toBeInTheDocument();
+  });
+
   it('keeps a failure closed inside a finished turn, but opens it while the turn is live', () => {
     const events: CodingEvent[] = [
       { ...event(1, 'user_message', 'Fix a'), timestamp: '2026-08-21T09:00:00Z' },
