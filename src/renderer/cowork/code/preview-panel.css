@@ -5,10 +5,7 @@
 .code-preview__actions { display: flex; align-items: center; gap: 2px; }
 .code-preview__toolbar { min-height: 44px; padding: 6px 10px 6px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); }
 .code-preview__toolbar > code { min-width: 0; overflow: hidden; color: var(--ink-4); font: 10.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.code-preview__viewports { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
-.code-preview__viewports button { width: 27px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: calc(var(--r-md) - 2px); background: transparent; color: var(--ink-4); cursor: pointer; }
-.code-preview__viewports button:hover { color: var(--ink-2); }
-.code-preview__viewports button.is-active { background: var(--surface); color: var(--accent); box-shadow: var(--sh-1); }
+.code-preview__viewports { flex: 0 0 auto; }
 .code-preview__stage { flex: 1; min-height: 0; padding: 12px; display: flex; justify-content: center; overflow: auto; background: color-mix(in srgb, var(--bg) 72%, var(--surface-2)); }
 .code-preview__stage iframe { height: 100%; min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-lg); background: white; box-shadow: var(--sh-1); }
 .code-preview__empty { margin: auto; padding: 32px; display: grid; justify-items: center; color: var(--ink-4); text-align: center; }

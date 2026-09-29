@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
+import Button from '../components/ui/Button';
 import type { EngineCommand, SkillLibraryItem } from './api';
 import { skillSupersedesHint } from './presentation';
 import { useSkillLibrary } from './useSkillLibrary';
@@ -179,14 +180,15 @@ export function CodeCommandPalette({
           <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
         </button>
         {item.kind === 'skill' && (
-          <button
-            type="button"
+          <Button
+            size="xxs"
+            variant="subtle"
             className="code-command-palette__view"
             aria-label={`View ${item.label}`}
             onClick={() => onViewSkill(item.skill)}
           >
             View
-          </button>
+          </Button>
         )}
       </div>
     );

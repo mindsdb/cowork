@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
+import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
 import Spinner from '../components/ui/Spinner';
 import type { CodingSession } from './api';
@@ -182,8 +183,10 @@ export function CodeSidebarSessions({
             <span className="code-sidebar-session__time">{updated}</span>
           </span>
         </button>
-        <button
-          type="button"
+        <Button
+          icon
+          size="xxs"
+          variant="subtle"
           className="code-sidebar-session__pin"
           disabled={pinBusy.has(session.id)}
           onClick={() => void togglePinned(session)}
@@ -192,7 +195,7 @@ export function CodeSidebarSessions({
           title={isPinned ? 'Unpin task' : 'Pin task'}
         >
           {Ico.pin(12)}
-        </button>
+        </Button>
       </div>
     );
   };
@@ -236,9 +239,9 @@ export function CodeSidebarSessions({
         <span>CODE TASKS</span>
         <Menu
           trigger={(
-            <button type="button" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
+            <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
               {Ico.slider(11)}<span>Organize</span>
-            </button>
+            </Button>
           )}
           items={menuItems}
           side="bottom"

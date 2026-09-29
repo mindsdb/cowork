@@ -37,7 +37,7 @@
 .code-files__result-preview { min-width: 0; overflow: hidden; color: var(--ink-4); font: 10.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .code-files__viewer { min-height: 100%; display: flex; flex-direction: column; }
 .code-files__viewer-bar { min-height: 38px; padding: 6px 10px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
-.code-files__viewer-bar button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--ink-4); cursor: pointer; font: 10.5px var(--font-sans); }
+.code-files__viewer-back { margin-left: -6px; }
 .code-files__viewer-bar strong { min-width: 0; overflow: hidden; color: var(--ink-2); font: 10.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .code-files__viewer-bar > span { color: var(--ink-5); font-size: 10px; }
 .code-files__code { flex: 1; overflow: auto; padding: 7px 0 14px; background: color-mix(in srgb, var(--bg) 76%, var(--surface)); }

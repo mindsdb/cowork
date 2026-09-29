@@ -174,7 +174,7 @@ describe('CodeSkillsView', () => {
     await user.click(screen.getByRole('button', { name: 'Add skill' }));
     expect(await screen.findByRole('button', { name: 'Edit New review' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Yours' })).toHaveClass('is-active');
+    expect(screen.getByRole('button', { name: 'Yours' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
