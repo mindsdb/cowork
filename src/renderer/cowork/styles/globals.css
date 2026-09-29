@@ -145,9 +145,9 @@ body, body[data-theme="light"] {
   --ink-5:        #C8CACC;   /* disabled */
 
   /* Ghost-control fills: a translucent ink wash, so hover reads on any
-     ground. Declared once here on body; var(--ink) resolves per theme. */
-  --ghost-hover:  color-mix(in srgb, var(--ink) 8%, transparent);
-  --ghost-press:  color-mix(in srgb, var(--ink) 12%, transparent);
+     ground. Dark runs a notch stronger (see the dark block). */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 7%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 11%, transparent);
 
   --accent:       #1F9CB0;
   --accent-2:     #115562;
@@ -279,6 +279,10 @@ body[data-theme="dark"] {
   --ink-3:        #8A97AE;
   --ink-4:        #5C6B85;
   --ink-5:        #3A465E;
+
+  /* Ghost fills need a touch more ink to register on the dark surfaces. */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 8%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 12%, transparent);
 
   --accent:       rgb(34, 211, 238);
   --accent-2:     rgb(8, 178, 207);
