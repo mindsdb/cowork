@@ -6022,6 +6022,7 @@ function AppCore() {
             projects={projects}
             agentLabel={agentLabel}
             onOpenTask={(id) => { if (id) selectTask(id); }}
+            onOpenSettings={openSettings}
           />
         )}
         {['memory', 'publish'].includes(route) && (
