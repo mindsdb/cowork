@@ -46,6 +46,7 @@ vi.mock('../components/ui', async (importOriginal) => {
 const api = vi.hoisted(() => ({
   fetchComparisons: vi.fn(),
   fetchComparison: vi.fn(),
+  fetchComparisonUsage: vi.fn(),
   createComparison: vi.fn(),
   deleteComparison: vi.fn(),
   recordComparisonVerdict: vi.fn(),
@@ -133,6 +134,7 @@ beforeEach(() => {
   hostMock.openExternal.mockReset();
   for (const key of Object.keys(openStreams)) delete openStreams[key];
   api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+  api.fetchComparisonUsage.mockResolvedValue(null);
   holdStreams();
   resetUsageBarDismissForTests();
 });
@@ -448,6 +450,55 @@ describe('CompareView', () => {
     expect(screen.queryByRole('group', { name: 'Send to' })).toBeNull();
     act(() => openStreams['conv-a'].onDone());
     await waitFor(() => expect(screen.getByText('Qwen is still working. Send to Kimi only, or wait.')).toBeTruthy());
+  });
+
+  it('shows what each side cost, its latest turn, and both together', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: { available: true, estimatedCostUsd: 0.042, turns: [{ turn: 1, estimatedCostUsd: 0.042, inputTokens: 12000, outputTokens: 400 }] },
+        b: { available: true, estimatedCostUsd: 1.5, turns: [{ turn: 1, estimatedCostUsd: 1.5, inputTokens: 90000 }] },
+      },
+    });
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect(await screen.findByLabelText('Side A estimated cost $0.042')).toBeTruthy();
+    expect(screen.getByLabelText('Side B estimated cost $1.50')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toBe('Done · 30s · $0.042');
+    expect(screen.getByText(/Estimated cost \$1\.54/)).toBeTruthy();
+    expect(api.fetchComparisonUsage).toHaveBeenCalledWith('cmp-1');
+  });
+
+  it('shows no cost for a side the gateway has nothing for, and marks the total as partial', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: { available: true, estimatedCostUsd: 0.2, turns: [{ turn: 1, estimatedCostUsd: 0.2 }] },
+        b: { available: false, turns: [] },
+      },
+    });
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect(await screen.findByLabelText('Side A estimated cost $0.2')).toBeTruthy();
+    expect(screen.queryByLabelText(/Side B estimated cost/)).toBeNull();
+    expect(screen.getByRole('status', { name: 'Side B status' }).textContent).not.toMatch(/\$/);
+    expect(screen.getByText(/Estimated cost \$0\.2\+/)).toBeTruthy();
+  });
+
+  it('shows no cost at all when the server cannot say', async () => {
+    api.fetchComparisonUsage.mockResolvedValue(null);
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
+    expect(screen.queryByText(/Estimated cost/)).toBeNull();
+    expect(screen.queryByLabelText(/estimated cost/)).toBeNull();
+  });
+
+  it('reads the cost again when a turn finishes', async () => {
+    api.fetchComparisonUsage.mockResolvedValue(null);
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    const beforeDone = api.fetchComparisonUsage.mock.calls.length;
+    act(() => openStreams['conv-a'].onDone());
+    await waitFor(() => expect(api.fetchComparisonUsage.mock.calls.length).toBeGreaterThan(beforeDone));
   });
 
   it('shows each side under its model name with a quiet status line', async () => {
