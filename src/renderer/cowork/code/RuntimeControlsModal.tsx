@@ -241,14 +241,15 @@ export function RuntimeControlsModal({
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        <Button
-          variant="primary"
-          disabled={busy || !draft.model || !!applyBlockedReason}
-          // A disabled button fires no hover events, so ui/Tooltip can't open;
-          // the native title is the only way to explain why it's locked.
-          title={applyBlockedReason}
-          onClick={() => void apply()}
-        >Apply</Button>
+        {/* `.btn:disabled` sets pointer-events: none, so a title on the button
+            itself never shows. The wrapper takes the hover instead. */}
+        <span className="inline-flex" title={applyBlockedReason}>
+          <Button
+            variant="primary"
+            disabled={busy || !draft.model || !!applyBlockedReason}
+            onClick={() => void apply()}
+          >Apply</Button>
+        </span>
       </ModalFooter>
     </Modal>
   );

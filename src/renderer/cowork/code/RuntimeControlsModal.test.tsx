@@ -180,13 +180,16 @@ it('keeps the draft editable but blocks Apply while a turn is active', async () 
 
   const apply = screen.getByRole('button', { name: 'Apply' });
   expect(apply).toBeDisabled();
-  expect(apply).toHaveAttribute('title', 'Changes can be applied after the current turn finishes');
+  // The hint must sit on a hoverable wrapper: `.btn:disabled` sets
+  // pointer-events: none, so a title on the button itself never shows.
+  expect(apply).not.toHaveAttribute('title');
+  expect(apply.parentElement).toHaveAttribute('title', 'Changes can be applied after the current turn finishes');
   await user.click(screen.getByRole('switch', { name: 'Web search' }));
   expect(screen.getByRole('switch', { name: 'Web search' })).toBeChecked();
 
   rerender(<RuntimeControlsModal {...props} />);
   expect(apply).toBeEnabled();
-  expect(apply).not.toHaveAttribute('title');
+  expect(apply.parentElement).not.toHaveAttribute('title');
   await user.click(apply);
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ web_search: true }));
 });
