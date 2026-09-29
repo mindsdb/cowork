@@ -7,13 +7,8 @@ import '../styles.css';
 import '../cowork/styles/tailwind.css';
 import Composer from '../cowork/components/Composer';
 
-/* The chat composer in each place it renders, on one page.
-
-   Chat's composer only renders behind a signed-in account, so a change to the
-   shared ComposerShell had no way to show chat's side of it. Code Mode's
-   composers render through ?codeFixture= instead. Open with
-   `npm run dev:renderer` at /composer-fixture.html, and add ?theme=dark for
-   the dark pass. */
+/* Chat's composers without signing in. Open with `npm run dev:renderer` at
+   /composer-fixture.html (?theme=dark for dark). */
 
 const noop = () => {};
 const model = { id: 'mindshub-air', name: 'MindsHub Air' };

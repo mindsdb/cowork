@@ -1,22 +1,11 @@
-// The one composer surface, shared by chat (Home, Projects, a chat task) and
-// Code Mode (new task, task follow-ups).
+// The composer card shared by chat and Code Mode; styles live in globals.css
+// (.composer-wrap, .composer-toolbar). Callers fill the footer slots with
+// their own controls. Focus follows the textarea, so `focused` is optional.
 //
-// The look lives in the `.composer-wrap` / `.composer-toolbar` classes in
-// globals.css. The shell owns the card: border, surface, radius, shadow,
-// focus and drop-target states. Callers own what goes inside it — the input,
-// chips, menus — and fill the footer's slots with their own controls, so each
-// context swaps its buttons without restyling the card.
-//
-//   <ComposerShell>…</ComposerShell>            // resting on the page (Home, new task)
-//   <ComposerShell floating>…</ComposerShell>   // floating over a transcript
-//   <ComposerShell dragging={isDragging}>       // files dragged over it
-//   <ComposerFooter
-//     start={<AddMenu />}                        // context actions, left
-//     end={<><ModelPicker /><SendButton /></>}   // pickers and send, right
-//   />
-//
-// Focus needs no wiring: the card takes its focus state whenever its textarea
-// is focused. `focused` remains for callers that already track focus.
+//   <ComposerShell floating dragging={isDragging}>
+//     …
+//     <ComposerFooter start={<AddMenu />} end={<SendButton />} />
+//   </ComposerShell>
 
 import { forwardRef } from 'react';
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
@@ -36,7 +25,6 @@ export interface ComposerShellVariantProps extends VariantProps<typeof composerS
   className?: string;
 }
 
-// Pure — exported so the class logic can be unit-tested directly.
 export function composerShellClasses({ className, ...variants }: ComposerShellVariantProps = {}): string {
   return cn(composerShellVariants(variants), className);
 }

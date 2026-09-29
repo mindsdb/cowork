@@ -152,9 +152,6 @@
 .code-new-task__heading { display: flex; align-items: center; gap: 11px; }
 .code-new-task__mark { width: 31px; height: 31px; flex: 0 0 31px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-01)); border-radius: 9px; background: color-mix(in srgb, var(--accent) 7%, var(--surface-0)); color: var(--accent); }
 .code-new-task__intro h1 { margin: 0; color: var(--text-strong); font: 600 clamp(25px, 2.25vw, 30px)/1.16 var(--font-display); letter-spacing: -.008em; }
-/* Both Code composers are a ComposerShell: the start composer rests on the
-   page like Home's, the task composer floats like chat's. Only their inner
-   layout lives here. */
 .code-start-composer {
   --composer-max-width: var(--code-measure);
   position: relative;

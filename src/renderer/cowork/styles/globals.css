@@ -943,7 +943,6 @@ body[data-theme="light"] .overlay-inline-code {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 10px 10px;
 }
-/* ComposerFooter's divider between its start and end slots. */
 .composer-toolbar__spacer { min-width: 4px; flex: 1 1 auto; }
 .composer-icon {
   width: 32px; height: 32px; border-radius: var(--r-8);
@@ -3282,8 +3281,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    Inter (display/labels + body), JetBrains Mono (operator metadata:
    timestamps, model, turn count). */
 
-/* Floating composer — a composer over a transcript: the chat shell, and
-   <ComposerShell floating> (Code Mode's task composer).
+/* Floating composer, over a transcript (chat, <ComposerShell floating>).
    Toolbar + / Send insets and control sizes match the default composer
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap,
@@ -3371,8 +3369,7 @@ body[data-theme="dark"] .composer-wrap--floating {
   border-color: var(--accent);
   box-shadow: var(--composer-float-shadow);
 }
-/* Files dragged over the composer. The doubled class outranks focus, which
-   is usually also on while dragging into a composer. */
+/* Doubled class so the drop state outranks focus. */
 .composer-wrap.composer-wrap.is-dragging-files {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--composer-float-shadow, var(--sh-1));
