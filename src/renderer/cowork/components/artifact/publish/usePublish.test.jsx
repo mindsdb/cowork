@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePublish } from './usePublish';
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
 // Regression coverage for ENG-931: the restricted-access list must always
 // reflect the server's real list — on any open, and it must never be
 // self-clobbered by the re-sync effect after refresh() feeds onChange back
@@ -164,5 +170,33 @@ describe('usePublish — ownerOnly (ENG-1769)', () => {
       await result.current.publish({ mode: 'public' });
     });
     expect(result.current.ownerOnly).toBe(false);
+  });
+});
+
+describe('usePublish — a late refresh for another artifact (ENG-3070 review)', () => {
+  it("drops the previous artifact's status when it lands after a switch", async () => {
+    const statusA = deferred();
+    const statusB = deferred();
+    apiMock.fetchArtifactStatus.mockImplementation((path) => (path === '/p/b.html' ? statusB.promise : statusA.promise));
+    const A = { path: '/p/a.html' };
+    const B = { path: '/p/b.html' };
+    const onChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ artifact, enabled }) => usePublish(artifact, { onChange, enabled }),
+      { initialProps: { artifact: A, enabled: true } },
+    );
+
+    rerender({ artifact: A, enabled: false });
+    rerender({ artifact: B, enabled: true });
+    await act(async () => {
+      statusB.resolve({ ...STATUS_RESTRICTED, publishedUrl: 'https://share/b', accessEmails: ['bob@x.com'] });
+    });
+    await act(async () => {
+      statusA.resolve({ ...STATUS_RESTRICTED, publishedUrl: 'https://share/a', accessEmails: ['alice@x.com'] });
+    });
+
+    expect(result.current.accessEmails).toEqual(['bob@x.com']);
+    expect(result.current.publishedUrl).toBe('https://share/b');
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ publishedUrl: 'https://share/a' }));
   });
 });

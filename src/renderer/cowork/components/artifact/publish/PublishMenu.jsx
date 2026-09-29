@@ -16,10 +16,9 @@
 // rich flow — previously only the grid had it.
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
-import { Alert, Button, Spinner, Tooltip } from '../../ui';
+import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -305,21 +304,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
 
   return (
     <>
-      {/* Outside-press dismiss. Base UI's own outside-click detection listens
-          on the parent document, but the artifact preview is an <iframe>
-          (ArtifactViewer) — clicks inside it fire in the iframe's own
-          document and never reach a parent-document listener, so almost
-          anywhere the user clicks fails to close this popover (mirrors the
-          drag-region gap documented in ui/Menu.jsx's anchored-mode overlay).
-          A transparent layer positioned just under the popup intercepts
-          those presses directly instead of relying on bubbling. */}
-      {open && createPortal(
-        <div
+      {/* Outside-press dismiss. Clicks inside the artifact preview <iframe>
+          never reach Base UI's parent-document listener, so without this
+          layer almost anywhere the user clicks would leave the popover open.
+          See OutsidePressLayer. */}
+      {open && (
+        <OutsidePressLayer
           data-testid="publish-menu-outside-dismiss"
-          onMouseDown={() => setOpen(false)}
-          className="fixed inset-0 z-[89] bg-transparent [-webkit-app-region:no-drag]"
-        />,
-        document.body,
+          onPress={() => setOpen(false)}
+          zIndex={89}
+        />
       )}
       <Popover.Root open={open} onOpenChange={(v) => { if (!disabled) setOpen(v); }}>
         <Popover.Trigger

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -79,7 +79,19 @@ vi.mock('./workspace/ArtifactSourceEditor', () => ({ ArtifactSourceEditor: () =>
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
-vi.mock('./ArtifactViewerHeader', () => ({ ArtifactViewerHeader: () => null }));
+// Shows what the viewer hands the header, so this file stays about the wiring
+// from the hook to the header. The button and its popover are covered in
+// ArtifactViewerHeader.previewErrors.test.jsx.
+vi.mock('./ArtifactViewerHeader', () => ({
+  ArtifactViewerHeader: ({ diagnostics }) => (
+    <div data-testid="header-diagnostics" data-dismissed={String(diagnostics.dismissed)}>
+      <ul>
+        {diagnostics.errors.map((error, index) => <li key={index}>{error.message}</li>)}
+      </ul>
+      <button type="button" onClick={diagnostics.dismiss}>Dismiss</button>
+    </div>
+  ),
+}));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
@@ -96,7 +108,25 @@ const artifact = {
   capabilities: { role: 'owner', canEdit: true },
 };
 
-describe('ArtifactViewer preview error notice', () => {
+const postFromPreview = (source, data) => fireEvent(window, new MessageEvent('message', {
+  source,
+  data: { source: 'anton-preview', ...data },
+}));
+const scriptError = (message) => ({ type: 'error', message, file: 'a.html', line: 1 });
+const headerDiagnostics = () => screen.getByTestId('header-diagnostics');
+const headerErrors = () => within(headerDiagnostics()).queryAllByRole('listitem')
+  .map((item) => item.textContent);
+// The viewer starts listening in a passive effect, which can still be pending
+// when the frame first appears (findBy* resolves on the DOM change, outside
+// act). A message sent in that gap is dropped, so send until it lands; the
+// hook de-duplicates repeats, so the expected list is unchanged.
+const sendUntilShown = (messages, expected) => vi.waitFor(() => {
+  const frame = screen.getByTitle('Launch brief');
+  messages.forEach((message) => postFromPreview(frame.contentWindow, message));
+  expect(headerErrors()).toEqual(expected);
+});
+
+describe('ArtifactViewer preview errors', () => {
   beforeEach(() => {
     loadArtifactDraftDocument.mockReset();
     loadArtifactDraftDocument.mockResolvedValue({
@@ -108,45 +138,51 @@ describe('ArtifactViewer preview error notice', () => {
     previewArtifact.mockResolvedValue({ content: 'hello preview text', truncated: false, mime: 'text/markdown' });
   });
 
-  it('announces a preview error without hiding the page that produced it', async () => {
+  it('hands a preview error to the header without hiding the page that produced it', async () => {
     // The page rendered; only its script died. Replacing the canvas with an
     // error would hide exactly what the user is trying to understand.
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
+    await screen.findByTitle('Launch brief');
 
-    fireEvent(window, new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: {
-        source: 'anton-preview',
-        type: 'error',
-        message: "SecurityError: Failed to read the 'localStorage' property",
-        file: 'a.html',
-        line: 44,
-      },
-    }));
-
-    // By text, not by role: ArtifactViewer already has two elements with
-    // role="status" (lines 899 and 943), so a role query becomes ambiguous
-    // as soon as either condition changes. The accessible name of a div with
-    // this role is not computed from its content, so { name } would not help.
-    expect(await screen.findByText(/The preview reported an error/))
-      .toHaveTextContent("SecurityError: Failed to read the 'localStorage' property");
+    await sendUntilShown(
+      [{ ...scriptError("SecurityError: Failed to read the 'localStorage' property"), line: 44 }],
+      ["SecurityError: Failed to read the 'localStorage' property"],
+    );
     expect(screen.getByTitle('Launch brief')).toBeInTheDocument();
+    // ENG-3002: the header is the only place the message appears. The banner
+    // that used to sit between the header and the page repeated it.
+    expect(screen.getAllByText(/Failed to read the 'localStorage' property/)).toHaveLength(1);
   });
 
-  it('counts the errors beyond the first', async () => {
+  it('hands the header every error, not just the first', async () => {
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
-    const post = (message) => fireEvent(window, new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: { source: 'anton-preview', type: 'error', message, file: 'a.html', line: 1 },
-    }));
+    await screen.findByTitle('Launch brief');
 
-    post('first');
-    post('second');
+    await sendUntilShown([scriptError('first'), scriptError('second')], ['first', 'second']);
+  });
 
-    expect(await screen.findByText(/The preview reported an error/))
-      .toHaveTextContent('(+1 more)');
+  it('counts a blocked stylesheet as one error, not two', async () => {
+    /* The shape web showed on every HTML preview: one blocked <link> sends a
+       policy report and a failed-load report for the same URL. */
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap';
+
+    await sendUntilShown(
+      [{ type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url }, { type: 'resource', tagName: 'LINK', url }],
+      [`Blocked by the page security policy (style-src-elem): ${url}`],
+    );
+  });
+
+  it("wires the header's Dismiss to the hook", async () => {
+    render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    await sendUntilShown([scriptError('boom')], ['boom']);
+    expect(headerDiagnostics()).toHaveAttribute('data-dismissed', 'false');
+
+    fireEvent.click(within(headerDiagnostics()).getByRole('button', { name: 'Dismiss' }));
+
+    expect(headerDiagnostics()).toHaveAttribute('data-dismissed', 'true');
   });
 
   it('ignores preview messages for a text artifact, which never mounts an iframe', async () => {
@@ -164,17 +200,8 @@ describe('ArtifactViewer preview error notice', () => {
     await screen.findByText('hello preview text');
     expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
 
-    fireEvent(window, new MessageEvent('message', {
-      source: window,
-      data: {
-        source: 'anton-preview',
-        type: 'error',
-        message: 'should never surface',
-        file: 'a.html',
-        line: 1,
-      },
-    }));
+    postFromPreview(window, scriptError('should never surface'));
 
-    expect(screen.queryByText(/The preview reported an error/)).not.toBeInTheDocument();
+    expect(headerErrors()).toEqual([]);
   });
 });

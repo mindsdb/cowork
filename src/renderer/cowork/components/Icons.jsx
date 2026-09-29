@@ -84,6 +84,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  TriangleAlert,
   Upload,
   UserRound,
   Users,
@@ -187,6 +188,8 @@ const Ico = {
   openFolder:   ico(FolderOpen),
   // Manual reload of the preview.
   reload:       ico(RefreshCw),
+  // Errors the previewed page reported about itself (ENG-3002).
+  warning:      ico(TriangleAlert),
   // "Open in the default browser".
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).

@@ -35,10 +35,11 @@ const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
 // The web-fallback OAuth routes' "service" slug and the "X connected"
 // success title both come from the connector's own spec (oauth.service_id,
-// label) rather than a hardcoded per-engine map, so any OAuth-builtin
-// connector works here without a code change.
-function getBrowserOAuthMethod(spec) {
-  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
+// label) rather than a hardcoded per-engine map, so any OAuth connector works
+// here without a code change. Looked up by the method actually chosen: the
+// OAuth method isn't always `browser_oauth_builtin` (HubSpot's is `mcp`).
+function getOAuthMethod(spec, methodId) {
+  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null) || null;
 }
 
 const FONT_BODY = 'var(--font-body)';
@@ -285,8 +286,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
 
     // Built-in browser OAuth — user clicked Submit after filling any
-    // required fields (e.g. developer token for Google Ads).
-    if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
+    // required fields (e.g. developer token for Google Ads). 'mcp' drives
+    // the identical host.oauthConnect() PKCE call — HubSpot's MCP Auth App
+    // (ENG-487) is OAuth 2.1 + PKCE with a fixed client_id/secret, same
+    // shape as browser_oauth_builtin, just a different method id since it
+    // authenticates against HubSpot's MCP server rather than its REST API.
+    if ((authMethod === 'browser_oauth_builtin' || authMethod === 'mcp') && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const providerLabel = providerNameFromSpec(spec);
       const successTitle = `${providerLabel} connected`;
@@ -324,8 +329,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
 
       // Web fallback — server-side redirect flow.
-      const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
-      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+      const serviceId = getOAuthMethod(spec, authMethod)?.oauth?.service_id;
+      if (!serviceId) {
+        setError(`No OAuth configuration for "${engine}".`);
+        setBusy(false);
+        return;
+      }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
         if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
@@ -880,7 +889,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               userLabel={!spec._is_success ? userLabel : undefined}
               onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
-                if (methodId !== 'browser_oauth_builtin') return;
+                // 'mcp' (HubSpot, ENG-487) drives the identical zero-field
+                // auto-start flow as browser_oauth_builtin — found in code
+                // review: this gate wasn't widened alongside the primary
+                // submit handler's, so selecting HubSpot's recommended hero
+                // silently required an extra Submit click instead of the
+                // one-click flow every other zero-field connector gets.
+                if (methodId !== 'browser_oauth_builtin' && methodId !== 'mcp') return;
                 // Methods with fields wait for Submit — handleAction takes over.
                 const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
                 if (method?.fields?.length) return;
@@ -907,9 +922,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   return;
                 }
 
-                // Web fallback
+                // Web fallback — server-side redirect flow.
                 const serviceId = method?.oauth?.service_id;
-                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+                if (!serviceId) {
+                  setError(`No OAuth configuration for "${engine}".`);
+                  setBusy(false);
+                  return;
+                }
                 try {
                   const result = await startConnectorOAuth(serviceId);
                   if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);

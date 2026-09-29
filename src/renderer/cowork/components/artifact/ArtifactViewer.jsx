@@ -64,6 +64,14 @@ import {
 // fall back to a monospace block.
 
 
+// Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
+// carry over from the artifact the report started from.
+function isSameArtifact(a, b) {
+  if (!a || !b) return false;
+  if (a.id || b.id) return a.id === b.id;
+  return (a.path || '') === (b.path || '');
+}
+
 export function ArtifactViewer({
   open,
   artifact,
@@ -147,8 +155,23 @@ export function ArtifactViewer({
 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
-  const pub = usePublish(artifact, { onChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  // The hooks below report back from async work (status refreshes, saves) that
+  // can settle after the viewer closed or moved to another artifact. Hosts
+  // handle onChange by setting their preview state to the updated artifact, so
+  // a late report would reopen a closed viewer or swap the one on screen
+  // (ENG-3070). Refs are written during render so a close is seen immediately.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const artifactRef = useRef(artifact);
+  artifactRef.current = artifact;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const reportChange = useCallback((updated) => {
+    if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
+    onChangeRef.current?.(updated);
+  }, []);
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
+  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -328,8 +351,8 @@ export function ArtifactViewer({
       const requested = await workspace.addressWithAgent({
         thread,
         conversationId: targetConversationId,
-        // Already normalized to { message, file, line } and capped by the hook;
-        // the server caps again and owns the prompt's size.
+        // Normalized, folded and capped by the hook; the server reads
+        // message, file and line, caps again and owns the prompt's size.
         previewErrors: diagnostics.errors,
       });
       if (requested) {
@@ -884,6 +907,7 @@ export function ArtifactViewer({
         review={headerReview}
         publication={publication}
         actions={artifactActions}
+        diagnostics={diagnostics}
         onClose={onClose}
       />
 
@@ -914,15 +938,6 @@ export function ArtifactViewer({
         >
           {Ico.chats(15)} <span>{feedbackNotice}</span>
         </button>
-      )}
-      {diagnostics.errors.length > 0 && !diagnostics.dismissed && (
-        <div className="artifact-workspace-notice" role="status">
-          <span>
-            {`The preview reported an error: ${diagnostics.errors[0].message}`}
-            {diagnostics.errors.length > 1 && ` (+${diagnostics.errors.length - 1} more)`}
-          </span>
-          <button type="button" onClick={diagnostics.dismiss}>Dismiss</button>
-        </div>
       )}
       {/* A superseded suggestion is still decidable, so it is announced rather
           than taking over the canvas the way a current one does. */}

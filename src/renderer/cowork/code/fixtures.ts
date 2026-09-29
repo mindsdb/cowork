@@ -153,12 +153,111 @@ function sideSessions(count = 9): CodingSession[] {
 }
 
 
+// A research turn shaped like a real Codex run: parsed shell commands, one
+// approval per network call, reasoning between steps, and short interim
+// messages before the answer.
+function activityEvents(running: boolean): CodingEvent[] {
+  let seq = 0;
+  // A live turn is timed against the clock, so start it just now.
+  const start = running ? Date.now() - 24_000 : Date.parse('2026-08-21T19:30:00Z');
+  const at = (second: number) => new Date(start + second * 1_000).toISOString();
+  const next = (type: CodingEvent['type'], second: number, values: Partial<CodingEvent> = {}) => event(++seq, type, { timestamp: at(second), ...values });
+  const shell = (id: string, second: number, command: string, actionType: string, extra: Record<string, string> = {}, phase: CodingEvent['phase'] = 'completed', output = '', exitCode = 0) => next('command', second, {
+    item_id: id,
+    phase: exitCode ? 'failed' : phase,
+    title: `/bin/zsh -lc '${command}'`,
+    data: { command: `/bin/zsh -lc '${command}'`, commandActions: [{ type: actionType, command, ...extra }], ...(phase === 'completed' ? { exitCode, aggregatedOutput: output } : {}) },
+  });
+  const patch = [
+    '@@ -41,6 +41,9 @@ export async function submitCheckout(draft: CheckoutDraft) {',
+    '   try {',
+    '     return await client.post(\'/checkout\', draft);',
+    '   } catch (error) {',
+    '-    clearDraft();',
+    '+    // Keep what the customer typed so they can retry.',
+    '+    reportCheckoutError(error);',
+    '+    throw error;',
+    '   }',
+    ' }',
+  ].join('\n');
+  const testPatch = ['it(\'keeps the draft when the request fails\', async () => {', '  mockPost.mockRejectedValue(new Error(\'503\'));', '  await expect(submitCheckout(draft)).rejects.toThrow();', '  expect(loadDraft()).toEqual(draft);', '});'].join('\n');
+  const approved = (id: string, second: number, command: string) => [
+    next('approval', second, { title: 'Run command', text: `/bin/zsh -lc '${command}'`, phase: 'pending', data: { approvalId: id, kind: 'command' } }),
+    next('approval', second + 1, { title: 'Approval resolved', text: 'Approve once', data: { approvalId: id, decision: 'approve_once' } }),
+  ];
+  const events = [
+    next('user_message', 0, { title: 'You', text: 'Where does checkout validation run, and is it covered by tests?' }),
+    next('reasoning', 1, { item_id: 'r1' }),
+    next('plan', 1, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'inProgress' },
+      { step: 'Check which rules the tests cover', status: 'pending' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
+    shell('c1', 2, 'rg -n "validateCheckout" src', 'search', { query: 'validateCheckout', path: 'src' }),
+    shell('c2', 3, 'cat src/checkout/validation.ts', 'read', { name: 'validation.ts', path: 'src/checkout/validation.ts' }),
+    shell('c3', 4, 'cat src/checkout/CheckoutForm.tsx', 'read', { name: 'CheckoutForm.tsx', path: 'src/checkout/CheckoutForm.tsx' }),
+    next('plan', 5, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'completed' },
+      { step: 'Check which rules the tests cover', status: 'inProgress' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
+    next('agent_message', 6, { item_id: 'm1', text: 'Validation lives in `validation.ts` and runs on submit. Next I’ll check which rules the tests cover.' }),
+    ...approved('a1', 7, 'npm test -- validation --reporter=json'),
+    shell('c4', 9, 'npm test -- validation', 'unknown', {}, 'completed', 'FAIL  src/checkout/validation.test.ts\n  ● rejects an empty postcode\n\n    Cannot find module \'./fixtures/address\' from \'validation.test.ts\'\n\nTests: 1 failed, 11 passed, 12 total', 1),
+    next('error', 10, { title: 'Agent error', text: 'Reconnecting... 1/2', phase: 'failed' }),
+    next('reasoning', 12, { item_id: 'r2' }),
+    ...approved('a2', 13, 'npx vitest related src/checkout/validation.ts'),
+    shell('c5', 15, 'npx vitest related src/checkout/validation.ts', 'unknown', {}, 'completed', ' ✓ src/checkout/validation.test.ts (12 tests) 41ms\n\n Test Files  1 passed (1)\n      Tests  12 passed (12)'),
+    next('tool', 16, { item_id: 't1', title: 'Mcp tool call', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue', result: { content: [{ type: 'text', text: '{"identifier":"ENG-412","title":"Checkout loses the draft after a 503"}' }] } } }),
+    next('agent_message', 18, { item_id: 'm2', text: 'The field rules are covered, but no test exercises a failed request. Checking the API client next.' }),
+    shell('c6', 19, 'cat src/checkout/api.ts', 'read', { name: 'api.ts', path: 'src/checkout/api.ts' }),
+    next('plan', 19, { title: 'Plan updated', phase: 'progress', data: {
+      explanation: 'The field rules are covered. The failed-request path in api.ts has no test.',
+      plan: [
+        { step: 'Find where checkout validation runs', status: 'completed' },
+        { step: 'Check which rules the tests cover', status: 'completed' },
+        { step: 'Cover the failed-request path', status: 'inProgress' },
+      ],
+    } }),
+    next('tool', 20, { item_id: 'k1', title: 'Context compaction', data: { type: 'contextCompaction' } }),
+  ];
+  if (running) {
+    events.push(
+      next('reasoning', 21, { item_id: 'r3', text: '**Tracing the failed-request path**\n\nFollowing submitCheckout into the error handler.' }),
+      shell('c7', 22, 'rg -n "catch|onError" src/checkout', 'search', { query: 'catch|onError', path: 'src/checkout' }, 'started'),
+    );
+    return events;
+  }
+  events.push(
+    next('file_change', 22, { item_id: 'f1', data: { changes: [
+      { path: `${WORKTREE}/src/checkout/api.ts`, kind: { type: 'update' }, diff: patch },
+      { path: `${WORKTREE}/src/checkout/api.test.ts`, kind: { type: 'add' }, diff: testPatch },
+    ] } }),
+    shell('c7', 24, 'npx vitest related src/checkout/api.ts', 'unknown', {}, 'completed', ' Test Files  1 passed (1)\n      Tests  4 passed (4)'),
+    next('diff', 25, { phase: 'progress', text: [
+      'diff --git a/src/checkout/api.ts b/src/checkout/api.ts', '--- a/src/checkout/api.ts', '+++ b/src/checkout/api.ts', patch,
+      'diff --git a/src/checkout/api.test.ts b/src/checkout/api.test.ts', 'new file mode 100644', '--- /dev/null', '+++ b/src/checkout/api.test.ts', '@@ -0,0 +1,5 @@', ...testPatch.split('\n').map((line) => `+${line}`),
+    ].join('\n') }),
+  );
+  events.push(next('agent_message', 26, {
+    item_id: 'm3',
+    text: 'Checkout validation runs in `src/checkout/validation.ts` when the form submits, and `validation.test.ts` covers the field rules. The failed-request path in `api.ts` cleared the draft and had no test. It now keeps the draft and rethrows, and `api.test.ts` covers it.',
+  }));
+  return events;
+}
+
+
 function fixtureState(name: string) {
   let primary = session();
   let events = [...BASE_EVENTS];
   let files = [...FILES];
 
-  if (name === 'running' || name === 'sidebar') {
+  if (name === 'activity' || name === 'activity-running') {
+    const running = name === 'activity-running';
+    primary = session({ status: running ? 'running' : 'completed', active_turn_id: running ? 'turn-1' : null, updated_at: NOW });
+    events = activityEvents(running);
+    files = [];
+  } else if (name === 'running' || name === 'sidebar') {
     primary = session({ status: 'running', active_turn_id: 'turn-1', updated_at: NOW });
     events = BASE_EVENTS.slice(0, 8).map((item) => item.seq === 8 ? { ...item, phase: 'progress' as const } : item);
   } else if (name === 'approval') {
@@ -177,6 +276,28 @@ function fixtureState(name: string) {
       },
     });
     events = BASE_EVENTS.slice(0, 7);
+  } else if (name === 'question') {
+    primary = session({
+      status: 'awaiting_approval',
+      active_turn_id: 'turn-1',
+      pending_question: {
+        id: 'question-1',
+        questions: [{
+          id: 'scope',
+          header: 'Scope',
+          question: 'Should the recovery path also cover the saved-card form?',
+          options: [
+            { label: 'Checkout only', description: 'Keep this change to the main checkout form.' },
+            { label: 'Both forms', description: 'Apply the same recovery to the saved-card form.' },
+          ],
+          isOther: true,
+          isSecret: false,
+        }],
+      },
+    });
+    events = BASE_EVENTS.slice(0, 7);
+  } else if (name === 'plan-review') {
+    primary = session({ status: 'completed', task_mode: 'plan' });
   } else if (name === 'retry' || name === 'failed') {
     const retryEvents = Array.from({ length: name === 'retry' ? 5 : 1 }, (_, index) => event(11 + index, 'error', {
       title: 'Agent connection lost',
@@ -429,6 +550,21 @@ export function getCodeFixtureApi() {
         base_branch_available: true,
       })),
     }),
+    repositoryStatus: async (id: string) => ({
+      items: (projects.find((item) => item.id === id)?.resources || [])
+        .filter((resource) => resource.kind === 'repository')
+        .map((resource) => ({
+          resource_id: resource.id, available: true, local: !!resource.local_path,
+          branch: resource.default_branch || 'staging',
+          branches: [...new Set([resource.default_branch || 'staging', 'main'])],
+          changes: [], change_count: 0, detail: '',
+        })),
+    }),
+    repositoryBranches: async (id: string, resourceId: string) => {
+      const resource = projects.find((item) => item.id === id)?.resources?.find((item) => item.id === resourceId);
+      return { items: resource?.kind === 'repository' ? [...new Set([resource.default_branch || 'staging', 'main'])] : [] };
+    },
+    repositoryDiff: async (_id: string, _resourceId: string): Promise<{ files: DiffFile[] }> => ({ files: [] }),
     projectResources: async (id: string) => ({
       items: (projects.find((item) => item.id === id)?.resources || []).map((resource) => ({
         resource: copy(resource),

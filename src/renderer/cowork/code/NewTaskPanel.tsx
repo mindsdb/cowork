@@ -18,7 +18,7 @@ import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { TaskSourceLinks } from './TaskSourceLinks';
-import { TaskExecutionControls } from './TaskExecutionControls';
+import { TaskRepositoriesControl } from './TaskRepositoriesControl';
 import { useNewTaskDraft } from './useNewTaskDraft';
 import { ComposerAddMenu } from './ComposerAddMenu';
 import { planModeCommand } from './planModeCommand';
@@ -185,18 +185,32 @@ export function NewTaskPanel({
               </Button>
             )}
             {selectedProject && (
-              <TaskExecutionControls
-                resources={projectResources}
-                selectedResourceIds={resourceIds}
-                resourceStates={resourceStates}
-                computers={computers}
-                allComputers={allComputers}
-                computerId={computerId}
-                disabled={busy || executionLoading}
-                onResourceIdsChange={setResourceIds}
-                onComputerChange={setComputerId}
-                onComputerMenuOpen={refreshComputers}
-              />
+              <div className="code-task-execution-controls">
+                <TaskRepositoriesControl
+                  key={`${selectedProject.id}:${computerId}`}
+                  projectId={selectedProject.id}
+                  resources={projectResources}
+                  resourceStates={resourceStates}
+                  computers={allComputers}
+                  selectedIds={resourceIds}
+                  setup={draft.repositorySetup}
+                  local={localTarget}
+                  disabled={busy || executionLoading}
+                  onApply={(ids, setup) => {
+                    setResourceIds(ids);
+                    draft.setRepositorySetup(setup);
+                  }}
+                />
+                <ExecutionTargetSelect
+                  computers={allComputers}
+                  computerId={computerId}
+                  onComputerChange={setComputerId}
+                  disabled={busy || executionLoading}
+                  availableComputerIds={computers.map(computer => computer.id)}
+                  unavailableReason="Local resources"
+                  onOpen={refreshComputers}
+                />
+              </div>
             )}
             {!selectedProject && (
               <div className="code-task-execution-controls">
@@ -363,6 +377,13 @@ export function NewTaskPanel({
             </Button>
           </div>
         </section>
+        {selectedProject && draft.repositorySetup && (
+          <div className="code-repository-summary">
+            <span>{Ico.code(12)}</span>
+            <span>{draft.repositorySetup.branch || 'Automatic task branches'}</span>
+            <span>{draft.repositorySetup.include_local_changes ? 'Local changes included' : 'Local changes excluded'}</span>
+          </div>
+        )}
         <div className="code-start-status-slot">
           {readinessText && (
             <div
