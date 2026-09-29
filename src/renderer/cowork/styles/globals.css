@@ -974,7 +974,8 @@ body[data-theme="light"] .overlay-inline-code {
   transition: background .12s, border-color .12s, color .12s;
 }
 button.meta-pill { cursor: pointer; }
-button.meta-pill:hover { background: var(--surface-0); border-color: var(--border-01); color: var(--text-strong); }
+/* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
+button.meta-pill:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--text-strong); }
 /* Send button — single shared treatment across the home composer
    ("create new task") and the in-task chat composer. The legacy
    --primary-700 token didn't have a dark-mode partner and read as
@@ -2022,19 +2023,25 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant (Cancel, dismiss,
-   quiet toolbar actions). */
+/* Subtle — the ghost button. Quietest variant (Cancel, dismiss, quiet
+   toolbar actions). Borderless in every state: hover and press only lift
+   the fill and ink, never draw a ring (the base .btn hover/active rings are
+   cancelled here). Focus-visible keeps the base ring for keyboard users. */
 .btn.subtle {
   --fg:   var(--ink-3);
   --glow: rgba(199, 210, 229, 0.18);
-  /* Flat at rest — genuinely borderless, no resting shadow. */
   box-shadow: none;
   border: 1px solid transparent;
 }
 .btn.subtle:hover {
   color: var(--ink);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-  box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
+  box-shadow: none;
+  text-shadow: none;
+}
+.btn.subtle:active {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: none;
 }
 
 /* Tinted — branded secondary: a faint accent wash with a soft accent
