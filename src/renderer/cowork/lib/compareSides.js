@@ -322,3 +322,69 @@ export function turnsLabel(a = 0, b = 0, names = { a: 'A', b: 'B' }) {
   const count = (n) => `${n} ${n === 1 ? 'turn' : 'turns'}`;
   return { text: `${turnsA} / ${turnsB}`, title: `${names.a}: ${count(turnsA)} · ${names.b}: ${count(turnsB)}` };
 }
+
+/**
+ * A list-price estimate: "$1.24", "$0.042", "$0.0031". Below a dollar it keeps
+ * two significant figures, because comparing two cheap models is the point and
+ * "$0.00" next to "$0.00" says nothing. Null when there is no figure.
+ */
+export function formatEstimate(usd) {
+  const n = Number(usd);
+  if (usd === null || usd === undefined || !Number.isFinite(n) || n < 0) return null;
+  if (n === 0) return '$0';
+  if (n >= 1) return `$${n.toFixed(2)}`;
+  return `$${Number(n.toPrecision(2))}`;
+}
+
+/** "840", "12.4K", "1.2M". */
+export function formatTokens(count) {
+  const n = Number(count) || 0;
+  if (n < 1000) return String(n);
+  const [value, unit] = n < 1_000_000 ? [n / 1000, 'K'] : [n / 1_000_000, 'M'];
+  return `${Number(value.toFixed(1))}${unit}`;
+}
+
+/** Every token a turn or side processed: full-rate and cached input, cache writes, output. */
+export function usageTokens(usage) {
+  if (!usage) return 0;
+  return (usage.inputTokens || 0) + (usage.outputTokens || 0) + (usage.cachedInputTokens || 0) + (usage.cacheWriteTokens || 0);
+}
+
+/**
+ * A side's cost as shown: the estimate, plus the caveats that make it a floor.
+ * Null when the gateway had nothing for the side (a BYOK model, an older gateway).
+ */
+export function sideCost(usage) {
+  if (!usage?.available) return null;
+  const text = formatEstimate(usage.estimatedCostUsd);
+  if (text === null) return null;
+  const notes = [];
+  if (usage.truncated) notes.push('The session was too long to count in full, so this is a minimum.');
+  if (usage.unpricedCalls) notes.push("Some calls couldn't be priced and are left out.");
+  const partial = notes.length > 0;
+  return { text: partial ? `${text}+` : text, notes, partial };
+}
+
+/** One line per turn for a side's cost tooltip: "Turn 2 · 41s · $0.12 · 12.4K tokens". */
+export function turnCostLines(usage, turns = []) {
+  if (!usage?.available) return [];
+  return (usage.turns || []).map((t) => {
+    const parts = [`Turn ${t.turn}`];
+    const ms = turnDurationMs(turns[t.turn - 1]);
+    if (ms !== null) parts.push(formatDuration(ms));
+    parts.push(formatEstimate(t.estimatedCostUsd) ?? 'not priced');
+    parts.push(`${formatTokens(usageTokens(t))} tokens`);
+    return parts.join(' · ');
+  });
+}
+
+/** Both sides together, over the sides that have a figure. Null when neither does. */
+export function combinedCost(usage) {
+  const figures = SIDE_LABELS
+    .map((label) => usage?.sides?.[label])
+    .filter((side) => side?.available && typeof side.estimatedCostUsd === 'number' && Number.isFinite(side.estimatedCostUsd));
+  if (figures.length === 0) return null;
+  const total = figures.reduce((sum, side) => sum + Number(side.estimatedCostUsd), 0);
+  const partial = figures.length < SIDE_LABELS.length || figures.some((side) => sideCost(side)?.partial);
+  return { text: `${formatEstimate(total)}${partial ? '+' : ''}`, partial };
+}

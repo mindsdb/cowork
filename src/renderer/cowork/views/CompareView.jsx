@@ -35,6 +35,7 @@ import {
   createComparison,
   deleteComparison,
   fetchComparison,
+  fetchComparisonUsage,
   fetchComparisons,
   fetchInFlightStatus,
   fetchSession,
@@ -46,9 +47,11 @@ import {
 import {
   SIDE_LABELS,
   VERDICT_ORDER,
+  combinedCost,
   compareCreditNotice,
   composerBlock,
   divergedAt,
+  formatEstimate,
   isCreditFailure,
   silentFor,
   unjudgeableReason,
@@ -58,9 +61,11 @@ import {
   messagesUpToTurn,
   withoutFirstPrompt,
   sendTargets,
+  sideCost,
   sideNames,
   sideStatus,
   titleFromPrompt,
+  turnCostLines,
   turnsLabel,
   totalDurationMs,
   turnDurationMs,
@@ -148,6 +153,18 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
       </div>
     </Alert>
   );
+}
+
+// What each side has cost so far, refetched whenever `revision` changes: a
+// turn starting or finishing is when the gateway's figures move.
+function useComparisonUsage(comparisonId, revision) {
+  const [usage, setUsage] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetchComparisonUsage(comparisonId).then((next) => { if (live && next) setUsage(next); });
+    return () => { live = false; };
+  }, [comparisonId, revision]);
+  return usage;
 }
 
 // Re-renders once a second while `active`, for a live "Working · 41s".
@@ -818,6 +835,8 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
   const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
+  const usage = useComparisonUsage(comparisonId, SIDE_LABELS.map((l) => `${turns[l].length}:${!!busy[l]}`).join('|'));
+  const combined = combinedCost(usage);
   // A side is held back for credits while its last turn stopped for them and
   // the account still cannot pay for its model. The next usage refresh (every
   // 30s, and on window focus) lifts it once funds arrive.
@@ -891,6 +910,11 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         </h1>
         <span className="text-[12.5px] text-ink-3">
           {names.a} vs {names.b} · Started {relativeAge(comparison.createdAt) || 'just now'}
+          {combined && (
+            <span title="Both sides together, estimated at list price. Includes the calls the agent makes on its own, such as checking its answer.">
+              {' · '}Estimated cost {combined.text}
+            </span>
+          )}
         </span>
       </div>
       {error && <div className="px-7 pb-2"><Alert variant="danger">{error}</Alert></div>}
@@ -908,6 +932,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             side={sides[label]}
             task={tasks[label] ? { ...tasks[label], messages: shownMessages(label) } : null}
             turns={turns[label]}
+            usage={usage?.sides?.[label] || null}
             busy={!!busy[label]}
             lastEventAt={lastEventAt[label]}
             error={errors[label]}
@@ -1067,7 +1092,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, usage, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1076,6 +1101,8 @@ function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, pr
   const runningFor = Number.isFinite(startedAt) ? Math.max(0, now - startedAt) : null;
   const silent = busy ? silentFor(lastEventAt, now) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
+  const cost = sideCost(usage);
+  const lastTurnCost = usage?.available && last ? formatEstimate(usage.turns?.[turns.length - 1]?.estimatedCostUsd) : null;
   return (
     <section
       aria-label={`Side ${label.toUpperCase()}`}
@@ -1091,6 +1118,20 @@ function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, pr
           </span>
           <ProviderIcon maker={makerOf(side?.model, name)} size={16} />
           <h2 className="m-0 flex-1 min-w-0 text-[15px] leading-5 font-semibold text-ink truncate" title={name}>{name}</h2>
+          {cost && (
+            <Tooltip content={(
+              <span className="flex flex-col gap-0.5">
+                <span>Estimated at list price</span>
+                {turnCostLines(usage, turns).map((line) => <span key={line}>{line}</span>)}
+                {cost.notes.map((note) => <span key={note}>{note}</span>)}
+              </span>
+            )}
+            >
+              <span className="flex-shrink-0 text-[12px] text-ink-3 tabular-nums" aria-label={`Side ${label.toUpperCase()} estimated cost ${cost.text}`}>
+                Total {cost.text}
+              </span>
+            </Tooltip>
+          )}
           {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
           {!busy && !side?.continuedAt && turns.length > 0 && (
             <Tooltip content="Continue with this model as a normal task">
@@ -1112,6 +1153,7 @@ function SidePane({ label, name, side, task, turns, busy, lastEventAt, error, pr
             {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
             {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
             {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
+            {status.tone !== 'working' && lastTurnCost && ` · ${lastTurnCost}`}
             {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
           </span>
         </span>

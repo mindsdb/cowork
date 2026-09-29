@@ -10,7 +10,8 @@ vi.mock('../platform/host', async (importOriginal) => ({
   },
 }));
 
-import { createComparison, fetchComparisons } from './api';
+import { host } from '../platform/host';
+import { createComparison, fetchComparisonUsage, fetchComparisons } from './api';
 
 const res = (status, body = {}) => ({
   ok: status < 400,
@@ -53,5 +54,26 @@ describe('createComparison', () => {
       title: 't',
       sides: [{ model: 'kimi' }, { model: 'qwen', reasoningEffort: 'xhigh' }],
     });
+  });
+});
+
+describe('fetchComparisonUsage', () => {
+  it('asks as the signed-in MindsHub user', async () => {
+    host.getAccessToken.mockResolvedValueOnce('jwt-1');
+    const fetchMock = vi.fn(async () => res(200, { sides: { a: { available: true } } }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await fetchComparisonUsage('c 1')).toEqual({ sides: { a: { available: true } } });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/comparisons\/c%201\/usage$/);
+    expect(new Headers(options.headers).get('X-MindsHub-Authorization')).toBe('Bearer jwt-1');
+  });
+
+  it.each([
+    ['a server that predates it', () => res(404, { detail: 'Not Found' })],
+    ['a failure', () => res(500, { detail: 'boom' })],
+    ['a body without sides', () => res(200, {})],
+  ])('is null on %s, so no figure shows', async (_, response) => {
+    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    expect(await fetchComparisonUsage('c1')).toBeNull();
   });
 });

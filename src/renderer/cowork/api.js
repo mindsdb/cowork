@@ -2436,6 +2436,17 @@ export async function fetchComparison(id) {
   return req(`/comparisons/${encodeURIComponent(id)}`);
 }
 
+/** Tokens and list-price cost per side and turn. Null when this server or its
+ *  gateway cannot say, so the screen simply shows no figure. */
+export async function fetchComparisonUsage(id) {
+  try {
+    const data = await req(`/comparisons/${encodeURIComponent(id)}/usage`, { headers: await hubHeaders() });
+    return data && typeof data === 'object' && data.sides ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createComparison({ title, sides, sourceProjectId } = {}) {
   return req('/comparisons/', {
     method: 'POST',

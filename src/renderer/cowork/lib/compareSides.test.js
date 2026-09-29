@@ -20,6 +20,12 @@ import {
   totalDurationMs,
   turnDurationMs,
   turnsOf,
+  combinedCost,
+  formatEstimate,
+  formatTokens,
+  sideCost,
+  turnCostLines,
+  usageTokens,
 } from './compareSides';
 
 const user = (content, created_at = null) => ({ role: 'user', content, created_at });
@@ -317,5 +323,46 @@ describe('turnsLabel', () => {
     expect(turnsLabel(2, 2)).toEqual({ text: '2', title: undefined });
     expect(turnsLabel(3, 1, { a: 'Kimi', b: 'Qwen' })).toEqual({ text: '3 / 1', title: 'Kimi: 3 turns · Qwen: 1 turn' });
     expect(turnsLabel(undefined, 0).text).toBe('0');
+  });
+});
+
+
+describe('cost figures', () => {
+  it('keeps two significant figures below a dollar, so cheap models still compare', () => {
+    expect([1.2345, 1, 0.042, 0.0031, 0.1, 0].map(formatEstimate)).toEqual(['$1.23', '$1.00', '$0.042', '$0.0031', '$0.1', '$0']);
+    expect([null, undefined, NaN, -1].map(formatEstimate)).toEqual([null, null, null, null]);
+  });
+
+  it('shortens token counts', () => {
+    expect([840, 12400, 1000, 1_234_567].map(formatTokens)).toEqual(['840', '12.4K', '1K', '1.2M']);
+  });
+
+  it('counts every kind of token a call processed', () => {
+    expect(usageTokens({ inputTokens: 1, outputTokens: 2, cachedInputTokens: 3, cacheWriteTokens: 4 })).toBe(10);
+    expect(usageTokens(null)).toBe(0);
+  });
+
+  it('marks a side total that is only a floor', () => {
+    expect(sideCost({ available: true, estimatedCostUsd: 0.5 })).toEqual({ text: '$0.5', notes: [], partial: false });
+    expect(sideCost({ available: true, estimatedCostUsd: 0.5, truncated: true }).text).toBe('$0.5+');
+    expect(sideCost({ available: true, estimatedCostUsd: 0.5, unpricedCalls: 2 }).notes).toEqual(["Some calls couldn't be priced and are left out."]);
+    expect(sideCost({ available: false })).toBeNull();
+    expect(sideCost({ available: true, estimatedCostUsd: null })).toBeNull();
+  });
+
+  it('lists each turn with its time, cost and tokens', () => {
+    const usage = { available: true, turns: [{ turn: 1, estimatedCostUsd: 0.12, inputTokens: 12000, outputTokens: 400 }, { turn: 2, estimatedCostUsd: null }] };
+    const turns = [{ userAt: '2026-09-23T10:00:00Z', replyAt: '2026-09-23T10:00:41Z' }, {}];
+    expect(turnCostLines(usage, turns)).toEqual(['Turn 1 · 41s · $0.12 · 12.4K tokens', 'Turn 2 · not priced · 0 tokens']);
+    expect(turnCostLines({ available: false }, turns)).toEqual([]);
+  });
+
+  it('adds both sides, and says so when one is missing', () => {
+    const side = (usd) => ({ available: true, estimatedCostUsd: usd });
+    expect(combinedCost({ sides: { a: side(0.3), b: side(0.2) } })).toEqual({ text: '$0.5', partial: false });
+    expect(combinedCost({ sides: { a: side(0.3), b: { available: false } } })).toEqual({ text: '$0.3+', partial: true });
+    expect(combinedCost({ sides: { a: side(0.3), b: { ...side(0.2), truncated: true } } }).partial).toBe(true);
+    expect(combinedCost({ sides: { a: { available: false }, b: side(null) } })).toBeNull();
+    expect(combinedCost(null)).toBeNull();
   });
 });
