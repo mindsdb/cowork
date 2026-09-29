@@ -335,6 +335,8 @@ export default function ChannelsView() {
   const [statusByType, setStatusByType] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState(null);
+  // Bumped by Refresh so the Routes panel refetches its bindings.
+  const [refreshCount, setRefreshCount] = useState(0);
 
   async function refresh() {
     const [pl, st] = await Promise.all([fetchChannelPlugins(), fetchChannelStatus()]);
@@ -343,6 +345,11 @@ export default function ChannelsView() {
     setLoading(false);
   }
   useEffect(() => { refresh(); }, []);
+
+  function refreshAll() {
+    setRefreshCount((n) => n + 1);
+    refresh();
+  }
 
   // Fall back to the first plugin so the detail pane is never empty once the
   // list loads; an explicit click overrides it.
@@ -353,7 +360,7 @@ export default function ChannelsView() {
       <header className="channels-top">
         <span>Channels</span>
         <Tooltip content="Refresh">
-          <Button variant="subtle" icon onClick={refresh} aria-label="Refresh">
+          <Button variant="subtle" icon onClick={refreshAll} aria-label="Refresh">
             {Ico.refresh(15)}
           </Button>
         </Tooltip>
@@ -409,6 +416,7 @@ export default function ChannelsView() {
                 />
                 <ChannelBindings
                   key={`routes-${selected.channel_type}`}
+                  refreshToken={refreshCount}
                   plugins={plugins}
                   channelType={selected.channel_type}
                 />

@@ -5,7 +5,7 @@
 // known chat id. When `channelType` is given the panel is scoped to that one
 // channel: rows are filtered and new routes are created on it.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Badge, Button, Tooltip } from '../components/ui';
@@ -21,22 +21,27 @@ import { Select } from '../components/ui';
 const TRIGGERS = ['always', 'mention_only', 'regex'];
 const BLANK = { channel_type: '', external_group_id: '', display_name: '', trigger_rule: 'always', trigger_pattern: '', anton_project_id: '' };
 
-export default function ChannelBindings({ plugins = [], channelType = null }) {
+export default function ChannelBindings({ plugins = [], channelType = null, refreshToken = 0 }) {
   const [bindings, setBindings] = useState([]);
   const [projects, setProjects] = useState([]);
   const [edits, setEdits] = useState({});   // id -> partial patch
   const [draft, setDraft] = useState(BLANK);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Refreshes can overlap (mount, Refresh, save/delete); only the latest may set state.
+  const refreshAttemptRef = useRef(0);
 
   async function refresh() {
+    const attemptId = ++refreshAttemptRef.current;
     const [b, p] = await Promise.all([fetchChannelBindings(), fetchProjects()]);
+    if (refreshAttemptRef.current !== attemptId) return;
     setBindings(b);
     setProjects(p);
     setEdits({});
     setLoading(false);
   }
-  useEffect(() => { refresh(); }, []);
+  // A new refreshToken refetches in place, so a half-typed manual route survives.
+  useEffect(() => { refresh(); }, [refreshToken]);
 
   function editField(id, name, value) {
     setEdits((e) => ({ ...e, [id]: { ...(e[id] || {}), [name]: value } }));
