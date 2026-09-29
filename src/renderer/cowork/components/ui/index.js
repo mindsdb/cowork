@@ -5,6 +5,7 @@
 export { default as Button } from './Button.tsx';
 export { default as Input, Textarea } from './Input.tsx';
 export { default as Card, CardRow, Bubble } from './Card.tsx';
+export { default as ComposerShell, ComposerFooter } from './ComposerShell.tsx';
 export { default as Eyebrow } from './Eyebrow.tsx';
 export { default as Badge } from './Badge.tsx';
 export { default as Alert } from './Alert.tsx';

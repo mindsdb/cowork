@@ -152,16 +152,14 @@
 .code-new-task__heading { display: flex; align-items: center; gap: 11px; }
 .code-new-task__mark { width: 31px; height: 31px; flex: 0 0 31px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-01)); border-radius: 9px; background: color-mix(in srgb, var(--accent) 7%, var(--surface-0)); color: var(--accent); }
 .code-new-task__intro h1 { margin: 0; color: var(--text-strong); font: 600 clamp(25px, 2.25vw, 30px)/1.16 var(--font-display); letter-spacing: -.008em; }
+/* Both Code composers are a ComposerShell: the start composer rests on the
+   page like Home's, the task composer floats like chat's. Only their inner
+   layout lives here. */
 .code-start-composer {
+  --composer-max-width: var(--code-measure);
   position: relative;
-  max-width: var(--code-measure);
   margin: 0 auto;
   padding: 10px 10px 8px;
-  border: 1px solid var(--border-01);
-  border-radius: var(--r-xl);
-  background: var(--surface-0);
-  box-shadow: var(--sh-1);
-  transition: border-color .15s, box-shadow .15s;
 }
 .code-start-project-bar { min-height: 41px; margin: -2px 0 2px; padding: 0 2px 8px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
 .code-task-execution-controls { min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 4px; }
@@ -186,8 +184,7 @@
 .code-reference-chip { min-width: 0; max-width: 230px; height: 28px; padding: 2px 2px 2px 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); }
 .code-reference-chip > i { display: inline-flex; flex: none; color: var(--ink-4); font-style: normal; }
 .code-reference-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
-.code-start-composer__controls { min-height: 34px; display: flex; align-items: center; gap: 3px; padding: 5px 1px 0; }
-.code-start-composer__spacer { min-width: 4px; flex: 1 1 auto; }
+.code-start-composer__controls { min-height: 34px; gap: 3px; padding: 5px 1px 0; }
 .code-start-task-button { flex: none; margin-left: 3px; white-space: nowrap; }
 .code-context-control { max-width: 205px; flex: 0 1 auto; color: var(--ink-2); }
 .code-context-control:hover { background: var(--surface-2); }
@@ -373,18 +370,14 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-prompt-queue__item small { color: var(--ink-4); white-space: nowrap; font-size: 9.5px; }
 .code-prompt-queue__actions { display: flex; align-items: center; gap: 1px; }
 .code-prompt-queue__actions .btn:not(.icon) { gap: 4px; }
-.code-composer__shell { position: relative; width: min(var(--code-measure), 100%); margin: 0 auto; padding: 8px 10px 8px 13px; border: 1px solid var(--border-01); border-radius: var(--r-xl); background: var(--surface-0); box-shadow: var(--sh-1); transition: border-color .15s, box-shadow .15s; }
-.code-composer__shell:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), var(--sh-1); }
-.code-start-composer.is-dragging-files,
-.code-composer__shell.is-dragging-files { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-1); }
+.code-composer__shell { --composer-max-width: var(--code-measure); position: relative; margin: 0 auto; padding: 8px 10px 8px 13px; }
 .code-drop-hint { position: absolute; inset: 5px; z-index: 4; display: grid; place-items: center; border: 1px dashed var(--accent); border-radius: calc(var(--r-xl) - 4px); background: color-mix(in srgb, var(--surface-0) 92%, var(--accent)); color: var(--ink); font-size: 12px; font-weight: 650; pointer-events: none; }
 .code-composer textarea { min-height: 52px; max-height: 180px; padding: 7px 4px; resize: none; border: 0; background: transparent; box-shadow: none; font-size: 14.5px; line-height: 1.5; }
 .code-composer textarea:focus { border: 0; box-shadow: none; }
 .code-composer .code-reference-chips { padding: 2px 0 5px; }
 .code-reference-error { padding: 0 4px 5px; color: var(--danger); font-size: 10px; }
-.code-composer__actions { display: flex; align-items: center; gap: 6px; }
+.code-composer__actions { padding: 0; }
 .code-permission-picker { color: var(--ink-2); }
-.code-composer__actions-spacer { min-width: 5px; flex: 1 1 auto; }
 .code-composer__hint { color: var(--ink-4); white-space: nowrap; font-size: 9.5px; }
 .code-slash-menu { position: absolute; z-index: 24; right: 0; bottom: calc(100% + 7px); left: 0; max-height: min(390px, 52vh); padding: 6px; overflow-y: auto; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--surface-0); box-shadow: var(--sh-3); }
 .code-slash-menu__label { padding: 5px 8px 7px; color: var(--ink-4); text-transform: uppercase; font: 650 9px var(--font-mono); letter-spacing: .08em; }
@@ -727,7 +720,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-start-project-bar { flex-wrap: wrap; }
   .btn.code-standalone-folder-picker { max-width: calc(100% - 8px); }
   .code-start-composer__controls { flex-wrap: wrap; }
-  .code-start-composer__spacer { display: none; }
+  .code-start-composer__controls .composer-toolbar__spacer { display: none; }
   .code-context-control { max-width: none; flex: 1 1 calc(100% - 34px); }
   .code-model-picker { max-width: none; flex: 1 1 180px; }
   .code-effort-picker { max-width: none; flex: 1 1 140px; }
@@ -942,7 +935,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-taskbar__title { max-width: 48vw; }
   .code-task-status__label { display: none; }
   .code-new-task { padding: 26px 18px 30px; }
-  .code-start-composer__spacer { display: none; }
+  .code-start-composer__controls .composer-toolbar__spacer { display: none; }
   .code-context-control { flex: 1 1 180px; max-width: none; }
   .code-agent-picker { flex: 0 1 126px; }
   .code-model-picker { margin-left: auto; }

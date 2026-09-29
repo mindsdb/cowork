@@ -736,7 +736,8 @@ a[href],
   box-shadow: var(--sh-1);
   transition: border-color .15s, box-shadow .15s;
 }
-.composer-wrap.focused {
+.composer-wrap.focused,
+.composer-wrap:has(textarea:focus) {
   /* Quiet focus: the border simply shifts to the accent — no 3px teal
      glow ring. Keeps the resting shadow so focusing doesn't jump. */
   border-color: var(--accent);
@@ -942,6 +943,8 @@ body[data-theme="light"] .overlay-inline-code {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 10px 10px;
 }
+/* ComposerFooter's divider between its start and end slots. */
+.composer-toolbar__spacer { min-width: 4px; flex: 1 1 auto; }
 .composer-icon {
   width: 32px; height: 32px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
@@ -3279,24 +3282,29 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    Inter (display/labels + body), JetBrains Mono (operator metadata:
    timestamps, model, turn count). */
 
-/* Floating composer override — chat shell (18px radius, compact field).
+/* Floating composer — a composer over a transcript: the chat shell, and
+   <ComposerShell floating> (Code Mode's task composer).
    Toolbar + / Send insets and control sizes match the default composer
    (home, project prompt) so controls land in the same place inside the card. */
-.chat-floating-composer .composer-wrap {
-  background: var(--surface);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-xl);
-  /* 10px horizontal + textarea side padding = same 18px text inset as
-     .composer-textarea on home; toolbar is flush on the bottom so the card
-     doesn't pick up a double band (toolbar pb + wrap pb). */
-  padding: 16px 14px 12px;
+.chat-floating-composer .composer-wrap,
+.composer-wrap--floating {
   /* Subtle all-around lift — replaces the heavier downward shadow we
      used to pair with the bottom gradient mask. With the mask gone, a
      soft even glow reads as "floating panel" without darkening the
      gravity field below. */
-  box-shadow:
+  --composer-float-shadow:
     0 2px 4px rgba(15, 16, 17, 0.05),
     0 6px 20px rgba(15, 16, 17, 0.08);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--composer-float-shadow);
+}
+.chat-floating-composer .composer-wrap {
+  /* 10px horizontal + textarea side padding = same 18px text inset as
+     .composer-textarea on home; toolbar is flush on the bottom so the card
+     doesn't pick up a double band (toolbar pb + wrap pb). */
+  padding: 16px 14px 12px;
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -3345,23 +3353,29 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   background: var(--accent-bg);
   color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
-body[data-theme="dark"] .chat-floating-composer .composer-wrap {
+body[data-theme="dark"] .chat-floating-composer .composer-wrap,
+body[data-theme="dark"] .composer-wrap--floating {
   /* Softer than the old 0.55-alpha 32-blur — that was producing a
      heavy slab below the composer that drew the eye down. Match the
      light-mode shadow's restraint, just dialed up enough to read
      against the navy surface. */
-  box-shadow:
+  --composer-float-shadow:
     0 4px 18px rgba(0, 0, 0, 0.28),
     0 0 0 1px rgba(255, 255, 255, 0.03);
 }
-.chat-floating-composer .composer-wrap.focused {
+.chat-floating-composer .composer-wrap.focused,
+.composer-wrap--floating:is(.focused, :has(textarea:focus)) {
   /* Quiet focus (ENG-787 move 03): the accent border is the only focus
      signal. No 3px teal glow ring; hold the same soft lift as the resting
      state so the card doesn't jump on focus. */
   border-color: var(--accent);
-  box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
-    0 6px 20px rgba(15, 16, 17, 0.08);
+  box-shadow: var(--composer-float-shadow);
+}
+/* Files dragged over the composer. The doubled class outranks focus, which
+   is usually also on while dragging into a composer. */
+.composer-wrap.composer-wrap.is-dragging-files {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--composer-float-shadow, var(--sh-1));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
-import { Tooltip } from './ui';
+import { ComposerFooter, ComposerShell, Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
 import {
@@ -1008,7 +1008,7 @@ export default function Composer({
             <UsageBar warning={reservedBar} />
           </div>
         )}
-        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <ComposerShell focused={focused} className={`relative${inFence ? ' in-fence' : ''}`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
@@ -1231,286 +1231,289 @@ export default function Composer({
           />
           </div>
 
-          <div className="composer-toolbar">
-            <span
-              ref={attachAnchorRef}
-              className="relative inline-flex items-center"
-            >
-              <Tooltip content="Add context">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <button
-                className="composer-icon"
-                aria-label="Add context"
-                title={(disabled || busy) ? 'Add context' : undefined}
-                disabled={disabled || busy}
-                onClick={() => {
-                  if (openMenu === 'attach') {
-                    setOpenMenu(null);
-                    return;
-                  }
-                  const anchor = attachAnchorRef.current;
-                  if (anchor) {
-                    const r = anchor.getBoundingClientRect();
-                    setAttachMenuBelow(r.top < ATTACH_MENU_TOP_RESERVE_PX + 24);
-                  } else setAttachMenuBelow(false);
-                  setOpenMenu('attach');
-                }}
+          <ComposerFooter
+            start={<>
+              <span
+                ref={attachAnchorRef}
+                className="relative inline-flex items-center"
               >
-                {Ico.plus(15)}
-              </button>
-              </Tooltip>
-              {openMenu === 'attach' && (
-                <div
-                  ref={attachMenuRef}
-                  className={`menu left-0${attachMenuBelow ? ' menu--drop-down' : ''}`}
-                  style={{
-                    // cascade-forced: legacy .menu sets min-width:200px; a
-                    // Tailwind min-w-[240px] utility would lose to it (loads
-                    // after Tailwind). top/bottom is state-dependent.
-                    minWidth: 240,
-                    ...(attachMenuBelow
-                      ? { top: 'calc(100% + 6px)' }
-                      : { bottom: 'calc(100% + 6px)' }),
+                <Tooltip content="Add context">
+                {/* Native title only while disabled — a disabled button fires no
+                    hover/focus events, so the styled Tooltip can't open. */}
+                <button
+                  className="composer-icon"
+                  aria-label="Add context"
+                  title={(disabled || busy) ? 'Add context' : undefined}
+                  disabled={disabled || busy}
+                  onClick={() => {
+                    if (openMenu === 'attach') {
+                      setOpenMenu(null);
+                      return;
+                    }
+                    const anchor = attachAnchorRef.current;
+                    if (anchor) {
+                      const r = anchor.getBoundingClientRect();
+                      setAttachMenuBelow(r.top < ATTACH_MENU_TOP_RESERVE_PX + 24);
+                    } else setAttachMenuBelow(false);
+                    setOpenMenu('attach');
                   }}
                 >
-                  <button className="menu-item" onClick={() => fileRef.current?.click()}>
-                    {Ico.attach(14)} Attach files or photos
-                  </button>
-                  {onAddGoogleDriveFiles && (
+                  {Ico.plus(15)}
+                </button>
+                </Tooltip>
+                {openMenu === 'attach' && (
+                  <div
+                    ref={attachMenuRef}
+                    className={`menu left-0${attachMenuBelow ? ' menu--drop-down' : ''}`}
+                    style={{
+                      // cascade-forced: legacy .menu sets min-width:200px; a
+                      // Tailwind min-w-[240px] utility would lose to it (loads
+                      // after Tailwind). top/bottom is state-dependent.
+                      minWidth: 240,
+                      ...(attachMenuBelow
+                        ? { top: 'calc(100% + 6px)' }
+                        : { bottom: 'calc(100% + 6px)' }),
+                    }}
+                  >
+                    <button className="menu-item" onClick={() => fileRef.current?.click()}>
+                      {Ico.attach(14)} Attach files or photos
+                    </button>
+                    {onAddGoogleDriveFiles && (
+                      <button
+                        className="menu-item"
+                        onClick={handleAddGoogleDriveFiles}
+                        disabled={gdrivePickerBusy}
+                      >
+                        {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                      </button>
+                    )}
                     <button
                       className="menu-item"
-                      onClick={handleAddGoogleDriveFiles}
-                      disabled={gdrivePickerBusy}
+                      onClick={() => setConnectorsOpen((o) => !o)}
+                      aria-expanded={connectorsOpen}
                     >
-                      {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                      {Ico.link(14)}
+                      <span className="flex-1">Connectors</span>
+                      <span className="inline-flex text-ink-4">
+                        {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
+                      </span>
                     </button>
-                  )}
-                  <button
-                    className="menu-item"
-                    onClick={() => setConnectorsOpen((o) => !o)}
-                    aria-expanded={connectorsOpen}
-                  >
-                    {Ico.link(14)}
-                    <span className="flex-1">Connectors</span>
-                    <span className="inline-flex text-ink-4">
-                      {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
-                    </span>
-                  </button>
-                  <div
-                    className={`menu-connectors-accordion${connectorsOpen ? ' is-open' : ''}`}
-                    aria-hidden={!connectorsOpen}
-                  >
-                    <div className="menu-connectors-accordion__inner">
-                      <div
-                        className="menu-connectors-accordion__scroll"
-                        inert={!connectorsOpen || undefined}
-                      >
-                        {connectors.length === 0 ? (
-                          <div className="py-2 px-[14px] text-sm text-ink-3">
-                            No connectors yet. Add one in{' '}
-                            {onNavigateToConnectors ? (
-                              <button
-                                type="button"
-                                onClick={navigateToConnectors}
-                                className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline underline-offset-2"
-                              >
-                                Connect Apps and Data
-                              </button>
-                            ) : (
-                              'Connect Apps and Data'
-                            )}
-                            .
-                          </div>
-                        ) : (
-                          connectors.map((c) => {
-                            const muted = isConnectionDisabled(c);
-                            return (
-                              <div
-                                key={`${c.engine}:${c.name}`}
-                                className="menu-item flex-nowrap"
-                                style={{
-                                  // cascade-forced: legacy .menu-item sets
-                                  // padding:8px 10px + cursor:pointer; same-
-                                  // property Tailwind utilities would lose
-                                  // to it (loads after Tailwind).
-                                  paddingLeft: 12,
-                                  paddingRight: 12,
-                                  cursor: 'default',
-                                }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                              >
-                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
-                                <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
-                                  <span className="font-medium">{c.name}</span>
-                                  <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
-                                </span>
-                                {canMuteConnectors ? (
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={!muted}
-                                    aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
-                                    className={`toggle shrink-0${!muted ? ' on' : ''}`}
-                                    disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setConnectorUseInChat(c, muted);
-                                    }}
-                                  >
-                                    <span className="toggle-thumb" />
-                                  </button>
-                                ) : null}
-                              </div>
-                            );
-                          })
-                        )}
+                    <div
+                      className={`menu-connectors-accordion${connectorsOpen ? ' is-open' : ''}`}
+                      aria-hidden={!connectorsOpen}
+                    >
+                      <div className="menu-connectors-accordion__inner">
+                        <div
+                          className="menu-connectors-accordion__scroll"
+                          inert={!connectorsOpen || undefined}
+                        >
+                          {connectors.length === 0 ? (
+                            <div className="py-2 px-[14px] text-sm text-ink-3">
+                              No connectors yet. Add one in{' '}
+                              {onNavigateToConnectors ? (
+                                <button
+                                  type="button"
+                                  onClick={navigateToConnectors}
+                                  className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline underline-offset-2"
+                                >
+                                  Connect Apps and Data
+                                </button>
+                              ) : (
+                                'Connect Apps and Data'
+                              )}
+                              .
+                            </div>
+                          ) : (
+                            connectors.map((c) => {
+                              const muted = isConnectionDisabled(c);
+                              return (
+                                <div
+                                  key={`${c.engine}:${c.name}`}
+                                  className="menu-item flex-nowrap"
+                                  style={{
+                                    // cascade-forced: legacy .menu-item sets
+                                    // padding:8px 10px + cursor:pointer; same-
+                                    // property Tailwind utilities would lose
+                                    // to it (loads after Tailwind).
+                                    paddingLeft: 12,
+                                    paddingRight: 12,
+                                    cursor: 'default',
+                                  }}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
+                                  <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
+                                    <span className="font-medium">{c.name}</span>
+                                    <span className="text-xs text-ink-3">{c.displayName || c.engine}</span>
+                                  </span>
+                                  {canMuteConnectors ? (
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={!muted}
+                                      aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
+                                      className={`toggle shrink-0${!muted ? ' on' : ''}`}
+                                      disabled={busy}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setConnectorUseInChat(c, muted);
+                                      }}
+                                    >
+                                      <span className="toggle-thumb" />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
                     </div>
+                    {error && (
+                      <div className="py-[6px] px-[14px] text-[12px] text-[var(--danger-600,_#b3261e)]">{error}</div>
+                    )}
                   </div>
-                  {error && (
-                    <div className="py-[6px] px-[14px] text-[12px] text-[var(--danger-600,_#b3261e)]">{error}</div>
-                  )}
-                </div>
-              )}
-            </span>
-            {taskMode && <TaskModeChip mode={taskMode} onClear={onClearTaskMode} />}
-            <div className="flex-1" />
-            {/* Model selection lives in the toolbar, next to send — a
-                standing composer capability independent of metaReadOnly
-                (which only locks the project pill) and of coding mode: it
-                applies to whichever harness the task runs with, Anton
-                included. Reuses <ModelSelect> — the same searchable,
-                bounded-height, provider-grouped picker (ui/Combobox) the
-                Settings model rows use — so height/scroll/search behavior
-                lives in one place. `modelReadOnly` (defaults to
-                `metaReadOnly`) keeps ChatView's existing "model is fixed
-                once a task starts" behavior. */}
-            {modelReadOnly ? (
-              <span className="meta-pill" title="Model is fixed for this task">
-                <span>{model?.name ?? 'Model'}</span>
+                )}
               </span>
-            ) : noRealModels ? (
-              // No provider connected (MindsHub or BYOK) — `models` (the
-              // real catalog, before Model Router gets pinned on) is empty,
-              // so Model Router would be the only pickable row anyway. A
-              // dropdown with one unpickable-in-practice option reads as
-              // broken; show a plain button instead — no caret, since there
-              // is nothing to open — that goes straight to where a model
-              // actually gets connected.
-              <Tooltip content="Connect a provider in Settings to choose a model">
-                <button
-                  type="button"
+              {taskMode && <TaskModeChip mode={taskMode} onClear={onClearTaskMode} />}
+            </>}
+            end={<>
+              {/* Model selection lives in the toolbar, next to send — a
+                  standing composer capability independent of metaReadOnly
+                  (which only locks the project pill) and of coding mode: it
+                  applies to whichever harness the task runs with, Anton
+                  included. Reuses <ModelSelect> — the same searchable,
+                  bounded-height, provider-grouped picker (ui/Combobox) the
+                  Settings model rows use — so height/scroll/search behavior
+                  lives in one place. `modelReadOnly` (defaults to
+                  `metaReadOnly`) keeps ChatView's existing "model is fixed
+                  once a task starts" behavior. */}
+              {modelReadOnly ? (
+                <span className="meta-pill" title="Model is fixed for this task">
+                  <span>{model?.name ?? 'Model'}</span>
+                </span>
+              ) : noRealModels ? (
+                // No provider connected (MindsHub or BYOK) — `models` (the
+                // real catalog, before Model Router gets pinned on) is empty,
+                // so Model Router would be the only pickable row anyway. A
+                // dropdown with one unpickable-in-practice option reads as
+                // broken; show a plain button instead — no caret, since there
+                // is nothing to open — that goes straight to where a model
+                // actually gets connected.
+                <Tooltip content="Connect a provider in Settings to choose a model">
+                  <button
+                    type="button"
+                    className="meta-pill"
+                    onClick={() => onOpenSettings('agent')}
+                  >
+                    {/* Same left icon + label layout as the closed
+                        ModelSelect pill (see ModelSelect.jsx's renderValue) —
+                        only the trailing glyph differs (gear, not a caret),
+                        so this reads as "the model pill" that happens to open
+                        Settings, not as an unrelated control. */}
+                    <span className="flex items-center gap-[8px] min-w-0">
+                      <ProviderIcon maker="other" className="text-ink-2" />
+                      <span className="truncate">{MODEL_ROUTER_LABEL}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 text-ink-3">
+                      {Ico.settings(13)}
+                    </span>
+                  </button>
+                </Tooltip>
+              ) : (
+                <ModelSelect
+                  // Falls back to unselected (rather than a synthesized
+                  // "model-router" row) if the current pick isn't a valid
+                  // option right now — e.g. Model Router was picked, then the
+                  // harness pill switched to Claude Code, which hides it.
+                  value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                  onValueChange={(id) => {
+                    const found = modelPickerOptions.find((o) => o.value === id);
+                    onModelChange({ id, name: found?.label || id });
+                  }}
+                  open={modelMenuOpen}
+                  onOpenChange={(open) => { setModelMenuOpen(open); if (open) openModelMenu(); }}
+                  options={modelPickerOptions}
+                  variant="unstyled"
                   className="meta-pill"
-                  onClick={() => onOpenSettings('agent')}
-                >
-                  {/* Same left icon + label layout as the closed
-                      ModelSelect pill (see ModelSelect.jsx's renderValue) —
-                      only the trailing glyph differs (gear, not a caret),
-                      so this reads as "the model pill" that happens to open
-                      Settings, not as an unrelated control. */}
-                  <span className="flex items-center gap-[8px] min-w-0">
-                    <ProviderIcon maker="other" className="text-ink-2" />
-                    <span className="truncate">{MODEL_ROUTER_LABEL}</span>
-                  </span>
-                  <span className="inline-flex shrink-0 text-ink-3">
-                    {Ico.settings(13)}
-                  </span>
-                </button>
-              </Tooltip>
-            ) : (
-              <ModelSelect
-                // Falls back to unselected (rather than a synthesized
-                // "model-router" row) if the current pick isn't a valid
-                // option right now — e.g. Model Router was picked, then the
-                // harness pill switched to Claude Code, which hides it.
-                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
-                onValueChange={(id) => {
-                  const found = modelPickerOptions.find((o) => o.value === id);
-                  onModelChange({ id, name: found?.label || id });
-                }}
-                open={modelMenuOpen}
-                onOpenChange={(open) => { setModelMenuOpen(open); if (open) openModelMenu(); }}
-                options={modelPickerOptions}
-                variant="unstyled"
-                className="meta-pill"
-                ariaLabel="Choose model"
-                placeholder="Select model"
-              />
-            )}
-            {/* Reasoning effort as its own pill (ENG-2591), the same
-                <Select> Code mode's composer uses. Fixed with the model
-                once a task's model is read-only, and absent with no
-                provider connected, where the model pill is only a
-                shortcut to Settings. */}
-            {!modelReadOnly && !noRealModels && effortLevels && (
-              <Select
-                value={resolvedEffort}
-                onValueChange={onEffortChange}
-                options={effortOptions(effortLevels)}
-                variant="unstyled"
-                className="meta-pill"
-                ariaLabel="Reasoning effort"
-                menuLabel="Reasoning effort"
-              />
-            )}
-            {/* Mic / voice input intentionally hidden — voice flow isn't
-                wired through anton yet. We keep speechSupported state
-                around so we can reinstate later by re-rendering the
-                button (e.g. behind a `showMic` prop). */}
-            {streaming && onStop ? (
-              <Tooltip content="Stop generation">
-              <button
-                className="send-btn stop"
-                onClick={onStop}
-                aria-label="Stop generation"
-                style={{
-                  // cascade-forced: .send-btn sets background/color/border/
-                  // box-shadow at rest AND background on :hover — a same-
-                  // property Tailwind utility (or hover: variant) would lose
-                  // to it (loads after Tailwind), so this whole block
-                  // (incl. the JS hover handlers below) stays inline rather
-                  // than becoming hover: classes.
-                  //
-                  // Theme-aware "stop" treatment — uses the danger token
-                  // on a soft tinted surface, with an outline that
-                  // intensifies on hover. Matches the chat header
-                  // unpublish button so the destructive vocabulary is
-                  // consistent across surfaces.
-                  background: 'var(--danger-bg)',
-                  color: 'var(--danger)',
-                  border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                  boxShadow: 'none',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'var(--danger)';
-                  e.currentTarget.style.color = '#fff';
-                  e.currentTarget.style.borderColor = 'var(--danger)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'var(--danger-bg)';
-                  e.currentTarget.style.color = 'var(--danger)';
-                  e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
-                }}
-              >
-                {Ico.stop(14)}
-              </button>
-              </Tooltip>
-            ) : (
-              <Tooltip content="Send">
+                  ariaLabel="Choose model"
+                  placeholder="Select model"
+                />
+              )}
+              {/* Reasoning effort as its own pill (ENG-2591), the same
+                  <Select> Code mode's composer uses. Fixed with the model
+                  once a task's model is read-only, and absent with no
+                  provider connected, where the model pill is only a
+                  shortcut to Settings. */}
+              {!modelReadOnly && !noRealModels && effortLevels && (
+                <Select
+                  value={resolvedEffort}
+                  onValueChange={onEffortChange}
+                  options={effortOptions(effortLevels)}
+                  variant="unstyled"
+                  className="meta-pill"
+                  ariaLabel="Reasoning effort"
+                  menuLabel="Reasoning effort"
+                />
+              )}
+              {/* Mic / voice input intentionally hidden — voice flow isn't
+                  wired through anton yet. We keep speechSupported state
+                  around so we can reinstate later by re-rendering the
+                  button (e.g. behind a `showMic` prop). */}
+              {streaming && onStop ? (
+                <Tooltip content="Stop generation">
                 <button
-                  className="send-btn"
-                  disabled={disabled || !value.trim() || busy}
-                  onClick={handleSend}
-                  aria-label="Send"
-                  title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
+                  className="send-btn stop"
+                  onClick={onStop}
+                  aria-label="Stop generation"
+                  style={{
+                    // cascade-forced: .send-btn sets background/color/border/
+                    // box-shadow at rest AND background on :hover — a same-
+                    // property Tailwind utility (or hover: variant) would lose
+                    // to it (loads after Tailwind), so this whole block
+                    // (incl. the JS hover handlers below) stays inline rather
+                    // than becoming hover: classes.
+                    //
+                    // Theme-aware "stop" treatment — uses the danger token
+                    // on a soft tinted surface, with an outline that
+                    // intensifies on hover. Matches the chat header
+                    // unpublish button so the destructive vocabulary is
+                    // consistent across surfaces.
+                    background: 'var(--danger-bg)',
+                    color: 'var(--danger)',
+                    border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                    boxShadow: 'none',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = 'var(--danger)';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.borderColor = 'var(--danger)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = 'var(--danger-bg)';
+                    e.currentTarget.style.color = 'var(--danger)';
+                    e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
+                  }}
                 >
-                  {Ico.send(15)}
+                  {Ico.stop(14)}
                 </button>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+                </Tooltip>
+              ) : (
+                <Tooltip content="Send">
+                  <button
+                    className="send-btn"
+                    disabled={disabled || !value.trim() || busy}
+                    onClick={handleSend}
+                    aria-label="Send"
+                    title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
+                  >
+                    {Ico.send(15)}
+                  </button>
+                </Tooltip>
+              )}
+            </>}
+          />
+        </ComposerShell>
       </div>
 
       {!hideMeta && (
