@@ -413,6 +413,26 @@ function hasVisibleContent(item: TimelineItem): boolean {
 }
 
 
+// Codex can finish a thought, or report usage, after the turn's answer. That
+// is still the turn's work, so it moves ahead of the answer and folds with
+// the rest instead of trailing it as a group of its own.
+function workBeforeAnswers(items: TimelineItem[], answers: Set<number>): TimelineItem[] {
+  const ordered: TimelineItem[] = [];
+  let answerIndex = -1;
+  for (const item of items) {
+    if (item.kind === 'event' && item.event.type === 'user_message') answerIndex = -1;
+    if (answerIndex >= 0 && item.kind === 'activity') {
+      ordered.splice(answerIndex, 0, item);
+      answerIndex += 1;
+      continue;
+    }
+    if (item.kind === 'event' && item.event.type === 'agent_message' && answers.has(item.event.seq)) answerIndex = ordered.length;
+    ordered.push(item);
+  }
+  return ordered;
+}
+
+
 // A finished turn folds its work and progress notes under one "Worked for"
 // line, leaving the request and the answer. The turn in progress stays
 // open, and a turn without an answer keeps its work in view.
@@ -420,7 +440,7 @@ function foldFinishedTurns(items: TimelineItem[], answers: Set<number>): RenderI
   const rendered: RenderItem[] = [];
   let work: TimelineItem[] = [];
   let startedAt = Number.NaN;
-  for (const item of items) {
+  for (const item of workBeforeAnswers(items, answers)) {
     if (item.kind === 'event' && item.event.type === 'user_message') {
       rendered.push(...work, item);
       work = [];
