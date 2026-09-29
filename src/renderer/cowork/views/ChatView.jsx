@@ -1863,6 +1863,9 @@ export default function ChatView({
   }, [composerRedirects, task?.id]);
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !pane && !isNarrow && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text) => onSend?.(text);
   // Narrow-screen overlay rail.
   const railOverlayOpen = !pane && isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
@@ -2382,10 +2385,10 @@ export default function ChatView({
                     // No turn offers a delete while one is out: every other
                     // turn's index is about to shift when the server reindexes
                     // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    onDelete={orphan && !deleteInFlight && onDeleteTurn ? () => onDeleteTurn(turnIdxForThisUser) : null}
                     deleting={deletingTurnIndex === turnIdxForThisUser}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2551,7 +2554,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      onRetry={prevUserText && sendAgain ? () => sendAgain(prevUserText) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2635,8 +2638,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2682,8 +2685,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2706,8 +2709,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2742,7 +2745,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
+                      onRetry={rlRetryText && sendAgain ? () => sendAgain(rlRetryText) : undefined}
                     />
                   );
                 }

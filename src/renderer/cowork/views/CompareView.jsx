@@ -189,7 +189,7 @@ const STATUS_DOT = {
   muted: 'bg-ink-4',
 };
 
-export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask }) {
+export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask, onOpenSettings }) {
   const [comparisons, setComparisons] = useState(undefined);
   const [loadError, setLoadError] = useState('');
   const [mode, setMode] = useState('list');
@@ -257,6 +257,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
         onBack={() => { setMode('list'); setOpenId(null); reload(); }}
         onDeleted={() => { setMode('list'); setOpenId(null); reload(); }}
         onOpenTask={onOpenTask}
+        onOpenSettings={onOpenSettings}
       />
     );
   }
@@ -799,7 +800,7 @@ function useComparisonSides(comparison) {
   return { tasks, busy, errors, lastEventAt, send, stop, refresh, load };
 }
 
-function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask }) {
+function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
   const [comparison, setComparison] = useState(null);
   const [error, setError] = useState('');
   const [target, setTarget] = useState('both');
@@ -1006,6 +1007,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onSendHere={(text) => sendToSides(text, sendTargets(label, sideState))}
             onContinue={() => setContinuing(label)}
             onRetryLoad={() => load(label)}
+            onOpenSettings={onOpenSettings}
             onOpenTask={onOpenTask}
           />
         ))}
@@ -1144,7 +1146,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, onOpenSettings, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1226,6 +1228,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
             projects={projects}
             agentLabel={agentLabel}
             onSend={onSendHere}
+            onOpenSettings={onOpenSettings}
           />
         ) : error ? (
           <div className="py-10 flex justify-center">
