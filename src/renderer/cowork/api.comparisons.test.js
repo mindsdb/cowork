@@ -28,8 +28,15 @@ afterEach(() => vi.unstubAllGlobals());
 // yet" and from a real failure.
 describe('fetchComparisons', () => {
   it('returns the list', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => res(200, { comparisons: [{ id: 'c1' }] })));
-    expect(await fetchComparisons()).toEqual([{ id: 'c1' }]);
+    vi.stubGlobal('fetch', vi.fn(async () => res(200, { comparisons: [{ id: 'c1' }], hasMore: true })));
+    expect(await fetchComparisons()).toEqual({ comparisons: [{ id: 'c1' }], hasMore: true });
+  });
+
+  it('asks for a later page by offset, and reads an older server as having one page', async () => {
+    const fetchMock = vi.fn(async () => res(200, { comparisons: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await fetchComparisons({ offset: 50 })).toEqual({ comparisons: [], hasMore: false });
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/comparisons\/\?offset=50$/);
   });
 
   it('is null on a server that predates comparisons', async () => {

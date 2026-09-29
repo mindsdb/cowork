@@ -2422,10 +2422,16 @@ export async function moveTaskToProject(id, projectName, moveObjects = true) {
 // `null` means the sidecar predates comparisons: the renderer bundle updates
 // over the air ahead of the server, so the Compare screen has to be able to
 // say "update needed" rather than show an empty history.
-export async function fetchComparisons() {
+/** One page of the history, newest first: `{ comparisons, hasMore }`. Null on
+ *  a server with no comparisons at all. */
+export async function fetchComparisons({ offset = 0 } = {}) {
   try {
-    const data = await req('/comparisons/');
-    return Array.isArray(data?.comparisons) ? data.comparisons : [];
+    const data = await req(offset ? `/comparisons/?offset=${encodeURIComponent(offset)}` : '/comparisons/');
+    return {
+      comparisons: Array.isArray(data?.comparisons) ? data.comparisons : [],
+      // An older server sends no flag: it has no pages beyond the first.
+      hasMore: data?.hasMore === true,
+    };
   } catch (err) {
     if (err?.status === 404 || err?.status === 405) return null;
     throw err;
