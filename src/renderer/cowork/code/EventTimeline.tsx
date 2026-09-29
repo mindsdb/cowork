@@ -1,13 +1,33 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
-import { activityHeadline, approvalOutcome, displayCommand, isIgnoredActivity, liveStatusLabel, reasoningSummary } from './activitySummary';
+import {
+  activityHeadline,
+  changeLabel,
+  commandOutput,
+  displayCommand,
+  exitCode,
+  fileChanges,
+  isIgnoredActivity,
+  isPlanUpdate,
+  liveStatusLabel,
+  planPosition,
+  planSteps,
+  reasoningHeading,
+  reasoningSummary,
+  stepFailed,
+  stepLabel,
+  turnDiffFiles,
+  type FileChange,
+  type StepIcon,
+} from './activitySummary';
+import { DiffPatchView } from './DiffPatchView';
 import { CopyResponseButton } from './CopyResponseButton';
 import type { CodingEvent, CodingSession } from './api';
-import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
+import { CODE_STATUS, codingSessionStatus, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
 import './event-timeline.css';
 
@@ -72,9 +92,10 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // stay inside the activity group instead of splitting it. The pending
   // request is already shown by the approval card; a denial stays visible.
   const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
-  // A dropped connection that Codex retries is part of the work too. A turn
-  // that ends on the error gets the outcome card instead.
-  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' ? 'activity' : 'event';
+  // A dropped connection that Codex retries is part of the work too, and so
+  // is the turn's checklist. A turn that ends on the error gets the outcome
+  // card instead, and a proposed plan from plan mode stays a card.
+  const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' || isPlanUpdate(event) ? 'activity' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
   } else if (kind === 'activity') {
@@ -134,48 +155,175 @@ function useTimelineItems(events: CodingEvent[], sessionId: string): TimelineIte
 }
 
 
-function durationLabel(events: CodingEvent[]): string {
-  const start = Date.parse(events[0]?.timestamp || '');
-  const end = Date.parse(events.at(-1)?.timestamp || '');
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return '';
-  const seconds = Math.max(1, Math.round((end - start) / 1_000));
+function durationLabel(startedAt: number, endedAt: number): string {
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt <= startedAt) return '';
+  const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1_000));
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 
-function eventSummary(event: CodingEvent): string {
-  if (event.type === 'command') return displayCommand(event);
-  const data = event.data;
-  for (const key of ['command', 'path', 'name', 'message', 'status']) {
-    const value = data[key];
-    if (typeof value === 'string' && value) return value;
-  }
-  return event.title || event.text.split('\n')[0] || 'Agent activity';
-}
+type ActivityRow =
+  | { kind: 'step'; key: string; event: CodingEvent }
+  | { kind: 'change'; key: string; change: FileChange };
 
 
-// A granted approval shows as its decision beside the command it unblocked.
-// Its request is only kept when no decision followed, e.g. before a denial.
-function activityRows(events: CodingEvent[]): CodingEvent[] {
+// One row per step, at its latest state. Granted approvals are left out:
+// the command they unblocked already shows. A request stays only while no
+// decision followed. The turn diff is summarised after the answer instead.
+function activityRows(events: CodingEvent[]): ActivityRow[] {
   const decided = new Set(events.filter((event) => event.type === 'approval' && event.phase === 'completed').map((event) => event.data.approvalId));
-  return events.filter((event) => {
-    if (event.type === 'usage' || (event.type === 'reasoning' && !reasoningSummary(event))) return false;
-    return event.type !== 'approval' || event.phase === 'completed' || !decided.has(event.data.approvalId);
-  });
+  const latest = new Map<string, CodingEvent>();
+  for (const event of events) if (event.item_id) latest.set(event.item_id, event);
+  // Each checklist update is the whole list, so only the latest is kept.
+  const latestPlan = events.filter(isPlanUpdate).at(-1);
+  const rows: ActivityRow[] = [];
+  const seen = new Set<string>();
+  for (const event of events) {
+    if (event.type === 'usage' || event.type === 'diff') continue;
+    if (isPlanUpdate(event) && event !== latestPlan) continue;
+    if (event.type === 'reasoning' && !reasoningSummary(event)) continue;
+    if (event.type === 'approval' && (event.phase === 'completed' || decided.has(event.data.approvalId))) continue;
+    const id = event.item_id || `seq-${event.seq}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const current = (event.item_id && latest.get(event.item_id)) || event;
+    if (current.type === 'reasoning' && !reasoningSummary(current)) continue;
+    // The live status line names the step in progress.
+    const live = current.phase === 'started' || current.phase === 'progress';
+    if (live && ['command', 'tool', 'file_change'].includes(current.type)) continue;
+    if (current.type === 'file_change') {
+      fileChanges(current).forEach((change, index) => rows.push({ kind: 'change', key: `${id}-${index}`, change }));
+    } else {
+      rows.push({ kind: 'step', key: id, event: current });
+    }
+  }
+  return rows;
 }
 
 
-function rowTitle(event: CodingEvent): string {
-  if (event.type === 'approval' && event.phase === 'completed') return approvalOutcome(event);
-  if (event.type === 'error') return event.text || 'The connection dropped and the agent retried.';
-  return eventSummary(event);
+const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
+  read: Ico.doc,
+  search: Ico.search,
+  list: Ico.folder,
+  command: Ico.code,
+  edit: Ico.edit,
+  tool: Ico.cube,
+  image: Ico.image,
+  thought: Ico.brain,
+  compact: Ico.list,
+  plan: Ico.taskCheck,
+  retry: Ico.refresh,
+  approval: Ico.key,
+};
+
+
+function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb: string; target: string; failed?: boolean; extra?: ReactNode }) {
+  return (
+    <>
+      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](13)}</span>
+      <span className="code-step__label">
+        {verb && <span className="code-step__verb">{verb}</span>}
+        {verb && target ? ' ' : ''}
+        <span className="code-step__target">{target}</span>
+      </span>
+      {failed && <span className="code-step__status">Failed</span>}
+      {extra}
+    </>
+  );
 }
 
 
-function rowDetail(event: CodingEvent): string {
-  if ((event.type === 'approval' && event.phase === 'completed') || event.type === 'error') return '';
-  const detail = event.type === 'reasoning' ? reasoningSummary(event) : event.text;
-  return detail && detail !== eventSummary(event) ? detail : '';
+// A step with nothing more to show is a plain line; otherwise the line
+// opens onto its detail. Failed steps open by default.
+function Step({ head, failed = false, detail }: { head: ReactNode; failed?: boolean; detail?: () => ReactNode }) {
+  const [open, setOpen] = useState(failed);
+  const className = `code-step${failed ? ' is-failed' : ''}`;
+  if (!detail) return <div className={className}><div className="code-step__head">{head}</div></div>;
+  return (
+    <div className={`${className}${open ? ' is-open' : ''}`}>
+      <button type="button" className="code-step__head" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        {head}
+        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(11)}</span>
+      </button>
+      {open && <div className="code-step__detail">{detail()}</div>}
+    </div>
+  );
+}
+
+
+function stepDetail(event: CodingEvent): (() => ReactNode) | undefined {
+  if (event.type === 'command') {
+    const output = commandOutput(event);
+    const code = exitCode(event);
+    return () => (
+      <div className="code-step__shell">
+        <pre className="code-step__command"><span aria-hidden="true">$ </span>{displayCommand(event)}</pre>
+        {stepFailed(event) && code !== null && <div className="code-step__exit">Exit code {code}</div>}
+        {output && <pre className="code-step__output">{output}</pre>}
+      </div>
+    );
+  }
+  if (isPlanUpdate(event)) {
+    const explanation = typeof event.data.explanation === 'string' ? event.data.explanation : '';
+    return () => (
+      <div className="code-step__plan">
+        {explanation && <p>{explanation}</p>}
+        <PlanSteps event={event} />
+      </div>
+    );
+  }
+  if (event.type === 'reasoning') {
+    // The heading already names the thought; the detail is the rest of it.
+    const summary = reasoningSummary(event).replace(`**${reasoningHeading(event)}**`, '').trim();
+    return summary ? () => <p className="code-step__thought">{summary}</p> : undefined;
+  }
+  const result = event.type === 'tool' && event.data.result && typeof event.data.result === 'object'
+    ? (event.data.result as { content?: Array<{ text?: unknown }> }).content?.map((part) => (typeof part.text === 'string' ? part.text : '')).join('\n')
+    : '';
+  return result ? () => <pre className="code-step__output">{result}</pre> : undefined;
+}
+
+
+function StepRow({ event }: { event: CodingEvent }) {
+  const failed = stepFailed(event);
+  return <Step head={<StepHead {...stepLabel(event)} failed={failed} />} failed={failed} detail={stepDetail(event)} />;
+}
+
+
+function LineCounts({ additions, deletions }: { additions: number; deletions: number }) {
+  if (!additions && !deletions) return null;
+  return (
+    <span className="code-line-counts">
+      <span className="is-addition">+{additions}</span> <span className="is-deletion">−{deletions}</span>
+    </span>
+  );
+}
+
+
+function changeDetail(change: FileChange): (() => ReactNode) | undefined {
+  if (!change.patch) return undefined;
+  return () => (
+    <div className="code-step__diff">
+      <div className="code-step__diff-path" title={change.path}>{compactPath(change.path)}</div>
+      <DiffPatchView patch={change.patch} onSelectionChange={() => {}} />
+    </div>
+  );
+}
+
+
+function ChangeRow({ change }: { change: FileChange }) {
+  return (
+    <Step
+      head={<StepHead icon="edit" {...changeLabel(change)} extra={<LineCounts additions={change.additions} deletions={change.deletions} />} />}
+      detail={changeDetail(change)}
+    />
+  );
+}
+
+
+function stepHeadline(row: ActivityRow): string {
+  const label = row.kind === 'change' ? changeLabel(row.change) : stepLabel(row.event);
+  return [label.verb, label.target].filter(Boolean).join(' ');
 }
 
 
@@ -183,14 +331,23 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
   const rows = activityRows(events);
   // Retries are recoverable, so they neither count as failures nor force
   // the group open.
-  const failures = events.filter((event) => event.phase === 'failed' && event.type !== 'error').length;
+  const failures = rows.filter((row) => row.kind === 'step' && stepFailed(row.event)).length;
   const failed = failures > 0;
   const [open, setOpen] = useState(failed);
   useEffect(() => { if (failed) setOpen(true); }, [failed]);
-  const detail = [
-    failed ? `${failures} failed` : '',
-    durationLabel(events),
-  ].filter(Boolean).join(' · ');
+  // A lone step's headline already names it, so the group opens straight
+  // onto its detail instead of repeating the line.
+  const [only] = rows;
+  const headline = activityHeadline(events);
+  const sole = rows.length === 1 && headline === stepHeadline(only)
+    ? (only.kind === 'change' ? changeLabel(only.change) : stepLabel(only.event))
+    : null;
+  const single = sole ? (only.kind === 'change' ? changeDetail(only.change) : stepDetail(only.event)) : undefined;
+  // Like the step rows, a single step's target reads darker than its verb.
+  const copy = sole
+    ? <span className="code-activity-group__copy">{sole.verb && <>{sole.verb} </>}<span className="code-activity-group__target">{sole.target}</span></span>
+    : <span className="code-activity-group__copy">{headline}</span>;
+  if (sole && !single) return <div className="code-activity-group"><div className="code-activity-group__line">{copy}</div></div>;
   return (
     <details
       className={`code-activity-group${failed ? ' is-failed' : ''}`}
@@ -198,21 +355,15 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span className="code-activity-group__copy">{activityHeadline(events)}</span>
-        {detail && <small>{detail}</small>}
+        {copy}
+        {failed && <small>{failures} failed</small>}
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
       {open && (
         <div className="code-activity-group__body">
-          {rows.map((event) => (
-            <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
-              <span className="code-activity-row__kind">{event.type === 'error' ? 'retry' : event.type.replace('_', ' ')}</span>
-              <div>
-                <strong>{rowTitle(event)}</strong>
-                {rowDetail(event) && <pre>{rowDetail(event)}</pre>}
-              </div>
-            </div>
-          ))}
+          {single ? <div className="code-step__detail">{single()}</div> : rows.map((row) => (row.kind === 'change'
+            ? <ChangeRow key={row.key} change={row.change} />
+            : <StepRow key={row.key} event={row.event} />))}
         </div>
       )}
     </details>
@@ -239,6 +390,111 @@ function answerSeqs(items: TimelineItem[], turnActive: boolean): Set<number> {
 }
 
 
+type RenderItem =
+  | TimelineItem
+  | { kind: 'worked'; key: string; items: TimelineItem[]; label: string }
+  | { kind: 'changes'; key: string; diff: CodingEvent };
+
+
+function hasVisibleContent(item: TimelineItem): boolean {
+  return item.kind === 'event' || activityRows(item.events).length > 0;
+}
+
+
+// A finished turn folds its work and progress notes under one "Worked for"
+// line, leaving the request and the answer. The turn in progress stays
+// open, and a turn without an answer keeps its work in view.
+function foldFinishedTurns(items: TimelineItem[], answers: Set<number>): RenderItem[] {
+  const rendered: RenderItem[] = [];
+  let work: TimelineItem[] = [];
+  let startedAt = Number.NaN;
+  for (const item of items) {
+    if (item.kind === 'event' && item.event.type === 'user_message') {
+      rendered.push(...work, item);
+      work = [];
+      startedAt = Date.parse(item.event.timestamp);
+      continue;
+    }
+    if (item.kind === 'event' && item.event.type === 'agent_message' && answers.has(item.event.seq)) {
+      if (work.some(hasVisibleContent)) {
+        const start = Number.isFinite(startedAt) ? startedAt : Date.parse(lastEvent(work[0])?.timestamp || '');
+        const duration = durationLabel(start, Date.parse(item.event.timestamp));
+        rendered.push({ kind: 'worked', key: `worked-${item.event.seq}`, items: work, label: duration ? `Worked for ${duration}` : 'Worked' });
+      } else {
+        rendered.push(...work);
+      }
+      rendered.push(item);
+      const diff = work.flatMap((entry) => (entry.kind === 'activity' ? entry.events : [])).filter((event) => event.type === 'diff' && event.text).at(-1);
+      if (diff) rendered.push({ kind: 'changes', key: `changes-${item.event.seq}`, diff });
+      work = [];
+      continue;
+    }
+    work.push(item);
+  }
+  rendered.push(...work);
+  return rendered;
+}
+
+
+function WorkedSummary({ label, children }: { label: string; children: () => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="code-worked" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span>{label}</span>
+        <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
+      </summary>
+      {open && <div className="code-worked__body">{children()}</div>}
+    </details>
+  );
+}
+
+
+const TURN_CHANGES_SHOWN = 5;
+
+
+function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?: () => void }) {
+  const files = turnDiffFiles(diff.text);
+  if (!files.length) return null;
+  const additions = files.reduce((total, file) => total + file.additions, 0);
+  const deletions = files.reduce((total, file) => total + file.deletions, 0);
+  return (
+    <section className="code-turn-changes" aria-label="Files changed in this turn">
+      <header>
+        <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(13)}</span>
+        <strong>Edited {files.length} {files.length === 1 ? 'file' : 'files'}</strong>
+        <LineCounts additions={additions} deletions={deletions} />
+        {onOpenReview && <Button size="sm" variant="subtle" className="ml-auto" onClick={onOpenReview}>Review</Button>}
+      </header>
+      <ul>
+        {files.slice(0, TURN_CHANGES_SHOWN).map((file) => (
+          <li key={file.path}>
+            <span className="code-turn-changes__path">{file.path}</span>
+            <LineCounts additions={file.additions} deletions={file.deletions} />
+          </li>
+        ))}
+        {files.length > TURN_CHANGES_SHOWN && <li className="code-turn-changes__more">and {files.length - TURN_CHANGES_SHOWN} more</li>}
+      </ul>
+    </section>
+  );
+}
+
+
+// The current turn's checklist, which can sit in an earlier group than the
+// work in progress.
+function latestTurnPlan(items: TimelineItem[]): CodingEvent | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'event' && item.event.type === 'user_message') return undefined;
+    if (item.kind === 'activity') {
+      const plan = item.events.filter(isPlanUpdate).at(-1);
+      if (plan) return plan;
+    }
+  }
+  return undefined;
+}
+
+
 function turnStartedAt(items: TimelineItem[]): number {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -258,7 +514,7 @@ function elapsedLabel(milliseconds: number): string {
 
 // The one moving part while the agent works, matching chat mode's thinking
 // header: what the agent is doing now, and how long this turn has taken.
-function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) {
+function LiveStatus({ label, step, startedAt }: { label: string; step: string; startedAt: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -267,32 +523,35 @@ function LiveStatus({ label, startedAt }: { label: string; startedAt: number }) 
   return (
     <div className="code-running-indicator" role="status">
       <WorkingIndicator label={label} />
+      {step && <span className="code-running-indicator__elapsed">{step}</span>}
       {Number.isFinite(startedAt) && <span className="code-running-indicator__elapsed">{elapsedLabel(now - startedAt)}</span>}
     </div>
   );
 }
 
 
+function PlanSteps({ event }: { event: CodingEvent }) {
+  return (
+    <>
+      {planSteps(event).map((step, index) => (
+        <div className="code-plan__step" key={`${event.seq}-${index}`}>
+          <span className={`code-plan__dot is-${step.status}`} aria-hidden="true">{step.status === 'completed' ? '✓' : ''}</span>
+          <span>{step.step}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+
+// A plan proposed in plan mode, which the user decides on.
 function PlanEvent({ event }: { event: CodingEvent }) {
-  const plan = Array.isArray(event.data.plan) ? event.data.plan : [];
   return (
     <section className="code-plan">
       <div className="code-plan__heading">{event.title || 'Plan'}</div>
-      {plan.length ? plan.map((raw, index) => {
-        const step = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-        const rawStatus = typeof step.status === 'string' ? step.status : '';
-        const status = rawStatus === 'completed'
-          ? 'completed'
-          : rawStatus === 'inProgress' || rawStatus === 'in_progress' || rawStatus === 'running'
-            ? 'in_progress'
-            : 'pending';
-        return (
-          <div className="code-plan__step" key={`${event.seq}-${index}`}>
-            <span className={`code-plan__dot is-${status}`} aria-hidden="true">{status === 'completed' ? '✓' : ''}</span>
-            <span>{typeof step.step === 'string' ? step.step : 'Plan step'}</span>
-          </div>
-        );
-      }) : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
+      {isPlanUpdate(event)
+        ? <PlanSteps event={event} />
+        : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
     </section>
   );
 }
@@ -411,7 +670,9 @@ function TaskOutcome({
   onAddCredits: () => void;
 }) {
   const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
-  if (session.task_mode === 'plan' && session.status === 'completed') return null;
+  // A finished turn speaks for itself: the answer, its copy button, and the
+  // task status in the header. Only stops and failures need a card.
+  if (session.status === 'completed' && !recoverable) return null;
   const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
   if (remoteRunActive) return null;
   if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
@@ -424,16 +685,14 @@ function TaskOutcome({
   const technicalDetail = typeof failure?.data.detail === 'string' ? failure.data.detail : '';
   const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   const recoveryInProgress = recovering || session.run_status === 'recovering';
-  const detail = session.status === 'completed'
-    ? 'The agent finished this turn. Review the changes or send a follow-up.'
-    : recoverable
+  const detail = recoverable
       ? session.computer_status === 'offline'
         ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
         : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved. Reopening restores the working copy; send a message to continue the interrupted work.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
     <section className={`code-task-outcome ${recovery?.temporary ? 'is-waiting' : `is-${status.tone}`}${recoverable ? ' is-recovery' : ''}`}>
-      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recovery?.temporary ? Ico.clock(12) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+      <span className="code-task-outcome__icon">{recovery?.temporary ? Ico.clock(12) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
         <strong>{recovery ? recovery.title(modelName || 'This model') : recoverable ? (recoveryInProgress ? 'Reopening task' : 'Task paused') : status.label}</strong>
         <p>{recoveryInProgress ? 'Reconnecting to the task files…' : recovery ? recovery.body : detail}</p>
@@ -470,6 +729,7 @@ export const EventTimeline = memo(function EventTimeline({
   onRecover = async () => {},
   onChooseModel = () => {},
   onAddCredits = () => {},
+  onOpenReview,
 }: {
   events: CodingEvent[];
   latestEvents: LatestEvents;
@@ -479,6 +739,7 @@ export const EventTimeline = memo(function EventTimeline({
   onRecover?: () => Promise<void>;
   onChooseModel?: () => void;
   onAddCredits?: () => void;
+  onOpenReview?: () => void;
 }) {
   const items = useTimelineItems(events, session.id);
   const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
@@ -492,6 +753,18 @@ export const EventTimeline = memo(function EventTimeline({
   const answers = answerSeqs(items, isActiveStatus(session.status));
   const lastItem = items.at(-1);
   const liveEvents = lastItem?.kind === 'activity' ? lastItem.events : [];
+  const renderItem = (item: TimelineItem) => {
+    const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
+    if (item.kind === 'activity') {
+      const groupEvents = terminalErrorSeq == null
+        ? item.events
+        : item.events.filter((event) => event.seq !== terminalErrorSeq);
+      // Telemetry alone, such as a token-usage update between two
+      // messages, has nothing to open.
+      return activityRows(groupEvents).length ? <ActivityGroup key={key} events={groupEvents} /> : null;
+    }
+    return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   useEffect(() => {
@@ -522,21 +795,15 @@ export const EventTimeline = memo(function EventTimeline({
             Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
           </button>
         )}
-        {visibleItems.map((item) => {
-          const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
-          if (item.kind === 'activity') {
-            const groupEvents = terminalErrorSeq == null
-              ? item.events
-              : item.events.filter((event) => event.seq !== terminalErrorSeq);
-            // Telemetry alone, such as a token-usage update between two
-            // messages, has nothing to open.
-            return activityRows(groupEvents).length ? <ActivityGroup key={key} events={groupEvents} /> : null;
-          }
-          return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
+        {foldFinishedTurns(visibleItems, answers).map((item) => {
+          if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
+          if (item.kind === 'changes') return <TurnChanges key={item.key} diff={item.diff} onOpenReview={onOpenReview} />;
+          return renderItem(item);
         })}
         {session.status === 'running' && (
           <LiveStatus
             label={session.task_mode === 'plan' && !liveEvents.length ? 'Exploring and preparing a plan…' : liveStatusLabel(liveEvents)}
+            step={planPosition(latestTurnPlan(items))}
             startedAt={turnStartedAt(items)}
           />
         )}
@@ -563,4 +830,5 @@ export const EventTimeline = memo(function EventTimeline({
   && left.session.last_error === right.session.last_error
   && left.modelName === right.modelName
   && left.recovering === right.recovering
+  && left.onOpenReview === right.onOpenReview
 ));

@@ -162,12 +162,25 @@ function activityEvents(running: boolean): CodingEvent[] {
   const start = running ? Date.now() - 24_000 : Date.parse('2026-08-21T19:30:00Z');
   const at = (second: number) => new Date(start + second * 1_000).toISOString();
   const next = (type: CodingEvent['type'], second: number, values: Partial<CodingEvent> = {}) => event(++seq, type, { timestamp: at(second), ...values });
-  const shell = (id: string, second: number, command: string, actionType: string, extra: Record<string, string> = {}, phase: CodingEvent['phase'] = 'completed') => next('command', second, {
+  const shell = (id: string, second: number, command: string, actionType: string, extra: Record<string, string> = {}, phase: CodingEvent['phase'] = 'completed', output = '', exitCode = 0) => next('command', second, {
     item_id: id,
-    phase,
+    phase: exitCode ? 'failed' : phase,
     title: `/bin/zsh -lc '${command}'`,
-    data: { command: `/bin/zsh -lc '${command}'`, commandActions: [{ type: actionType, command, ...extra }], exitCode: 0 },
+    data: { command: `/bin/zsh -lc '${command}'`, commandActions: [{ type: actionType, command, ...extra }], ...(phase === 'completed' ? { exitCode, aggregatedOutput: output } : {}) },
   });
+  const patch = [
+    '@@ -41,6 +41,9 @@ export async function submitCheckout(draft: CheckoutDraft) {',
+    '   try {',
+    '     return await client.post(\'/checkout\', draft);',
+    '   } catch (error) {',
+    '-    clearDraft();',
+    '+    // Keep what the customer typed so they can retry.',
+    '+    reportCheckoutError(error);',
+    '+    throw error;',
+    '   }',
+    ' }',
+  ].join('\n');
+  const testPatch = ['it(\'keeps the draft when the request fails\', async () => {', '  mockPost.mockRejectedValue(new Error(\'503\'));', '  await expect(submitCheckout(draft)).rejects.toThrow();', '  expect(loadDraft()).toEqual(draft);', '});'].join('\n');
   const approved = (id: string, second: number, command: string) => [
     next('approval', second, { title: 'Run command', text: `/bin/zsh -lc '${command}'`, phase: 'pending', data: { approvalId: id, kind: 'command' } }),
     next('approval', second + 1, { title: 'Approval resolved', text: 'Approve once', data: { approvalId: id, decision: 'approve_once' } }),
@@ -175,18 +188,38 @@ function activityEvents(running: boolean): CodingEvent[] {
   const events = [
     next('user_message', 0, { title: 'You', text: 'Where does checkout validation run, and is it covered by tests?' }),
     next('reasoning', 1, { item_id: 'r1' }),
+    next('plan', 1, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'inProgress' },
+      { step: 'Check which rules the tests cover', status: 'pending' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
     shell('c1', 2, 'rg -n "validateCheckout" src', 'search', { query: 'validateCheckout', path: 'src' }),
     shell('c2', 3, 'cat src/checkout/validation.ts', 'read', { name: 'validation.ts', path: 'src/checkout/validation.ts' }),
     shell('c3', 4, 'cat src/checkout/CheckoutForm.tsx', 'read', { name: 'CheckoutForm.tsx', path: 'src/checkout/CheckoutForm.tsx' }),
+    next('plan', 5, { title: 'Plan updated', phase: 'progress', data: { plan: [
+      { step: 'Find where checkout validation runs', status: 'completed' },
+      { step: 'Check which rules the tests cover', status: 'inProgress' },
+      { step: 'Cover the failed-request path', status: 'pending' },
+    ] } }),
     next('agent_message', 6, { item_id: 'm1', text: 'Validation lives in `validation.ts` and runs on submit. Next I’ll check which rules the tests cover.' }),
     ...approved('a1', 7, 'npm test -- validation --reporter=json'),
-    shell('c4', 9, 'npm test -- validation --reporter=json', 'unknown'),
+    shell('c4', 9, 'npm test -- validation', 'unknown', {}, 'completed', 'FAIL  src/checkout/validation.test.ts\n  ● rejects an empty postcode\n\n    Cannot find module \'./fixtures/address\' from \'validation.test.ts\'\n\nTests: 1 failed, 11 passed, 12 total', 1),
     next('error', 10, { title: 'Agent error', text: 'Reconnecting... 1/2', phase: 'failed' }),
     next('reasoning', 12, { item_id: 'r2' }),
     ...approved('a2', 13, 'npx vitest related src/checkout/validation.ts'),
-    shell('c5', 15, 'npx vitest related src/checkout/validation.ts', 'unknown'),
+    shell('c5', 15, 'npx vitest related src/checkout/validation.ts', 'unknown', {}, 'completed', ' ✓ src/checkout/validation.test.ts (12 tests) 41ms\n\n Test Files  1 passed (1)\n      Tests  12 passed (12)'),
+    next('tool', 16, { item_id: 't1', title: 'Mcp tool call', data: { type: 'mcpToolCall', server: 'linear', tool: 'get_issue', result: { content: [{ type: 'text', text: '{"identifier":"ENG-412","title":"Checkout loses the draft after a 503"}' }] } } }),
     next('agent_message', 18, { item_id: 'm2', text: 'The field rules are covered, but no test exercises a failed request. Checking the API client next.' }),
     shell('c6', 19, 'cat src/checkout/api.ts', 'read', { name: 'api.ts', path: 'src/checkout/api.ts' }),
+    next('plan', 19, { title: 'Plan updated', phase: 'progress', data: {
+      explanation: 'The field rules are covered. The failed-request path in api.ts has no test.',
+      plan: [
+        { step: 'Find where checkout validation runs', status: 'completed' },
+        { step: 'Check which rules the tests cover', status: 'completed' },
+        { step: 'Cover the failed-request path', status: 'inProgress' },
+      ],
+    } }),
+    next('tool', 20, { item_id: 'k1', title: 'Context compaction', data: { type: 'contextCompaction' } }),
   ];
   if (running) {
     events.push(
@@ -195,9 +228,20 @@ function activityEvents(running: boolean): CodingEvent[] {
     );
     return events;
   }
+  events.push(
+    next('file_change', 22, { item_id: 'f1', data: { changes: [
+      { path: `${WORKTREE}/src/checkout/api.ts`, kind: { type: 'update' }, diff: patch },
+      { path: `${WORKTREE}/src/checkout/api.test.ts`, kind: { type: 'add' }, diff: testPatch },
+    ] } }),
+    shell('c7', 24, 'npx vitest related src/checkout/api.ts', 'unknown', {}, 'completed', ' Test Files  1 passed (1)\n      Tests  4 passed (4)'),
+    next('diff', 25, { phase: 'progress', text: [
+      'diff --git a/src/checkout/api.ts b/src/checkout/api.ts', '--- a/src/checkout/api.ts', '+++ b/src/checkout/api.ts', patch,
+      'diff --git a/src/checkout/api.test.ts b/src/checkout/api.test.ts', 'new file mode 100644', '--- /dev/null', '+++ b/src/checkout/api.test.ts', '@@ -0,0 +1,5 @@', ...testPatch.split('\n').map((line) => `+${line}`),
+    ].join('\n') }),
+  );
   events.push(next('agent_message', 26, {
     item_id: 'm3',
-    text: 'Checkout validation runs in `src/checkout/validation.ts` when the form submits. The field rules are covered by `validation.test.ts`. The failed-request path in `api.ts` has no test, so a server error that clears the draft would go unnoticed.',
+    text: 'Checkout validation runs in `src/checkout/validation.ts` when the form submits, and `validation.test.ts` covers the field rules. The failed-request path in `api.ts` cleared the draft and had no test. It now keeps the draft and rethrows, and `api.test.ts` covers it.',
   }));
   return events;
 }
