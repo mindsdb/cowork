@@ -11,7 +11,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 }));
 
 import { host } from '../platform/host';
-import { createComparison, fetchComparisonUsage, fetchComparisons } from './api';
+import { continueComparisonSide, createComparison, fetchComparisonUsage, fetchComparisons } from './api';
 
 const res = (status, body = {}) => ({
   ok: status < 400,
@@ -75,5 +75,18 @@ describe('fetchComparisonUsage', () => {
   ])('is null on %s, so no figure shows', async (_, response) => {
     vi.stubGlobal('fetch', vi.fn(async () => response()));
     expect(await fetchComparisonUsage('c1')).toBeNull();
+  });
+});
+
+describe('continueComparisonSide', () => {
+  it('sends the model name for the folder, and leaves it out when there is none', async () => {
+    const fetchMock = vi.fn(async () => res(200, { conversationId: 'c', projectId: 'p' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await continueComparisonSide('cmp 1', 'a', 'p1', 'Claude Opus 5.5');
+    await continueComparisonSide('cmp 1', 'b', 'p1');
+    const [url, first] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/comparisons\/cmp%201\/sides\/a\/continue$/);
+    expect(JSON.parse(first.body)).toEqual({ projectId: 'p1', modelLabel: 'Claude Opus 5.5' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ projectId: 'p1' });
   });
 });

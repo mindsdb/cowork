@@ -722,7 +722,8 @@ function useComparisonSides(comparison) {
       },
       onError(message, event) {
         finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
-        if (event?.code !== 'interrupted') return;
+        // Both mean the stream stopped, not the turn: it may still be running.
+        if (event?.code !== 'interrupted' && event?.code !== 'stream_error') return;
         const tries = reattached.current[label] || 0;
         if (tries >= MAX_REATTACH) return;
         reattached.current[label] = tries + 1;
@@ -1086,7 +1087,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           projects={projects}
           onClose={() => setContinuing(null)}
           onContinue={async (projectId) => {
-            const result = await continueComparisonSide(comparisonId, continuing, projectId);
+            const result = await continueComparisonSide(comparisonId, continuing, projectId, names[continuing]);
             setContinuing(null);
             await loadComparison();
             onOpenTask?.(result?.conversationId);
@@ -1316,7 +1317,8 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
         <div className="flex flex-col gap-3">
           <span>
             This side becomes an ordinary task in the project you pick, with its history and artifacts.
-            The comparison keeps what was compared.
+            Files it made or changed go in a new folder there, named for this comparison and {name}, so
+            nothing already in the project is overwritten. The comparison keeps what was compared.
           </span>
           <Select
             value={projectId}
