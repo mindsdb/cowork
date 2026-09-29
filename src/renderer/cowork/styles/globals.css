@@ -144,6 +144,11 @@ body, body[data-theme="light"] {
   --ink-4:        #9B9FA3;   /* placeholders / tertiary */
   --ink-5:        #C8CACC;   /* disabled */
 
+  /* Ghost-control fills: a translucent ink wash, so hover reads on any
+     ground. Dark runs a notch stronger (see the dark block). */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 7%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 11%, transparent);
+
   --accent:       #1F9CB0;
   --accent-2:     #115562;
   --accent-3:     #0E4651;
@@ -274,6 +279,10 @@ body[data-theme="dark"] {
   --ink-3:        #8A97AE;
   --ink-4:        #5C6B85;
   --ink-5:        #3A465E;
+
+  /* Ghost fills need a touch more ink to register on the dark surfaces. */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 8%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 12%, transparent);
 
   --accent:       rgb(34, 211, 238);
   --accent-2:     rgb(8, 178, 207);
@@ -974,7 +983,9 @@ body[data-theme="light"] .overlay-inline-code {
   transition: background .12s, border-color .12s, color .12s;
 }
 button.meta-pill { cursor: pointer; }
-button.meta-pill:hover { background: var(--surface-0); border-color: var(--border-01); color: var(--text-strong); }
+/* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
+button.meta-pill:hover { background: var(--ghost-hover); color: var(--text-strong); }
+button.meta-pill:active { background: var(--ghost-press); }
 /* Send button — single shared treatment across the home composer
    ("create new task") and the in-task chat composer. The legacy
    --primary-700 token didn't have a dark-mode partner and read as
@@ -2022,19 +2033,25 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant (Cancel, dismiss,
-   quiet toolbar actions). */
+/* Subtle — the ghost button. Quietest variant (Cancel, dismiss, quiet
+   toolbar actions). Borderless in every state: hover and press only lift
+   the fill and ink, never draw a ring (the base .btn hover/active rings are
+   cancelled here). Focus-visible keeps the base ring for keyboard users. */
 .btn.subtle {
   --fg:   var(--ink-3);
   --glow: rgba(199, 210, 229, 0.18);
-  /* Flat at rest — genuinely borderless, no resting shadow. */
   box-shadow: none;
   border: 1px solid transparent;
 }
 .btn.subtle:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
+  background: var(--ghost-hover);
+  box-shadow: none;
+  text-shadow: none;
+}
+.btn.subtle:active {
+  background: var(--ghost-press);
+  box-shadow: none;
 }
 
 /* Tinted — branded secondary: a faint accent wash with a soft accent
