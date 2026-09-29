@@ -47,6 +47,7 @@ import {
   SIDE_LABELS,
   VERDICT_ORDER,
   combinedCost,
+  historyCost,
   compareCreditNotice,
   composerBlock,
   divergedAt,
@@ -191,6 +192,8 @@ const STATUS_DOT = {
 
 export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask, onOpenSettings }) {
   const [comparisons, setComparisons] = useState(undefined);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [mode, setMode] = useState('list');
   const [openId, setOpenId] = useState(null);
@@ -200,12 +203,33 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
 
   const reload = useCallback(async () => {
     try {
-      setComparisons(await fetchComparisons());
+      const page = await fetchComparisons();
+      setComparisons(page ? page.comparisons : null);
+      setHasMore(!!page?.hasMore);
       setLoadError('');
     } catch (err) {
       setLoadError(err?.message || 'Could not load comparisons.');
     }
   }, []);
+
+  const loadOlder = useCallback(async () => {
+    setLoadingOlder(true);
+    try {
+      const page = await fetchComparisons({ offset: comparisons?.length || 0 });
+      if (page) {
+        // A comparison started meanwhile shifts the pages by one; skip repeats.
+        setComparisons((prev) => {
+          const seen = new Set((prev || []).map((c) => c.id));
+          return [...(prev || []), ...page.comparisons.filter((c) => !seen.has(c.id))];
+        });
+        setHasMore(page.hasMore);
+      }
+    } catch (err) {
+      setLoadError(err?.message || 'Could not load older comparisons.');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [comparisons]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -265,6 +289,9 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   return (
     <ComparisonHistory
       comparisons={comparisons}
+      hasMore={hasMore}
+      loadingOlder={loadingOlder}
+      onLoadOlder={loadOlder}
       error={loadError}
       models={models}
       onNew={() => setMode('new')}
@@ -273,7 +300,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   );
 }
 
-const HISTORY_GRID = 'minmax(0, 2.4fr) minmax(0, 2fr) 64px 170px 72px 16px';
+const HISTORY_GRID = 'minmax(0, 2.4fr) minmax(0, 2fr) 64px 72px 170px 72px 16px';
 // Below this many comparisons a search box is clutter; above it, finding one
 // by eye stops being quick.
 const FILTER_THRESHOLD = 10;
@@ -321,6 +348,7 @@ function HistoryHeaderRow() {
       <Cell>Prompt</Cell>
       <Cell>Models</Cell>
       <Cell center>Turns</Cell>
+      <Cell>Cost</Cell>
       <Cell>Winner</Cell>
       <Cell>Started</Cell>
       <Cell />
@@ -353,7 +381,7 @@ export function filterComparisons(rows, { query = '', verdict = 'all', sort = 'r
   return out;
 }
 
-function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
+function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false, onLoadOlder, error, models, onNew, onOpen }) {
   const [query, setQuery] = useState('');
   const [verdict, setVerdict] = useState('all');
   const [model, setModel] = useState('all');
@@ -392,6 +420,7 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
                 const [a, b] = c.sides || [];
                 const names = namesFor(models, a, b);
                 const turns = turnsLabel(a?.turnCount, b?.turnCount, names);
+                const cost = historyCost(c.sides || []);
                 return (
                   <CardRow
                     key={c.id}
@@ -408,6 +437,13 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
                       <ModelTag id={b?.model} name={names.b} />
                     </span>
                     <span className="text-ink-3 font-mono text-xs text-center" title={turns.title}>{turns.text}</span>
+                    <span
+                      className="text-ink-3 font-mono text-xs tabular-nums"
+                      title={cost ? 'Estimated at list price, as last read' : undefined}
+                      aria-label={cost ? `Estimated cost ${cost}` : 'Cost not read yet'}
+                    >
+                      {cost ?? '—'}
+                    </span>
                     <span className="min-w-0"><WinnerChip verdict={c.verdict} names={names} /></span>
                     <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>
                     <span aria-hidden className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">{Ico.chevRight(14)}</span>
@@ -417,6 +453,13 @@ function ComparisonHistory({ comparisons, error, models, onNew, onOpen }) {
               {rows.length === 0 && (
                 <div className="py-10 text-center text-[13px] text-ink-4">No comparisons match.</div>
               )}
+            </div>
+          )}
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button size="sm" onClick={onLoadOlder} disabled={loadingOlder}>
+                {loadingOlder ? 'Loading…' : 'Show older comparisons'}
+              </Button>
             </div>
           )}
         </div>

@@ -81,6 +81,11 @@ const usage = (balance) => ({
 });
 const EMPTY = { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' };
 const LOW = { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' };
+// The history as fetchComparisons answers: one page, or null on a server
+// without comparisons.
+const mockHistory = (comparisons, hasMore = false) => api.fetchComparisons.mockResolvedValue(
+  comparisons === null ? null : { comparisons, hasMore },
+);
 const withUsage = (value, ui) => <HubUsageContext.Provider value={value}>{ui}</HubUsageContext.Provider>;
 const projects = [{ id: 'p-real', name: 'reports', display_name: 'Reports' }];
 
@@ -119,7 +124,7 @@ function holdStreams() {
 }
 
 async function openDetail(cmp, sessions, hubUsage = null) {
-  api.fetchComparisons.mockResolvedValue([cmp]);
+  mockHistory([cmp]);
   api.fetchComparison.mockResolvedValue(cmp);
   api.fetchSession.mockImplementation(async (id) => sessions[id]);
   const view = render(withUsage(hubUsage, <CompareView models={models} projects={projects} />));
@@ -140,15 +145,44 @@ beforeEach(() => {
 });
 
 describe('CompareView', () => {
+  it('shows what each comparison cost in the history, as last read', async () => {
+    const usage = (usd, partial = false) => ({ estimatedCostUsd: usd, tokens: 1000, partial });
+    const priced = comparison({ id: 'c-priced', title: 'Priced' });
+    priced.sides = priced.sides.map((side, i) => ({ ...side, usage: usage(i ? 0.5 : 0.04) }));
+    const partial = comparison({ id: 'c-partial', title: 'Partial' });
+    partial.sides = [{ ...partial.sides[0], usage: usage(0.2) }, partial.sides[1]];
+    const unread = comparison({ id: 'c-unread', title: 'Unread' });
+    mockHistory([priced, partial, unread]);
+    render(<CompareView models={models} projects={projects} />);
+
+    expect(await screen.findByLabelText('Estimated cost $0.54')).toBeTruthy();
+    expect(screen.getByLabelText('Estimated cost $0.2+')).toBeTruthy();
+    expect(screen.getByLabelText('Cost not read yet').textContent).toBe('—');
+  });
+
+  it('pages through older comparisons', async () => {
+    mockHistory([comparison({ id: 'c1', title: 'Newest' })], true);
+    render(<CompareView models={models} projects={projects} />);
+    await screen.findByText('Newest');
+
+    api.fetchComparisons.mockResolvedValueOnce({ comparisons: [comparison({ id: 'c2', title: 'Older' })], hasMore: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Show older comparisons' }));
+
+    expect(await screen.findByText('Older')).toBeTruthy();
+    expect(screen.getByText('Newest')).toBeTruthy();
+    expect(api.fetchComparisons).toHaveBeenLastCalledWith({ offset: 1 });
+    expect(screen.queryByRole('button', { name: 'Show older comparisons' })).toBeNull();
+  });
+
   it('opens on the start screen while there is no history yet', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByRole('heading', { name: 'Compare two models' })).toBeTruthy();
     expect(screen.queryByText('Comparisons')).toBeNull();
   });
 
   it('swaps the two sides and fills the prompt from an example', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     render(<CompareView models={models} projects={projects} />);
     const [modelA, modelB] = await screen.findAllByLabelText('model');
     fireEvent.change(modelA, { target: { value: 'kimi' } });
@@ -189,7 +223,7 @@ describe('CompareView', () => {
   });
 
   it('will not start a comparison a side could not pay for', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
     fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
     const [modelA, modelB] = screen.getAllByLabelText('model');
@@ -202,7 +236,7 @@ describe('CompareView', () => {
   });
 
   it('warns that a comparison spends about twice a task on a low balance, and still starts', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     render(withUsage(usage(LOW), <CompareView models={models} projects={projects} />));
     fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
     const [modelA, modelB] = screen.getAllByLabelText('model');
@@ -213,7 +247,7 @@ describe('CompareView', () => {
   });
 
   it('closes a low-balance warning, and the composer bar stays closed with it', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     const { unmount } = render(withUsage(usage(LOW), <CompareView models={models} projects={projects} />));
     fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
     const [modelA, modelB] = screen.getAllByLabelText('model');
@@ -229,7 +263,7 @@ describe('CompareView', () => {
   });
 
   it('offers no close on the notice that explains a disabled Start', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     render(withUsage(usage(EMPTY), <CompareView models={models} projects={projects} />));
     fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
     const [modelA, modelB] = screen.getAllByLabelText('model');
@@ -280,7 +314,7 @@ describe('CompareView', () => {
   });
 
   it('says an update is needed when the server has no comparisons API', async () => {
-    api.fetchComparisons.mockResolvedValue(null);
+    mockHistory(null);
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByText('Update needed')).toBeTruthy();
     expect(screen.getByText(/Restart the app to update it/)).toBeTruthy();
@@ -289,7 +323,7 @@ describe('CompareView', () => {
   it('does not tell a web user to restart a server they do not run', async () => {
     hostMock.isWeb = true;
     try {
-      api.fetchComparisons.mockResolvedValue(null);
+      mockHistory(null);
       render(<CompareView models={models} projects={projects} />);
       expect(await screen.findByText('Update needed')).toBeTruthy();
       expect(screen.queryByText(/Restart the app/)).toBeNull();
@@ -300,7 +334,7 @@ describe('CompareView', () => {
   });
 
   it('lists past comparisons under column headers, with the verdict named by model', async () => {
-    api.fetchComparisons.mockResolvedValue([
+    mockHistory([
       comparison({ verdict: 'b', sides: comparison().sides.map((s) => ({ ...s, turnCount: 3 })) }),
       comparison({ id: 'cmp-2', title: 'Second task', sides: [
         { ...comparison().sides[0], turnCount: 3 },
@@ -326,7 +360,7 @@ describe('CompareView', () => {
   });
 
   it("shows each model's own logo, not the generic mark", async () => {
-    api.fetchComparisons.mockResolvedValue([comparison({ sides: [
+    mockHistory([comparison({ sides: [
       { ...comparison().sides[0], model: 'claude-sonnet-5' },
       { ...comparison().sides[1], model: 'gpt-6-terra' },
     ] })]);
@@ -342,7 +376,7 @@ describe('CompareView', () => {
   });
 
   it('falls back to the generic mark for a model with no logo', async () => {
-    api.fetchComparisons.mockResolvedValue([comparison({ sides: [
+    mockHistory([comparison({ sides: [
       { ...comparison().sides[0], model: 'house-model-x' },
       comparison().sides[1],
     ] })]);
@@ -354,7 +388,7 @@ describe('CompareView', () => {
   it('adds search once there are more comparisons than fit at a glance', async () => {
     const many = Array.from({ length: 11 }, (_, i) => comparison({ id: `c${i}`, title: `Task ${i}` }));
     many[3] = comparison({ id: 'c3', title: 'Quarterly revenue dashboard' });
-    api.fetchComparisons.mockResolvedValue(many);
+    mockHistory(many);
     render(<CompareView models={models} projects={projects} />);
     fireEvent.change(await screen.findByPlaceholderText('Search prompts and models'), { target: { value: 'revenue' } });
     expect(screen.getByRole('button', { name: 'Open comparison: Quarterly revenue dashboard' })).toBeTruthy();
@@ -362,7 +396,7 @@ describe('CompareView', () => {
   });
 
   it('starts a comparison and sends the prompt to both sides on their own settings', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
     api.fetchComparison.mockResolvedValue(comparison());
     api.fetchSession.mockImplementation(async (id) => session(id));
@@ -417,7 +451,7 @@ describe('CompareView', () => {
   }
 
   it('says when a side could not load, and sends the task once it does', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
     api.fetchComparison.mockResolvedValue(comparison());
     let failB = true;
@@ -436,7 +470,7 @@ describe('CompareView', () => {
   });
 
   it('sends nothing when a file cannot be attached for one side, and offers to try again', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
     api.fetchComparison.mockResolvedValue(comparison());
     api.fetchSession.mockImplementation(async (id) => session(id));
@@ -494,7 +528,7 @@ describe('CompareView', () => {
   });
 
   it('does not attach a second stream to a side that has already started', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
     api.fetchComparison.mockResolvedValue(comparison());
     api.fetchSession.mockImplementation(async (id) => session(id));
@@ -511,7 +545,7 @@ describe('CompareView', () => {
   });
 
   it('sends the first prompt only once', async () => {
-    api.fetchComparisons.mockResolvedValue([]);
+    mockHistory([]);
     api.createComparison.mockResolvedValue(comparison({ id: 'cmp-once' }));
     api.fetchComparison.mockResolvedValue(comparison({ id: 'cmp-once' }));
     api.fetchSession.mockImplementation(async (id) => session(id));
@@ -738,7 +772,7 @@ describe('CompareView', () => {
   it('continues with a side into a real project and opens the task', async () => {
     const onOpenTask = vi.fn();
     api.continueComparisonSide.mockResolvedValue({ conversationId: 'conv-a', projectId: 'p-real' });
-    api.fetchComparisons.mockResolvedValue([comparison()]);
+    mockHistory([comparison()]);
     api.fetchComparison.mockResolvedValue(comparison());
     api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
     render(<CompareView models={models} projects={projects} onOpenTask={onOpenTask} />);

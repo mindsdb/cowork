@@ -21,6 +21,7 @@ import {
   turnDurationMs,
   turnsOf,
   combinedCost,
+  historyCost,
   formatEstimate,
   formatTokens,
   sideCost,
@@ -387,5 +388,16 @@ describe('turnUsageRows', () => {
   it('is empty when the side has no usage', () => {
     expect(turnUsageRows({ available: false })).toEqual([]);
     expect(turnUsageRows(null)).toEqual([]);
+  });
+});
+
+describe('historyCost', () => {
+  const side = (usage) => ({ usage });
+  it('adds both sides as last read, and marks what is missing or partial', () => {
+    expect(historyCost([side({ estimatedCostUsd: 0.04 }), side({ estimatedCostUsd: 0.5 })])).toBe('$0.54');
+    expect(historyCost([side({ estimatedCostUsd: 0.2 }), side(null)])).toBe('$0.2+');
+    expect(historyCost([side({ estimatedCostUsd: 0.2, partial: true }), side({ estimatedCostUsd: 0.1 })])).toBe('$0.3+');
+    expect(historyCost([side(null), side({ estimatedCostUsd: null })])).toBeNull();
+    expect(historyCost()).toBeNull();
   });
 });

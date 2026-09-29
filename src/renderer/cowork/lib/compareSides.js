@@ -390,6 +390,18 @@ export function turnUsageRows(usage, turns = []) {
   return [...rows, { ...row('Total', usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? 'not priced' }];
 }
 
+/**
+ * The history's Cost cell, from the cost each side had when last read: both
+ * sides together, "+" when that leaves something out, null before any read.
+ */
+export function historyCost(sides = []) {
+  const read = sides.filter((s) => typeof s?.usage?.estimatedCostUsd === 'number' && Number.isFinite(s.usage.estimatedCostUsd));
+  if (read.length === 0) return null;
+  const total = read.reduce((sum, s) => sum + s.usage.estimatedCostUsd, 0);
+  const partial = read.length < sides.length || read.some((s) => s.usage.partial);
+  return `${formatEstimate(total)}${partial ? '+' : ''}`;
+}
+
 /** Both sides together, over the sides that have a figure. Null when neither does. */
 export function combinedCost(usage) {
   const figures = SIDE_LABELS
