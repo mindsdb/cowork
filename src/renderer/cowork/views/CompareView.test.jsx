@@ -402,6 +402,111 @@ describe('CompareView', () => {
     expect(calls['conv-b'].opts).toMatchObject({ model: 'qwen', projectId: 'p-b', reasoningEffort: 'xhigh' });
   });
 
+  async function startComparison({ files = [] } = {}) {
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.click((await screen.findAllByText('New comparison'))[0]);
+    fireEvent.change(screen.getByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    if (files.length) {
+      const input = document.querySelector('input[type="file"]');
+      fireEvent.change(input, { target: { files } });
+    }
+    fireEvent.click(screen.getByText('Start comparison'));
+  }
+
+  it('says when a side could not load, and sends the task once it does', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    api.createComparison.mockResolvedValue(comparison());
+    api.fetchComparison.mockResolvedValue(comparison());
+    let failB = true;
+    api.fetchSession.mockImplementation(async (id) => (id === 'conv-b' && failB ? null : session(id)));
+    await startComparison();
+
+    const paneB = await screen.findByRole('region', { name: 'Side B' });
+    expect(await within(paneB).findByText("Couldn't load this side.")).toBeTruthy();
+    // Neither side starts while one of them is missing.
+    expect(api.streamMessage).not.toHaveBeenCalled();
+
+    failB = false;
+    fireEvent.click(within(paneB).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    expect(api.streamMessage.mock.calls.map((c) => c[0]).sort()).toEqual(['conv-a', 'conv-b']);
+  });
+
+  it('sends nothing when a file cannot be attached for one side, and offers to try again', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    api.createComparison.mockResolvedValue(comparison());
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id));
+    const file = new File(['a,b'], 'sales.csv', { type: 'text/csv' });
+    api.uploadAttachments
+      .mockResolvedValueOnce([{ id: 'att-a' }])
+      .mockRejectedValueOnce(new Error('Upload failed'))
+      .mockResolvedValue([{ id: 'att-ok' }]);
+    await startComparison({ files: [file] });
+
+    expect(await screen.findByText(/The task wasn't sent to either model\. Upload failed/)).toBeTruthy();
+    // Side A must not have started alone.
+    expect(api.streamMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    expect(api.streamMessage.mock.calls.map((c) => c[2].attachmentIds)).toEqual([['att-ok'], ['att-ok']]);
+  });
+
+  it('says when a side\'s stream dropped, and re-attaches to a turn still running', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    api.tailInFlight.mockImplementation((_id, callbacks) => { openStreams.tail = callbacks; return { abort: vi.fn() }; });
+
+    act(() => openStreams['conv-a'].onError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' }));
+
+    const paneA = screen.getByRole('region', { name: 'Side A' });
+    expect(await within(paneA).findByText(/The response was interrupted/)).toBeTruthy();
+    await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-a', expect.anything()));
+  });
+
+  it('stops re-attaching to a side whose stream keeps dropping', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    const tails = [];
+    api.tailInFlight.mockImplementation((_id, callbacks) => { tails.push(callbacks); return { abort: vi.fn() }; });
+    const drop = (callbacks) => act(() => callbacks.onError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' }));
+
+    drop(openStreams['conv-a']);
+    await waitFor(() => expect(tails).toHaveLength(1));
+    drop(tails[0]);
+    await waitFor(() => expect(tails).toHaveLength(2));
+    drop(tails[1]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(tails).toHaveLength(2);
+  });
+
+  it('does not attach a second stream to a side that has already started', async () => {
+    api.fetchComparisons.mockResolvedValue([]);
+    api.createComparison.mockResolvedValue(comparison());
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id));
+    // The running-turn check for B answers only after the first message went out.
+    let answerB;
+    api.fetchInFlightStatus.mockImplementation((id) => (id === 'conv-b'
+      ? new Promise((resolve) => { answerB = resolve; })
+      : Promise.resolve({ in_flight: false })));
+    await startComparison();
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(answerB).toBeTypeOf('function'));
+    await act(async () => { answerB({ in_flight: true }); });
+    expect(api.tailInFlight).not.toHaveBeenCalled();
+  });
+
   it('sends the first prompt only once', async () => {
     api.fetchComparisons.mockResolvedValue([]);
     api.createComparison.mockResolvedValue(comparison({ id: 'cmp-once' }));
