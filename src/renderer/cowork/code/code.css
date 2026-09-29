@@ -366,18 +366,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-task-outcome.is-waiting { border-color: var(--warning-border); }
 .code-task-outcome.is-waiting .code-task-outcome__icon { color: var(--warning); background: var(--warning-bg); }
 
-/* Approval is causally docked between the conversation and composer. */
-.code-approval { width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 0 auto 8px; padding: 12px; display: flex; flex: none; gap: 11px; border: 1px solid var(--warning-border); border-radius: var(--r-lg); background: var(--warning-bg); color: var(--warning-text); box-shadow: var(--sh-1); }
-.code-approval__signal { width: 28px; height: 28px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: var(--r); background: color-mix(in srgb, var(--warning) 15%, transparent); }
-.code-approval__content { min-width: 0; flex: 1; }
-.code-approval__eyebrow { margin-bottom: 2px; font: 700 9px var(--font-mono); letter-spacing: .08em; }
-.code-approval h2 { margin: 0; color: inherit; font: 650 12.5px var(--font-sans); }
-.code-approval__detail { max-height: 92px; margin: 8px 0 0; padding: 8px 9px; overflow: auto; border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent); border-radius: var(--r); background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 10.5px/1.45 var(--font-mono); }
-.code-approval__context { margin-top: 7px; display: flex; gap: 8px 12px; flex-wrap: wrap; color: inherit; font-size: 10px; opacity: .82; }
-.code-approval__actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
-.code-approval__actions .btn { height: auto; min-height: 28px; padding-block: var(--space-1); }
 
-.code-composer { flex: none; padding: 8px 28px 22px; background: transparent; }
+.code-composer { flex: none; padding: 0 0 22px; background: transparent; }
 .code-prompt-queue { width: min(var(--code-measure), 100%); margin: 0 auto 6px; display: grid; gap: 4px; }
 .code-prompt-queue__item { min-height: 36px; padding: 4px 5px 4px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-0) 90%, transparent); }
 .code-prompt-queue__icon { display: inline-flex; flex: none; color: var(--ink-4); }
@@ -730,7 +720,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
    narrow end of the docked-sidebar band, reserve that corner for it; while
    an inline review panel is open, the panel itself owns the edge. */
 @media (min-width: 900px) and (max-width: 1100px) {
-  .code-composer { padding-right: 54px; }
+  .code-composer-dock { padding-right: 54px; }
 }
 body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; }
 
@@ -982,8 +972,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-taskbar__diff i,
   .code-taskbar__diff b { display: none; }
   .code-timeline__inner { width: calc(100% - 28px); padding-top: 18px; }
-  .code-approval { width: calc(100% - 24px); }
-  .code-composer { padding-right: 10px; padding-left: 10px; }
+  .code-composer-dock { padding-right: 10px; padding-left: 10px; }
 }
 
 @media (max-width: 640px) {
@@ -1002,10 +991,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-model-picker,
   .code-effort-picker { flex: 1 1 calc(50% - 3px); max-width: none; margin-left: 0; }
   .code-user-message { max-width: 90%; }
-  .code-approval { max-height: 50vh; overflow-y: auto; }
-  .code-approval__signal { display: none; }
-  .code-approval__actions { justify-content: stretch; }
-  .code-approval__actions .btn { flex: 1 1 auto; }
   .code-handoff-primary { align-items: stretch; flex-direction: column; }
   .code-handoff-primary .btn { align-self: flex-end; }
   .code-project-field { grid-template-columns: 1fr; gap: 6px; }

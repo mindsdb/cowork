@@ -276,6 +276,28 @@ function fixtureState(name: string) {
       },
     });
     events = BASE_EVENTS.slice(0, 7);
+  } else if (name === 'question') {
+    primary = session({
+      status: 'awaiting_approval',
+      active_turn_id: 'turn-1',
+      pending_question: {
+        id: 'question-1',
+        questions: [{
+          id: 'scope',
+          header: 'Scope',
+          question: 'Should the recovery path also cover the saved-card form?',
+          options: [
+            { label: 'Checkout only', description: 'Keep this change to the main checkout form.' },
+            { label: 'Both forms', description: 'Apply the same recovery to the saved-card form.' },
+          ],
+          isOther: true,
+          isSecret: false,
+        }],
+      },
+    });
+    events = BASE_EVENTS.slice(0, 7);
+  } else if (name === 'plan-review') {
+    primary = session({ status: 'completed', task_mode: 'plan' });
   } else if (name === 'retry' || name === 'failed') {
     const retryEvents = Array.from({ length: name === 'retry' ? 5 : 1 }, (_, index) => event(11 + index, 'error', {
       title: 'Agent connection lost',
