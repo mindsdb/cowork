@@ -116,6 +116,15 @@ const scriptError = (message) => ({ type: 'error', message, file: 'a.html', line
 const headerDiagnostics = () => screen.getByTestId('header-diagnostics');
 const headerErrors = () => within(headerDiagnostics()).queryAllByRole('listitem')
   .map((item) => item.textContent);
+// The viewer starts listening in a passive effect, which can still be pending
+// when the frame first appears (findBy* resolves on the DOM change, outside
+// act). A message sent in that gap is dropped, so send until it lands; the
+// hook de-duplicates repeats, so the expected list is unchanged.
+const sendUntilShown = (messages, expected) => vi.waitFor(() => {
+  const frame = screen.getByTitle('Launch brief');
+  messages.forEach((message) => postFromPreview(frame.contentWindow, message));
+  expect(headerErrors()).toEqual(expected);
+});
 
 describe('ArtifactViewer preview errors', () => {
   beforeEach(() => {
@@ -133,15 +142,12 @@ describe('ArtifactViewer preview errors', () => {
     // The page rendered; only its script died. Replacing the canvas with an
     // error would hide exactly what the user is trying to understand.
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
+    await screen.findByTitle('Launch brief');
 
-    postFromPreview(frame.contentWindow, {
-      ...scriptError("SecurityError: Failed to read the 'localStorage' property"),
-      line: 44,
-    });
-
-    await vi.waitFor(() => expect(headerErrors())
-      .toEqual(["SecurityError: Failed to read the 'localStorage' property"]));
+    await sendUntilShown(
+      [{ ...scriptError("SecurityError: Failed to read the 'localStorage' property"), line: 44 }],
+      ["SecurityError: Failed to read the 'localStorage' property"],
+    );
     expect(screen.getByTitle('Launch brief')).toBeInTheDocument();
     // ENG-3002: the header is the only place the message appears. The banner
     // that used to sit between the header and the page repeated it.
@@ -150,33 +156,28 @@ describe('ArtifactViewer preview errors', () => {
 
   it('hands the header every error, not just the first', async () => {
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
+    await screen.findByTitle('Launch brief');
 
-    postFromPreview(frame.contentWindow, scriptError('first'));
-    postFromPreview(frame.contentWindow, scriptError('second'));
-
-    await vi.waitFor(() => expect(headerErrors()).toEqual(['first', 'second']));
+    await sendUntilShown([scriptError('first'), scriptError('second')], ['first', 'second']);
   });
 
   it('counts a blocked stylesheet as one error, not two', async () => {
     /* The shape web showed on every HTML preview: one blocked <link> sends a
        policy report and a failed-load report for the same URL. */
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
+    await screen.findByTitle('Launch brief');
     const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap';
 
-    postFromPreview(frame.contentWindow, { type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url });
-    postFromPreview(frame.contentWindow, { type: 'resource', tagName: 'LINK', url });
-
-    await vi.waitFor(() => expect(headerErrors())
-      .toEqual([`Blocked by the page security policy (style-src-elem): ${url}`]));
+    await sendUntilShown(
+      [{ type: 'csp', violatedDirective: 'style-src-elem', blockedURI: url }, { type: 'resource', tagName: 'LINK', url }],
+      [`Blocked by the page security policy (style-src-elem): ${url}`],
+    );
   });
 
   it("wires the header's Dismiss to the hook", async () => {
     render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
-    const frame = await screen.findByTitle('Launch brief');
-    postFromPreview(frame.contentWindow, scriptError('boom'));
-    await vi.waitFor(() => expect(headerErrors()).toEqual(['boom']));
+    await screen.findByTitle('Launch brief');
+    await sendUntilShown([scriptError('boom')], ['boom']);
     expect(headerDiagnostics()).toHaveAttribute('data-dismissed', 'false');
 
     fireEvent.click(within(headerDiagnostics()).getByRole('button', { name: 'Dismiss' }));
