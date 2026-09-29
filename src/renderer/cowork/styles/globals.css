@@ -131,6 +131,8 @@ body, body[data-theme="light"] {
      the old --surface-3 (darker than the track here) sank into it. */
   --toggle-selected-bg:     var(--surface);
   --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+  /* Transcript cards (user message, turn changes): white just above the page. */
+  --surface-raised:         var(--surface);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
      --surface-3): keeps the rail clean and lets the accent-bg active
      tint read as real teal instead of dirtied grey. The macOS inactive
@@ -266,6 +268,8 @@ body[data-theme="dark"] {
      *lighter* than the --surface-2 track, so the active pill lifts. */
   --toggle-selected-bg:     var(--surface-3);
   --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
+  /* --surface sits almost on the dark page, so transcript cards step up one. */
+  --surface-raised:         var(--surface-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
      small enough that the panel still reads as part of the same
      dark family as the rest of the app. The ::before halo at the
@@ -4258,21 +4262,18 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 
 .user-turn-bubble {
-  /* Quiet filled block, not an SMS bubble: a borderless --surface-3 fill,
-     no shadow. The transcript sits on a flat --bg (there is no dot field),
-     so — like Claude — the fill alone carries the shape and no hairline is
-     needed. (The old --surface-2 fill was only ~2% off the page in light
-     mode and needed a border to read, which is why one used to be here.)
-     Quieter than the answer by design: the fill and the lighter --ink-2 text
-     mark the prompt as an echo so the answer stays the primary read.
-     ENG-787 de-bubble, ENG-641 refine. */
-  background: var(--surface-3);
+  /* Same raised surface as the Code Mode turn-changes card: --surface-raised
+     plus a --line hairline. A --surface-3 fill sat darker than the light-mode
+     page and read as recessed next to the transcript's white cards.
+     Full --ink, so the prompt reads as clearly as the answer. */
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
   font-size: 14px; /* match the answer body (text-body token) — both are prose */
   line-height: 1.5;
-  color: var(--ink-2);
+  color: var(--ink);
   box-shadow: none;
   user-select: text;
   /* The bubble is a flex item in a column flex (.user-turn-inner). Without
@@ -4477,16 +4478,15 @@ body[data-theme="dark"] .phase-check-done {
 .answer-turn .markdown-content > :is(h1, h2, h3):not([hidden]):not(:first-child) {
   margin-top: var(--space-5);
 }
-/* User bubble body: a touch of negative tracking and lighter ink than the
-   answer mark the prompt as a compact echo while the answer stays the
-   primary read. Set at the p/li level (not on
+/* User bubble body: a touch of negative tracking marks the prompt as a
+   compact echo. Set at the p/li level (not on
    .user-turn-bubble) because the markdown `text-body` utility on <p>/<li>
    carries its own 14px/1.5 that otherwise wins over the bubble's base. */
 .user-turn .markdown-content p,
 .user-turn .markdown-content li {
   line-height: 1.5;
   letter-spacing: -0.012em;
-  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
+  color: var(--ink);
 }
 /* The in-flight status label next to the orb — soft left-to-right sheen,
    the same "alive" read as Claude's thinking label. Numbers inside tick
