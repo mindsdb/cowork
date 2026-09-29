@@ -18,8 +18,9 @@ describe('theme-aware typography', () => {
       '.font-display': 'var(--font-display)',
       '.font-mono': 'var(--font-mono)',
     });
-    // Keep the established conversation size; the mismatch was the font,
-    // not a reason to adopt an editor's type scale for chat.
-    expect(root.toString()).toContain('font-size: 14.5px');
+    // Conversation prose is 14px/1.5, the density Claude and Codex set
+    // answers at.
+    expect(root.toString()).toContain('font-size: 14px');
+    expect(root.toString()).toContain('line-height: 1.5');
   });
 });

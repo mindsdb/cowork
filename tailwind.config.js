@@ -126,7 +126,7 @@ export default {
         // mdb-ai uses text-detail, text-body, text-small. Map to px sizes
         // close to ours so the ports don't look out of place.
         detail: ['11px',   { lineHeight: '1.4' }],
-        body:   ['14.5px', { lineHeight: '1.55' }],
+        body:   ['14px',   { lineHeight: '1.5' }],
         small:  ['12.5px', { lineHeight: '1.4' }],
       },
       spacing: {

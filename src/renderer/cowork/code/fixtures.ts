@@ -257,6 +257,24 @@ function fixtureState(name: string) {
     primary = session({ status: running ? 'running' : 'completed', active_turn_id: running ? 'turn-1' : null, updated_at: NOW });
     events = activityEvents(running);
     files = [];
+  } else if (name === 'prose') {
+    // A structured final answer (paragraphs, a heading, lists, inline code)
+    // for checking transcript prose rhythm.
+    primary = session({ status: 'completed', updated_at: NOW });
+    const turn = activityEvents(false);
+    const answer = turn.at(-1)!;
+    events = [...turn.slice(0, -1), { ...answer, text: [
+      'Checkout validation runs in `src/checkout/validation.ts` when the form submits. The field rules were covered, but the failed-request path in `api.ts` cleared the draft and had no test.',
+      '### What changed',
+      '- `submitCheckout` keeps the draft and rethrows when the request fails.',
+      '- Server field errors map back onto the matching inputs.',
+      '- `api.test.ts` covers a 503 and a network failure.',
+      'Next steps:',
+      '1. Run the full suite before merging.',
+      '2. Decide whether the saved-card form needs the same recovery.',
+      'Tests pass locally: `npx vitest related src/checkout/api.ts` reports 4 of 4.',
+    ].join('\n\n').replace(/\n\n(?=- |2\. )/g, '\n') }];
+    files = [];
   } else if (name === 'running' || name === 'sidebar') {
     primary = session({ status: 'running', active_turn_id: 'turn-1', updated_at: NOW });
     events = BASE_EVENTS.slice(0, 8).map((item) => item.seq === 8 ? { ...item, phase: 'progress' as const } : item);
