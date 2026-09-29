@@ -199,6 +199,23 @@ describe('CodeSidebarSessions', () => {
     expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
   });
 
+  it('keeps a queued remote run visibly in motion', () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[{ ...session('queued', 'ready', '2026-08-21T12:00:00Z'), run_status: 'queued' }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /^Task queued,/ }).closest('.code-sidebar-session-row')!;
+    expect(row).not.toHaveClass('is-resting');
+    expect(row).toHaveTextContent('Preparing');
+    expect(row.querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Running' })).toContainElement(row as HTMLElement);
+  });
+
   it('clears the unread mark once the task has been opened', () => {
     window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({ baseline: '2026-08-21T10:00:00Z', seen: {} }));
     const sessions = [session('done', 'completed', '2026-08-21T11:00:00Z'), session('other', 'completed', '2026-08-21T09:00:00Z')];

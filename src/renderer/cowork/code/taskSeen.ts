@@ -64,9 +64,11 @@ export function useTaskSeen(sessions: CodingSession[], selectedId: string | null
       const seenAt = previous ? later(previous, selectedUpdatedAt) : selectedUpdatedAt;
       if (seenAt === previous) return current;
       const entries = Object.entries({ ...current.seen, [selectedId]: seenAt })
-        .sort(([, left], [, right]) => Date.parse(right) - Date.parse(left))
-        .slice(0, MAX_ENTRIES);
-      const next = { ...current, seen: Object.fromEntries(entries) };
+        .sort(([, left], [, right]) => Date.parse(right) - Date.parse(left));
+      // An evicted entry falls back to the baseline, so the baseline moves up
+      // to cover it; otherwise pruning would make a viewed task unread again.
+      const baseline = entries.slice(MAX_ENTRIES).reduce((newest, [, evicted]) => later(newest, evicted), current.baseline);
+      const next = { baseline, seen: Object.fromEntries(entries.slice(0, MAX_ENTRIES)) };
       writeSeen(next);
       return next;
     });
