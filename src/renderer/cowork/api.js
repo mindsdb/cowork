@@ -2472,10 +2472,11 @@ export async function recordComparisonVerdict(id, turnIndex, winner) {
   });
 }
 
-export async function continueComparisonSide(id, label, projectId) {
+/** `modelLabel` names the folder the side's files land in; an older server ignores it. */
+export async function continueComparisonSide(id, label, projectId, modelLabel) {
   return req(`/comparisons/${encodeURIComponent(id)}/sides/${encodeURIComponent(label)}/continue`, {
     method: 'POST',
-    body: JSON.stringify({ projectId }),
+    body: JSON.stringify({ projectId, ...(modelLabel ? { modelLabel } : {}) }),
   });
 }
 

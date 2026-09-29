@@ -456,7 +456,10 @@ describe('CompareView', () => {
     expect(api.streamMessage.mock.calls.map((c) => c[2].attachmentIds)).toEqual([['att-ok'], ['att-ok']]);
   });
 
-  it('says when a side\'s stream dropped, and re-attaches to a turn still running', async () => {
+  it.each([
+    ['interrupted', 'The response was interrupted before it finished. Please try again.'],
+    ['stream_error', 'The connection was reset.'],
+  ])('says when a side\'s stream dropped (%s), and re-attaches to a turn still running', async (code, message) => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -464,10 +467,10 @@ describe('CompareView', () => {
     api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
     api.tailInFlight.mockImplementation((_id, callbacks) => { openStreams.tail = callbacks; return { abort: vi.fn() }; });
 
-    act(() => openStreams['conv-a'].onError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' }));
+    act(() => openStreams['conv-a'].onError(message, { code }));
 
     const paneA = screen.getByRole('region', { name: 'Side A' });
-    expect(await within(paneA).findByText(/The response was interrupted/)).toBeTruthy();
+    expect(await within(paneA).findByText(message)).toBeTruthy();
     await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-a', expect.anything()));
   });
 
@@ -743,7 +746,8 @@ describe('CompareView', () => {
     const paneA = await screen.findByRole('region', { name: 'Side A' });
     fireEvent.click(await within(paneA).findByRole('button', { name: 'Continue' }));
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real'));
+    // The model's name, for the folder its files land in.
+    await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real', 'Kimi'));
     await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
   });
 });
