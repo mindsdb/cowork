@@ -82,7 +82,10 @@ const EMPTY_START = '__empty__';
 // Failures of the connection itself. Anything else the agent reported is saved
 // with the turn and drawn by the transcript as its error card, so repeating it
 // above the pane would show it twice.
-const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled']);
+const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled', 'interrupted']);
+// A stream that closes without a final event may still be running on the
+// server; re-attach this many times before leaving the side as stopped.
+const MAX_REATTACH = 2;
 
 // The logo key for a model, the way the model picker resolves it. A model with
 // no logo of its own gets ProviderIcon's neutral mark.
@@ -679,13 +682,18 @@ function useComparisonSides(comparison) {
     [comparison],
   );
 
+  const reattached = useRef({});
+
   const refresh = useCallback(async (label) => {
     const side = sideByLabel[label];
     if (!side) return null;
-    const task = await fetchSession(side.conversationId);
+    const task = await fetchSession(side.conversationId).catch(() => null);
     if (task) setTasks((prev) => ({ ...prev, [label]: task }));
     return task;
   }, [sideByLabel]);
+
+  // Set below; an interrupted stream uses it to re-attach.
+  const followRunningRef = useRef(null);
 
   const follow = useCallback((label, open) => {
     let state = initialStreamState();
@@ -707,10 +715,44 @@ function useComparisonSides(comparison) {
           return task ? { ...prev, [label]: { ...task, messages: withStreaming(task.messages, state) } } : prev;
         });
       },
-      onDone() { finish(''); },
-      onError(message, event) { finish(TRANSPORT_ERRORS.has(event?.code) ? message : ''); },
+      onDone() {
+        reattached.current[label] = 0;
+        finish('');
+      },
+      onError(message, event) {
+        finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
+        if (event?.code !== 'interrupted') return;
+        const tries = reattached.current[label] || 0;
+        if (tries >= MAX_REATTACH) return;
+        reattached.current[label] = tries + 1;
+        followRunningRef.current?.(label);
+      },
     });
   }, [refresh]);
+
+  // Attach to a turn still running on the server, if there is one.
+  const followRunning = useCallback(async (label) => {
+    const side = sideByLabel[label];
+    if (!side || side.continuedAt) return false;
+    const status = await fetchInFlightStatus(side.conversationId).catch(() => null);
+    if (!status?.in_flight || streams.current[label]) return false;
+    follow(label, (callbacks) => tailInFlight(side.conversationId, callbacks));
+    return true;
+  }, [sideByLabel, follow]);
+  followRunningRef.current = followRunning;
+
+  // Load one side, or say it could not be loaded; then re-attach to a turn it
+  // is still running.
+  const load = useCallback(async (label) => {
+    setErrors((prev) => ({ ...prev, [label]: '' }));
+    const task = await refresh(label);
+    if (!task) {
+      setErrors((prev) => ({ ...prev, [label]: "Couldn't load this side." }));
+      return null;
+    }
+    await followRunning(label);
+    return task;
+  }, [refresh, followRunning]);
 
   // Load both sides, and re-attach to a turn still running on the server --
   // the sides keep working when the user leaves this screen.
@@ -719,11 +761,8 @@ function useComparisonSides(comparison) {
     let cancelled = false;
     (async () => {
       for (const side of comparison.sides) {
-        const task = await refresh(side.label);
-        if (cancelled || !task || side.continuedAt) continue;
-        const status = await fetchInFlightStatus(side.conversationId);
-        if (cancelled || !status?.in_flight) continue;
-        follow(side.label, (callbacks) => tailInFlight(side.conversationId, callbacks));
+        if (cancelled) return;
+        await load(side.label);
       }
     })();
     return () => {
@@ -757,7 +796,7 @@ function useComparisonSides(comparison) {
     if (side) cancelResponse(side.conversationId);
   }, [sideByLabel]);
 
-  return { tasks, busy, errors, lastEventAt, send, stop, refresh };
+  return { tasks, busy, errors, lastEventAt, send, stop, refresh, load };
 }
 
 function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask }) {
@@ -782,7 +821,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
 
   useEffect(() => { loadComparison(); }, [loadComparison]);
 
-  const { tasks, busy, errors, lastEventAt, send, stop } = useComparisonSides(comparison);
+  const { tasks, busy, errors, lastEventAt, send, stop, load } = useComparisonSides(comparison);
   const sides = useMemo(
     () => Object.fromEntries((comparison?.sides || []).map((s) => [s.label, s])),
     [comparison],
@@ -802,31 +841,43 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const verdictFor = (turnIndex) => comparison?.verdicts?.find((v) => v.turnIndex === turnIndex)?.winner || null;
   const loaded = SIDE_LABELS.every((label) => tasks[label]);
 
+  // Every side's files go up before any side is sent to, so a failed upload
+  // sends nothing rather than starting one side alone. False when it failed.
   const sendToSides = useCallback(async (text, labels, files = []) => {
+    const attachmentIds = {};
     for (const label of labels) {
-      let attachmentIds = [];
-      if (files.length) {
-        const task = tasks[label];
-        try {
-          const uploaded = await uploadAttachments(files, { projectName: task?.projectName, sessionId: sides[label].conversationId });
-          attachmentIds = uploaded.map((a) => a.id).filter(Boolean);
-        } catch (err) {
-          setError(err?.message || 'Could not attach the files.');
-          return;
-        }
+      attachmentIds[label] = [];
+      if (!files.length) continue;
+      try {
+        const uploaded = await uploadAttachments(files, { projectName: tasks[label]?.projectName, sessionId: sides[label].conversationId });
+        attachmentIds[label] = uploaded.map((a) => a.id).filter(Boolean);
+      } catch (err) {
+        setError(err?.message || 'Could not attach the files.');
+        return false;
       }
-      send(label, text, attachmentIds);
     }
+    for (const label of labels) send(label, text, attachmentIds[label]);
+    return true;
   }, [tasks, sides, send]);
 
   // The prompt from the new-comparison form goes to both sides once both have
-  // loaded, so neither starts ahead of the other. The parent drops it as it is
-  // sent, which is what keeps a later render from sending it again.
+  // loaded, so neither starts ahead of the other. The parent keeps it until it
+  // has gone out to both; a failure leaves it for Try again.
+  const [firstSendFailed, setFirstSendFailed] = useState(false);
+  const firstSending = useRef(false);
+  const sendFirst = useCallback(async () => {
+    if (!firstSend || firstSending.current) return;
+    firstSending.current = true;
+    setFirstSendFailed(false);
+    setError('');
+    const sent = await sendToSides(firstSend.text, SIDE_LABELS, firstSend.files || []);
+    firstSending.current = false;
+    if (sent) onFirstSendDone?.();
+    else setFirstSendFailed(true);
+  }, [firstSend, sendToSides, onFirstSendDone]);
   useEffect(() => {
-    if (!firstSend || !loaded) return;
-    onFirstSendDone?.();
-    sendToSides(firstSend.text, SIDE_LABELS, firstSend.files || []);
-  }, [firstSend, loaded, sendToSides, onFirstSendDone]);
+    if (firstSend && loaded && !firstSendFailed) sendFirst();
+  }, [firstSend, loaded, firstSendFailed, sendFirst]);
 
   const sideState = Object.fromEntries(SIDE_LABELS.map((label) => [label, {
     continued: !!sides[label]?.continuedAt,
@@ -919,7 +970,16 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           )}
         </span>
       </div>
-      {error && <div className="px-7 pb-2"><Alert variant="danger">{error}</Alert></div>}
+      {error && (
+        <div className="px-7 pb-2">
+          <Alert variant="danger">
+            <span className="flex flex-wrap items-center gap-3">
+              <span>{firstSendFailed ? `The task wasn't sent to either model. ${error}` : error}</span>
+              {firstSendFailed && <Button size="sm" onClick={sendFirst}>Try again</Button>}
+            </span>
+          </Alert>
+        </div>
+      )}
       {diverged !== null && (
         <div className="px-7 pb-2 text-xs text-ink-3" role="status">
           The sides diverged at turn {diverged + 1}: from there on they were not asked the same thing.
@@ -945,6 +1005,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onStop={() => stop(label)}
             onSendHere={(text) => sendToSides(text, sendTargets(label, sideState))}
             onContinue={() => setContinuing(label)}
+            onRetryLoad={() => load(label)}
             onOpenTask={onOpenTask}
           />
         ))}
@@ -1083,7 +1144,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1166,6 +1227,10 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
             agentLabel={agentLabel}
             onSend={onSendHere}
           />
+        ) : error ? (
+          <div className="py-10 flex justify-center">
+            <Button size="sm" onClick={onRetryLoad}>Retry</Button>
+          </div>
         ) : (
           <div className="py-10 text-center"><Spinner /></div>
         )}
