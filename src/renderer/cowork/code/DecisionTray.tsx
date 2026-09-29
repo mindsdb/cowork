@@ -19,10 +19,12 @@ function isEditable(element: Element | null): boolean {
  * rather than sending the draft, unless the user is typing somewhere; taking
  * focus mid-sentence would turn their next Enter into a decision.
  */
-export function DecisionTray({ label, kind, icon, children, onKeyDown }: {
+export function DecisionTray({ label, kind, icon, aside, children, onKeyDown }: {
   label: string;
   kind?: string;
   icon?: ReactNode;
+  /** Quiet context on the kind row, such as where a command runs. */
+  aside?: ReactNode;
   children: ReactNode;
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
 }) {
@@ -41,7 +43,7 @@ export function DecisionTray({ label, kind, icon, children, onKeyDown }: {
         onKeyDown?.(event);
       }}
     >
-      {kind && <div className="code-decision-tray__kind">{icon}<span>{kind}</span></div>}
+      {kind && <div className="code-decision-tray__kind">{icon}<span>{kind}</span>{aside}</div>}
       {children}
     </section>
   );

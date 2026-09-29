@@ -491,7 +491,7 @@ export default function CodeView({
                 }}
                 onOpenReview={can('review') ? openReview : undefined}
               />
-              <div className={`code-composer-dock${!!session.pending_question || (session.task_mode === 'plan' && session.status === 'completed') || !!approval ? ' has-decision' : ''}`}>
+              <div className="code-composer-dock">
                 {session.pending_question && <QuestionCard
                   key={session.pending_question.id}
                   pending={session.pending_question}

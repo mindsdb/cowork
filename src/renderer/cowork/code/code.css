@@ -362,7 +362,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-task-outcome.is-waiting .code-task-outcome__icon { color: var(--warning); background: var(--warning-bg); }
 
 
-.code-composer { flex: none; padding: 8px 28px 22px; background: transparent; }
+.code-composer { flex: none; padding: 0 0 22px; background: transparent; }
 .code-prompt-queue { width: min(var(--code-measure), 100%); margin: 0 auto 6px; display: grid; gap: 4px; }
 .code-prompt-queue__item { min-height: 36px; padding: 4px 5px 4px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-0) 90%, transparent); }
 .code-prompt-queue__icon { display: inline-flex; flex: none; color: var(--ink-4); }
@@ -715,7 +715,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
    narrow end of the docked-sidebar band, reserve that corner for it; while
    an inline review panel is open, the panel itself owns the edge. */
 @media (min-width: 900px) and (max-width: 1100px) {
-  .code-composer { padding-right: 54px; }
+  .code-composer-dock { padding-right: 54px; }
 }
 body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; }
 
@@ -967,7 +967,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-taskbar__diff i,
   .code-taskbar__diff b { display: none; }
   .code-timeline__inner { width: calc(100% - 28px); padding-top: 18px; }
-  .code-composer { padding-right: 10px; padding-left: 10px; }
+  .code-composer-dock { padding-right: 10px; padding-left: 10px; }
 }
 
 @media (max-width: 640px) {

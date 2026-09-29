@@ -31,6 +31,7 @@ export function ApprovalCard({
       label="Approval required"
       kind={kind?.label || 'Approval'}
       icon={kind?.icon() || Ico.lock(12)}
+      aside={approval.cwd && <span className="code-decision-tray__aside" title={approval.cwd}>{compactPath(approval.cwd)}</span>}
       onKeyDown={(event) => {
         if (isTrayShortcut(event, 'Escape')) { event.preventDefault(); decide('deny'); }
         // A focused button already answers Enter with its own click.
@@ -39,17 +40,11 @@ export function ApprovalCard({
     >
       <h2 className="code-decision-tray__question">{kind?.question || approval.title || 'The agent needs approval'}</h2>
       {approval.detail && <pre className="code-decision-tray__detail">{approval.detail}</pre>}
-      {(approval.cwd || approval.risk) && (
-        <div className="code-decision-tray__context">
-          {approval.cwd && <span title={approval.cwd}>{compactPath(approval.cwd)}</span>}
-          {approval.risk && <span title={approval.risk}>{approval.risk}</span>}
-        </div>
-      )}
       <div className="code-decision-tray__actions">
+        {approval.risk ? <p className="code-decision-tray__note" title={approval.risk}>{approval.risk}</p> : <span className="code-decision-tray__spacer" aria-hidden="true" />}
         <Button size="sm" variant="subtle" disabled={busy} aria-keyshortcuts="Escape" onClick={() => decide('deny')}>
           Deny <Kbd aria-hidden="true">Esc</Kbd>
         </Button>
-        <span className="code-decision-tray__spacer" aria-hidden="true" />
         {approval.allow_session && (
           <Tooltip content="Allow this now, and similar commands for the rest of this task">
             <Button size="sm" variant="default" disabled={busy} onClick={() => decide('approve_session')}>Always allow</Button>
