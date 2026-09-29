@@ -90,9 +90,41 @@ describe('ProjectSettingsModal', () => {
     expect(checkbox).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Save project' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
+      name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
       connections: [{ provider: 'github', name: 'work', label: 'Work' }],
     })));
+  });
+
+  it.each([undefined, false, true])('preserves saved clone authentication (%s) without inferring it from the connection', async (useConnector) => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    const savedProject = {
+      ...project,
+      resources: project.resources.map((resource) => ({ ...resource, connector_name: 'work', use_connector_for_clone: useConnector })),
+      connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
+    };
+    render(<ProjectSettingsModal open project={savedProject} busy={false}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].resources[0].use_connector_for_clone).toBe(useConnector);
+    expect(onSave.mock.calls[0][0].resources[0].connector_name).toBe('work');
+  });
+
+  it('does not bind a pasted public GitHub URL to a connected account', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
+    render(<ProjectSettingsModal open project={null} busy={false}
+      connections={[{ engine: 'github', name: 'work', display_name: 'Work', status: 'connected' }]}
+      onClose={vi.fn()} onSave={onSave} />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.click(screen.getByRole('button', { name: 'Paste repository URL' }));
+    await user.type(screen.getByRole('textbox', { name: 'Git repository URL' }), 'https://github.com/acme/public.git{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].resources[0].use_connector_for_clone).toBeUndefined();
+    expect(onSave.mock.calls[0][0].resources[0].connector_name).toBeUndefined();
   });
 
   it('keeps non-GitHub URL entry working and prevents URL-variant duplicates', async () => {

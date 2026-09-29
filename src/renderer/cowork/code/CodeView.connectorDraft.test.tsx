@@ -146,7 +146,7 @@ describe('Task and project connector detours', () => {
       environment: expect.objectContaining({ variables: { QA_MODE: 'keep' } }),
       resources: expect.arrayContaining([
         expect.objectContaining({ source_url: 'https://github.com/acme/seed.git' }),
-        ...(outcome === 'connected' ? [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', default_branch: 'main' })] : []),
+        ...(outcome === 'connected' ? [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, default_branch: 'main' })] : []),
       ]),
       ...(outcome === 'connected' ? { connections: [{ provider: 'github', name: 'work', label: 'work' }] } : {}),
     })));

@@ -46,6 +46,7 @@ for (const variant of [
     await expect(page.getByRole('checkbox', { name: /MindsDB/ })).toBeChecked();
     await page.getByRole('button', { name: 'Save project' }).click();
     await expect(page.getByLabel('Saved project')).toContainText('"connector_name": "work"');
+    await expect(page.getByLabel('Saved project')).toContainText('"use_connector_for_clone": true');
     await expect(page.getByLabel('Saved project')).toContainText('"default_branch": "staging"');
     expect(errors).toEqual([]);
   });
@@ -75,4 +76,5 @@ test('permission errors leave manual URL entry usable', async ({ page }, testInf
   await page.getByRole('textbox', { name: 'Git repository URL' }).press('Enter');
   await page.getByRole('button', { name: 'Save project' }).click();
   await expect(page.getByLabel('Saved project')).toContainText('https://gitlab.com/acme/api.git');
+  await expect(page.getByLabel('Saved project')).not.toContainText('"use_connector_for_clone": true');
 });

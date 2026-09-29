@@ -121,7 +121,7 @@ export function ProjectResourcesEditor({
       local_path: null,
       computer_id: null,
       default_branch: repository?.default_branch || null,
-      ...(repository ? { provider: 'github' as const, repository: repository.full_name, connector_name: repository.connection_name } : {}),
+      ...(repository ? { provider: 'github' as const, repository: repository.full_name, connector_name: repository.connection_name, use_connector_for_clone: true } : {}),
       checkout_strategy: 'clone',
       commands: [],
     }]);
