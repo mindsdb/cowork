@@ -115,6 +115,19 @@ export default function CodeView({
     setFilesOpen(false);
     setPreviewOpen(false);
   }, []);
+  // The dock floats over the transcript, which reserves the dock's height at
+  // its end so the last message can scroll clear of the composer.
+  const dockObserver = useRef<ResizeObserver | null>(null);
+  const dockRef = useCallback((dock: HTMLDivElement | null) => {
+    dockObserver.current?.disconnect();
+    dockObserver.current = null;
+    const conversation = dock?.parentElement;
+    if (!dock || !conversation || typeof ResizeObserver === 'undefined') return;
+    const sync = () => conversation.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
+    sync();
+    dockObserver.current = new ResizeObserver(sync);
+    dockObserver.current.observe(dock);
+  }, []);
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -496,7 +509,7 @@ export default function CodeView({
                 recovering={recoveringTaskId === session.id}
                 onOpenReview={can('review') ? openReview : undefined}
               />
-              <div className="code-composer-dock">
+              <div ref={dockRef} className="code-composer-dock">
                 {lip.notice?.queue ? (
                   <PromptQueue
                     items={session.queued_instructions || []}
