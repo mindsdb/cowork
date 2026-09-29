@@ -380,7 +380,9 @@ export const CodeComposer = memo(function CodeComposer({
           <PermissionSelect
             value={session.permission_mode}
             onValueChange={(value) => void onPermissionChange(value)}
-            disabled={busy}
+            // The server rejects task-control changes mid-turn.
+            disabled={busy || active}
+            disabledReason={active ? 'Permissions can be changed after the current turn finishes' : undefined}
           />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
           <span className="code-composer__hint">{active ? waiting ? 'Answer above · follow-ups wait in the queue' : delivery === 'steer' ? 'Enter to steer · Shift+Enter for a new line' : 'Runs after the active turn' : 'Enter to send · Shift+Enter for a new line'}</span>

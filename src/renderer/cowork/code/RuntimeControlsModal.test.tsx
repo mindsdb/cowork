@@ -152,3 +152,41 @@ it('hides the effort field for a model that advertises no levels', () => {
   expect(screen.getByRole('combobox', { name: 'Task model' })).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
 });
+
+
+it('keeps the draft editable but blocks Apply while a turn is active', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  const props = {
+    open: true,
+    sessionId: 'task-1',
+    value: {
+      model: 'fable',
+      permission_mode: 'supervised' as const,
+      reasoning_effort: 'high',
+      service_tier: 'standard' as const,
+      personality: 'pragmatic' as const,
+      network_access: false,
+      web_search: false,
+      additional_dirs: [],
+    },
+    models: [{ id: 'fable', name: 'Claude Fable 5' }],
+    modelMeta: { modelProviders: { fable: 'anthropic' }, modelFamilies: { fable: 'fable' }, modelEnabled: { fable: true } },
+    busy: false,
+    onClose: vi.fn(),
+    onApply,
+  };
+  const { rerender } = render(<RuntimeControlsModal {...props} applyBlockedReason="Changes can be applied after the current turn finishes" />);
+
+  const apply = screen.getByRole('button', { name: 'Apply' });
+  expect(apply).toBeDisabled();
+  expect(apply).toHaveAttribute('title', 'Changes can be applied after the current turn finishes');
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  expect(screen.getByRole('switch', { name: 'Web search' })).toBeChecked();
+
+  rerender(<RuntimeControlsModal {...props} />);
+  expect(apply).toBeEnabled();
+  expect(apply).not.toHaveAttribute('title');
+  await user.click(apply);
+  expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ web_search: true }));
+});

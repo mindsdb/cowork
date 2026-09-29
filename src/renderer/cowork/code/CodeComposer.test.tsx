@@ -277,7 +277,7 @@ describe('CodeComposer', () => {
 
   it('changes task permissions from the composer', async () => {
     const user = userEvent.setup();
-    const { onPermissionChange } = renderComposer();
+    const { onPermissionChange } = renderComposer({ ...baseSession, status: 'completed' });
     const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
 
     expect(permissionPicker).toHaveClass('meta-pill', 'code-composer-picker', 'code-permission-picker');
@@ -286,6 +286,21 @@ describe('CodeComposer', () => {
     await user.click(screen.getByRole('option', { name: 'Full access' }));
 
     expect(onPermissionChange).toHaveBeenCalledWith('full_access');
+  });
+
+  it('locks task permissions while a turn is active', () => {
+    const { rerenderSession } = renderComposer();
+    const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
+
+    expect(permissionPicker).toBeDisabled();
+    expect(permissionPicker).toHaveAttribute('title', 'Permissions can be changed after the current turn finishes');
+
+    rerenderSession({ ...baseSession, status: 'awaiting_approval' });
+    expect(permissionPicker).toBeDisabled();
+
+    rerenderSession({ ...baseSession, status: 'completed' });
+    expect(permissionPicker).toBeEnabled();
+    expect(permissionPicker).not.toHaveAttribute('title');
   });
 
   it('restores an immediate slash command when submission fails', async () => {

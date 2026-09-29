@@ -29,6 +29,7 @@ export function RuntimeControlsModal({
   models,
   modelMeta,
   busy,
+  applyBlockedReason,
   onClose,
   onApply,
 }: {
@@ -38,6 +39,9 @@ export function RuntimeControlsModal({
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
   busy: boolean;
+  // Set while the server would reject the update (e.g. mid-turn). Fields stay
+  // editable so a draft survives until Apply unlocks.
+  applyBlockedReason?: string;
   onClose: () => void;
   onApply: (value: RuntimeControls) => Promise<void> | void;
 }) {
@@ -237,7 +241,14 @@ export function RuntimeControlsModal({
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy || !draft.model} onClick={() => void apply()}>Apply</Button>
+        <Button
+          variant="primary"
+          disabled={busy || !draft.model || !!applyBlockedReason}
+          // A disabled button fires no hover events, so ui/Tooltip can't open;
+          // the native title is the only way to explain why it's locked.
+          title={applyBlockedReason}
+          onClick={() => void apply()}
+        >Apply</Button>
       </ModalFooter>
     </Modal>
   );
