@@ -6,7 +6,7 @@
 // single app-wide stream slot, which holds one turn at a time.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { ArrowRight, ChevronDown, X } from 'lucide-react';
 import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
@@ -50,7 +50,6 @@ import {
   compareCreditNotice,
   composerBlock,
   divergedAt,
-  formatEstimate,
   isCreditFailure,
   silentFor,
   unjudgeableReason,
@@ -64,7 +63,6 @@ import {
   sideNames,
   sideStatus,
   titleFromPrompt,
-  turnCostLines,
   turnUsageRows,
   formatTokens,
   usageTokens,
@@ -1095,7 +1093,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
   const silent = busy ? silentFor(lastEventAt, now) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
   const cost = sideCost(usage);
-  const lastTurnCost = usage?.available && last ? formatEstimate(usage.turns?.[turns.length - 1]?.estimatedCostUsd) : null;
+  const lastTurnMs = last ? turnDurationMs(last) : null;
   return (
     <section
       aria-label={`Side ${label.toUpperCase()}`}
@@ -1105,63 +1103,60 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
         <div className="flex items-center gap-2 min-w-0">
           <span
             aria-hidden
-            className="inline-grid place-items-center w-5 h-5 rounded-[5px] bg-surface-2 font-mono text-[11px] text-ink-3 flex-shrink-0"
+            className="inline-grid place-items-center w-6 h-6 rounded-[6px] bg-surface-2 font-mono text-[11px] text-ink-3 flex-shrink-0"
           >
             {label.toUpperCase()}
           </span>
           <ProviderIcon maker={makerOf(side?.model, name)} size={16} />
-          <h2 className="m-0 flex-1 min-w-0 text-[15px] leading-5 font-semibold text-ink truncate" title={name}>{name}</h2>
-          {cost && (
-            <Tooltip content={(
-              <span className="flex flex-col gap-0.5">
-                <span>Estimated at list price</span>
-                {turnCostLines(usage, turns).map((line) => <span key={line}>{line}</span>)}
-                {cost.notes.map((note) => <span key={note}>{note}</span>)}
-              </span>
-            )}
-            >
-              <span className="flex-shrink-0 text-[12px] text-ink-3 tabular-nums" aria-label={`Side ${label.toUpperCase()} estimated cost ${cost.text}`}>
-                Total {cost.text} · {formatTokens(usageTokens(usage))} tokens
-              </span>
-            </Tooltip>
-          )}
+          <h2 className="m-0 flex-1 min-w-0 text-[16px] leading-6 font-semibold text-ink truncate" title={name}>{name}</h2>
           {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
           {!busy && !side?.continuedAt && turns.length > 0 && (
             <Tooltip content="Continue with this model as a normal task">
-              <Button size="xs" variant="subtle" onClick={onContinue}>Continue</Button>
+              <Button size="xs" variant="subtle" onClick={onContinue}>
+                Continue <ArrowRight size={13} strokeWidth={1.75} aria-hidden="true" />
+              </Button>
             </Tooltip>
           )}
         </div>
-        <span
-          className="flex items-center gap-1.5 pl-7 text-[12px] text-ink-3 min-w-0"
-          role="status"
-          aria-label={`Side ${label.toUpperCase()} status`}
-          title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
-        >
-          {status.tone === 'working'
-            ? <span aria-hidden className="inline-flex"><Spinner /></span>
-            : <span aria-hidden className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[status.tone]}`} />}
-          <span className="truncate">
-            {status.label}
-            {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
-            {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
-            {status.tone !== 'working' && last && turnDurationMs(last) !== null && ` · ${formatDuration(turnDurationMs(last))}`}
-            {status.tone !== 'working' && lastTurnCost && ` · ${lastTurnCost}`}
-            {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
-          </span>
-        </span>
-        {cost && (
-          <button
-            type="button"
-            onClick={onToggleUsage}
-            aria-expanded={!!usageOpen}
-            className="self-start ml-7 border-0 bg-transparent p-0 font-body text-[12px] text-ink-3 underline underline-offset-2 cursor-pointer hover:text-ink-2"
+        <div className="flex items-center gap-3 pl-8 min-w-0">
+          <span
+            className="flex flex-1 items-center gap-1.5 text-[12px] text-ink-3 min-w-0"
+            role="status"
+            aria-label={`Side ${label.toUpperCase()} status`}
+            title={total.counted > 1 ? `All turns: ${formatDuration(total.total)}` : undefined}
           >
-            {usageOpen ? 'Hide usage by turn' : 'Usage by turn'}
-          </button>
-        )}
-        {cost && usageOpen && <UsageTable label={label} usage={usage} turns={turns} />}
+            {status.tone === 'working'
+              ? <span aria-hidden className="inline-flex"><Spinner /></span>
+              : <span aria-hidden className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[status.tone]}`} />}
+            <span className="truncate">
+              {status.label}
+              {status.tone === 'working' && runningFor !== null && ` · ${formatDuration(runningFor)}`}
+              {silent !== null && ` · no new activity for ${formatDuration(silent)}`}
+              {status.tone !== 'working' && lastTurnMs !== null && ` · ${formatDuration(lastTurnMs)}${turns.length > 1 ? ' last turn' : ''}`}
+              {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
+            </span>
+          </span>
+          {cost && (
+            <button
+              type="button"
+              onClick={onToggleUsage}
+              aria-expanded={!!usageOpen}
+              aria-label={`Side ${label.toUpperCase()} estimated cost ${cost.text}. ${usageOpen ? 'Hide' : 'Show'} usage by turn`}
+              className="flex-shrink-0 inline-flex items-center gap-1 border-0 bg-transparent p-0 font-body text-[12.5px] text-ink-3 cursor-pointer hover:text-ink"
+            >
+              <span className="font-semibold text-ink tabular-nums">{cost.text}</span>
+              <span>total</span>
+              <ChevronDown
+                size={14}
+                strokeWidth={1.75}
+                aria-hidden="true"
+                className={`transition-transform ${usageOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+          )}
+        </div>
       </header>
+      {cost && usageOpen && <UsageTable label={label} usage={usage} turns={turns} notes={cost.notes} />}
       {error && <div className="px-4 pt-2"><Alert variant="danger">{error}</Alert></div>}
       <div className="flex-1 min-h-0 flex flex-col">
         {task ? (
@@ -1201,32 +1196,45 @@ function SendToPicker({ target, names, onChange }) {
   );
 }
 
-function UsageTable({ label, usage, turns }) {
+function UsageTable({ label, usage, turns, notes = [] }) {
   const rows = turnUsageRows(usage, turns);
-  const cell = 'px-2 py-1 text-right tabular-nums';
+  const turnCount = usage.turns?.length || 0;
+  const num = 'py-1.5 text-right tabular-nums';
   return (
-    <table aria-label={`Side ${label.toUpperCase()} usage by turn`} className="ml-7 mt-1 border-collapse text-[12px] text-ink-2">
-      <thead>
-        <tr className="text-ink-4">
-          <th scope="col" className="px-2 py-1 text-left font-medium">Turn</th>
-          <th scope="col" className={`${cell} font-medium`}>Time</th>
-          <th scope="col" className={`${cell} font-medium`}>Input</th>
-          <th scope="col" className={`${cell} font-medium`}>Output</th>
-          <th scope="col" className={`${cell} font-medium`}>Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.label} className={row.total ? 'border-0 border-t border-solid border-line font-semibold text-ink' : undefined}>
-            <th scope="row" className="px-2 py-1 text-left font-[inherit]">{row.total ? 'Total' : row.label.replace('Turn ', '')}</th>
-            <td className={cell}>{row.time ?? '–'}</td>
-            <td className={cell} title={row.inputDetail}>{row.input}</td>
-            <td className={cell}>{row.output}</td>
-            <td className={cell}>{row.cost}</td>
+    <div className="px-4 py-3 bg-surface-2 border-b border-x-0 border-t-0 border-solid border-line">
+      <div className="flex items-baseline justify-between gap-3 mb-1.5">
+        <h3 className="m-0 text-[13px] font-semibold text-ink">Usage by turn</h3>
+        <span className="text-[12px] text-ink-3 tabular-nums">
+          {turnCount} {turnCount === 1 ? 'turn' : 'turns'} · {formatTokens(usageTokens(usage))} tokens
+        </span>
+      </div>
+      <table aria-label={`Side ${label.toUpperCase()} usage by turn`} className="w-full border-collapse text-[12.5px] text-ink-2">
+        <thead>
+          <tr className="text-ink-3">
+            <th scope="col" className="py-1.5 text-left font-normal">Turn</th>
+            <th scope="col" className={`${num} font-normal`}>Time</th>
+            <th scope="col" className={`${num} font-normal`}>Input tokens</th>
+            <th scope="col" className={`${num} font-normal`}>Output tokens</th>
+            <th scope="col" className={`${num} font-normal`}>Cost</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label} className={row.total ? 'border-0 border-t border-solid border-line font-semibold text-ink' : undefined}>
+              <th scope="row" className="py-1.5 text-left font-[inherit]">{row.total ? 'Total' : row.label.replace('Turn ', '')}</th>
+              <td className={num}>{row.time ?? '–'}</td>
+              <td className={num} title={row.inputDetail}>{row.input}</td>
+              <td className={num}>{row.output}</td>
+              <td className={num}>{row.cost}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="m-0 mt-2 text-[11.5px] text-ink-3">
+        Estimated at list price. Includes the calls the agent makes on its own, such as checking its answer.
+        {notes.map((note) => ` ${note}`).join('')}
+      </p>
+    </div>
   );
 }
 
