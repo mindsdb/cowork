@@ -115,8 +115,7 @@ export default function CodeView({
     setFilesOpen(false);
     setPreviewOpen(false);
   }, []);
-  // The dock floats over the transcript, which reserves the dock's height at
-  // its end so the last message can scroll clear of the composer.
+  // The transcript reserves the floating dock's height so its end scrolls clear.
   const dockObserver = useRef<ResizeObserver | null>(null);
   const dockRef = useCallback((dock: HTMLDivElement | null) => {
     dockObserver.current?.disconnect();

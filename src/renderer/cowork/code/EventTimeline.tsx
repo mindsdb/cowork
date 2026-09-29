@@ -710,8 +710,7 @@ export const EventTimeline = memo(function EventTimeline({
     // snap a pinned transcript to its new bottom immediately.
     if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
   }, [latestEventSeq, session.status]);
-  // The end of the transcript also moves when the composer dock above it
-  // grows, such as when a decision tray opens; keep a pinned transcript pinned.
+  // Stay pinned when the dock grows, e.g. a decision tray opens.
   useEffect(() => {
     const element = scrollRef.current;
     const inner = element?.firstElementChild;

@@ -257,10 +257,7 @@
    terminal rather than over it. */
 .code-conversation__stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 .code-notices { z-index: 1; display: grid; flex: none; gap: 7px; width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 2px auto 0; }
-/* The composer dock floats over the transcript (--code-dock-height is its
-   measured height). Text fades out above the composer instead of clipping at
-   a band of page background; a mask rather than a color gradient keeps the
-   fade correct over any backdrop. */
+/* Fade under the floating dock with a mask, so it holds over any backdrop. */
 .code-timeline {
   --code-fade-end: calc(100% - var(--code-dock-height, 0px) + 8px);
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
