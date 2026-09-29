@@ -4,6 +4,7 @@ import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { Tab, TabList, Tabs } from '../components/ui/Tabs';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandRefresh, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
@@ -206,12 +207,12 @@ export function ReviewPanel({
           </div>
           <Button icon size="sm" variant="subtle" aria-label="Close review panel" onClick={onClose}>{Ico.close(14)}</Button>
         </header>
-        <div className="code-review__tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'changes'} className={tab === 'changes' ? 'is-active' : ''} onClick={() => setTab('changes')}>
-            Changes <span>{files.length}</span>
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Deliver</button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as 'changes' | 'git')}>
+          <TabList className="code-review__tabs" aria-label="Review sections">
+            <Tab value="changes">Changes <span>{files.length}</span></Tab>
+            <Tab value="git">Deliver</Tab>
+          </TabList>
+        </Tabs>
         {error && <div className="code-review__error"><Alert variant="danger">{error}</Alert></div>}
 
         {tab === 'changes' ? (

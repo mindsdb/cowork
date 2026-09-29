@@ -8,10 +8,6 @@
 .code-skills-toolbar > label { position: relative; min-width: 220px; flex: 1; }
 .code-skills-toolbar > label > span { position: absolute; z-index: 1; top: 50%; left: 11px; display: inline-flex; color: var(--ink-4); transform: translateY(-50%); pointer-events: none; }
 .code-skills-toolbar input { height: 38px; padding-left: 35px; background: var(--surface-0); }
-.code-skills-toolbar > div { padding: 3px; display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-1); }
-.code-skills-toolbar > div button { min-height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; font: 500 10.5px var(--font-sans); }
-.code-skills-toolbar > div button:hover { color: var(--ink); }
-.code-skills-toolbar > div button.is-active { background: var(--surface-3); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .code-skills-view__notice { width: min(900px, 100%); margin: 0 auto 12px; }
 .code-skills-catalog { width: min(900px, 100%); margin: 0 auto; display: grid; gap: 24px; }
 .code-skill-group { border-top: 1px solid var(--line-2); }
@@ -73,7 +69,7 @@
   .code-skills-view { padding: 34px 22px 48px; }
   .code-skills-view__header { align-items: flex-start; flex-direction: column; }
   .code-skills-toolbar { align-items: stretch; flex-direction: column; }
-  .code-skills-toolbar > div { align-self: flex-start; }
+  .code-skills-filter { align-self: flex-start; }
   .code-skill-row { grid-template-columns: minmax(0, 1fr) auto; }
   .code-skill-row__kind { display: none; }
 }

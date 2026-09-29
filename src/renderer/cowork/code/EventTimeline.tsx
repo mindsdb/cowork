@@ -722,13 +722,13 @@ export const EventTimeline = memo(function EventTimeline({
     >
       <div className="code-timeline__inner">
         {hiddenCount > 0 && (
-          <button
-            type="button"
+          <Button
+            size="xs"
             className="code-timeline__earlier"
             onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
           >
             Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
-          </button>
+          </Button>
         )}
         {foldFinishedTurns(visibleItems, answers).map((item) => {
           if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;

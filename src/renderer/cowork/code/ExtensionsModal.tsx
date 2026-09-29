@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Modal, ModalBody, ModalHeader } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
+import { Tab, TabList, Tabs } from '../components/ui/Tabs';
 import { codingApi, type ExtensionEntry, type ExtensionInventory } from './api';
 import { openCodePath } from './shellLinks';
 
@@ -93,14 +94,16 @@ export function ExtensionsModal({
         onClose={onClose}
       />
       <ModalBody>
-        <div className="code-extension-tabs" role="tablist" aria-label="Extension types">
-          {TABS.map((item) => (
-            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)}>
-              {item.label}<span>{inventory[item.id].length}</span>
-            </button>
-          ))}
-          <Button icon variant="subtle" size="sm" disabled={loading} onClick={load} aria-label="Refresh task extensions">{Ico.refresh(12)}</Button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as ExtensionTab)}>
+          <TabList className="code-extension-tabs" aria-label="Extension types">
+            {TABS.map((item) => (
+              <Tab key={item.id} value={item.id}>
+                {item.label}<span>{inventory[item.id].length}</span>
+              </Tab>
+            ))}
+            <Button icon variant="subtle" size="sm" disabled={loading} onClick={load} aria-label="Refresh task extensions">{Ico.refresh(12)}</Button>
+          </TabList>
+        </Tabs>
         {loading ? (
           <div className="code-extension-empty"><Spinner className="text-sm" /> Loading {label.toLowerCase()}…</div>
         ) : error ? (

@@ -2119,6 +2119,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 }
 
 /* Sizes */
+.btn.xxs { height: 22px; padding: 0 6px;  font-size: 10.5px; border-radius: var(--r-sm); gap: 3px; }
 .btn.xs { height: 24px; padding: 0 8px;  font-size: 12px;   border-radius: var(--r-sm); gap: 4px; }
 .btn.sm { height: 28px; padding: 0 10px; font-size: var(--text-sm); gap: 5px; }
 .btn.lg { height: 36px; padding: 0 16px; font-size: var(--text-base); }
@@ -2128,6 +2129,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 .btn.icon { width: 32px; padding: 0; }
 .btn.icon.sm { width: 28px; }
 .btn.icon.xs { width: 24px; }
+.btn.icon.xxs { width: 22px; }
 .btn.icon.lg { width: 36px; }
 
 /* Block */
