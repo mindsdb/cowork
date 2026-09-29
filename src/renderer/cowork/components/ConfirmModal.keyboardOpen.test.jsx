@@ -34,12 +34,15 @@ describe('ConfirmModal Enter-to-confirm', () => {
     }
   });
 
-  it('ignores a held Enter repeating into the dialog', async () => {
+  it('swallows a held Enter repeating into the dialog', async () => {
     const onConfirm = renderConfirm();
     await screen.findByRole('dialog');
     await act(() => new Promise((r) => setTimeout(r)));
 
-    fireEvent.keyDown(window, { key: 'Enter', repeat: true });
+    // The repeat lands on the autofocused confirm button. Ignoring it is not
+    // enough: unless its default is prevented, the browser clicks the button.
+    const notPrevented = fireEvent.keyDown(screen.getByRole('button', { name: 'Delete' }), { key: 'Enter', repeat: true });
+    expect(notPrevented).toBe(false);
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });
