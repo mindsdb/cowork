@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Menu from '../components/ui/Menu';
 import type { ComposerNotice } from './composerNotices';
 import './task-control.css';
 
@@ -22,20 +23,37 @@ export function ComposerLip({ notice, onChooseModel, onAddCredits, onDismiss }: 
   onDismiss: (key: string) => void;
 }) {
   const [detailOpen, setDetailOpen] = useState(false);
-  const text = [notice.title, notice.body].filter(Boolean).join('. ');
+  // A title runs into its body on one line, so it ends as a sentence.
+  const title = notice.title && notice.body && !/[.!?…]$/.test(notice.title) ? `${notice.title}.` : notice.title;
+  const text = [title, notice.body].filter(Boolean).join(' ');
+  // One visible action at most, the step that unblocks the next send; the rest wait behind a menu.
+  const primary = notice.addCredits ? { label: 'Add credits', onClick: onAddCredits }
+    : notice.chooseModel ? { label: 'Choose model', onClick: onChooseModel }
+      : null;
+  const secondary = [
+    ...(notice.addCredits && notice.chooseModel ? [{ label: 'Choose another model', onClick: onChooseModel }] : []),
+    ...(notice.detail ? [{ label: detailOpen ? 'Hide details' : 'Show details', onClick: () => setDetailOpen((open) => !open) }] : []),
+  ];
   return (
     <div className={`code-composer-lip is-${notice.tone}`} role="status">
       <div className="code-composer-lip__row">
         <span className="code-composer-lip__icon" aria-hidden="true">{ICONS[notice.icon]()}</span>
         <p className="code-composer-lip__text" title={text}>
-          {notice.title && <strong>{notice.title} </strong>}{notice.body && <span>{notice.body}</span>}
+          {title && <strong>{title} </strong>}{notice.body && <span>{notice.body}</span>}
         </p>
         <div className="code-composer-lip__actions">
-          {notice.detail && (
-            <Button size="xs" variant="subtle" aria-expanded={detailOpen} onClick={() => setDetailOpen((open) => !open)}>Details</Button>
+          {primary && <Button size="xs" variant="default" onClick={primary.onClick}>{primary.label}</Button>}
+          {!primary && secondary.length === 1 ? (
+            <Button size="xs" variant="subtle" aria-expanded={detailOpen} onClick={secondary[0].onClick}>Details</Button>
+          ) : secondary.length > 0 && (
+            <Menu
+              trigger={<Button icon size="xs" variant="subtle" aria-label="More options">{Ico.moreVert(12)}</Button>}
+              items={secondary}
+              side="top"
+              align="end"
+              ariaLabel="More options"
+            />
           )}
-          {notice.chooseModel && <Button size="xs" variant="tinted" onClick={onChooseModel}>Choose model</Button>}
-          {notice.addCredits && <Button size="xs" variant="subtle" onClick={onAddCredits}>Add credits</Button>}
           {notice.dismissible && (
             <Button icon size="xs" variant="subtle" aria-label="Dismiss" onClick={() => onDismiss(notice.key)}>{Ico.close(11)}</Button>
           )}

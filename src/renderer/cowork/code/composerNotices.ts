@@ -110,6 +110,12 @@ export function pickNotice(candidates: Array<ComposerNotice | null | undefined>,
 }
 
 
+// A model id such as "gpt" can lead a title; titles still read as sentences.
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+
 export function failureNotice(failure: TurnFailure | null, modelName: string): ComposerNotice | null {
   if (!failure) return null;
   const { recovery } = failure;
@@ -117,7 +123,7 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     key: `failure:${failure.code}`,
     tone: recovery.temporary ? 'warning' : 'danger',
     icon: recovery.temporary ? 'clock' : 'warning',
-    title: recovery.title(modelName || 'This model'),
+    title: sentenceCase(recovery.title(modelName || 'This model')),
     body: recovery.body,
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,

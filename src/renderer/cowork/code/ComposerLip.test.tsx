@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -55,19 +56,36 @@ function renderFailure(code: string, detail: string, task = session()) {
 
 
 describe('ComposerLip', () => {
-  it('turns a credit failure into concise recovery actions with technical detail on demand', () => {
+  it('turns a credit failure into one recovery action, with the rest and technical detail on demand', async () => {
+    const user = userEvent.setup();
     const { onChooseModel, onAddCredits, container } = renderFailure('insufficient_credits', 'server returned 402 Payment Required');
 
-    expect(screen.getByText('GPT 5.6 Sol needs credits')).toBeInTheDocument();
+    expect(screen.getByText('GPT 5.6 Sol needs credits.')).toBeInTheDocument();
     expect(screen.getByText('Add credits or choose another model, then continue in this task.')).toBeInTheDocument();
     expect(container.querySelector('.code-composer-lip.is-danger')).not.toBeNull();
     expect(screen.queryByText(/server returned 402/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    expect(screen.queryByRole('button', { name: 'Choose model' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onChooseModel).toHaveBeenCalledOnce();
     expect(onAddCredits).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Show details' }));
     expect(screen.getByText('server returned 402 Payment Required')).toBeVisible();
+  });
+
+  it('shows a lone detail toggle as a plain button rather than a menu', () => {
+    renderFailure('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests');
+    expect(screen.queryByRole('button', { name: 'More options' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText(/429 Too Many Requests/)).toBeVisible();
+  });
+
+  it('starts a title with a capital even when the model name does not', () => {
+    const notice = failureNotice(accountFailure(session(), undefined, failure('insufficient_credits', '402')), 'gpt');
+    expect(notice?.title).toBe('Gpt needs credits');
   });
 
   it('reads the failure code from the terminal session event when the raw agent error carries none', () => {
@@ -79,14 +97,14 @@ describe('ComposerLip', () => {
 
   it('asks for a fresh sign-in when the model credential is rejected, with no invented sign-in action', () => {
     renderFailure('model_authentication_failed', 'server returned 401 Unauthorized');
-    expect(screen.getByText('Your sign-in does not match this server')).toBeInTheDocument();
+    expect(screen.getByText('Your sign-in does not match this server.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeInTheDocument();
   });
 
   it('offers a model change when the chosen model is not available', () => {
     const { onChooseModel } = renderFailure('model_unavailable', 'server returned 404 model not found');
-    expect(screen.getByText('GPT 5.6 Sol is not available')).toBeInTheDocument();
+    expect(screen.getByText('GPT 5.6 Sol is not available.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
     expect(onChooseModel).toHaveBeenCalledOnce();
@@ -94,7 +112,7 @@ describe('ComposerLip', () => {
 
   it('shows a rate limit as a wait, not a failure, without offering a model change or credits', () => {
     const { container } = renderFailure('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests');
-    expect(screen.getByText('MindsHub is receiving requests too quickly')).toBeInTheDocument();
+    expect(screen.getByText('MindsHub is receiving requests too quickly.')).toBeInTheDocument();
     expect(container.querySelector('.code-composer-lip.is-warning')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
@@ -105,10 +123,10 @@ describe('ComposerLip', () => {
     ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused'],
   ])('offers credits when %s blocks the turn until a reset', (code, title) => {
     const { onAddCredits } = renderFailure(code, 'upstream 429');
-    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(`${title}.`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
     expect(onAddCredits).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Choose model' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
