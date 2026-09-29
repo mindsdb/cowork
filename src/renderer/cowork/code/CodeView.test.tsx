@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   projectsSetSelectedId: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
+  trackBillingOpened: vi.fn(),
+  openCodeExternalUrl: vi.fn(async () => true),
 }));
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
@@ -128,6 +130,14 @@ vi.mock('./ProjectSettingsModal', () => ({
   ),
 }));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
+vi.mock('../lib/analytics', async importOriginal => ({
+  ...await importOriginal<typeof import('../lib/analytics')>(),
+  trackBillingOpened: mocks.trackBillingOpened,
+}));
+vi.mock('./shellLinks', async importOriginal => ({
+  ...await importOriginal<typeof import('./shellLinks')>(),
+  openCodeExternalUrl: mocks.openCodeExternalUrl,
+}));
 vi.mock('./FilesPanel', () => ({
   FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
     <button type="button" onClick={() => onReference({ name: 'notes.md', path: '/work/first-task/notes.md', kind: 'mention' })}>Reference file</button>
@@ -168,6 +178,7 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
 
@@ -249,6 +260,37 @@ describe('CodeView session-list reconciliation', () => {
       refresh: vi.fn(async () => {}),
       refreshReview: vi.fn(async () => {}),
     }));
+  });
+
+  it('bills an Add credits click in the composer lip to the Code workspace', () => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const allowance: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'included_allowance_exhausted', detail: 'upstream 429' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [allowance],
+      latestEvents: { error: { latest: allowance } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({ sessions: [failed], selectedId: failed.id });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+
+    expect(mocks.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted', 'code');
+    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
   it('opens project history instead of starting a task when a project is selected', async () => {

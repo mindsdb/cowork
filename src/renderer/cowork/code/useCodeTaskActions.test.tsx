@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
 
-const { createSession, analytics } = vi.hoisted(() => ({
+const { createSession, forkSession, analytics } = vi.hoisted(() => ({
   createSession: vi.fn(async (): Promise<{ id: string }> => ({ id: 'task-created' })),
+  forkSession: vi.fn(async (): Promise<{ id: string }> => ({ id: 'task-forked' })),
   analytics: { trackCodeTaskStarted: vi.fn(), trackCodeTaskStartFailed: vi.fn() },
 }));
 
 vi.mock('./api', () => ({
-  codingApi: { create: createSession },
+  codingApi: { create: createSession, forkSession },
 }));
 vi.mock('../lib/analytics', () => analytics);
 
@@ -19,19 +20,21 @@ import { useCodeTaskActions } from './useCodeTaskActions';
 function renderActions({
   refresh = vi.fn(async () => {}),
   loadSessions = vi.fn(async () => []),
+  session = null,
   sessions = [],
   onSessionsChange = vi.fn(),
   onSelectionChange = vi.fn(),
 }: {
   refresh?: () => Promise<void>;
   loadSessions?: () => Promise<CodingSession[]>;
+  session?: CodingSession | null;
   sessions?: CodingSession[];
   onSessionsChange?: (sessions: CodingSession[]) => void;
   onSelectionChange?: (sessionId: string | null, newTask?: boolean) => void;
 } = {}) {
   return renderHook(() => useCodeTaskActions({
     selectedId: 'task-1',
-    session: null,
+    session,
     sessions,
     refresh,
     loadSessions,
@@ -215,5 +218,32 @@ describe('useCodeTaskActions', () => {
 
     expect(analytics.trackCodeTaskStarted).not.toHaveBeenCalled();
     expect(analytics.trackCodeTaskStartFailed).toHaveBeenCalledWith('new', input, refusal);
+  });
+
+  it('reports a fork once, from the forked session', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const { result } = renderActions({ session: { id: 'task-1' } as CodingSession });
+
+    await act(async () => { await result.current.fork(); });
+
+    expect(forkSession).toHaveBeenCalledWith('task-1');
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledOnce();
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledWith({ id: 'task-forked' }, { origin: 'fork' });
+    expect(analytics.trackCodeTaskStartFailed).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused fork as a failed start, not a start', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const refusal = Object.assign(new Error('Workspace missing'), { status: 409, code: 'workspace_missing' });
+    forkSession.mockRejectedValueOnce(refusal);
+    const { result } = renderActions({ session: { id: 'task-1' } as CodingSession });
+
+    await act(async () => { await result.current.fork(); });
+
+    expect(analytics.trackCodeTaskStarted).not.toHaveBeenCalled();
+    expect(analytics.trackCodeTaskStartFailed).toHaveBeenCalledWith('fork', null, refusal);
+    expect(result.current.error).toBe('Workspace missing');
   });
 });
