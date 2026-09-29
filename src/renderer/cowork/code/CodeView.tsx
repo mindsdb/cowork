@@ -15,6 +15,9 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { ComposerLip } from './ComposerLip';
+import { PromptQueue } from './ComposerMenus';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -38,6 +41,7 @@ import { useProjectActions } from './useProjectActions';
 import { SkillScopeContext } from './useSkillLibrary';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
+import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -254,6 +258,20 @@ export default function CodeView({
   const workspaceWarning = session?.workspace_kind === 'direct_folder'
     ? ''
     : session?.workspace_warning || '';
+  const latestSessionEvent = detail.latestEvents.session?.latest;
+  const latestErrorEvent = detail.latestEvents.error?.latest;
+  const taskRecovering = !!session && recoveringTaskId === session.id;
+  // One lip at a time, most blocking first; queued follow-ups come last.
+  const lip = useComposerNotice(session ? [
+    failureNotice(
+      accountFailure(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+      models.find((model) => model.id === session.model)?.name || session.model,
+    ),
+    recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    messageNotice('error', conversationError),
+    messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
+    queueNotice(session),
+  ] : [], selectedId);
   const approval = session?.pending_approval?.id === resolvingApprovalId
     ? null
     : session?.pending_approval;
@@ -470,28 +488,46 @@ export default function CodeView({
         ) : session ? (
           <div className="code-workspace">
             <section className="code-conversation">
-              {(conversationError || workspaceWarning) && (
-                <div className="code-notices">
-                  {conversationError && <Alert variant="danger">{conversationError}</Alert>}
-                  {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
-                </div>
-              )}
               <EventTimeline
                 key={`timeline-${session.id}`}
                 events={detail.events}
                 latestEvents={detail.latestEvents}
                 session={session}
-                modelName={models.find((model) => model.id === session.model)?.name || session.model}
                 recovering={recoveringTaskId === session.id}
-                onRecover={() => recoverTask(session.id)}
-                onChooseModel={() => setControlsOpen(true)}
-                onAddCredits={() => {
-                  trackBillingOpened('token_limit');
-                  void openCodeExternalUrl(MINDS_BILLING_URL);
-                }}
                 onOpenReview={can('review') ? openReview : undefined}
               />
               <div className="code-composer-dock">
+                {lip.notice?.queue ? (
+                  <PromptQueue
+                    items={session.queued_instructions || []}
+                    active={isActiveStatus(session.status) && !session.pending_question && !session.pending_approval}
+                    busy={busy}
+                    onSteer={(instructionId) => runAction(
+                      () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                      true,
+                    )}
+                    onRemove={(instructionId) => runAction(
+                      () => codingApi.removeQueued(session.id, instructionId),
+                      true,
+                    )}
+                    more={lip.more}
+                    onShowMore={lip.showNext}
+                  />
+                ) : lip.notice && (
+                  <ComposerLip
+                    key={lip.notice.key}
+                    notice={lip.notice}
+                    more={lip.more}
+                    onShowMore={lip.showNext}
+                    onChooseModel={() => setControlsOpen(true)}
+                    onAddCredits={() => {
+                      trackBillingOpened('token_limit');
+                      void openCodeExternalUrl(MINDS_BILLING_URL);
+                    }}
+                    onReopen={() => void recoverTask(session.id)}
+                    onDismiss={lip.dismiss}
+                  />
+                )}
                 {session.pending_question && <QuestionCard
                   key={session.pending_question.id}
                   pending={session.pending_question}
@@ -552,18 +588,10 @@ export default function CodeView({
                     () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
                     true,
                   )}
-                  onSteerQueued={(instructionId) => runAction(
-                    () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
-                    true,
-                  )}
                   history={history}
                   // The effect that clears this runs after the next task's composer
                   // has already mounted and merged it.
                   referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
-                  onRemoveQueued={(instructionId) => runAction(
-                    () => codingApi.removeQueued(session.id, instructionId),
-                    true,
-                  )}
                   onClientCommand={(command) => {
                     if (command.client_action === 'terminal') {
                       setTerminalOpen(true);

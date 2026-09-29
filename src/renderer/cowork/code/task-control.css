@@ -4,13 +4,33 @@
    second card. */
 .code-composer-dock { --code-attach-inset: 11px; --code-attach-overlap: 14px; flex: none; display: flex; flex-direction: column; padding: 8px var(--code-gutter) 0; }
 .code-composer-dock .code-composer__shell { z-index: 1; }
-.code-decision-tray {
+/* Everything attached to the composer shares one inset, surface and tuck.
+   A later attachment paints over the tucked bottom of the one above it and
+   squares its own top corners, so a stack reads as one drawer. */
+.code-composer-lip,
+.code-decision-tray,
+.code-composer-dock .code-prompt-queue {
   position: relative; z-index: 0; box-sizing: border-box;
-  width: calc(min(var(--code-measure), 100%) - var(--code-attach-inset) * 2); max-height: 48vh;
-  margin: 0 auto calc(var(--code-attach-overlap) * -1); padding: 12px 12px calc(12px + var(--code-attach-overlap));
-  overflow-y: auto; border: 1px solid var(--border-01); border-bottom: 0; border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: var(--surface-0); color: var(--ink); transition: border-color .15s;
+  width: calc(min(var(--code-measure), 100%) - var(--code-attach-inset) * 2);
+  margin: 0 auto calc(var(--code-attach-overlap) * -1);
+  border: 1px solid var(--border-01); border-bottom: 0; border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--surface-0);
 }
+:is(.code-composer-lip, .code-prompt-queue) + .code-decision-tray { border-top-left-radius: 0; border-top-right-radius: 0; }
+/* A status line about the next send. Tone lives in the icon and a light wash. */
+/* Text is padded to the 24px button height, so one line centres on the actions and a second line wraps below them. */
+.code-composer-lip { padding: 6px 8px calc(6px + var(--code-attach-overlap)) 12px; color: var(--ink-2); font-size: 11.5px; line-height: 16px; }
+.code-composer-lip.is-warning { border-color: color-mix(in srgb, var(--warning) 28%, var(--border-01)); background: color-mix(in srgb, var(--warning) 6%, var(--surface-0)); }
+.code-composer-lip.is-danger { border-color: color-mix(in srgb, var(--danger) 28%, var(--border-01)); background: color-mix(in srgb, var(--danger) 5%, var(--surface-0)); }
+.code-composer-lip__row { display: flex; min-width: 0; align-items: flex-start; gap: 8px; }
+.code-composer-lip__icon { display: inline-flex; flex: none; margin-top: 6px; color: var(--ink-3); }
+.code-composer-lip.is-warning .code-composer-lip__icon { color: var(--warning); }
+.code-composer-lip.is-danger .code-composer-lip__icon { color: var(--danger); }
+.code-composer-lip__text { display: -webkit-box; min-width: 0; flex: 1; margin: 4px 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; color: var(--ink-3); }
+.code-composer-lip__text strong { color: var(--ink); font-weight: 560; }
+.code-composer-lip__actions { display: flex; flex: none; align-items: center; gap: 4px; }
+.code-composer-lip__detail { max-height: 96px; margin: 6px 0 2px 20px; padding: 6px 8px; overflow: auto; border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); white-space: pre-wrap; font: 10px/1.45 var(--font-mono); }
+.code-decision-tray { max-height: 48vh; padding: 12px 12px calc(12px + var(--code-attach-overlap)); overflow-y: auto; color: var(--ink); transition: border-color .15s; }
 /* Focus moves here so Enter and Escape answer the tray; show it the way the composer shows its own focus. */
 .code-decision-tray:focus { outline: 0; }
 .code-decision-tray:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-01)); }

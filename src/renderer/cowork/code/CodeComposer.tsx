@@ -7,7 +7,7 @@ import { codingApi, type CodingSession, type EngineCommand, type InputReference,
 import { ComposerAddMenu } from './ComposerAddMenu';
 import { planModeCommand } from './planModeCommand';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
-import { MentionMenu, PromptQueue } from './ComposerMenus';
+import { MentionMenu } from './ComposerMenus';
 import { readComposerDraft, writeComposerDraft } from './composerDrafts';
 import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
@@ -27,8 +27,6 @@ type CodeComposerProps = {
   commands: EngineCommand[];
   onClientCommand: (command: EngineCommand) => void;
   onPermissionChange: (permission: PermissionMode) => Promise<void>;
-  onSteerQueued: (instructionId: string) => Promise<void>;
-  onRemoveQueued: (instructionId: string) => Promise<void>;
   history?: string[];
   referenceRequest?: { id: number; item: InputReference } | null;
 };
@@ -50,18 +48,6 @@ function sameReferences(left: InputReference[] = [], right: InputReference[] = [
   ));
 }
 
-function sameQueuedInstructions(left: CodingSession, right: CodingSession): boolean {
-  const leftItems = left.queued_instructions || [];
-  const rightItems = right.queued_instructions || [];
-  return leftItems.length === rightItems.length && leftItems.every((item, index) => {
-    const other = rightItems[index];
-    return item.id === other?.id
-      && item.prompt === other.prompt
-      && item.created_at === other.created_at
-      && sameReferences(item.attachments, other.attachments);
-  });
-}
-
 function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): boolean {
   // CodeView recreates thin action closures as task data arrives, but those
   // closures are behaviorally identical until one of the session fields below
@@ -81,7 +67,6 @@ function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): b
     && (!right.supportsPlanning || isActiveStatus(right.session.status) || left.session.event_count === right.session.event_count)
     && left.supportsPlanning === right.supportsPlanning
     && left.planningLoading === right.planningLoading
-    && sameQueuedInstructions(left.session, right.session)
     && left.referenceRequest?.id === right.referenceRequest?.id
     && sameStrings(left.history, right.history);
 }
@@ -97,8 +82,6 @@ export const CodeComposer = memo(function CodeComposer({
   commands,
   onClientCommand,
   onPermissionChange,
-  onSteerQueued,
-  onRemoveQueued,
   history = [],
   referenceRequest = null,
 }: CodeComposerProps) {
@@ -232,13 +215,6 @@ export const CodeComposer = memo(function CodeComposer({
   };
   return (
     <div className="code-composer">
-      <PromptQueue
-        items={session.queued_instructions || []}
-        active={active && !waiting}
-        busy={busy}
-        onSteer={onSteerQueued}
-        onRemove={onRemoveQueued}
-      />
       <div
         className={`code-composer__shell${draggingFiles ? ' is-dragging-files' : ''}`}
         onDragEnter={(event) => {

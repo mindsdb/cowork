@@ -108,7 +108,7 @@ describe('EventTimeline', () => {
     });
     const props = { events: counted, latestEvents: indexLatestEvents(events), session: { ...session('failed'), run_status: 'failed' as const } };
     const view = render(<EventTimeline {...props} />);
-    expect(screen.getByText('Event 6000')).toBeInTheDocument();
+    expect(screen.getByText('Event 5999')).toBeInTheDocument();
 
     indexReads = 0;
     view.rerender(<EventTimeline {...props} recovering />);
@@ -150,40 +150,23 @@ describe('EventTimeline', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting… 1/2');
   });
 
-  it('offers one recovery action for a preserved remote run', () => {
-    const onRecover = vi.fn(async () => {});
-    render(
+  it('leaves a paused remote run and its last error to the composer lip', () => {
+    const { container } = render(
       <EventTimeline
-        {...timelineProps([event(1, 'error', 'Computer disconnected')])}
+        {...timelineProps([event(1, 'user_message', 'Go'), event(2, 'error', 'Computer disconnected')])}
         session={{
           ...session('interrupted'),
           run_status: 'interrupted',
           computer_status: 'offline',
           last_error: 'Computer disconnected',
         }}
-        onRecover={onRecover}
       />,
     );
 
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/conversation is safe; reopen it there or choose another compatible computer/)).toBeInTheDocument();
-    expect(screen.getAllByText('Computer disconnected')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen task' }));
-    expect(onRecover).toHaveBeenCalledOnce();
-  });
-
-  it('says that reopening restores the copy but does not continue the interrupted turn', () => {
-    render(
-      <EventTimeline
-        {...timelineProps([])}
-        session={{ ...session('interrupted'), run_status: 'interrupted' }}
-      />,
-    );
-
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/send a message to continue the interrupted work/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
+    expect(container.querySelector('.code-task-outcome')).toBeNull();
+    expect(screen.queryByText('Task paused')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reopen task' })).toBeNull();
+    expect(screen.queryByText('Computer disconnected')).toBeNull();
   });
 
   it('keeps local failures recoverable through the composer instead of a remote-run action', () => {
@@ -199,159 +182,18 @@ describe('EventTimeline', () => {
     expect(screen.queryByRole('button', { name: 'Reopen task' })).not.toBeInTheDocument();
   });
 
-  it('turns a credit failure into concise recovery actions with technical detail on demand', () => {
-    const onChooseModel = vi.fn();
-    const onAddCredits = vi.fn();
-    const creditError = {
-      ...event(1, 'error', 'This model needs credits. Add credits or choose another model.'),
-      data: {
-        code: 'insufficient_credits',
-        detail: 'server returned 402 Payment Required: You have 0 weighted tokens left',
-        model: 'gpt-5.6-sol',
-      },
-    };
-
-    render(
-      <EventTimeline
-        {...timelineProps([creditError])}
-        session={{ ...session('failed'), model: 'gpt-5.6-sol', last_error: creditError.text }}
-        modelName="GPT 5.6 Sol"
-        onChooseModel={onChooseModel}
-        onAddCredits={onAddCredits}
-      />,
-    );
-
-    expect(screen.getByText('GPT 5.6 Sol needs credits')).toBeInTheDocument();
-    expect(screen.getByText('Add credits or choose another model, then continue in this task.')).toBeInTheDocument();
-    expect(screen.getByText(/server returned 402/)).not.toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onChooseModel).toHaveBeenCalledOnce();
-    expect(onAddCredits).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText(/server returned 402 Payment Required/)).toBeVisible();
-  });
-
   function failedTask(code: string, detail: string) {
     const failure = { ...event(1, 'error', 'The turn failed.'), data: { code, detail, model: 'gpt-5.6-sol' } };
     return {
       ...timelineProps([failure]),
       session: { ...session('failed'), run_status: 'failed' as const, model: 'gpt-5.6-sol', last_error: failure.text },
-      modelName: 'GPT 5.6 Sol',
     };
   }
 
-  it('reads the failure code from the terminal session event when the raw agent error carries none', () => {
-    const onChooseModel = vi.fn();
-    const onAddCredits = vi.fn();
-    const events: CodingEvent[] = [
-      event(1, 'error', 'Agent error: You have 0 weighted tokens left'),
-      {
-        ...event(2, 'session', 'The task failed.'),
-        title: 'Task failed',
-        phase: 'failed',
-        data: { status: 'failed', code: 'insufficient_credits', detail: 'server returned 402 Payment Required', model: 'gpt' },
-      },
-    ];
-
-    render(
-      <EventTimeline
-        {...timelineProps(events)}
-        session={{ ...session('failed'), run_status: 'failed', model: 'gpt', last_error: events[0].text }}
-        modelName="GPT 5.6 Sol"
-        onChooseModel={onChooseModel}
-        onAddCredits={onAddCredits}
-      />,
-    );
-
-    expect(screen.getByText('GPT 5.6 Sol needs credits')).toBeInTheDocument();
-    expect(screen.getByText('Add credits or choose another model, then continue in this task.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onChooseModel).toHaveBeenCalledOnce();
-    expect(onAddCredits).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText('server returned 402 Payment Required')).toBeVisible();
-  });
-
-  it('asks for a fresh sign-in when the model credential is rejected, with no invented sign-in action', () => {
-    const onChooseModel = vi.fn();
-    const onAddCredits = vi.fn();
-    render(
-      <EventTimeline
-        {...failedTask('model_authentication_failed', 'server returned 401 Unauthorized')}
-        onChooseModel={onChooseModel}
-        onAddCredits={onAddCredits}
-      />,
-    );
-
-    expect(screen.getByText('Your sign-in does not match this server')).toBeInTheDocument();
-    expect(screen.getByText('Sign in again, or switch back to the environment you signed into, then continue in this task.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
-    expect(onChooseModel).toHaveBeenCalledOnce();
-    expect(onAddCredits).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText('server returned 401 Unauthorized')).toBeVisible();
-  });
-
-  it('offers a model change when the chosen model is not available', () => {
-    const onChooseModel = vi.fn();
-    render(
-      <EventTimeline
-        {...failedTask('model_unavailable', 'server returned 404 model not found')}
-        onChooseModel={onChooseModel}
-      />,
-    );
-
-    expect(screen.getByText('GPT 5.6 Sol is not available')).toBeInTheDocument();
-    expect(screen.getByText('Choose another model, then continue in this task.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resume task' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
-    expect(onChooseModel).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText('server returned 404 model not found')).toBeVisible();
-  });
-
-  it('shows a rate limit as a wait, not a failure, without offering a model change or credits', () => {
-    const { container } = render(<EventTimeline {...failedTask('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests')} />);
-
-    expect(screen.getByText('MindsHub is receiving requests too quickly')).toBeInTheDocument();
-    expect(screen.getByText('This turn stopped. Wait a moment, then continue in this task.')).toBeInTheDocument();
-    expect(container.querySelector('.code-task-outcome.is-waiting')).not.toBeNull();
-    expect(container.querySelector('.code-task-outcome.is-danger')).toBeNull();
-    expect(screen.getByText(/429 Too Many Requests/)).not.toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Reopen task' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText(/429 Too Many Requests/)).toBeVisible();
-  });
-
-  it.each([
-    ['included_allowance_exhausted', 'Your included allowance is used up'],
-    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused'],
-  ])('offers credits when %s blocks the turn until a reset', (code, title) => {
-    const onAddCredits = vi.fn();
-    render(<EventTimeline {...failedTask(code, 'upstream 429')} onAddCredits={onAddCredits} />);
-
-    expect(screen.getByText(title)).toBeInTheDocument();
-    expect(document.querySelector('.code-task-outcome.is-danger')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onAddCredits).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Choose model' })).toBeInTheDocument();
-  });
-
-  it('keeps the generic paused-task recovery for failure codes it does not know', () => {
-    render(<EventTimeline {...failedTask('runtime_crashed', 'worker exited with code 137')} />);
-
-    expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reopen task' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Choose model' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Failure details'));
-    expect(screen.getByText('worker exited with code 137')).toBeVisible();
+  it('leaves account and model limits to the composer lip instead of a transcript card', () => {
+    const { container } = render(<EventTimeline {...failedTask('insufficient_credits', 'server returned 402')} />);
+    expect(container.querySelector('.code-task-outcome')).toBeNull();
+    expect(screen.queryByText(/needs credits/)).toBeNull();
   });
 
   it('shows an unconfirmed follow-up and the note that it was delivered late', () => {
