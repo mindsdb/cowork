@@ -25,6 +25,7 @@ import {
   formatTokens,
   sideCost,
   turnCostLines,
+  turnUsageRows,
   usageTokens,
 } from './compareSides';
 
@@ -364,5 +365,35 @@ describe('cost figures', () => {
     expect(combinedCost({ sides: { a: side(0.3), b: { ...side(0.2), truncated: true } } }).partial).toBe(true);
     expect(combinedCost({ sides: { a: { available: false }, b: side(null) } })).toBeNull();
     expect(combinedCost(null)).toBeNull();
+  });
+});
+
+describe('turnUsageRows', () => {
+  it('gives each turn and the total their time, input, output and cost', () => {
+    const usage = {
+      available: true,
+      estimatedCostUsd: 0.12,
+      unpricedCalls: 1,
+      inputTokens: 1000,
+      cachedInputTokens: 500,
+      cacheWriteTokens: 200,
+      outputTokens: 40,
+      turns: [
+        { turn: 1, estimatedCostUsd: 0.12, inputTokens: 1000, cachedInputTokens: 500, cacheWriteTokens: 200, outputTokens: 40 },
+        { turn: 2, estimatedCostUsd: null },
+      ],
+    };
+    const turns = [{ userAt: '2026-09-23T10:00:00Z', replyAt: '2026-09-23T10:00:41Z' }, {}];
+    const [first, second, total] = turnUsageRows(usage, turns);
+    expect(first).toMatchObject({ label: 'Turn 1', time: '41s', input: '1.7K', output: '40', cost: '$0.12' });
+    expect(first.inputDetail).toBe('1K new · 500 cached · 200 written to cache');
+    expect(second).toMatchObject({ label: 'Turn 2', time: null, cost: 'not priced' });
+    // The total carries the side's caveat mark.
+    expect(total).toMatchObject({ label: 'Total', total: true, time: '41s', input: '1.7K', cost: '$0.12+' });
+  });
+
+  it('is empty when the side has no usage', () => {
+    expect(turnUsageRows({ available: false })).toEqual([]);
+    expect(turnUsageRows(null)).toEqual([]);
   });
 });
