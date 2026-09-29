@@ -144,6 +144,11 @@ body, body[data-theme="light"] {
   --ink-4:        #9B9FA3;   /* placeholders / tertiary */
   --ink-5:        #C8CACC;   /* disabled */
 
+  /* Ghost-control fills: a translucent ink wash, so hover reads on any
+     ground. Declared once here on body; var(--ink) resolves per theme. */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 8%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 12%, transparent);
+
   --accent:       #1F9CB0;
   --accent-2:     #115562;
   --accent-3:     #0E4651;
@@ -975,7 +980,8 @@ body[data-theme="light"] .overlay-inline-code {
 }
 button.meta-pill { cursor: pointer; }
 /* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
-button.meta-pill:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--text-strong); }
+button.meta-pill:hover { background: var(--ghost-hover); color: var(--text-strong); }
+button.meta-pill:active { background: var(--ghost-press); }
 /* Send button — single shared treatment across the home composer
    ("create new task") and the in-task chat composer. The legacy
    --primary-700 token didn't have a dark-mode partner and read as
@@ -2035,12 +2041,12 @@ body[data-theme="dark"] .btn.primary:focus-visible {
 }
 .btn.subtle:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: var(--ghost-hover);
   box-shadow: none;
   text-shadow: none;
 }
 .btn.subtle:active {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: var(--ghost-press);
   box-shadow: none;
 }
 

@@ -36,6 +36,10 @@ describe('ghost buttons stay borderless on hover', () => {
     expect(body).not.toMatch(/border-color/);
   });
 
+  it.each(['.btn.subtle:hover', 'button.meta-pill:hover'])('%s uses the shared ghost fill', (selector) => {
+    expect(ruleBody(selector)).toMatch(/background:\s*var\(--ghost-hover\)/);
+  });
+
   it('.meta-pill hover does not gain a border', () => {
     const body = ruleBody('button.meta-pill:hover');
     expect(body, 'button.meta-pill:hover rule not found').not.toBeNull();
