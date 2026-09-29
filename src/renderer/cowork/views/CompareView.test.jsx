@@ -466,9 +466,10 @@ describe('CompareView', () => {
       },
     });
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    expect(await screen.findByLabelText('Side A estimated cost $0.042')).toBeTruthy();
-    expect(screen.getByLabelText('Side B estimated cost $1.50')).toBeTruthy();
-    expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toBe('Done · 30s · $0.042');
+    expect((await screen.findByRole('button', { name: /^Side A estimated cost \$0\.042\./ })).textContent).toBe('$0.042total');
+    expect(screen.getByRole('button', { name: /^Side B estimated cost \$1\.50\./ })).toBeTruthy();
+    // The status line keeps to status and time; the cost has its own place.
+    expect(screen.getByRole('status', { name: 'Side A status' }).textContent).toBe('Done · 30s');
     expect(screen.getByText(/Estimated cost \$1\.54/)).toBeTruthy();
     expect(api.fetchComparisonUsage).toHaveBeenCalledWith('cmp-1');
   });
@@ -488,20 +489,22 @@ describe('CompareView', () => {
       },
     });
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    expect((await screen.findByLabelText('Side A estimated cost $0.05')).textContent).toBe('Total $0.05 · 12.6K tokens');
+    const toggleA = await screen.findByRole('button', { name: /^Side A estimated cost \$0\.05\. Show usage by turn$/ });
+    expect(toggleA.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('table')).toBeNull();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Usage by turn' })[0]);
+    fireEvent.click(toggleA);
 
     const tableA = screen.getByRole('table', { name: 'Side A usage by turn' });
     expect(screen.getByRole('table', { name: 'Side B usage by turn' })).toBeTruthy();
     const rows = within(tableA).getAllByRole('row').map((r) => Array.from(r.children).map((c) => c.textContent));
     expect(rows).toEqual([
-      ['Turn', 'Time', 'Input', 'Output', 'Cost'],
+      ['Turn', 'Time', 'Input tokens', 'Output tokens', 'Cost'],
       ['1', '30s', '12K', '600', '$0.05'],
       ['Total', '30s', '12K', '600', '$0.05'],
     ]);
-    expect(screen.getAllByRole('button', { name: 'Hide usage by turn' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Hide usage by turn$/ })).toHaveLength(2);
+    expect(screen.getByText('1 turn · 12.6K tokens')).toBeTruthy();
   });
 
   it('shows no cost for a side the gateway has nothing for, and marks the total as partial', async () => {
@@ -512,8 +515,8 @@ describe('CompareView', () => {
       },
     });
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    expect(await screen.findByLabelText('Side A estimated cost $0.2')).toBeTruthy();
-    expect(screen.queryByLabelText(/Side B estimated cost/)).toBeNull();
+    expect(await screen.findByRole('button', { name: /^Side A estimated cost \$0\.2\./ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Side B estimated cost/ })).toBeNull();
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).not.toMatch(/\$/);
     expect(screen.getByText(/Estimated cost \$0\.2\+/)).toBeTruthy();
   });

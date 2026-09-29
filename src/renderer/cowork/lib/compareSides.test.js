@@ -24,7 +24,6 @@ import {
   formatEstimate,
   formatTokens,
   sideCost,
-  turnCostLines,
   turnUsageRows,
   usageTokens,
 } from './compareSides';
@@ -349,13 +348,6 @@ describe('cost figures', () => {
     expect(sideCost({ available: true, estimatedCostUsd: 0.5, unpricedCalls: 2 }).notes).toEqual(["Some calls couldn't be priced and are left out."]);
     expect(sideCost({ available: false })).toBeNull();
     expect(sideCost({ available: true, estimatedCostUsd: null })).toBeNull();
-  });
-
-  it('lists each turn with its time, cost and tokens', () => {
-    const usage = { available: true, turns: [{ turn: 1, estimatedCostUsd: 0.12, inputTokens: 12000, outputTokens: 400 }, { turn: 2, estimatedCostUsd: null }] };
-    const turns = [{ userAt: '2026-09-23T10:00:00Z', replyAt: '2026-09-23T10:00:41Z' }, {}];
-    expect(turnCostLines(usage, turns)).toEqual(['Turn 1 · 41s · $0.12 · 12.4K tokens', 'Turn 2 · not priced · 0 tokens']);
-    expect(turnCostLines({ available: false }, turns)).toEqual([]);
   });
 
   it('adds both sides, and says so when one is missing', () => {

@@ -390,13 +390,6 @@ export function turnUsageRows(usage, turns = []) {
   return [...rows, { ...row('Total', usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? 'not priced' }];
 }
 
-/** One line per turn for a side's cost tooltip: "Turn 2 · 41s · $0.12 · 12.4K tokens". */
-export function turnCostLines(usage, turns = []) {
-  return turnUsageRows(usage, turns)
-    .filter((r) => !r.total)
-    .map((r) => [r.label, r.time, r.cost, `${r.tokens} tokens`].filter(Boolean).join(' · '));
-}
-
 /** Both sides together, over the sides that have a figure. Null when neither does. */
 export function combinedCost(usage) {
   const figures = SIDE_LABELS
