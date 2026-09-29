@@ -1,67 +1,21 @@
-// The composer card shared by chat and Code Mode; styles live in globals.css
-// (.composer-wrap, .composer-toolbar). Callers fill the footer slots with
-// their own controls. Focus follows the textarea, so `focused` is optional.
-//
-//   <ComposerShell floating dragging={isDragging}>
-//     …
-//     <ComposerFooter start={<AddMenu />} end={<SendButton />} />
-//   </ComposerShell>
-
-import { forwardRef } from 'react';
-import type { ComponentPropsWithoutRef, ReactNode } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+// The composer card shared by chat and Code Mode; styles live in globals.css.
+// Focus follows the textarea, so `focused` is only for callers that track it.
+import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/cn';
 
-const composerShellVariants = cva('composer-wrap', {
-  variants: {
-    floating: { true: 'composer-wrap--floating', false: '' },
-    focused: { true: 'focused', false: '' },
-    dragging: { true: 'is-dragging-files', false: '' },
-  },
-  defaultVariants: { floating: false, focused: false, dragging: false },
-});
+type ComposerShellProps = ComponentPropsWithoutRef<'div'> & { floating?: boolean; focused?: boolean; dragging?: boolean };
 
-export interface ComposerShellVariantProps extends VariantProps<typeof composerShellVariants> {
-  className?: string;
+export function ComposerShell({ floating, focused, dragging, className, ...rest }: ComposerShellProps) {
+  return <div className={cn('composer-wrap', floating && 'composer-wrap--floating', focused && 'focused', dragging && 'is-dragging-files', className)} {...rest} />;
 }
 
-export function composerShellClasses({ className, ...variants }: ComposerShellVariantProps = {}): string {
-  return cn(composerShellVariants(variants), className);
+// Each context brings its own controls; a ComposerSpacer pushes the rest to the end.
+export function ComposerFooter({ className, ...rest }: ComponentPropsWithoutRef<'div'>) {
+  return <div className={cn('composer-toolbar', className)} {...rest} />;
 }
 
-export interface ComposerShellProps
-  extends ComposerShellVariantProps,
-    Omit<ComponentPropsWithoutRef<'div'>, 'className'> {}
-
-export const ComposerShell = forwardRef<HTMLDivElement, ComposerShellProps>(function ComposerShell({
-  floating,
-  focused,
-  dragging,
-  className,
-  children,
-  ...rest
-}, ref) {
-  return (
-    <div ref={ref} className={composerShellClasses({ floating, focused, dragging, className })} {...rest}>
-      {children}
-    </div>
-  );
-});
-ComposerShell.displayName = 'ComposerShell';
-
-export interface ComposerFooterProps extends Omit<ComponentPropsWithoutRef<'div'>, 'children'> {
-  start?: ReactNode;
-  end?: ReactNode;
-}
-
-export function ComposerFooter({ start, end, className, ...rest }: ComposerFooterProps) {
-  return (
-    <div className={cn('composer-toolbar', className)} {...rest}>
-      {start}
-      <span className="composer-toolbar__spacer" aria-hidden="true" />
-      {end}
-    </div>
-  );
+export function ComposerSpacer() {
+  return <span className="composer-toolbar__spacer" aria-hidden="true" />;
 }
 
 export default ComposerShell;

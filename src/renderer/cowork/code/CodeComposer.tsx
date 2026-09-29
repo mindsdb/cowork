@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import { ComposerFooter, ComposerShell } from '../components/ui/ComposerShell';
+import { ComposerFooter, ComposerShell, ComposerSpacer } from '../components/ui/ComposerShell';
 import Select from '../components/ui/Select';
 import { Textarea } from '../components/ui/Input';
 import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem, type TaskMode } from './api';
@@ -340,43 +340,39 @@ export const CodeComposer = memo(function CodeComposer({
         />
         {referenceError && <div className="code-reference-error" role="alert">{referenceError}</div>}
         {modeHint && <div className="code-composer__mode-status" role="status">{modeHint}</div>}
-        <ComposerFooter
-          className="code-composer__actions"
-          start={<>
-            <input
-              ref={fileInputRef}
-              className="code-file-input"
-              type="file"
-              multiple
-              tabIndex={-1}
-              onChange={(event) => {
-                attachFiles(event.target.files);
-                event.target.value = '';
-              }}
-            />
-            <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
-              planMode={mode === 'plan'} planDisabled={active}
-              onPlanChange={canPlan || draftMode !== undefined ? enabled => setDraftMode(enabled ? 'plan' : 'build') : undefined} />
-            {mode === 'plan' && <span className="code-composer__permission-label">When building:</span>}
-            <PermissionSelect
-              value={session.permission_mode}
-              onValueChange={(value) => void onPermissionChange(value)}
-              disabled={busy}
-            />
-          </>}
-          end={<>
-            <span className="code-composer__hint">{active ? waiting ? 'Answer above · follow-ups wait in the queue' : delivery === 'steer' ? 'Enter to steer · Shift+Enter for a new line' : 'Runs after the active turn' : 'Enter to send · Shift+Enter for a new line'}</span>
-            <div className="code-composer__delivery">
-              {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">{Ico.stop(12)} Stop</Button>}
-              {active && hasDraft && <Select variant="pill" aria-label="Instruction delivery" value={waiting ? 'queue' : delivery} disabled={busy || waiting}
-                onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
-                options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
-              {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
-                {Ico.send(13)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
-              </Button>}
-            </div>
-          </>}
-        />
+        <ComposerFooter className="code-composer__actions">
+          <input
+            ref={fileInputRef}
+            className="code-file-input"
+            type="file"
+            multiple
+            tabIndex={-1}
+            onChange={(event) => {
+              attachFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
+            planMode={mode === 'plan'} planDisabled={active}
+            onPlanChange={canPlan || draftMode !== undefined ? enabled => setDraftMode(enabled ? 'plan' : 'build') : undefined} />
+          {mode === 'plan' && <span className="code-composer__permission-label">When building:</span>}
+          <PermissionSelect
+            value={session.permission_mode}
+            onValueChange={(value) => void onPermissionChange(value)}
+            disabled={busy}
+          />
+          <ComposerSpacer />
+          <span className="code-composer__hint">{active ? waiting ? 'Answer above · follow-ups wait in the queue' : delivery === 'steer' ? 'Enter to steer · Shift+Enter for a new line' : 'Runs after the active turn' : 'Enter to send · Shift+Enter for a new line'}</span>
+          <div className="code-composer__delivery">
+            {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">{Ico.stop(12)} Stop</Button>}
+            {active && hasDraft && <Select variant="pill" aria-label="Instruction delivery" value={waiting ? 'queue' : delivery} disabled={busy || waiting}
+              onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
+              options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
+            {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
+              {Ico.send(13)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
+            </Button>}
+          </div>
+        </ComposerFooter>
       </ComposerShell>
       <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </div>

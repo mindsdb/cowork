@@ -4,7 +4,7 @@ import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
-import { ComposerFooter, ComposerShell } from '../components/ui/ComposerShell';
+import { ComposerFooter, ComposerShell, ComposerSpacer } from '../components/ui/ComposerShell';
 import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
@@ -308,81 +308,77 @@ export function NewTaskPanel({
             busy={busy}
           />
 
-          <ComposerFooter
-            className="code-start-composer__controls"
-            start={<>
-              <input
-                ref={fileInputRef}
-                className="code-file-input"
-                type="file"
-                multiple
-                tabIndex={-1}
-                onChange={(event) => {
-                  attachFiles(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
-                planMode={taskMode === 'plan'} onPlanChange={canPlan || taskMode === 'plan' ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
-              <PermissionSelect
-                value={permissionMode}
-                onValueChange={setPermissionMode}
-                disabled={busy}
-              />
-            </>}
-            end={<>
+          <ComposerFooter className="code-start-composer__controls">
+            <input
+              ref={fileInputRef}
+              className="code-file-input"
+              type="file"
+              multiple
+              tabIndex={-1}
+              onChange={(event) => {
+                attachFiles(event.target.files);
+                event.target.value = '';
+              }}
+            />
+            <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
+              planMode={taskMode === 'plan'} onPlanChange={canPlan || taskMode === 'plan' ? enabled => setTaskMode(enabled ? 'plan' : 'build') : undefined} />
+            <PermissionSelect
+              value={permissionMode}
+              onValueChange={setPermissionMode}
+              disabled={busy}
+            />
+            <ComposerSpacer />
+            <Select
+              value={engineId}
+              onValueChange={setEngineId}
+              options={availableEngines}
+              variant="unstyled"
+              size="sm"
+              ariaLabel="Coding agent"
+              menuLabel="Agent"
+              disabled={busy || engineLoading}
+              loading={engineLoading}
+              className="meta-pill code-composer-picker code-agent-picker"
+            />
+            <ModelSelect
+              value={model}
+              onValueChange={setModel}
+              options={modelOptions}
+              onOpenChange={refreshModels}
+              variant="unstyled"
+              className="meta-pill code-composer-picker code-model-picker"
+              ariaLabel="Choose model"
+              menuLabel="Model"
+              placeholder="Select model"
+              emptyText="No coding models available"
+              disabled={busy || modelOptions.length === 0}
+            />
+            {effortLevels && (
               <Select
-                value={engineId}
-                onValueChange={setEngineId}
-                options={availableEngines}
+                value={resolvedEffort || ''}
+                onValueChange={setReasoningEffort}
+                options={effortOptions(effortLevels, selectedProject?.default_reasoning_effort)}
                 variant="unstyled"
                 size="sm"
-                ariaLabel="Coding agent"
-                menuLabel="Agent"
-                disabled={busy || engineLoading}
-                loading={engineLoading}
-                className="meta-pill code-composer-picker code-agent-picker"
+                ariaLabel="Reasoning effort"
+                menuLabel="Reasoning effort"
+                placeholder="Effort"
+                disabled={busy}
+                className="meta-pill code-composer-picker code-effort-picker"
               />
-              <ModelSelect
-                value={model}
-                onValueChange={setModel}
-                options={modelOptions}
-                onOpenChange={refreshModels}
-                variant="unstyled"
-                className="meta-pill code-composer-picker code-model-picker"
-                ariaLabel="Choose model"
-                menuLabel="Model"
-                placeholder="Select model"
-                emptyText="No coding models available"
-                disabled={busy || modelOptions.length === 0}
-              />
-              {effortLevels && (
-                <Select
-                  value={resolvedEffort || ''}
-                  onValueChange={setReasoningEffort}
-                  options={effortOptions(effortLevels, selectedProject?.default_reasoning_effort)}
-                  variant="unstyled"
-                  size="sm"
-                  ariaLabel="Reasoning effort"
-                  menuLabel="Reasoning effort"
-                  placeholder="Effort"
-                  disabled={busy}
-                  className="meta-pill code-composer-picker code-effort-picker"
-                />
-              )}
-              <Button
-                variant="primary"
-                size="sm"
-                className="code-start-task-button"
-                disabled={startUnavailable || planUnavailable}
-                onClick={start}
-                aria-describedby={readinessText ? 'code-start-readiness' : undefined}
-              >
-                {busy ? <Spinner className="text-sm" /> : Ico.send(14)}
-                {busy ? 'Starting…' : taskMode === 'plan' ? 'Start planning' : 'Start task'}
-              </Button>
-            </>}
-          />
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              className="code-start-task-button"
+              disabled={startUnavailable || planUnavailable}
+              onClick={start}
+              aria-describedby={readinessText ? 'code-start-readiness' : undefined}
+            >
+              {busy ? <Spinner className="text-sm" /> : Ico.send(14)}
+              {busy ? 'Starting…' : taskMode === 'plan' ? 'Start planning' : 'Start task'}
+            </Button>
+          </ComposerFooter>
         </ComposerShell>
         {selectedProject && draft.repositorySetup && (
           <div className="code-repository-summary">
