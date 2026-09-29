@@ -3,14 +3,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { ConfirmModal } from './ConfirmModal';
 
-/*
- * Enter on a menu item ("Delete" in a task menu) opens this dialog. In the
- * browser React commits the dialog and runs its effects while that keydown is
- * still bubbling to window, so an Enter listener armed straight away confirms
- * the delete before the dialog is seen. jsdom can't replay that timing, so
- * these tests pin the guard instead: Enter only counts from the next task, and
- * a held key's repeats never count.
- */
+// jsdom can't replay the browser's event timing, so these pin the guards:
+// Enter counts only from the next task, and repeats never click confirm.
 
 function renderConfirm() {
   const onConfirm = vi.fn();
@@ -39,8 +33,6 @@ describe('ConfirmModal Enter-to-confirm', () => {
     await screen.findByRole('dialog');
     await act(() => new Promise((r) => setTimeout(r)));
 
-    // The repeat lands on the autofocused confirm button. Ignoring it is not
-    // enough: unless its default is prevented, the browser clicks the button.
     const notPrevented = fireEvent.keyDown(screen.getByRole('button', { name: 'Delete' }), { key: 'Enter', repeat: true });
     expect(notPrevented).toBe(false);
     expect(onConfirm).not.toHaveBeenCalled();

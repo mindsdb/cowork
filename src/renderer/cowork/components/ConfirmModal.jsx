@@ -41,15 +41,8 @@ export function ConfirmModal({
   const locked = busy && !dismissableWhileBusy;
   // Enter-to-confirm. Esc + backdrop dismissal are Modal's job (disabled
   // while busy via closeOnEsc / closeOnBackdrop below).
-  //
-  // Armed on the next task, not in the effect itself. When Enter on a menu
-  // item opens the dialog, React commits and runs this effect while that same
-  // keydown is still bubbling, so a listener added here would catch it and
-  // confirm before the dialog is ever seen. A held Enter's repeats are
-  // swallowed for the same reason: ignoring them is not enough, since each one
-  // would still natively click the autofocused confirm button. Enter on a
-  // focused button is otherwise left to the button: the autofocused confirm
-  // already clicks on it, and Enter on Cancel means cancel.
+  // Armed a task late so the Enter that opened the dialog can't confirm it.
+  // Repeats are swallowed so a held Enter can't click the focused button.
   useEffect(() => {
     if (!open || busy) return undefined;
     const onKey = (e) => {
