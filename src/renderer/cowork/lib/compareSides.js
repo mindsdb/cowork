@@ -365,17 +365,36 @@ export function sideCost(usage) {
   return { text: partial ? `${text}+` : text, notes, partial };
 }
 
+/** Everything that went into a prompt: full-rate input, cache reads and cache writes. */
+function inputTokens(usage) {
+  return (usage?.inputTokens || 0) + (usage?.cachedInputTokens || 0) + (usage?.cacheWriteTokens || 0);
+}
+
+/**
+ * One row per turn, then a total, for a side's usage table: time, input and
+ * output tokens, cost. `inputDetail` splits the input for its tooltip.
+ */
+export function turnUsageRows(usage, turns = []) {
+  if (!usage?.available) return [];
+  const row = (label, u, ms) => ({
+    label,
+    time: ms === null ? null : formatDuration(ms),
+    input: formatTokens(inputTokens(u)),
+    inputDetail: `${formatTokens(u?.inputTokens || 0)} new · ${formatTokens(u?.cachedInputTokens || 0)} cached · ${formatTokens(u?.cacheWriteTokens || 0)} written to cache`,
+    output: formatTokens(u?.outputTokens || 0),
+    tokens: formatTokens(usageTokens(u)),
+    cost: formatEstimate(u?.estimatedCostUsd) ?? 'not priced',
+  });
+  const rows = (usage.turns || []).map((t) => row(`Turn ${t.turn}`, t, turnDurationMs(turns[t.turn - 1])));
+  const total = totalDurationMs(turns);
+  return [...rows, { ...row('Total', usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? 'not priced' }];
+}
+
 /** One line per turn for a side's cost tooltip: "Turn 2 · 41s · $0.12 · 12.4K tokens". */
 export function turnCostLines(usage, turns = []) {
-  if (!usage?.available) return [];
-  return (usage.turns || []).map((t) => {
-    const parts = [`Turn ${t.turn}`];
-    const ms = turnDurationMs(turns[t.turn - 1]);
-    if (ms !== null) parts.push(formatDuration(ms));
-    parts.push(formatEstimate(t.estimatedCostUsd) ?? 'not priced');
-    parts.push(`${formatTokens(usageTokens(t))} tokens`);
-    return parts.join(' · ');
-  });
+  return turnUsageRows(usage, turns)
+    .filter((r) => !r.total)
+    .map((r) => [r.label, r.time, r.cost, `${r.tokens} tokens`].filter(Boolean).join(' · '));
 }
 
 /** Both sides together, over the sides that have a figure. Null when neither does. */

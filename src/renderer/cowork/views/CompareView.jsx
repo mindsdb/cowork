@@ -66,6 +66,9 @@ import {
   sideStatus,
   titleFromPrompt,
   turnCostLines,
+  turnUsageRows,
+  formatTokens,
+  usageTokens,
   turnsLabel,
   totalDurationMs,
   turnDurationMs,
@@ -769,6 +772,8 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const [deleting, setDeleting] = useState(false);
   const [continuing, setContinuing] = useState(null);
   const [judging, setJudging] = useState(false);
+  // One switch for both panes, so their turns line up row for row.
+  const [usageOpen, setUsageOpen] = useState(false);
 
   const loadComparison = useCallback(async () => {
     try {
@@ -933,6 +938,8 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             task={tasks[label] ? { ...tasks[label], messages: shownMessages(label) } : null}
             turns={turns[label]}
             usage={usage?.sides?.[label] || null}
+            usageOpen={usageOpen}
+            onToggleUsage={() => setUsageOpen((open) => !open)}
             busy={!!busy[label]}
             lastEventAt={lastEventAt[label]}
             error={errors[label]}
@@ -1092,7 +1099,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, usage, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1128,7 +1135,7 @@ function SidePane({ label, name, side, task, turns, usage, busy, lastEventAt, er
             )}
             >
               <span className="flex-shrink-0 text-[12px] text-ink-3 tabular-nums" aria-label={`Side ${label.toUpperCase()} estimated cost ${cost.text}`}>
-                Total {cost.text}
+                Total {cost.text} · {formatTokens(usageTokens(usage))} tokens
               </span>
             </Tooltip>
           )}
@@ -1157,6 +1164,17 @@ function SidePane({ label, name, side, task, turns, usage, busy, lastEventAt, er
             {side?.reasoningEffort && !name.includes(side.reasoningEffort) && ` · ${side.reasoningEffort} effort`}
           </span>
         </span>
+        {cost && (
+          <button
+            type="button"
+            onClick={onToggleUsage}
+            aria-expanded={!!usageOpen}
+            className="self-start ml-7 border-0 bg-transparent p-0 font-body text-[12px] text-ink-3 underline underline-offset-2 cursor-pointer hover:text-ink-2"
+          >
+            {usageOpen ? 'Hide usage by turn' : 'Usage by turn'}
+          </button>
+        )}
+        {cost && usageOpen && <UsageTable label={label} usage={usage} turns={turns} />}
       </header>
       {error && <div className="px-4 pt-2"><Alert variant="danger">{error}</Alert></div>}
       <div className="flex-1 min-h-0 flex flex-col">
@@ -1174,6 +1192,35 @@ function SidePane({ label, name, side, task, turns, usage, busy, lastEventAt, er
         )}
       </div>
     </section>
+  );
+}
+
+function UsageTable({ label, usage, turns }) {
+  const rows = turnUsageRows(usage, turns);
+  const cell = 'px-2 py-1 text-right tabular-nums';
+  return (
+    <table aria-label={`Side ${label.toUpperCase()} usage by turn`} className="ml-7 mt-1 border-collapse text-[12px] text-ink-2">
+      <thead>
+        <tr className="text-ink-4">
+          <th scope="col" className="px-2 py-1 text-left font-medium">Turn</th>
+          <th scope="col" className={`${cell} font-medium`}>Time</th>
+          <th scope="col" className={`${cell} font-medium`}>Input</th>
+          <th scope="col" className={`${cell} font-medium`}>Output</th>
+          <th scope="col" className={`${cell} font-medium`}>Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label} className={row.total ? 'border-0 border-t border-solid border-line font-semibold text-ink' : undefined}>
+            <th scope="row" className="px-2 py-1 text-left font-[inherit]">{row.total ? 'Total' : row.label.replace('Turn ', '')}</th>
+            <td className={cell}>{row.time ?? '–'}</td>
+            <td className={cell} title={row.inputDetail}>{row.input}</td>
+            <td className={cell}>{row.output}</td>
+            <td className={cell}>{row.cost}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

@@ -467,6 +467,37 @@ describe('CompareView', () => {
     expect(api.fetchComparisonUsage).toHaveBeenCalledWith('cmp-1');
   });
 
+  it('opens both sides\' usage by turn from one switch, with totals', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: {
+          available: true,
+          estimatedCostUsd: 0.05,
+          inputTokens: 11000,
+          cachedInputTokens: 1000,
+          outputTokens: 600,
+          turns: [{ turn: 1, estimatedCostUsd: 0.05, inputTokens: 11000, cachedInputTokens: 1000, outputTokens: 600 }],
+        },
+        b: { available: true, estimatedCostUsd: 0.3, inputTokens: 2000, outputTokens: 100, turns: [{ turn: 1, estimatedCostUsd: 0.3, inputTokens: 2000, outputTokens: 100 }] },
+      },
+    });
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect((await screen.findByLabelText('Side A estimated cost $0.05')).textContent).toBe('Total $0.05 · 12.6K tokens');
+    expect(screen.queryByRole('table')).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Usage by turn' })[0]);
+
+    const tableA = screen.getByRole('table', { name: 'Side A usage by turn' });
+    expect(screen.getByRole('table', { name: 'Side B usage by turn' })).toBeTruthy();
+    const rows = within(tableA).getAllByRole('row').map((r) => Array.from(r.children).map((c) => c.textContent));
+    expect(rows).toEqual([
+      ['Turn', 'Time', 'Input', 'Output', 'Cost'],
+      ['1', '30s', '12K', '600', '$0.05'],
+      ['Total', '30s', '12K', '600', '$0.05'],
+    ]);
+    expect(screen.getAllByRole('button', { name: 'Hide usage by turn' })).toHaveLength(2);
+  });
+
   it('shows no cost for a side the gateway has nothing for, and marks the total as partial', async () => {
     api.fetchComparisonUsage.mockResolvedValue({
       sides: {
