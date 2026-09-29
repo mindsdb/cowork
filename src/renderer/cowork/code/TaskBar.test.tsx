@@ -256,6 +256,14 @@ describe('TaskBar', () => {
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   });
 
+  it('shows no status badge for a finished task at rest, but keeps one while it works', () => {
+    const { rerender } = render(<TaskBar {...barProps} session={{ ...session, status: 'completed' }} />);
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+
+    rerender(<TaskBar {...barProps} session={session} />);
+    expect(screen.getByText('Working')).toBeInTheDocument();
+  });
+
   it('opens the task origin only when the server-supplied link is a browser URL', async () => {
     const user = userEvent.setup();
     const origin = { provider: 'github' as const, kind: 'issue' as const, title: 'Fix login', external_id: '#42', body: '' };

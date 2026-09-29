@@ -93,10 +93,13 @@ export function TaskBar({
         <div className="code-taskbar__copy">
           <div className="code-taskbar__title-row">
             <div className="code-taskbar__title" title={session.title}>{session.title}</div>
-            <span className={`code-task-status is-${status.tone}`}>
-              <span className="code-status-dot" aria-hidden="true" />
-              <span className="code-task-status__label">{status.label}</span>
-            </span>
+            {/* A finished task at rest needs no badge; colour is kept for work in motion and for what needs you. */}
+            {status.tone !== 'success' && (
+              <span className={`code-task-status is-${status.tone}`}>
+                <span className="code-status-dot" aria-hidden="true" />
+                <span className="code-task-status__label">{status.label}</span>
+              </span>
+            )}
           </div>
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>

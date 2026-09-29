@@ -166,6 +166,68 @@ describe('CodeSidebarSessions', () => {
     expect(JSON.parse(window.localStorage.getItem('cowork:code-task-navigation:v1') || '{}')).toMatchObject({ organization: 'project' });
   });
 
+  it('marks work in motion, what needs the user and unread results, and leaves seen tasks quiet', () => {
+    window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({
+      baseline: '2026-08-21T10:00:00Z',
+      seen: { seen: '2026-08-21T12:00:00Z' },
+    }));
+    const { container } = render(
+      <CodeSidebarSessions
+        sessions={[
+          session('running', 'running', '2026-08-21T12:00:00Z'),
+          session('approval', 'awaiting_approval', '2026-08-21T12:00:00Z'),
+          session('unread', 'completed', '2026-08-21T11:00:00Z'),
+          session('seen', 'completed', '2026-08-21T12:00:00Z'),
+          session('old', 'completed', '2026-08-21T09:00:00Z'),
+        ]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
+    expect(row('running')).toHaveTextContent('Working');
+    expect(row('approval')).toHaveTextContent('Needs approval');
+    expect(row('unread').querySelector('.code-status-dot.is-unread')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Task unread, Completed, unread/ })).toBeInTheDocument();
+    for (const id of ['seen', 'old']) {
+      expect(row(id)).toHaveClass('is-resting');
+      expect(row(id)).not.toHaveTextContent('Completed');
+      expect(row(id).querySelector('.code-status-dot')).toBeNull();
+    }
+    expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
+  });
+
+  it('keeps a queued remote run visibly in motion', () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[{ ...session('queued', 'ready', '2026-08-21T12:00:00Z'), run_status: 'queued' }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /^Task queued,/ }).closest('.code-sidebar-session-row')!;
+    expect(row).not.toHaveClass('is-resting');
+    expect(row).toHaveTextContent('Preparing');
+    expect(row.querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Running' })).toContainElement(row as HTMLElement);
+  });
+
+  it('clears the unread mark once the task has been opened', () => {
+    window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({ baseline: '2026-08-21T10:00:00Z', seen: {} }));
+    const sessions = [session('done', 'completed', '2026-08-21T11:00:00Z'), session('other', 'completed', '2026-08-21T09:00:00Z')];
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined) };
+    const { rerender } = render(<CodeSidebarSessions {...props} selectedId={null} />);
+    expect(screen.getByRole('button', { name: /^Task done, Completed, unread/ })).toBeInTheDocument();
+
+    rerender(<CodeSidebarSessions {...props} selectedId="done" />);
+    rerender(<CodeSidebarSessions {...props} selectedId="other" />);
+    expect(screen.queryByRole('button', { name: /unread/ })).toBeNull();
+  });
+
   it('offers a flat last-updated view without status sections', () => {
     render(
       <CodeSidebarSessions

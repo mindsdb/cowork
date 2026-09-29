@@ -12,7 +12,8 @@ export const CODE_STATUS: Record<CodingStatus, { label: string; tone: 'neutral' 
 };
 
 const RUN_STATUS: Record<TaskRunStatus, { label: string; tone: 'neutral' | 'accent' | 'warning' | 'success' | 'danger' }> = {
-  queued: { label: 'Preparing', tone: 'neutral' },
+  // A queued run is already on its way, so it reads as work in motion.
+  queued: { label: 'Preparing', tone: 'accent' },
   preparing: { label: 'Preparing', tone: 'accent' },
   ready: { label: 'Ready', tone: 'neutral' },
   running: { label: 'Working', tone: 'accent' },
