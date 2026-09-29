@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Menu from '../components/ui/Menu';
+import Spinner from '../components/ui/Spinner';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
+import { useTaskSeen } from './taskSeen';
 
 
 type Organization = 'project' | 'list';
@@ -58,6 +60,7 @@ export function CodeSidebarSessions({
   onSetPinned: (id: string, pinned: boolean) => Promise<void>;
 }) {
   const preferences = useMemo(initialPreferences, []);
+  const isUnread = useTaskSeen(sessions, selectedId);
   const [organization, setOrganization] = useState<Organization>(preferences.organization);
   const [sortOrder, setSortOrder] = useState<SortOrder>(preferences.sortOrder);
   const [query, setQuery] = useState('');
@@ -151,22 +154,30 @@ export function CodeSidebarSessions({
     const repository = repositoryLabel(session);
     const updated = relativeTime(session.updated_at);
     const isPinned = Boolean(session.pinned);
+    const unread = isUnread(session);
+    // Colour and a label are kept for work in motion and for what needs the
+    // user; a finished task only earns a mark until it has been seen.
+    const working = status.tone === 'accent';
+    const needsYou = status.tone === 'warning' || status.tone === 'danger';
+    const resting = !working && !needsYou && !unread;
     return (
       <div
         key={session.id}
-        className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}`}
+        className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}`}
       >
         <button
           type="button"
           className="code-sidebar-session"
           onClick={() => onSelect(session.id)}
           aria-current={selectedId === session.id ? 'page' : undefined}
-          aria-label={`${session.title || 'Untitled coding task'}, ${status.label}, ${repository}, ${updated}`}
+          aria-label={`${session.title || 'Untitled coding task'}, ${status.label}${unread ? ', unread' : ''}, ${repository}, ${updated}`}
         >
           <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
           <span className="code-sidebar-session__meta">
-            <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />
-            <span className="code-sidebar-session__status">{status.label}</span>
+            {working && <Spinner className="code-sidebar-session__spinner" />}
+            {needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
+            {unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
+            {(working || needsYou) && <span className={`code-sidebar-session__status is-${status.tone}`}>{status.label}</span>}
             <span className="code-sidebar-session__repo">{repository}</span>
             <span className="code-sidebar-session__time">{updated}</span>
           </span>
