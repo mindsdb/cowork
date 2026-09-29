@@ -4246,14 +4246,14 @@ body[data-theme="dark"] .mshell__drawer-title {
      so — like Claude — the fill alone carries the shape and no hairline is
      needed. (The old --surface-2 fill was only ~2% off the page in light
      mode and needed a border to read, which is why one used to be here.)
-     Quieter than the answer by design: --ink-2 text + a tighter 1.5 leading
+     Quieter than the answer by design: the fill and the lighter --ink-2 text
      mark the prompt as an echo so the answer stays the primary read.
      ENG-787 de-bubble, ENG-641 refine. */
   background: var(--surface-3);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: 14.5px; /* match the answer body (text-body token) — both are prose */
+  font-size: 14px; /* match the answer body (text-body token) — both are prose */
   line-height: 1.5;
   color: var(--ink-2);
   box-shadow: none;
@@ -4444,29 +4444,27 @@ body[data-theme="dark"] .phase-check-done {
 }
 .answer-turn:hover .turn-meta,
 .answer-turn:focus-within .turn-meta { opacity: 1; }
-/* Answer body rhythm (ENG-787 move 02): a touch more line-height than the
-   user bubble's 1.5 so the answer reads as the roomier, primary long-form
-   content. 1.62 lands between the old 1.7 (too relaxed) and the 1.55 body
-   token — generous but composed, in the Claude register. Scoped to answer
-   turns so user bubbles, memory previews, and other markdown surfaces are
-   unaffected. */
-/* Chat body ink: nudged ~30% darker than the --ink-2 body token for a
-   crisper, more committed read — but kept a soft near-black, not the full
-   --ink, which would read heavy/harsh over long *sans* paragraphs (the trick
-   a serif like Claude's would hide). ~10:1 contrast leaves plenty of headroom.
-   color-mix against the tokens so dark mode moves the text brighter (= more
-   contrast) automatically. Scoped to chat prose so the global --ink-2 token
-   used elsewhere is untouched. */
+/* Answer body ink: 70% of the way from the --ink-2 body token to --ink, the
+   near-black both Claude and Codex set their answers in. The old 30% mix
+   read grey and loose next to them. color-mix against the tokens so dark
+   mode moves the text brighter automatically. Leading comes from the
+   text-body token (14px/1.5). Scoped to answer turns so user bubbles,
+   memory previews, and other markdown surfaces keep --ink-2. Code Mode
+   mirrors this on .code-agent-message. */
 .answer-turn .markdown-content p,
 .answer-turn .markdown-content li {
-  line-height: 1.62;
-  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
+  color: color-mix(in srgb, var(--ink) 70%, var(--ink-2));
 }
-/* User bubble body: a hair denser than the answer — tighter 1.5 leading plus
-   a touch of negative tracking mark the prompt as a compact echo while the
-   answer stays the roomier primary read. Set at the p/li level (not on
+/* A heading groups with what follows it, not with what precedes it: 20px
+   above against the 12px block gap. Outranks MarkdownContent's space-y. */
+.answer-turn .markdown-content > :is(h1, h2, h3):not([hidden]):not(:first-child) {
+  margin-top: var(--space-5);
+}
+/* User bubble body: a touch of negative tracking and lighter ink than the
+   answer mark the prompt as a compact echo while the answer stays the
+   primary read. Set at the p/li level (not on
    .user-turn-bubble) because the markdown `text-body` utility on <p>/<li>
-   carries its own 14.5px/1.55 that otherwise wins over the bubble's base. */
+   carries its own 14px/1.5 that otherwise wins over the bubble's base. */
 .user-turn .markdown-content p,
 .user-turn .markdown-content li {
   line-height: 1.5;
@@ -4546,10 +4544,10 @@ body[data-theme="dark"] .phase-check-done {
 }
 
 /* Heading scale inside user-message bubbles — MarkdownContent's defaults
-   (h1: 20px, h2: 17px) overpower the 14.5px bubble body when someone
+   (h1: 22px, h2: 17px) overpower the 14px bubble body when someone
    sends `# Title`. Clamp them to body-adjacent sizes so the bubble keeps
    a chat-message feel rather than a document banner. h3 is already
-   uppercase/small in MarkdownContent, no adjustment needed. */
+   15px in MarkdownContent, no adjustment needed. */
 .user-turn .markdown-content h1 {
   font-size: 16px;
   margin-top: 0;
@@ -4568,7 +4566,10 @@ body[data-theme="dark"] .phase-check-done {
 .anton-inline-code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  line-height: inherit;
+  /* 1, not inherit: the smaller mono face at the body's leading pushed each
+     line holding a chip ~1px taller than plain lines. The chip's fill
+     follows the font box, not line-height, so it looks the same. */
+  line-height: 1;
   color: rgb(232, 132, 110);
   /* Neutral chip (a faint --ink tint), not a coral-tinted box with a coral
      border — so only the TEXT carries the warm colour, à la Claude. Reads

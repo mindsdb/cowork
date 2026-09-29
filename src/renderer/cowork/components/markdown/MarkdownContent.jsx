@@ -545,13 +545,13 @@ function _renderEngramComments(text) {
 // reading column is narrower and we want more lessons on screen.
 const _SIZES = {
   default: {
-    root: 'markdown-content space-y-4 break-words text-body text-ink-2',
+    root: 'markdown-content space-y-3 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
     h1: 's-h2 text-ink mt-6 mb-3',
     h2: 's-h3 text-ink mt-5 mb-2',
-    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
-    ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
-    ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
+    h3: 'font-display text-md font-semibold text-ink mt-4 mb-1.5',
+    ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-1',
+    ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
   },
   // `dense` is the memory-preview density. Trimmed one notch off
