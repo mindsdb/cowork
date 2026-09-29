@@ -5,7 +5,6 @@ import { useAppVisible } from './useAppVisible';
 
 
 const SEEN_KEY = 'cowork:code-task-seen:v1';
-const MAX_ENTRIES = 500;
 
 // `baseline` stands in for every task without its own entry, so the first
 // run after an upgrade does not mark the whole history unread.
@@ -63,12 +62,9 @@ export function useTaskSeen(sessions: CodingSession[], selectedId: string | null
       const previous = current.seen[selectedId];
       const seenAt = previous ? later(previous, selectedUpdatedAt) : selectedUpdatedAt;
       if (seenAt === previous) return current;
-      const entries = Object.entries({ ...current.seen, [selectedId]: seenAt })
-        .sort(([, left], [, right]) => Date.parse(right) - Date.parse(left));
-      // An evicted entry falls back to the baseline, so the baseline moves up
-      // to cover it; otherwise pruning would make a viewed task unread again.
-      const baseline = entries.slice(MAX_ENTRIES).reduce((newest, [, evicted]) => later(newest, evicted), current.baseline);
-      const next = { baseline, seen: Object.fromEntries(entries.slice(0, MAX_ENTRIES)) };
+      // Every stamp is kept: pruning either resurfaces a viewed task or, if
+      // the baseline rises to cover it, hides one that was never opened.
+      const next = { ...current, seen: { ...current.seen, [selectedId]: seenAt } };
       writeSeen(next);
       return next;
     });

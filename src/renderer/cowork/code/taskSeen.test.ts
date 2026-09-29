@@ -77,22 +77,26 @@ describe('useTaskSeen', () => {
     expect(reloaded.result.current(finished)).toBe(false);
   });
 
-  it('keeps a viewed task read when its entry is pruned from the seen list', () => {
+  it('keeps exact seen state for many tasks, neither resurfacing viewed ones nor hiding unopened ones', () => {
     const minute = (n: number) => new Date(Date.parse('2026-08-21T10:00:00Z') + n * 60_000).toISOString();
     const seen: Record<string, string> = { viewed: minute(1) };
-    for (let index = 0; index < 499; index += 1) seen[`other-${index}`] = minute(10 + index);
+    for (let index = 0; index < 600; index += 1) seen[`other-${index}`] = minute(10 + index);
     window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({ baseline: minute(0), seen }));
     const viewed = session('viewed', 'completed', minute(1));
+    const unopened = session('unopened', 'completed', minute(5));
     const fresh = session('fresh', 'completed', minute(900));
 
-    const { result, rerender } = renderHook(({ selectedId }) => useTaskSeen([viewed, fresh], selectedId), {
+    const { result, rerender } = renderHook(({ selectedId }) => useTaskSeen([viewed, unopened, fresh], selectedId), {
       initialProps: { selectedId: null as string | null },
     });
     act(() => rerender({ selectedId: 'fresh' }));
+    act(() => rerender({ selectedId: null }));
 
     const stored = JSON.parse(window.localStorage.getItem('cowork:code-task-seen:v1')!);
-    expect(Object.keys(stored.seen)).toHaveLength(500);
-    expect(stored.seen.viewed).toBeUndefined();
+    expect(stored.baseline).toBe(minute(0));
+    expect(Object.keys(stored.seen)).toHaveLength(602);
     expect(result.current(viewed)).toBe(false);
+    expect(result.current(fresh)).toBe(false);
+    expect(result.current(unopened)).toBe(true);
   });
 });
