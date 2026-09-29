@@ -157,6 +157,14 @@ describe('file changes', () => {
     expect(fileChanges(event({ type: 'file_change', data: { changes: [{ path: 'a.ts', kind: { type: 'update' }, diff }] } }))[0]).toMatchObject({ patch: diff, additions: 1, deletions: 1 });
   });
 
+  it('counts changed lines that begin like diff headers', () => {
+    const diff = '@@ -1,2 +1,2 @@\n---flag\n+++counter;\n same';
+    expect(fileChanges(event({ type: 'file_change', data: { changes: [{ path: 'a.ts', kind: { type: 'update' }, diff }] } }))[0]).toMatchObject({ additions: 1, deletions: 1 });
+    expect(fileChanges(event({ type: 'file_change', data: { changes: [{ path: 'b.md', kind: { type: 'add' }, diff: '---\n++x\n' }] } }))[0]).toMatchObject({ additions: 2, deletions: 0 });
+    const turn = ['diff --git a/a.ts b/a.ts', '--- a/a.ts', '+++ b/a.ts', '@@ -1 +1 @@', '---flag', '+++counter;'].join('\n');
+    expect(turnDiffFiles(turn)).toEqual([{ path: 'a.ts', additions: 1, deletions: 1 }]);
+  });
+
   it('lists every file in the turn diff with its line counts', () => {
     const diff = [
       'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1 +1,2 @@', '-x', '+y', '+z',

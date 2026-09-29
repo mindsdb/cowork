@@ -272,12 +272,18 @@ export interface FileChange {
 }
 
 
+// Only lines inside a hunk are changes. An added `++counter` reads as
+// `+++counter`, so matching the `+++`/`---` file headers by prefix would
+// drop it.
 function lineCounts(patch: string): { additions: number; deletions: number } {
   let additions = 0;
   let deletions = 0;
+  let inHunk = false;
   for (const line of patch.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) additions += 1;
-    else if (line.startsWith('-') && !line.startsWith('---')) deletions += 1;
+    if (line.startsWith('diff --git ')) inHunk = false;
+    else if (line.startsWith('@@')) inHunk = true;
+    else if (inHunk && line.startsWith('+')) additions += 1;
+    else if (inHunk && line.startsWith('-')) deletions += 1;
   }
   return { additions, deletions };
 }
@@ -331,8 +337,7 @@ export function turnDiffFiles(diff: string): TurnFileDiff[] {
     const source = section.match(/^--- (?:a\/)?(.+)$/m)?.[1];
     const header = section.match(/^diff --git a\/(.+?) b\/(.+)$/m)?.[2];
     const path = (target && target !== '/dev/null' ? target : source && source !== '/dev/null' ? source : header) || '';
-    const body = section.split('\n').filter((line) => !line.startsWith('+++') && !line.startsWith('---')).join('\n');
-    return { path, ...lineCounts(body) };
+    return { path, ...lineCounts(section) };
   });
 }
 
