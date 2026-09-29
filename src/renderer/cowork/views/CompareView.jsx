@@ -6,7 +6,7 @@
 // single app-wide stream slot, which holds one turn at a time.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { host } from '../../platform/host';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
@@ -1112,9 +1112,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
           {busy && <Button size="xs" variant="subtle" onClick={onStop}>Stop</Button>}
           {!busy && !side?.continuedAt && turns.length > 0 && (
             <Tooltip content="Continue with this model as a normal task">
-              <Button size="xs" variant="subtle" onClick={onContinue}>
-                Continue <ArrowRight size={13} strokeWidth={1.75} aria-hidden="true" />
-              </Button>
+              <Button size="sm" onClick={onContinue}>Continue</Button>
             </Tooltip>
           )}
         </div>
