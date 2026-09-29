@@ -193,6 +193,19 @@ describe('ComposerLip', () => {
     expect(screen.getByText('worker exited with code 137')).toBeVisible();
   });
 
+  it('says a task whose workspace could not be prepared never started, with nothing to reopen', () => {
+    renderRecovery(
+      session({ workspace_path: '', last_error: 'The task workspace could not be prepared: disk is full' }),
+      { ...failure('', ''), title: 'Task did not start', text: 'The task workspace could not be prepared: disk is full', data: {} },
+    );
+
+    expect(screen.getByText('Task did not start.')).toBeInTheDocument();
+    expect(screen.getByText(/the agent never ran/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reopen task' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText(/disk is full/)).toBeVisible();
+  });
+
   it('shows the reconnect in progress with the action held until it finishes', () => {
     renderRecovery(session({ status: 'interrupted', run_status: 'recovering' }));
 

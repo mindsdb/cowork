@@ -526,6 +526,14 @@ function elapsedLabel(milliseconds: number): string {
 
 // The one moving part while the agent works, matching chat mode's thinking
 // header: what the agent is doing now, and how long this turn has taken.
+function runningLabel(session: CodingSession, liveEvents: CodingEvent[]): string {
+  // A new task is running while its workspace is still being copied or checked out.
+  if (session.run_status === 'queued' || session.run_status === 'preparing') return 'Preparing the task workspace…';
+  if (session.task_mode === 'plan' && !liveEvents.length) return 'Exploring and preparing a plan…';
+  return liveStatusLabel(liveEvents);
+}
+
+
 function LiveStatus({ label, step, startedAt }: { label: string; step: string; startedAt: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -748,7 +756,7 @@ export const EventTimeline = memo(function EventTimeline({
         })}
         {session.status === 'running' && (
           <LiveStatus
-            label={session.task_mode === 'plan' && !liveEvents.length ? 'Exploring and preparing a plan…' : liveStatusLabel(liveEvents)}
+            label={runningLabel(session, liveEvents)}
             step={planPosition(latestTurnPlan(items))}
             startedAt={turnStartedAt(items)}
           />

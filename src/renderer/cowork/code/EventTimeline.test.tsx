@@ -143,6 +143,13 @@ describe('EventTimeline', () => {
     expect(container.querySelector('.code-activity-group[open]')).toBeNull();
   });
 
+  it('says a new task is preparing its workspace before the agent starts', () => {
+    const events = [event(1, 'user_message', 'Go')];
+    render(<EventTimeline {...timelineProps(events)} session={{ ...session('running'), run_status: 'preparing', workspace_path: '' }} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Preparing the task workspace…');
+  });
+
   it('names a reconnect in progress on the live status line', () => {
     const events = [event(1, 'user_message', 'Go'), event(2, 'error', 'Reconnecting... 1/2')];
     render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
