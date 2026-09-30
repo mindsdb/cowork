@@ -442,7 +442,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
       aria-hidden={collapsed || undefined}
       inert={collapsed ? true : undefined}
       style={{
@@ -457,12 +457,15 @@ export default function Sidebar({
         // motion. Scale + filter values are subtle on purpose —
         // they're the difference between "this animated" and
         // "this animated nicely."
+        // At rest the sidebar carries no transform, filter or will-change:
+        // any of them keeps it on its own compositor layer, where its text
+        // is rasterized into a texture (and, through a filter, resampled)
+        // and reads soft. `none` still interpolates with the collapsed
+        // values, so the motion is unchanged.
         width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
         opacity: collapsed ? 0 : 1,
-        transform: collapsed
-          ? 'translateX(-12px) scale(0.985)'
-          : 'translateX(0) scale(1)',
-        filter: collapsed ? 'blur(6px)' : 'blur(0)',
+        transform: collapsed ? 'translateX(-12px) scale(0.985)' : 'none',
+        filter: collapsed ? 'blur(6px)' : 'none',
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
@@ -522,10 +525,11 @@ export default function Sidebar({
                       // motion is recognisable from the corner of the
                       // eye but never noisy. Origin pinned to center
                       // so the slot's geometry stays symmetric.
-                      transform: canToggle
-                        ? 'scale(1) rotate(0deg)'
-                        : 'scale(0.72) rotate(-8deg)',
-                      filter: canToggle ? 'blur(0)' : 'blur(2px)',
+                      // `none` at rest, not an identity transform/filter,
+                      // so the visible icon isn't composited (see the
+                      // <aside> style above).
+                      transform: canToggle ? 'none' : 'scale(0.72) rotate(-8deg)',
+                      filter: canToggle ? 'none' : 'blur(2px)',
                       pointerEvents: canToggle ? 'auto' : 'none',
                       cursor: canToggle ? 'pointer' : 'default',
                       transition:
@@ -576,7 +580,7 @@ export default function Sidebar({
         // flips 0ms/80ms), so none of this can be a static Tailwind class.
         style={{
           opacity: collapsed ? 0 : 1,
-          transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
+          transform: collapsed ? 'translateY(2px)' : 'none',
           pointerEvents: collapsed ? 'none' : 'auto',
           transition:
             'opacity 240ms cubic-bezier(0.32, 0.72, 0, 1) ' +

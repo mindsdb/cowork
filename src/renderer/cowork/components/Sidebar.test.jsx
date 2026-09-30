@@ -154,6 +154,29 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
   });
 });
 
+describe('Sidebar — text stays off a compositor layer at rest', () => {
+  // A permanent will-change, or an identity transform/filter, keeps the
+  // sidebar on its own GPU layer, where its text renders soft.
+  it('expanded, sets no transform, filter or will-change on the sidebar or its body', () => {
+    const { container } = render(<Sidebar {...baseProps} />);
+    const aside = container.querySelector('aside');
+    const body = aside.querySelector(':scope > div.flex-1');
+    for (const el of [aside, body]) {
+      expect(el.style.transform).toBe('none');
+      expect(el.style.filter === '' || el.style.filter === 'none').toBe(true);
+      expect(el.style.willChange).toBe('');
+    }
+    expect(aside.className).not.toMatch(/will-change/);
+  });
+
+  it('collapsed, keeps the exit motion values', () => {
+    const { container } = render(<Sidebar {...baseProps} collapsed />);
+    const aside = container.querySelector('aside');
+    expect(aside.style.transform).toBe('translateX(-12px) scale(0.985)');
+    expect(aside.style.filter).toBe('blur(6px)');
+  });
+});
+
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid
   // Settings entirely, and Channels lives under Settings. ENG-932 makes
