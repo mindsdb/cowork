@@ -1563,6 +1563,42 @@ describe('NewTaskPanel', () => {
       expect(pickCodeFolder).not.toHaveBeenCalled();
     });
 
+    it.each([
+      { settles: 'before the chosen folder', rememberedFirst: true },
+      { settles: 'after the chosen folder', rememberedFirst: false },
+    ])('ignores a remembered-folder check that settles $settles', async ({ rememberedFirst }) => {
+      localStorage.setItem('mindshub-code:last-folder', '/Users/ian/old');
+      const checks = new Map<string, (value: object) => void>();
+      inspectFolder.mockImplementation((path: string) => new Promise((resolve) => { checks.set(path, resolve); }));
+      pickCodeFolder.mockResolvedValue({ ok: true, path: '/Users/ian/new' });
+      const found = (path: string) => ({ path, exists: true, is_directory: true, is_git: false, dirty: false });
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+      await waitFor(() => expect(checks.has('/Users/ian/old')).toBe(true));
+
+      await user.click(await screen.findByRole('button', { name: 'Change folder, currently old' }));
+      await waitFor(() => expect(checks.has('/Users/ian/new')).toBe(true));
+      const input = screen.getByRole('textbox', { name: 'Coding task' });
+      await user.type(input, 'Use the new folder');
+
+      if (rememberedFirst) {
+        // The old check must not end the new folder's check early.
+        await act(async () => checks.get('/Users/ian/old')!(found('/Users/ian/old')));
+        expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onCreate).not.toHaveBeenCalled();
+        await act(async () => checks.get('/Users/ian/new')!(found('/Users/ian/new')));
+      } else {
+        await act(async () => checks.get('/Users/ian/new')!(found('/Users/ian/new')));
+        await act(async () => checks.get('/Users/ian/old')!(found('/Users/ian/old')));
+      }
+
+      expect(localStorage.getItem('mindshub-code:last-folder')).toBe('/Users/ian/new');
+      expect(screen.getByRole('button', { name: 'Change folder, currently new' })).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    });
+
     it('quietly forgets a remembered folder that no longer exists', async () => {
       localStorage.setItem('mindshub-code:last-folder', '/Users/ian/gone');
       inspectFolder.mockResolvedValueOnce({ path: '/Users/ian/gone', exists: false, is_directory: false, is_git: false, dirty: false });

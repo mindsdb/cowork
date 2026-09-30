@@ -117,6 +117,8 @@ export function useNewTaskDraft({
   const [standaloneFolderIssue, setStandaloneFolderIssue] = useState('');
   // Start was pressed before a folder was chosen; start once it is checked.
   const [startAfterFolder, setStartAfterFolder] = useState(false);
+  // Only the newest folder check may settle the folder, its issue or storage.
+  const folderRequest = useRef(0);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>(null);
   const [attachments, setAttachments] = useState<InputReference[]>([]);
@@ -270,25 +272,28 @@ export function useNewTaskDraft({
   /* A remembered folder that has since gone is dropped quietly: the person
      did not just choose it, so an error about it would be noise. */
   const openStandaloneFolder = useCallback(async (path: string, remembered = false) => {
+    const request = ++folderRequest.current;
     setStandaloneFolderPath(path);
     setStandaloneFolderIssue('');
     setCatalogError('');
     setStandaloneFolderLoading(true);
     try {
       const inspection = await codingApi.inspect(path);
+      if (request !== folderRequest.current) return;
       if (inspection.exists && inspection.is_directory) {
         storeFolder(path);
       } else if (remembered) {
         storeFolder('');
-        setStandaloneFolderPath((current) => current === path ? '' : current);
+        setStandaloneFolderPath('');
       } else {
         setStandaloneFolderIssue('That folder is no longer available. Choose another folder.');
       }
     } catch (reason) {
-      if (remembered) setStandaloneFolderPath((current) => current === path ? '' : current);
+      if (request !== folderRequest.current) return;
+      if (remembered) setStandaloneFolderPath('');
       else setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
     } finally {
-      setStandaloneFolderLoading(false);
+      if (request === folderRequest.current) setStandaloneFolderLoading(false);
     }
   }, []);
 
