@@ -143,7 +143,12 @@ export function CodeTasksView({
 
   return (
     <main className="code-tasks-view">
-      {projectId && <div className="code-tasks-view__back"><Button variant="subtle" size="sm" onClick={onBack}>{Ico.chevLeft(14)} Projects</Button></div>}
+      {/* Drill-down trail, rendered into the app titlebar like every other
+          breadcrumb: Projects › project. */}
+      {projectId && <PageHeader
+        crumbs={[{ label: 'Projects', onClick: onBack, title: 'All projects' }]}
+        current={projectNames.get(projectId) || 'Unavailable project'}
+      />}
       <div className={`code-tasks-view__header${projectId ? ' code-tasks-view__header--project' : ''}`}><PageHeader
         title={projectId ? projectNames.get(projectId) || 'Unavailable project' : 'All tasks'}
         subtitle={projectId ? 'Coding tasks in this project.' : undefined}

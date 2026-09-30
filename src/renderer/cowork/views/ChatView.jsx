@@ -13,6 +13,7 @@ import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { AppHeader } from '../components/appHeader';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
@@ -2048,46 +2049,10 @@ export default function ChatView({
         // overflowY can actually scroll.
         className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
       >
-        {/* Floating expand-rail button — appears on the right edge of
-            the conv column when the rail is collapsed. Mirror of the
-            sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
-          <button
-            type="button"
-            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
-            aria-label="Expand panel"
-            // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
-            // rail-open state, and the transition's per-state delay) stay inline —
-            // resting/hover color+background moved to className below so the
-            // hover: utility can win (an inline color/background at rest would
-            // otherwise out-specificity any stylesheet hover rule).
-            style={{
-              opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
-              transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
-              pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
-              transition:
-                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
-                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
-            }}
-            className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
-          >
-            {Ico.panelExpandLeft(16)}
-          </button>
-        </Tooltip>
-
-        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
-            breadcrumbs drop below the macOS traffic lights (and the floating
-            open-sidebar button) whenever the sidebar isn't docked over that
-            corner, staying left-aligned with the transcript below. `--titlebar-
-            safe-top` is set on <main> by the shell and is 0 when the sidebar/
-            rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
-          // Belt + suspenders: even if a flex child miscalculates by a
-          // pixel, min-w-0 + overflow-hidden prevents the header from
-          // visually pushing past the conv-col grid track (which is what
-          // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
-        >
+        {/* Header — renders into the app titlebar row (inline on mobile).
+            Crumbs + task title/menu on the left, the right-panel toggle on
+            the right, in the same spot whether the panel is open or not. */}
+        <AppHeader>
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
               Modify gmail-prod, …). The connect-data flow is
@@ -2229,12 +2194,24 @@ export default function ChatView({
             </div>
           </div>
 
-          {/* Right side reserved for future header chips. The kebab
-              and rail toggle moved out; pin lives inline with the
-              title now (above) so it stays visually attached to the
-              task it acts on. */}
-          <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+          {/* Right side: the panel toggle. Pin lives inline with the
+              title (above) so it stays attached to the task it acts on.
+              Hidden on phones, where the panel opens from its own
+              surfaces (.chat-rail-toggle in globals.css). */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Tooltip content={(effectiveRailOpen || railOverlayOpen) ? 'Collapse panel' : 'Expand panel'}>
+              <button
+                type="button"
+                onClick={() => isNarrow ? setRailNarrowOpen((open) => !open) : setRailOpen((open) => !open)}
+                aria-label={(effectiveRailOpen || railOverlayOpen) ? 'Collapse panel' : 'Expand panel'}
+                aria-pressed={effectiveRailOpen || railOverlayOpen}
+                className={`chat-rail-toggle w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag] ${(effectiveRailOpen || railOverlayOpen) ? 'bg-surface-2 text-ink' : 'bg-transparent'}`}
+              >
+                {(effectiveRailOpen || railOverlayOpen) ? Ico.panelCollapseRight(16) : Ico.panelExpandLeft(16)}
+              </button>
+            </Tooltip>
+          </div>
+        </AppHeader>
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2268,12 +2245,14 @@ export default function ChatView({
         />
 
         {isClaudeCodeTask ? (
-          <CodingTerminal
-            taskId={task.id}
-            projectPath={artifactProjectPath}
-            message={task.messages?.[0]?.content}
-            model={typeof model === 'string' ? model : model?.id}
-          />
+          <div className="row-start-2 min-h-0 flex flex-col">
+            <CodingTerminal
+              taskId={task.id}
+              projectPath={artifactProjectPath}
+              message={task.messages?.[0]?.content}
+              model={typeof model === 'string' ? model : model?.id}
+            />
+          </div>
         ) : (
         <>
         {/* Scrollable conversation.
@@ -2289,7 +2268,7 @@ export default function ChatView({
         <div
           ref={scrollRef}
           data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+          className="scroll-clean row-start-2 min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
@@ -3036,10 +3015,10 @@ export default function ChatView({
       <aside
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
+        className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
-            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
+            ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 border-0 border-l border-solid border-line pt-[18px] px-5 gap-[22px] transition-opacity duration-layout ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
@@ -3048,11 +3027,10 @@ export default function ChatView({
           opacity: effectiveRailOpen ? 1 : 0,
         }}
       >
-        {/* Rail header bar — collapse button. Stays visible on mobile
-            so the user has an explicit way to dismiss the rail (which
-            on phone hosts the data-vault form fullscreen). The
-            FLOATING expand button outside is the one hidden via
-            .chat-rail-toggle in globals.css. */}
+        {/* Overlay-only close row (tablet/phone): the overlay covers the
+            titlebar's panel toggle, and on phone the rail hosts the
+            data-vault form fullscreen. Docked, the titlebar toggle closes it. */}
+        {isNarrow && (
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
           <Tooltip content="Collapse panel">
             <button
@@ -3077,6 +3055,7 @@ export default function ChatView({
             </button>
           </Tooltip>
         </div>
+        )}
         <ProgressBox
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}

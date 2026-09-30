@@ -407,11 +407,11 @@ function createWindow() {
     minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    // Embed the macOS traffic lights inside the sidebar header. Coordinates
-    // are window-relative; the sidebar floats with ~9px outer padding so
-    // x:18 / y:22 places the lights inside the chrome row with a small gap
-    // from the sidebar's top-left.
-    trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 24 } : undefined,
+    // Embed the macOS traffic lights in the renderer's titlebar row
+    // (--titlebar-h, 52px). Coordinates are window-relative; y:20 centres the
+    // 12px lights in the row, and the row's sidebar zone starts past them
+    // (titlebarLightsInset in App.jsx).
+    trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 20 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
     webPreferences: {

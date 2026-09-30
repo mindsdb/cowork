@@ -95,10 +95,8 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
-  // Top-bar theme toggle, opposite the hamburger — the desktop
-  // floating-toggle-row has no room on mobile, and the coding-mode toggle
-  // that sits beside it there is dropped entirely rather than given a
-  // second spot here.
+  // Top-bar theme toggle, opposite the hamburger — mobile has no titlebar
+  // or sidebar footer, where desktop docks display settings.
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,

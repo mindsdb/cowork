@@ -49,6 +49,12 @@
   --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
+  /* App chrome. One fixed titlebar row spans the window (window controls,
+     sidebar toggle, brand menu, the active view's header, app-wide actions);
+     the sidebar docks flush below it at --sidebar-w. */
+  --titlebar-h:   52px;
+  --sidebar-w:    clamp(240px, 24vw, 320px);
+
   /* Aqua (primary) — palette base, used by both themes */
   --primary-50:  #CBF1F9;
   --primary-300: #25BBD3;
@@ -86,7 +92,7 @@
 
   /* ─── Type scale ─────────────────────────────────────────────────────── */
   --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
-  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-xs:   11px;   /* eyebrows, small labels */
   --text-sm:   12.5px; /* secondary body, captions, helper text */
   --text-base: 14px;   /* primary body, buttons, form inputs */
   --text-md:   15px;   /* slightly emphasized body, composer */
@@ -479,15 +485,141 @@ input, textarea { font-family: inherit; }
   overflow: hidden;
 }
 .workspace-mode-panel[hidden] { display: none; }
-.drag-region { -webkit-app-region: drag; }
-/* Default everything to draggable — the window-shell sets drag on the
-   outermost container so the user can pick the window up from any
-   visual surface (sidebar gaps, content panels, the gravity-field
-   bands at the edges, etc.). */
 
-/* Form controls + interactive surfaces explicitly opt OUT so clicks,
-   text selection, and scrolling work. The composer + chat area + modals
-   are real interactive surfaces; everything else stays draggable. */
+/* ─── App titlebar ──────────────────────────────────────────────────────────
+   One fixed row across the window: the sidebar zone (window controls inset,
+   sidebar toggle, brand menu), the active view's header, and app-wide
+   controls. One hairline under the whole row; the docked sidebar zone shares
+   the sidebar's surface and right edge so the sidebar reads as one column. */
+.app-titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 2;
+}
+.app-titlebar__zone {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 10px;
+  box-sizing: border-box;
+}
+.app-titlebar__zone.is-docked {
+  width: var(--sidebar-w);
+  background: var(--sidebar-bg, var(--surface));
+  border-right: 1px solid var(--line);
+}
+.app-titlebar__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+}
+.app-titlebar__slot {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.app-titlebar__view {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 20px;
+  overflow: hidden;
+}
+.app-titlebar__zone:not(.is-docked) + .app-titlebar__main .app-titlebar__view { padding-left: 8px; }
+/* A divider between the view's actions and the app controls, only when the
+   view has actions on the right (a crumb-only trail sits at the far left). */
+.app-titlebar__app { flex: none; display: flex; align-items: center; gap: 4px; }
+.app-titlebar__slot:has(.app-titlebar__view > :nth-child(2), .code-taskbar__actions) + .app-titlebar__app::before {
+  content: '';
+  width: 1px;
+  height: 18px;
+  margin: 0 6px 0 2px;
+  background: var(--line);
+}
+.app-titlebar__attention:empty { display: none; }
+.app-titlebar__search {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px 0 9px;
+  border: 0;
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font: 12px var(--font-body);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.app-titlebar__search:hover { background: var(--surface-3); color: var(--ink); }
+.app-titlebar__search .kbd { margin-left: 8px; }
+
+/* Brand / workspace menu in the sidebar zone. */
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-8);
+  background: transparent;
+  color: var(--ink-2);
+  font: 500 13px var(--font-body);
+}
+.app-brand--menu { cursor: pointer; transition: background .12s, color .12s; }
+.app-brand--menu:hover,
+.app-brand--menu[data-popup-open] { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+/* In the titlebar the wordmark is the product name, set bold in title case
+   rather than the spaced caps label; the workspace mode beside it is a
+   small muted pill, so it reads as a qualifier of the product name. A custom
+   nav title colour (--nav-title-color) still applies. */
+.app-brand .anton-sidebar__wordmark {
+  padding-right: 0;
+  font-size: 14.5px;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+  text-transform: none;
+}
+body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
+.app-brand__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.app-brand__mode-labels { display: inline-grid; }
+.app-brand__mode-labels > span { grid-area: 1 / 1; text-align: center; }
+.app-brand__mode-labels > span:not(.is-current) { visibility: hidden; }
+/* Compact (sidebar collapsed): the pill holds only the mode glyph. */
+.app-titlebar__zone:not(.is-docked) .app-brand__mode { padding: 3px 5px; }
+.app-brand__chevron { display: inline-flex; color: var(--ink-4); }
+.drag-region { -webkit-app-region: drag; }
+/* The titlebar (.app-titlebar) is the window's drag region. Form controls
+   and interactive surfaces opt OUT so clicks, text selection, and scrolling
+   work inside it and anywhere else a drag region is set. */
 button,
 input,
 textarea,
@@ -1932,21 +2064,6 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
-.workspace-mode-switcher {
-  padding: 0 10px 8px;
-}
-.workspace-mode-switch {
-  width: 100%;
-}
-.workspace-mode-switch > button {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 30px;
-  justify-content: center;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
 /* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
    Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
@@ -2077,7 +2194,10 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 /* Footer status bar */
 .anton-sidebar__footer {
   border-top: 1px solid var(--line);
-  padding: 8px 10px;
+  /* The sidebar body is inset 6px (px-1.5); the divider still runs edge to
+     edge, and the contents keep the same inset as the rows above. */
+  margin-inline: -6px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2244,54 +2364,6 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
-/* Floating corner row — the Display Settings toggle (opens ThemeModal —
-   Light/Dark + Normal/8-Bit) and, on desktop, a bare Coding Mode toggle
-   beside it. Restored to the bottom-right placement the onboarding pages
-   always kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
-   hasn't mounted yet there, so those pages have no sidebar footer to host
-   it). Same geometry/tokens as that version so the transition from
-   onboarding into the signed-in app is seamless. */
-.floating-toggle-row {
-  position: fixed;
-  right: 18px;
-  bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 50;
-}
-/* Narrow/tablet band (sidebar popout, not yet the phone MobileShell): the
-   bottom-right corner overlaps task-list rows and the composer's send
-   button at this width, so the row moves up to the top-right instead —
-   just left of the per-view expand/collapse-right-panel button (ChatView /
-   ProjectsView), which sits ~14px from the content edge at ~28px wide. */
-.floating-toggle-row--top-right {
-  top: 18px;
-  right: 60px;
-  bottom: auto;
-}
-.floating-toggle {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
-  color: var(--ink-2);
-  cursor: pointer;
-  box-shadow: var(--sh-1);
-  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
-}
-.floating-toggle:hover {
-  color: var(--ink);
-  background: var(--ghost-hover);
-}
-body[data-theme="dark"] .floating-toggle:hover {
-  color: var(--accent);
-  box-shadow: 0 0 18px rgba(34,211,238,0.3);
-}
 /* Coding Mode toggle — deliberately bare (no border/background box) so it
    reads as a status glyph next to the boxed Display Settings button, not a
    second button of the same weight. Greyed out (--ink-4) when off, lit
@@ -4162,3 +4234,22 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 @container (max-width: 600px) {
   .artifacts-grid { grid-template-columns: 1fr; }
 }
+
+/* Code attention bell in the titlebar's app zone. */
+.app-attention-bell { position: relative; }
+.app-attention-bell__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  background: var(--warning, #c47f00);
+  color: #fff;
+  font: 600 9.5px/14px var(--font-body);
+  text-align: center;
+  box-sizing: border-box;
+}
+.app-attention-bell__heading { font: 500 11px var(--font-body); color: var(--ink-3); }
+.app-attention-bell__error { display: block; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); white-space: normal; }
