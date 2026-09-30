@@ -7,12 +7,12 @@ import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host, type AccountOwnershipQuestion } from './platform/host';
+import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
-import { trackBootScreenResolved } from './cowork/lib/analytics';
+import { trackBootScreenResolved, trackShellUpdatePhase } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
@@ -136,14 +136,17 @@ export default function App() {
   // previously blind to the shell channel and could claim "Almost ready…" while
   // a shell relaunch was still pending. Pull once for reload recovery, then
   // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  // Update milestones are tracked here rather than in CoworkApp, which only
+  // mounts after onboarding, while shell checks already run during it.
   useEffect(() => {
     let cancelled = false;
-    host.getShellAutoUpdate()
-      .then((snapshot) => { if (!cancelled) setShellPhase(snapshot?.phase ?? null); })
-      .catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellPhase(snapshot?.phase ?? null);
-    });
+    const receive = (snapshot: ShellAutoUpdateSnapshot) => {
+      if (cancelled) return;
+      setShellPhase(snapshot?.phase ?? null);
+      trackShellUpdatePhase(snapshot);
+    };
+    host.getShellAutoUpdate().then(receive).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate(receive);
     return () => { cancelled = true; unsubscribe(); };
   }, []);
 

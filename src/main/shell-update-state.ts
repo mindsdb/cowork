@@ -142,6 +142,8 @@ export function transitionShellUpdate(
         ...clearTransient(snapshot),
         phase: snapshot.mode === 'auto' ? 'downloading' : 'available',
         targetVersion: event.targetVersion,
+        // Kept so later milestones and failures can say which check found it.
+        trigger: snapshot.trigger,
       };
 
     case 'DOWNLOAD_REQUESTED':

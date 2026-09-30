@@ -412,6 +412,21 @@ describe('trackShellUpdatePhase', () => {
     });
   });
 
+  it('counts an auto-mode download as discovery, once, even when manual mode shows available first', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'available', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', targetVersion: '2.261001.1', trigger: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(2));
+    expect(sent(fetchMock).map((p) => [p.phase, p.target_version, p.trigger])).toEqual([
+      ['available', '2.260930.1', 'periodic'],
+      ['available', '2.261001.1', 'boot'],
+    ]);
+  });
+
   it('reports a failure with its code and whether it can be retried', async () => {
     const fetchMock = mockFetch();
     const { trackShellUpdatePhase } = await importAnalytics();

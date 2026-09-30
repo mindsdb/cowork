@@ -103,7 +103,7 @@ const EVENTS = {
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
-  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched', channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -820,8 +820,10 @@ export async function trackBootScreenResolved(target) {
   });
 }
 
-// Shell auto-update milestones. Transient phases (checking, downloading) are
-// left out so a 4-hourly check that finds nothing sends nothing. `relaunched`
+// Shell auto-update milestones. Checks that find nothing send nothing. Auto mode
+// goes straight from checking to downloading, so a download starting counts as
+// `available`. `installing` means the user clicked Restart; an install on quit
+// happens as the renderer shuts down and shows up only as `relaunched`, which
 // comes from `lastInstall`, the boot verdict on the previous download, rather
 // than the `complete`/`failed` phase the boot check overwrites within seconds.
 // The renderer re-reads the snapshot after every reload, so each sent milestone
@@ -853,12 +855,13 @@ export function trackShellUpdatePhase(snapshot) {
       error_code: install.applied ? null : 'install-not-applied',
     });
   }
+  const phase = snapshot.phase === 'downloading' ? 'available' : snapshot.phase;
   // install-not-applied is the relaunch verdict above, not a separate failure.
-  if (!SHELL_UPDATE_MILESTONES.includes(snapshot.phase) || snapshot.errorCode === 'install-not-applied') return;
-  if (!claimShellUpdateMilestone([snapshot.phase, snapshot.targetVersion, snapshot.errorCode].join('|'))) return;
+  if (!SHELL_UPDATE_MILESTONES.includes(phase) || snapshot.errorCode === 'install-not-applied') return;
+  if (!claimShellUpdateMilestone([phase, snapshot.targetVersion, snapshot.errorCode].join('|'))) return;
   void capture(EVENTS.SHELL_UPDATE_PHASE, {
     ...base,
-    phase: snapshot.phase,
+    phase,
     trigger: snapshot.trigger ?? null,
     current_version: snapshot.currentVersion || null,
     target_version: snapshot.targetVersion ?? null,

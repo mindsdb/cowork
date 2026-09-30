@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { host } from '../../platform/host';
-import { trackShellUpdatePhase } from '../lib/analytics';
 
 // The app's self-update lifecycle, across the two independently-versioned
 // pieces the renderer surfaces:
@@ -30,13 +29,12 @@ export function useAppUpdates() {
   // then subscribe to the same authoritative main-process state.
   useEffect(() => {
     let cancelled = false;
-    const receive = (snapshot) => {
-      if (cancelled) return;
-      setShellAutoUpdate(snapshot);
-      trackShellUpdatePhase(snapshot);
-    };
-    host.getShellAutoUpdate().then(receive).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate(receive);
+    host.getShellAutoUpdate().then((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    }).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    });
     return () => {
       cancelled = true;
       unsubscribe();

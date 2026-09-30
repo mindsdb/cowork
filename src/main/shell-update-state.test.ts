@@ -23,8 +23,8 @@ describe('transitionShellUpdate', () => {
     expect(downloading).toMatchObject({
       phase: 'downloading',
       targetVersion: '2.1.0',
+      trigger: 'boot',
     });
-    expect(downloading).not.toHaveProperty('trigger');
   });
 
   it('waits for an explicit download in manual mode', () => {
@@ -208,6 +208,14 @@ describe('transitionShellUpdate', () => {
       errorCode: 'install-not-applied',
       recoverable: true,
     });
+  });
+
+  it('keeps the trigger that found the update through download and failure', () => {
+    const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'periodic' });
+    const downloading = transitionShellUpdate(checking, { type: 'UPDATE_FOUND', targetVersion: '2.1.0' });
+    expect(downloading).toMatchObject({ phase: 'downloading', trigger: 'periodic' });
+    expect(transitionShellUpdate(downloading, { type: 'DOWNLOAD_COMPLETE', targetVersion: '2.1.0' }).trigger).toBe('periodic');
+    expect(transitionShellUpdate(downloading, { type: 'FAILED', code: 'update-request-failed', recoverable: true }).trigger).toBe('periodic');
   });
 
   it('keeps the relaunch verdict through the boot check that replaces it', () => {
