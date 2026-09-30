@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodingSession } from './api';
 import { TaskAttentionBar } from './TaskAttentionBar';
 import { newAttention } from './taskAttention';
+import { AppHeaderProvider, useAppHeaderSlots } from '../components/appHeader';
 
 const mocks = vi.hoisted(() => ({ sessions: vi.fn(), visible: true }));
 vi.mock('./api', () => ({ codingApi: { sessions: mocks.sessions } }));
@@ -98,5 +99,27 @@ describe('Task attention and notifications', () => {
     view.rerender(<TaskAttentionBar {...props} scopeKey="someone-else" sessions={[]} />);
     await act(async () => { resolve('granted'); });
     expect(screen.queryByRole('button', { name: 'Notifications on' })).not.toBeInTheDocument();
+  });
+
+  it('moves into the titlebar as a bell that lists the tasks needing you', async () => {
+    vi.useRealTimers();
+    function AttentionSlot() {
+      const { setAttention } = useAppHeaderSlots();
+      return <div data-testid="attention-slot" ref={setAttention} />;
+    }
+    const onSelect = vi.fn();
+    render(
+      <AppHeaderProvider>
+        <AttentionSlot />
+        <TaskAttentionBar {...props} onSelect={onSelect} sessions={[task, { ...task, id: 'other', title: 'Fix imports', status: 'failed' }]} />
+      </AppHeaderProvider>,
+    );
+    // The inline bar gives way to the bell; no second header row.
+    expect(screen.queryByRole('button', { name: '1 task needs you →' })).not.toBeInTheDocument();
+    const bell = screen.getByRole('button', { name: 'Code: 1 task needs you' });
+    expect(screen.getByTestId('attention-slot')).toContainElement(bell);
+    await act(async () => { fireEvent.click(bell); });
+    await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: /Fix imports/ })); });
+    expect(onSelect).toHaveBeenCalledWith('other');
   });
 });

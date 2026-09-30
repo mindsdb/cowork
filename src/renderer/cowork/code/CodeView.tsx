@@ -399,6 +399,7 @@ export default function CodeView({
             onRunProjectAction={(action) => void startProjectAction(action)}
             diskUsage={taskDiskUsage(workspaceUsage, taskBarSession.id)}
             onOpenControls={() => setControlsOpen(true)}
+            onOpenProjectTasks={() => onOpenTasks(taskBarSession.project_id || null)}
             onFork={() => void forkTask()}
           />
         )}

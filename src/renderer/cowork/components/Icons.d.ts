@@ -5,6 +5,7 @@ type IconRenderer = (size?: IconSize) => ReactNode;
 
 declare const Ico: {
   attach: IconRenderer;
+  bell: IconRenderer;
   brain: IconRenderer;
   building: IconRenderer;
   arrowDown: IconRenderer;
@@ -37,6 +38,7 @@ declare const Ico: {
   panelExpandLeft: IconRenderer;
   plus: IconRenderer;
   refresh: IconRenderer;
+  newTask: IconRenderer;
   search: IconRenderer;
   link: IconRenderer;
   list: IconRenderer;

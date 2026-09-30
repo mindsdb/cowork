@@ -16,6 +16,8 @@
 import {
   AppWindow,
   ArrowDown,
+  Bell,
+  SquarePen,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -101,6 +103,8 @@ const ico = (Cmp, d = 16) => (s = d) => <Icon of={Cmp} size={s} />;
 
 const Ico = {
   search:   ico(Search),
+  bell:     ico(Bell),
+  newTask:  ico(SquarePen),
   chats:    ico(MessagesSquare),
   list:     ico(List),
   // 2x2 grid — used in the Projects page view-toggle.
