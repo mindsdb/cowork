@@ -310,6 +310,9 @@ export function useNewTaskDraft({
   useEffect(() => {
     const path = storedFolder();
     if (path) void openStandaloneFolder(path, true);
+    // A check still running when this composer goes must not save its folder
+    // over one the next composer chose.
+    return () => { folderRequest.current += 1; };
   }, [openStandaloneFolder]);
 
   useEffect(() => {
