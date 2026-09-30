@@ -50,6 +50,12 @@ const RECOVERABLE_RUNS = ['interrupted', 'failed', 'recovering'];
 const ACTIVE_RUNS = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'];
 
 
+/** A task on this computer whose workspace could not be prepared. */
+export function taskNeverStarted(session: CodingSession): boolean {
+  return session.run_status === 'failed' && session.computer_is_local !== false && !session.workspace_path;
+}
+
+
 /** Whether the last turn ended on a failure that has not been superseded by new work. */
 export function turnEndedOnFailure(session: CodingSession): boolean {
   const recoverable = RECOVERABLE_RUNS.includes(session.run_status || '');
@@ -156,6 +162,17 @@ export function recoveryNotice(
   recovering = false,
 ): ComposerNotice | null {
   if (!RECOVERABLE_RUNS.includes(session.run_status || '') || isActiveStatus(session.status)) return null;
+  if (taskNeverStarted(session)) {
+    // There is no working copy to reopen; the agent never ran.
+    return {
+      key: 'recovery:not-started',
+      tone: 'danger',
+      icon: 'warning',
+      title: 'Task did not start',
+      body: 'Its workspace could not be prepared, so the agent never ran. Start a new task once the problem is fixed.',
+      detail: failureDetail(session, failureEvent(latestSession, latestError)),
+    };
+  }
   if (accountFailure(session, latestSession, latestError, recovering)) return null;
   if (recovering || session.run_status === 'recovering') {
     return { key: 'recovery:reopening', tone: 'neutral', icon: 'refresh', title: 'Reopening task', body: 'Reconnecting to the task files…', reopen: true, reopening: true };

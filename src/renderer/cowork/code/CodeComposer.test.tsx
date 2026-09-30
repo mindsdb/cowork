@@ -452,4 +452,21 @@ describe('CodeComposer drafts', () => {
     renderComposer(completed);
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('');
   });
+
+  it('blocks follow-ups on a local task whose workspace was never prepared', () => {
+    const view = renderComposer({ ...baseSession, status: 'failed', run_status: 'failed', workspace_path: '' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute('placeholder', 'Start a new task to continue');
+    expect(screen.getByRole('button', { name: 'Send follow-up' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(view.onSend).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reopen instruction for a failed task that has a workspace', () => {
+    renderComposer({ ...baseSession, status: 'failed', run_status: 'failed' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+    expect(input).toBeEnabled();
+    expect(input).toHaveAttribute('placeholder', 'Reopen the task, then say how to continue…');
+  });
 });

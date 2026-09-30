@@ -17,17 +17,24 @@ import { useCodeTaskActions } from './useCodeTaskActions';
 function renderActions({
   refresh = vi.fn(async () => {}),
   loadSessions = vi.fn(async () => []),
+  sessions = [],
+  onSessionsChange = vi.fn(),
+  onSelectionChange = vi.fn(),
 }: {
   refresh?: () => Promise<void>;
   loadSessions?: () => Promise<CodingSession[]>;
+  sessions?: CodingSession[];
+  onSessionsChange?: (sessions: CodingSession[]) => void;
+  onSelectionChange?: (sessionId: string | null, newTask?: boolean) => void;
 } = {}) {
   return renderHook(() => useCodeTaskActions({
     selectedId: 'task-1',
     session: null,
+    sessions,
     refresh,
     loadSessions,
-    onSessionsChange: vi.fn(),
-    onSelectionChange: vi.fn(),
+    onSessionsChange,
+    onSelectionChange,
   }));
 }
 
@@ -115,6 +122,23 @@ describe('useCodeTaskActions', () => {
       attachments: [],
       source_contexts: [],
     });
+  });
+
+  it('caches a created task before opening it so the view does not show a restoring state', async () => {
+    const existing = { id: 'task-1' } as CodingSession;
+    const calls: string[] = [];
+    const onSessionsChange = vi.fn((items: CodingSession[]) => { calls.push(`list:${items.map((item) => item.id).join(',')}`); });
+    const onSelectionChange = vi.fn((id: string | null) => { calls.push(`select:${id}`); });
+    const { result } = renderActions({ sessions: [existing], onSessionsChange, onSelectionChange });
+
+    await act(async () => {
+      await result.current.create({
+        projectId: 'project-1', prompt: 'Ship it', engineId: 'codex', model: 'gpt',
+        permissionMode: 'supervised', attachments: [], sourceContexts: [],
+      });
+    });
+
+    expect(calls.slice(0, 2)).toEqual(['list:task-created,task-1', 'select:task-created']);
   });
 
   it('does not report a successful mutation as failed when list reconciliation drops', async () => {
