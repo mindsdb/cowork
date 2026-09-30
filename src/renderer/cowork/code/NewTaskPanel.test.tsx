@@ -151,6 +151,7 @@ const projectProps = {
 
 describe('NewTaskPanel', () => {
   beforeEach(() => {
+    localStorage.removeItem('mindshub-code:last-folder');
     vi.mocked(codingApi.repositoryBranches).mockReset().mockResolvedValue({ items: ['staging', 'main'] });
     vi.mocked(codingApi.engines).mockResolvedValue([{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]);
     pickCodeFolder.mockReset();
@@ -912,7 +913,7 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Could not check branches. Try again.')).not.toBeInTheDocument();
   });
 
-  it('starts from the composer with the platform keyboard shortcut', async () => {
+  it('starts from the composer with Enter', async () => {
     const onCreate = vi.fn(async () => {});
     const user = userEvent.setup();
     render(
@@ -930,7 +931,7 @@ describe('NewTaskPanel', () => {
 
     const input = screen.getByRole('textbox', { name: 'Coding task' });
     await user.type(input, 'Tighten the task composer');
-    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       projectId: 'project-1',
@@ -1379,7 +1380,8 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Describe what you want changed.')).not.toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a small app');
-    expect(start).toBeDisabled();
+    // Start stays reachable without a folder: pressing it asks for one.
+    await waitFor(() => expect(start).toBeEnabled());
     expect(screen.getByText('Choose a folder to continue.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Choose folder' }));
     await waitFor(() => expect(start).toBeEnabled());
@@ -1453,13 +1455,14 @@ describe('NewTaskPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Choose folder' }));
 
     expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Keep this draft');
-    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    expect(screen.getByText('Choose a folder to continue.')).toBeInTheDocument();
     expect(inspectFolder).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('keeps Start disabled when a chosen standalone folder becomes unavailable', async () => {
-    inspectFolder.mockResolvedValue({
+  it('asks for another folder from Start when the chosen folder becomes unavailable', async () => {
+    const onCreate = vi.fn(async () => {});
+    inspectFolder.mockResolvedValueOnce({
       path: 'C:\\Users\\Ian & Team\\plain folder',
       exists: false,
       is_directory: false,
@@ -1479,7 +1482,7 @@ describe('NewTaskPanel', () => {
         selectedProjectId={null}
         onProjectChange={vi.fn()}
         onOpenProjectSettings={vi.fn()}
-        onCreate={vi.fn(async () => {})}
+        onCreate={onCreate}
       />,
     );
 
@@ -1487,6 +1490,157 @@ describe('NewTaskPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Choose folder' }));
 
     expect(await screen.findByText('That folder is no longer available. Choose another folder.')).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+    pickCodeFolder.mockResolvedValueOnce({ ok: true, path: '/Users/ian/app' });
+    await user.click(screen.getByRole('button', { name: /start task/i }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ projectId: null, path: '/Users/ian/app' })));
+    expect(pickCodeFolder).toHaveBeenCalledTimes(2);
+  });
+
+  describe('keyboard start and remembered folder', () => {
+    const folderPanel = (onCreate = vi.fn(async () => {})) => (
+      <NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+        models={models} modelMeta={modelMeta} projects={[project]} selectedProjectId={null}
+        onProjectChange={vi.fn()} onOpenProjectSettings={vi.fn()} onCreate={onCreate} />
+    );
+
+    it('asks for a folder when Enter is pressed without one, then starts the task', async () => {
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+      const input = screen.getByRole('textbox', { name: 'Coding task' });
+      await user.type(input, 'Build a small app');
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+        projectId: null, path: 'C:\\Users\\Ian & Team\\plain folder', prompt: 'Build a small app',
+      })));
+      expect(pickCodeFolder).toHaveBeenCalledOnce();
+      expect(localStorage.getItem('mindshub-code:last-folder')).toBe('C:\\Users\\Ian & Team\\plain folder');
+    });
+
+    it('does not start when the folder picker is cancelled from Start', async () => {
+      pickCodeFolder.mockResolvedValue({ ok: false, cancelled: true });
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+      await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a small app');
+      await user.click(await screen.findByRole('button', { name: /start task/i }));
+
+      await waitFor(() => expect(pickCodeFolder).toHaveBeenCalledOnce());
+      expect(onCreate).not.toHaveBeenCalled();
+      expect(screen.getByText('Choose a folder to continue.')).toBeInTheDocument();
+    });
+
+    it('keeps Shift+Enter and IME composition in the prompt', async () => {
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+      const input = screen.getByRole('textbox', { name: 'Coding task' });
+      await user.type(input, 'First line{Shift>}{Enter}{/Shift}second line');
+      expect(input).toHaveValue('First line\nsecond line');
+      fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+      expect(pickCodeFolder).not.toHaveBeenCalled();
+      expect(onCreate).not.toHaveBeenCalled();
+      expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
+    });
+
+    it('preselects the folder of the last folder-only task', async () => {
+      localStorage.setItem('mindshub-code:last-folder', '/Users/ian/app');
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+
+      expect(await screen.findByRole('button', { name: 'Change folder, currently app' })).toBeInTheDocument();
+      const input = screen.getByRole('textbox', { name: 'Coding task' });
+      await user.type(input, 'Add a test');
+      await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ path: '/Users/ian/app' })));
+      expect(pickCodeFolder).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { settles: 'before the chosen folder', rememberedFirst: true },
+      { settles: 'after the chosen folder', rememberedFirst: false },
+    ])('ignores a remembered-folder check that settles $settles', async ({ rememberedFirst }) => {
+      localStorage.setItem('mindshub-code:last-folder', '/Users/ian/old');
+      const checks = new Map<string, (value: object) => void>();
+      inspectFolder.mockImplementation((path: string) => new Promise((resolve) => { checks.set(path, resolve); }));
+      pickCodeFolder.mockResolvedValue({ ok: true, path: '/Users/ian/new' });
+      const found = (path: string) => ({ path, exists: true, is_directory: true, is_git: false, dirty: false });
+      const onCreate = vi.fn(async () => {});
+      const user = userEvent.setup();
+      render(folderPanel(onCreate));
+      await waitFor(() => expect(checks.has('/Users/ian/old')).toBe(true));
+
+      await user.click(await screen.findByRole('button', { name: 'Change folder, currently old' }));
+      await waitFor(() => expect(checks.has('/Users/ian/new')).toBe(true));
+      const input = screen.getByRole('textbox', { name: 'Coding task' });
+      await user.type(input, 'Use the new folder');
+
+      if (rememberedFirst) {
+        // The old check must not end the new folder's check early.
+        await act(async () => checks.get('/Users/ian/old')!(found('/Users/ian/old')));
+        expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onCreate).not.toHaveBeenCalled();
+        await act(async () => checks.get('/Users/ian/new')!(found('/Users/ian/new')));
+      } else {
+        await act(async () => checks.get('/Users/ian/new')!(found('/Users/ian/new')));
+        await act(async () => checks.get('/Users/ian/old')!(found('/Users/ian/old')));
+      }
+
+      expect(localStorage.getItem('mindshub-code:last-folder')).toBe('/Users/ian/new');
+      expect(screen.getByRole('button', { name: 'Change folder, currently new' })).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled());
+    });
+
+    it('ignores a folder check from a composer that has since closed', async () => {
+      localStorage.setItem('mindshub-code:last-folder', '/Users/ian/old');
+      const checks: Array<{ path: string; resolve: (value: object) => void }> = [];
+      inspectFolder.mockImplementation((path: string) => new Promise((resolve) => { checks.push({ path, resolve }); }));
+      pickCodeFolder.mockResolvedValue({ ok: true, path: '/Users/ian/new' });
+      const found = (path: string) => ({ path, exists: true, is_directory: true, is_git: false, dirty: false });
+      const user = userEvent.setup();
+      const first = render(folderPanel());
+      await waitFor(() => expect(checks).toHaveLength(1));
+      first.unmount();
+
+      render(folderPanel());
+      await waitFor(() => expect(checks).toHaveLength(2));
+      await user.click(await screen.findByRole('button', { name: 'Change folder, currently old' }));
+      await waitFor(() => expect(checks).toHaveLength(3));
+      await act(async () => checks[2].resolve(found('/Users/ian/new')));
+      await act(async () => checks[0].resolve(found('/Users/ian/old')));
+
+      expect(localStorage.getItem('mindshub-code:last-folder')).toBe('/Users/ian/new');
+    });
+
+    it('quietly forgets a remembered folder that no longer exists', async () => {
+      localStorage.setItem('mindshub-code:last-folder', '/Users/ian/gone');
+      inspectFolder.mockResolvedValueOnce({ path: '/Users/ian/gone', exists: false, is_directory: false, is_git: false, dirty: false });
+      render(folderPanel());
+
+      await waitFor(() => expect(inspectFolder).toHaveBeenCalledWith('/Users/ian/gone'));
+      expect(await screen.findByRole('button', { name: 'Choose folder' })).toBeInTheDocument();
+      expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument();
+      expect(localStorage.getItem('mindshub-code:last-folder')).toBeNull();
+    });
+  });
+
+  it('says why Start is disabled for a project with no repositories or folders', async () => {
+    const emptyProject = { ...project, folders: [], resources: [] };
+    const user = userEvent.setup();
+    render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
+      models={models} modelMeta={modelMeta} projects={[emptyProject]} selectedProjectId={emptyProject.id}
+      onProjectChange={vi.fn()} onOpenProjectSettings={vi.fn()} onCreate={vi.fn(async () => {})} />);
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText('Add a repository or folder to this project in Project settings.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
