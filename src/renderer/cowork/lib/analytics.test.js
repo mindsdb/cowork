@@ -1383,3 +1383,34 @@ describe('Code Mode events', () => {
     expect(properties).not.toHaveProperty('in_project');
   });
 });
+
+describe('console handoff attribution', () => {
+  it('stamps the handoff on the next agent_session_started only, then clears it', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'classic-snake-game');
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(first.event).toBe('agent_session_started');
+    expect(first.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game' });
+    expect(second.properties).not.toHaveProperty('entry_source');
+    expect(second.properties).not.toHaveProperty('example_id');
+  });
+
+  it('composer_ready carries only the source, the example id and whether it was prefilled', async () => {
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', 'classic-snake-game', true);
+    const body = await sentEvent(fetchMock, 'composer_ready');
+
+    expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    // No prompt text rides on the event under any key.
+    expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
+  });
+});

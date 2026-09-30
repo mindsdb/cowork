@@ -29,7 +29,8 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // {}
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — set only on the first task after a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -589,8 +590,33 @@ export function trackArtifactPublished(artifactId, visibility) {
   });
 }
 
+// Where the next task came from, when Home was opened by a console link. Held
+// here rather than threaded through App's send path because the handoff is
+// consumed in HomeView and the event fires in App; it attributes exactly one
+// task and is then cleared. Ids only: never prompt text.
+let pendingEntryAttribution = null;
+
+export function setEntryAttribution(entrySource, exampleId) {
+  pendingEntryAttribution = entrySource
+    ? { entry_source: entrySource, example_id: exampleId || null }
+    : null;
+}
+
 export function trackAgentSessionStarted() {
-  capture(EVENTS.AGENT_SESSION_STARTED);
+  const attribution = pendingEntryAttribution;
+  pendingEntryAttribution = null;
+  capture(EVENTS.AGENT_SESSION_STARTED, attribution || {});
+}
+
+// The console handoff's arrival: the Home composer is on screen and usable,
+// with the sample in it (`prefilled`) or empty. Separate from the console's
+// click, which only says the user asked to come here.
+export function trackComposerReady(entrySource, exampleId, prefilled) {
+  capture(EVENTS.COMPOSER_READY, {
+    entry_source: entrySource,
+    example_id: exampleId || null,
+    prefilled: Boolean(prefilled),
+  });
 }
 
 // The key upgrade-intent signal: a turn was blocked on credits. Fired from the

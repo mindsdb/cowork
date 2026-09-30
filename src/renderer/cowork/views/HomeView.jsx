@@ -9,7 +9,9 @@ import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { trackBillingOpened } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady } from '../lib/analytics';
+import { takeConsoleHandoff, sampleId } from '../lib/consoleHandoff';
+import { getDraft } from '../lib/draftStore';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //
@@ -246,6 +248,13 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
+  // Shown under the composer while a sample from a console link is in it.
+  // Leaving that mode (send, or removing the chip) retires it for good, so it
+  // cannot reappear over a different mode picked afterwards.
+  const [handoffHint, setHandoffHint] = useState(false);
+  useEffect(() => {
+    if (!taskMode) setHandoffHint(false);
+  }, [taskMode]);
 
   // Task modes (slides/website/app-style prompt scaffolding) don't apply to
   // a Claude Code task — clear any mode left selected from before Coding
@@ -362,6 +371,30 @@ export default function HomeView({
 
   // Composer fades in during 'settling' and stays for 'idle'.
   const showInteractiveSurface = phase === 'settling' || phase === 'idle';
+
+  // A console link that opened Home is applied once, when the composer is
+  // actually usable, so `composer_ready` means the user can type and send.
+  // The sample is placed exactly as a sample click would place it, and never
+  // sent. An unsent draft wins over the sample: it is the user's own text.
+  const composerUsable = showInteractiveSurface && !blocked;
+  const handoffTakenRef = useRef(false);
+  useEffect(() => {
+    if (!composerUsable || handoffTakenRef.current) return;
+    handoffTakenRef.current = true;
+    const handoff = takeConsoleHandoff();
+    if (!handoff) return;
+    const { sample } = handoff;
+    const prefilled = Boolean(sample && onPrefill && !codingModeEnabled && !getDraft('new'));
+    if (prefilled) {
+      setTaskMode(handoff.mode);
+      onPrefill(sample.prompt);
+      setHandoffHint(true);
+    }
+    const exampleId = sample ? sampleId(sample.label) : null;
+    setEntryAttribution(handoff.entrySource, exampleId);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerUsable]);
 
   return (
     <div
@@ -539,6 +572,11 @@ export default function HomeView({
               overflows downward; the scroll container still reaches it
               because descendant overflow extends the scrollable area. */}
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
+            {handoffHint && taskMode && (
+              <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
+                Edit this prompt, then send when you're ready.
+              </p>
+            )}
             {/* Samples only render when onPrefill exists — a sample click's
                 whole job is prefilling the composer, so without the callback
                 it would be a silent dead click (same gate the old
