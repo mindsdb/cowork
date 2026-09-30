@@ -51,7 +51,7 @@ const ACTIVE_RUNS = ['queued', 'preparing', 'ready', 'running', 'awaiting_approv
 
 
 /** A task on this computer whose workspace could not be prepared. */
-function neverStarted(session: CodingSession): boolean {
+export function taskNeverStarted(session: CodingSession): boolean {
   return session.run_status === 'failed' && session.computer_is_local !== false && !session.workspace_path;
 }
 
@@ -162,7 +162,7 @@ export function recoveryNotice(
   recovering = false,
 ): ComposerNotice | null {
   if (!RECOVERABLE_RUNS.includes(session.run_status || '') || isActiveStatus(session.status)) return null;
-  if (neverStarted(session)) {
+  if (taskNeverStarted(session)) {
     // There is no working copy to reopen; the agent never ran.
     return {
       key: 'recovery:not-started',

@@ -9,6 +9,7 @@ import { planModeCommand } from './planModeCommand';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu } from './ComposerMenus';
 import { readComposerDraft, writeComposerDraft } from './composerDrafts';
+import { taskNeverStarted } from './composerNotices';
 import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
@@ -103,9 +104,14 @@ export const CodeComposer = memo(function CodeComposer({
   // Capability refreshes must not turn an explicit Plan draft into Build.
   const mode = !active ? draftMode ?? session.task_mode ?? 'build' : session.task_mode ?? 'build';
   const modeChange = !active && mode !== (session.task_mode ?? 'build');
-  const sendBlocked = !active && (planningLoading || (modeChange && !canPlan));
-  const modeHint = !active && planningLoading ? 'Checking available task modes…'
-    : sendBlocked ? 'This task mode is unavailable. Change the mode before sending.' : '';
+  // With no workspace there is nothing for a follow-up to run in; the lip
+  // already explains why, so no mode hint is needed.
+  const notStarted = !active && taskNeverStarted(session);
+  const modeBlocked = !active && (planningLoading || (modeChange && !canPlan));
+  const sendBlocked = notStarted || modeBlocked;
+  const modeHint = notStarted ? ''
+    : !active && planningLoading ? 'Checking available task modes…'
+    : modeBlocked ? 'This task mode is unavailable. Change the mode before sending.' : '';
   const previousLiveMode = useRef({ mode: session.task_mode, active });
   // A mode chosen for the next turn must not silently become a steer/queue
   // if another window starts work first. Follow the live mode until idle.
@@ -261,9 +267,9 @@ export const CodeComposer = memo(function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? waiting ? 'Queue a follow-up while the agent waits…' : delivery === 'steer' ? 'Steer the current work…' : 'Add a follow-up for after this turn…' : recoverable ? 'Reopen the task, then say how to continue…' : mode === 'plan' ? 'Refine the plan…' : 'Ask for another change…'}
+          placeholder={active ? waiting ? 'Queue a follow-up while the agent waits…' : delivery === 'steer' ? 'Steer the current work…' : 'Add a follow-up for after this turn…' : notStarted ? 'Start a new task to continue' : recoverable ? 'Reopen the task, then say how to continue…' : mode === 'plan' ? 'Refine the plan…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
-          disabled={busy}
+          disabled={busy || notStarted}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
             if (!event.clipboardData.files.length) return;
             event.preventDefault();

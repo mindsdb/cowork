@@ -25,6 +25,7 @@ export function withControlTimeout<Result>(request: Promise<Result>, message: st
 export function useCodeTaskActions({
   selectedId,
   session,
+  sessions,
   refresh,
   loadSessions,
   onSessionsChange,
@@ -32,6 +33,7 @@ export function useCodeTaskActions({
 }: {
   selectedId: string | null;
   session: CodingSession | null;
+  sessions: CodingSession[];
   refresh: () => Promise<void>;
   loadSessions: (preferId?: string) => Promise<CodingSession[]>;
   onSessionsChange: (sessions: CodingSession[]) => void;
@@ -52,9 +54,11 @@ export function useCodeTaskActions({
     if (pendingActions.current === 0) setBusy(false);
   };
   const selectedIdRef = useRef(selectedId);
+  const sessionsRef = useRef(sessions);
   const onSessionsChangeRef = useRef(onSessionsChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
   selectedIdRef.current = selectedId;
+  sessionsRef.current = sessions;
   onSessionsChangeRef.current = onSessionsChange;
   onSelectionChangeRef.current = onSelectionChange;
 
@@ -141,6 +145,9 @@ export function useCodeTaskActions({
         attachments: input.attachments,
         source_contexts: input.sourceContexts,
       });
+      // The new task opens from the list cache; without it the view shows
+      // "Restoring task…" until the list or detail fetch returns.
+      onSessionsChangeRef.current([created, ...sessionsRef.current.filter((item) => item.id !== created.id)]);
       onSelectionChangeRef.current(created.id, false);
       await reconcile(() => loadSessions(created.id), 'The task started');
     } catch (reason) {

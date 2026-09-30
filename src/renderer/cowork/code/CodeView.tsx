@@ -176,6 +176,7 @@ export default function CodeView({
   const actions = useCodeTaskActions({
     selectedId,
     session,
+    sessions,
     refresh: detail.refresh,
     loadSessions: taskList.load,
     onSessionsChange,
