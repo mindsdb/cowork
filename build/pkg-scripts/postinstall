@@ -62,30 +62,16 @@ stage_shared_fallback() {
     && chmod 640 "$dest_file"
 }
 
-# True when $1 belongs to the local admin group. The ownership handoff below is
-# restricted to admins for two reasons that both point the same way: only an
-# admin can write /Applications, so only they get a prompt-free in-place update
-# out of this (Squirrel escalates when the bundle's parent is unwritable, and
-# /Applications is 0775 root:admin); and handing the bundle to a standard user
-# would make the global app code — including Contents/Resources/app.asar —
-# writable by a non-admin account, a cross-user code-tampering path on shared
-# Macs, without even clearing their prompt. So a non-admin console user is left
-# with a root-owned bundle (and a recoverable Retry if they cancel the prompt,
-# not the manual-installer notice); a prompt-free path for them is tracked
-# separately.
+# Only admins get the bundle. A standard user can't write /Applications, so
+# Squirrel would still prompt them, and a user-owned bundle would let a non-admin
+# modify app code that every account on the Mac runs.
 is_admin_user() {
   dseditgroup -o checkmember -m "$1" admin >/dev/null 2>&1
 }
 
-# Hand the installed .app to the console user so Squirrel.Mac can swap it in
-# place on auto-update without a Touch ID prompt. A pkg installs root-owned; the
-# in-place update needs a user-owned bundle (what a DMG drag-install produces).
-# Ownership doesn't touch the signature or notarization, so Gatekeeper is
-# unchanged.
-#
-# Best-effort and non-fatal: a headless/MDM install with no console user, or a
-# non-admin console user (see is_admin_user), stays root-owned. The bundle name
-# is written alongside this script by release-mac-pkg-notarized.sh.
+# A pkg installs the app root-owned, so every auto-update asks for a password.
+# Giving it to the console user, as a DMG install would, lets Squirrel.Mac swap
+# it silently. Ownership doesn't affect the signature or notarization.
 chown_app_bundle() {
   local user="$1"
   local name_file="$SCRIPT_DIR/installed-app-name"
@@ -93,12 +79,9 @@ chown_app_bundle() {
     log "no installed-app-name packaged — leaving app bundle ownership unchanged"
     return 1
   fi
-  # Command substitution strips the trailing newline while preserving the
-  # internal space in names like "MindsHub Cowork.app".
   local app_name
   app_name="$(cat "$name_file")"
-  # Expect a bare "Something.app"; reject empty or path-bearing values so a
-  # malformed marker can never redirect the recursive chown outside /Applications.
+  # A bare name only, so the recursive chown can't leave /Applications.
   case "$app_name" in
     "" | */* | ..*)
       log "unexpected installed-app-name '$app_name' — skipping bundle chown"
@@ -119,10 +102,7 @@ if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
   CONSOLE_HOME="$(home_dir_for "$CONSOLE_USER")"
 fi
 
-# Credential staging only applies when the OAuth payload was packaged (signed
-# release builds). A dev/unsigned build ships no server-credentials.json — skip
-# staging, but still fall through to the bundle-ownership handoff below, which
-# is independent of it.
+# Unsigned builds ship no credentials; skip staging but still hand over the app.
 if [ ! -f "$SRC_FILE" ]; then
   log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
 elif [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
@@ -133,10 +113,6 @@ else
   log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
 fi
 
-# Bundle ownership is independent of credential staging: attempt it whenever an
-# admin console user exists, regardless of whether (or how) staging resolved
-# above. Restricted to admins — see is_admin_user for why a standard user is
-# deliberately left with a root-owned bundle.
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && is_admin_user "$CONSOLE_USER"; then
   if chown_app_bundle "$CONSOLE_USER"; then
     log "handed the app bundle to admin console user $CONSOLE_USER for prompt-free auto-update"
