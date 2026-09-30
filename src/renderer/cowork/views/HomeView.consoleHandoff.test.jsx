@@ -94,6 +94,26 @@ describe('HomeView console handoff', () => {
     expect(screen.queryByText("Edit this prompt, then send when you're ready.")).not.toBeInTheDocument();
   });
 
+  it('replaces an earlier sample left unsent with the newly chosen one', async () => {
+    const kpi = findSample('visualization', 'track-monthly-kpis-across-departments').sample;
+    setDraft('new', snake.prompt);
+    arriveFromConsole('?from=console&mode=visualization&sample=track-monthly-kpis-across-departments');
+    render(<Home onSend={vi.fn()} />);
+
+    expect(await screen.findByDisplayValue(kpi.prompt)).toBeInTheDocument();
+    expect(screen.getByText("Edit this prompt, then send when you're ready.")).toBeInTheDocument();
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', true);
+  });
+
+  it('keeps an earlier sample the user edited', async () => {
+    setDraft('new', `${snake.prompt} Make it two-player.`);
+    arriveFromConsole('?from=console&mode=visualization&sample=track-monthly-kpis-across-departments');
+    render(<Home onSend={vi.fn()} />);
+
+    expect(await screen.findByDisplayValue(`${snake.prompt} Make it two-player.`)).toBeInTheDocument();
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', false);
+  });
+
   it('keeps an unsent draft instead of replacing it with the sample', async () => {
     setDraft('new', 'my half-written idea');
     arriveFromConsole('?from=console&mode=games&sample=classic-snake-game');

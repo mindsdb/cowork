@@ -30,6 +30,14 @@ export function findSample(modeId, id) {
   return mode && sample ? { mode, sample } : null;
 }
 
+/** Whether *text* is a sample prompt exactly as placed, never edited. Such a
+    draft is text a sample put in the composer, not the user's own, so a later
+    handoff may replace it. */
+export const isUntouchedSample = (text) => {
+  const trimmed = (text || '').trim();
+  return Boolean(trimmed) && TASK_MODES.some((m) => m.samples.some((s) => s.prompt === trimmed));
+};
+
 const sessionStore = () => {
   try { return window.sessionStorage; } catch { return null; }
 };

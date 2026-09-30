@@ -10,7 +10,7 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady } from '../lib/analytics';
-import { takeConsoleHandoff, sampleId } from '../lib/consoleHandoff';
+import { takeConsoleHandoff, sampleId, isUntouchedSample } from '../lib/consoleHandoff';
 import { getDraft } from '../lib/draftStore';
 
 // ── Boot choreography ───────────────────────────────────────────────────
@@ -375,7 +375,8 @@ export default function HomeView({
   // A console link that opened Home is applied once, when the composer is
   // actually usable, so `composer_ready` means the user can type and send.
   // The sample is placed exactly as a sample click would place it, and never
-  // sent. An unsent draft wins over the sample: it is the user's own text.
+  // sent. An unsent draft wins over the sample when it is the user's own text;
+  // one that is still an earlier sample, untouched, is not, and is replaced.
   const composerUsable = showInteractiveSurface && !blocked;
   const handoffTakenRef = useRef(false);
   useEffect(() => {
@@ -384,7 +385,9 @@ export default function HomeView({
     const handoff = takeConsoleHandoff();
     if (!handoff) return;
     const { sample } = handoff;
-    const prefilled = Boolean(sample && onPrefill && !codingModeEnabled && !getDraft('new'));
+    const draft = getDraft('new');
+    const draftIsUsers = Boolean(draft) && !isUntouchedSample(draft);
+    const prefilled = Boolean(sample && onPrefill && !codingModeEnabled && !draftIsUsers);
     if (prefilled) {
       setTaskMode(handoff.mode);
       onPrefill(sample.prompt);
