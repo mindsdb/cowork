@@ -11,12 +11,14 @@ export function ProjectConnectedTools({
   onChange,
   onOpenConnectors,
   canManage,
+  required = [],
 }: {
   connections: ConnectorConnection[];
   selected: string[];
   onChange: (keys: string[]) => void;
   onOpenConnectors: () => void;
   canManage: boolean;
+  required?: string[];
 }) {
   const developerAccounts = connections.filter((connection) => connection.engine === 'github' || connection.engine === 'linear');
   const toggle = (key: string) => onChange(
@@ -37,8 +39,8 @@ export function ProjectConnectedTools({
             return (
               <div key={key} className={`code-project-connection${unavailable ? ' is-unavailable' : ''}`}>
                 <label>
-                  <input type="checkbox" checked={selected.includes(key)} disabled={unavailable} onChange={() => toggle(key)} />
-                  <span><strong>{accountLabel(connection)}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}</small></span>
+                  <input type="checkbox" checked={selected.includes(key)} disabled={unavailable || (required.includes(key) && selected.includes(key))} onChange={() => toggle(key)} />
+                  <span><strong>{accountLabel(connection)}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}{required.includes(key) ? ' · Used by a repository' : ''}</small></span>
                 </label>
                 {unavailable && <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Reconnect</Button>}
               </div>

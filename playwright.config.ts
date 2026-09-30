@@ -9,6 +9,8 @@ import { defineConfig } from '@playwright/test';
 // display); `npm run test:e2e` and the tests-e2e.yml workflow do.
 export default defineConfig({
   testDir: './e2e',
+  // Browser-only fixture with its own Vite server and Playwright config.
+  testIgnore: '**/repository-picker.spec.ts',
   timeout: 60_000,
   // The app is a singleton (one Electron instance, one userData dir) —
   // parallel workers would fight over it.

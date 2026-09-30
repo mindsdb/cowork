@@ -284,6 +284,17 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
   });
 
+  it.each([
+    { tasksOpen: false, tasksProjectId: 'project-1' },
+    { tasksOpen: true, tasksProjectId: null },
+  ])('closes project settings when task-list navigation changes to %j', async (destination) => {
+    const { props, rerender } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Web app' }));
+    expect(screen.getByText('Project settings modal')).toBeInTheDocument();
+    rerender(<CodeView {...props} {...destination} />);
+    expect(screen.queryByText('Project settings modal')).not.toBeInTheDocument();
+  });
+
   it('does not send a Build turn while a Plan draft waits for refreshed capabilities', async () => {
     const engines: EngineCapability[] = [{ id: 'codex', label: 'Codex', available: true, adapter_version: '1', features: { planning: 'supported' } }];
     mocks.engines.mockResolvedValue(engines);
