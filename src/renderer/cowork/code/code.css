@@ -58,9 +58,9 @@
 .code-sidebar-session-group__label { min-height: 23px; padding: 4px 8px 2px; display: flex; align-items: center; color: var(--ink-4); font: 600 8.5px var(--font-mono); letter-spacing: .055em; text-transform: uppercase; }
 .code-sidebar-session-group__label b { margin-left: auto; font-size: 8.5px; font-weight: 500; letter-spacing: 0; }
 .code-sidebar-session-row { position: relative; border-radius: 7px; transition: background .1s ease, color .1s ease; }
-/* Same neutral ink wash as the chat rail's .nav-item / .recent-item hover. */
+/* Same neutral ink washes as the chat rail's .nav-item / .recent-item hover and selection. */
 .code-sidebar-session-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
-.code-sidebar-session-row.is-selected { background: var(--accent-bg); }
+.code-sidebar-session-row.is-selected { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .code-sidebar-session {
   width: 100%;
   padding: 9px 30px 8px 9px;
