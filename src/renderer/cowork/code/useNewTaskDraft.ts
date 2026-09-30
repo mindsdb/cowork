@@ -25,6 +25,20 @@ import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 import type { TaskRepositorySetup } from './repositorySetupModels';
 
+// The folder of the last folder-only task, preselected for the next one.
+const LAST_FOLDER_KEY = 'mindshub-code:last-folder';
+
+function storedFolder(): string {
+  try { return window.localStorage.getItem(LAST_FOLDER_KEY) || ''; } catch { return ''; }
+}
+
+function storeFolder(path: string) {
+  try {
+    if (path) window.localStorage.setItem(LAST_FOLDER_KEY, path);
+    else window.localStorage.removeItem(LAST_FOLDER_KEY);
+  } catch { /* storage unavailable: the folder is just not remembered */ }
+}
+
 
 interface NewTaskDraftOptions {
   busy: boolean;
@@ -101,6 +115,8 @@ export function useNewTaskDraft({
   const [standaloneFolderPath, setStandaloneFolderPath] = useState('');
   const [standaloneFolderLoading, setStandaloneFolderLoading] = useState(false);
   const [standaloneFolderIssue, setStandaloneFolderIssue] = useState('');
+  // Start was pressed before a folder was chosen; start once it is checked.
+  const [startAfterFolder, setStartAfterFolder] = useState(false);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>(null);
   const [attachments, setAttachments] = useState<InputReference[]>([]);
@@ -251,29 +267,45 @@ export function useNewTaskDraft({
     else setAttachments((current) => mergeReferences(current, result.items));
   };
 
-  const chooseStandaloneFolder = useCallback(async () => {
-    const result = await host.pickCodeFolder();
-    if (!result.ok || !result.path) {
-      if (!result.cancelled) setCatalogError(result.reason || 'Could not choose that folder.');
-      return;
-    }
-
-    const path = result.path;
+  /* A remembered folder that has since gone is dropped quietly: the person
+     did not just choose it, so an error about it would be noise. */
+  const openStandaloneFolder = useCallback(async (path: string, remembered = false) => {
     setStandaloneFolderPath(path);
     setStandaloneFolderIssue('');
     setCatalogError('');
     setStandaloneFolderLoading(true);
     try {
       const inspection = await codingApi.inspect(path);
-      if (!inspection.exists || !inspection.is_directory) {
+      if (inspection.exists && inspection.is_directory) {
+        storeFolder(path);
+      } else if (remembered) {
+        storeFolder('');
+        setStandaloneFolderPath((current) => current === path ? '' : current);
+      } else {
         setStandaloneFolderIssue('That folder is no longer available. Choose another folder.');
       }
     } catch (reason) {
-      setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
+      if (remembered) setStandaloneFolderPath((current) => current === path ? '' : current);
+      else setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
     } finally {
       setStandaloneFolderLoading(false);
     }
   }, []);
+
+  const chooseStandaloneFolder = useCallback(async (): Promise<boolean> => {
+    const result = await host.pickCodeFolder();
+    if (!result.ok || !result.path) {
+      if (!result.cancelled) setCatalogError(result.reason || 'Could not choose that folder.');
+      return false;
+    }
+    await openStandaloneFolder(result.path);
+    return true;
+  }, [openStandaloneFolder]);
+
+  useEffect(() => {
+    const path = storedFolder();
+    if (path) void openStandaloneFolder(path, true);
+  }, [openStandaloneFolder]);
 
   useEffect(() => {
     setSourceContexts([]);
@@ -286,6 +318,7 @@ export function useNewTaskDraft({
   const workspaceIssue = selectedProject ? folderIssue : standaloneFolderIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
   const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading;
+  const noProjectResources = !!selectedProject && projectResources.length === 0;
   const taskReady = !!prompt.trim()
     && workspaceSelected
     && !workspaceIssue
@@ -295,12 +328,13 @@ export function useNewTaskDraft({
     && enabledModelOptions.length > 0
     && !busy
     && !loading;
+  /* A missing or unavailable folder does not disable Start: Start asks for
+     one (see handleStart). A project's folder problem is fixed in its
+     settings, so that one does. */
   const startUnavailable = busy
     || loading
     || !prompt.trim()
-    || !workspaceSelected
-    || !!workspaceIssue
-    || (!!selectedProject && (!computerId || !!executionIssue))
+    || (!!selectedProject && (!!workspaceIssue || !computerId || !!executionIssue))
     || !selectedEngineAvailable
     || !selectedModelValid
     || enabledModelOptions.length === 0;
@@ -312,20 +346,25 @@ export function useNewTaskDraft({
     if (executionLoading) return 'Finding an available computer…';
     if (workspaceIssue) return workspaceIssue;
     if (executionIssue) return executionIssue;
+    if (noProjectResources) return 'Add a repository or folder to this project in Project settings.';
+    // Before the first check, resourceIds is still empty and computerId unset.
+    if (selectedProject && resourceIds.length > 0 && !computerId) return 'No computer can run this task.';
+    /* A catalog error already shows in the alert below, so these stay quiet
+       rather than repeat it. */
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
     /* An admin's model rule is not something credits unlock, so it never
        mentions them. */
     if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
     if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
-    if (!selectedModelValid || enabledModelOptions.length === 0) return '';
-    if (!prompt.trim()) return '';
+    if (enabledModelOptions.length === 0) return catalogError ? '' : 'No coding models are available.';
+    if (!selectedModelValid) return 'Choose a model to continue.';
     if (!workspaceSelected) return 'Choose a folder to continue.';
     return '';
   })();
 
   const readinessKind = loading || busy
     ? 'loading'
-    : !workspaceSelected || !!workspaceIssue || !!executionIssue
+    : !workspaceSelected || !!workspaceIssue || !!executionIssue || noProjectResources
       ? 'folder'
       : 'locked';
 
@@ -334,13 +373,12 @@ export function useNewTaskDraft({
       promptRef.current?.focus();
       return;
     }
-    if (!selectedProject && !standaloneFolderPath) {
-      await chooseStandaloneFolder();
+    if (!selectedProject && (!standaloneFolderPath || workspaceIssue)) {
+      if (await chooseStandaloneFolder()) setStartAfterFolder(true);
       return;
     }
     if (workspaceIssue) {
-      if (selectedProject) onOpenProjectSettings();
-      else await chooseStandaloneFolder();
+      onOpenProjectSettings();
       return;
     }
     if (!taskReady) return;
@@ -360,6 +398,14 @@ export function useNewTaskDraft({
       ? { ...task, projectId: selectedProject.id }
       : { ...task, projectId: null, path: standaloneFolderPath });
   };
+
+  /* Finish the Start that asked for a folder once that folder is checked. If
+     anything still blocks it, the readiness message says what. */
+  useEffect(() => {
+    if (!startAfterFolder || loading) return;
+    setStartAfterFolder(false);
+    if (taskReady) void handleStart();
+  });
 
   return {
     repositorySetup,

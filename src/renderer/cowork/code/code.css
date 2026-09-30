@@ -241,7 +241,8 @@
 .code-repository-state code { color: var(--ink-4); font-size: 10px; }
 .code-repository-state__isolation { margin-left: auto; color: var(--ink-4); }
 .code-new-task__content > .alert { margin: 9px 4px 0; }
-.code-start-status-slot { min-height: 27px; padding: 6px 5px 0; }
+.code-start-status-slot { min-height: 27px; padding: 6px 5px 0; display: flex; align-items: flex-start; gap: 12px; }
+.code-start-status-slot > .code-composer__hint { margin-left: auto; line-height: 1.5; }
 .code-start-readiness { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 10.5px; line-height: 1.4; }
 .code-start-readiness__icon { display: inline-flex; flex: none; color: var(--ink-4); }
 .code-start-readiness > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -751,6 +752,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-model-picker { max-width: none; flex: 1 1 180px; }
   .code-effort-picker { max-width: none; flex: 1 1 140px; }
   .code-start-task-button { flex: none; }
+  .code-start-status-slot > .code-composer__hint { display: none; }
 }
 
 /* Contextual, resizable review surface. */

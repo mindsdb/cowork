@@ -250,7 +250,7 @@ export function NewTaskPanel({
             aria-label="Coding task"
             disabled={busy}
             autoFocus
-            aria-keyshortcuts="Meta+Enter Control+Enter"
+            aria-keyshortcuts="Enter"
             onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
               if (event.clipboardData.files.length) {
                 event.preventDefault();
@@ -282,7 +282,8 @@ export function NewTaskPanel({
                   return;
                 }
               }
-              if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) return;
+              // Enter starts, as it sends in the task composer; Shift+Enter is a new line.
+              if (event.key !== 'Enter' || event.shiftKey) return;
               event.preventDefault();
               start();
             }}
@@ -396,6 +397,7 @@ export function NewTaskPanel({
               <span>{readinessText}</span>
             </div>
           )}
+          <span className="code-composer__hint">Enter to send · Shift+Enter for a new line</span>
         </div>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
         <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
