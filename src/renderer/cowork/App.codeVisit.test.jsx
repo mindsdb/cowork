@@ -1,7 +1,7 @@
-// code_view_opened counts visits to Code, so it has to fire once per switch
-// into Code and never while Code Mode is off. The unit tests cover the
-// tracker and the sidebar callback separately; only a mount proves App wires
-// the effect to the effective workspace mode.
+// App reports each switch into Code to the visit tracker, and never while Code
+// Mode is off; the tracker keeps the first per launch (analytics.test.js). The
+// unit tests cover the tracker and the sidebar callback separately; only a
+// mount proves App wires the effect to the effective workspace mode.
 //
 // Mounting pattern copied from App.deleteTask.test.jsx.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -91,7 +91,7 @@ beforeEach(() => {
 });
 
 describe('counting Code visits', () => {
-  it('counts one visit per switch into Code, not per navigation inside it', async () => {
+  it('reports one visit per switch into Code, not per navigation inside it', async () => {
     const user = userEvent.setup();
     render(<App />);
 

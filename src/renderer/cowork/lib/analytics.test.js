@@ -1186,6 +1186,27 @@ describe('Code Mode events', () => {
     expect(event.properties.surface).toBe('desktop');
   });
 
+  it('code_view_opened fires once per launch, however often Code is reopened', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeViewOpened, trackCodeTaskStarted, resetDeviceIdentity } = await importAnalytics();
+    const opened = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body).event)
+      .filter((event) => event === 'code_view_opened').length;
+
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    // A later event proves the repeats had their chance to send and did not.
+    trackCodeTaskStarted(created);
+    await sentEvent(fetchMock, 'code_task_started');
+    expect(opened()).toBe(1);
+
+    // A sign-out hands the launch to the next account, whose first visit counts.
+    resetDeviceIdentity();
+    trackCodeViewOpened();
+    await vi.waitFor(() => expect(opened()).toBe(2));
+  });
+
   it('code_task_started describes the created task without its path or title', async () => {
     const fetchMock = mockFetch();
     const { trackCodeTaskStarted } = await importAnalytics();

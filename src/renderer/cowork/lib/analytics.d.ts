@@ -22,7 +22,7 @@ export function trackKeyProvisioningRefused(outcome: string): void;
  */
 export function trackBillingOpened(trigger: string, workspaceMode?: 'code'): void;
 
-/** Each switch into the Code workspace. Never throws. */
+/** First switch into the Code workspace per launch. Never throws. */
 export function trackCodeViewOpened(): void;
 
 /** A Code Mode task was created, read from the created session. Never throws. */

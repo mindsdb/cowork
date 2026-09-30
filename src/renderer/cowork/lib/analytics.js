@@ -112,7 +112,7 @@ const EVENTS = {
   // "who uses Code Mode" is one event filter, not an inference from app version
   // or model. A Code Mode route onto a shared event (billing_opened) carries
   // `workspace_mode: 'code'` instead.
-  CODE_VIEW_OPENED:         'code_view_opened',         // {}  each switch into the Code workspace
+  CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
   CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
   CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
 };
@@ -680,10 +680,15 @@ export function trackBillingOpened(trigger, workspaceMode) {
   });
 }
 
-// Each switch into the Code workspace, from any entry point. The denominator
-// for Code Mode reach: a person who opens it and never starts a task is a
-// different problem from one who never opens it.
+// First switch into the Code workspace per launch, from any entry point. The
+// denominator for Code Mode reach: a person who opens it and never starts a task
+// is a different problem from one who never opens it. Once per launch rather
+// than per switch, so someone toggling between Cowork and Code all day counts
+// as one visit and code_task_started carries the depth of use.
+let codeViewOpenedThisLaunch = false;
 export function trackCodeViewOpened() {
+  if (codeViewOpenedThisLaunch) return;
+  codeViewOpenedThisLaunch = true;
   capture(EVENTS.CODE_VIEW_OPENED);
 }
 
@@ -880,6 +885,8 @@ export function resetDeviceIdentity() {
   identity.distinctId = null;
   identity.cacheExpiry = 0;
   mergeInFlight.clear();
+  // The next account's first Code visit is its own.
+  codeViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

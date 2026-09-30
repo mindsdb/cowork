@@ -1417,8 +1417,9 @@ function AppCore() {
   const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
     ? 'code'
     : 'cowork';
-  // Keyed on the effective mode so every entry point counts once per switch,
-  // and a Code preference that is off never records a visit.
+  // Keyed on the effective mode so every entry point reports the switch, and a
+  // Code preference that is off never records a visit. The tracker keeps only
+  // the first per launch.
   useEffect(() => {
     if (effectiveWorkspaceMode === 'code') trackCodeViewOpened();
   }, [effectiveWorkspaceMode]);
