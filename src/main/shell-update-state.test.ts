@@ -210,6 +210,14 @@ describe('transitionShellUpdate', () => {
     });
   });
 
+  it('keeps the relaunch verdict through the boot check that replaces it', () => {
+    const lastInstall = { applied: true, version: '2.1.0', expected: '2.1.0' };
+    const complete: ShellUpdateSnapshot = { ...idle(), phase: 'complete', lastInstall };
+    const checking = transitionShellUpdate(complete, { type: 'CHECK_REQUESTED', trigger: 'boot' });
+    expect(transitionShellUpdate(checking, { type: 'NO_UPDATE' })).toMatchObject({ phase: 'idle', lastInstall });
+    expect(transitionShellUpdate(complete, { type: 'DISABLED', reason: 'rollout-disabled' }).lastInstall).toEqual(lastInstall);
+  });
+
   it('fails closed when disabled', () => {
     const disabled = transitionShellUpdate(idle(), {
       type: 'DISABLED',

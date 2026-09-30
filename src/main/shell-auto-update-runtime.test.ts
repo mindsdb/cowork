@@ -47,6 +47,15 @@ describe('reconcileDownloadedTarget', () => {
     });
   });
 
+  it('records the relaunch verdict so a later renderer can still report it', () => {
+    expect(reconcileDownloadedTarget('2.260727.2', evidence).lastInstall).toEqual({
+      applied: true, version: '2.260727.2', expected: '2.260727.2',
+    });
+    expect(reconcileDownloadedTarget('2.260727.1', evidence).lastInstall).toEqual({
+      applied: false, version: '2.260727.1', expected: '2.260727.2',
+    });
+  });
+
   it('starts idle without durable evidence', () => {
     expect(reconcileDownloadedTarget('2.260727.1', null)).toEqual({ phase: 'idle' });
   });

@@ -36,6 +36,11 @@ export interface ShellUpdateSnapshot {
    *  The visible phase stays `ready-to-install` so the banner never flaps back
    *  to "Checking…" under the user. */
   refreshing?: boolean;
+  /** Whether the update downloaded before the last relaunch was applied. Set
+   *  once at boot and never cleared, because the boot check replaces the
+   *  `complete`/`failed` phase within seconds, possibly before any renderer is
+   *  listening. */
+  lastInstall?: { applied: boolean; version: string; expected: string };
 }
 
 export type ShellUpdateEvent =

@@ -21,6 +21,8 @@ const hostMock = vi.hoisted(() => {
   };
 });
 vi.mock('../../platform/host', () => ({ host: hostMock.host }));
+const { trackShellUpdatePhase } = vi.hoisted(() => ({ trackShellUpdatePhase: vi.fn() }));
+vi.mock('../lib/analytics', () => ({ trackShellUpdatePhase }));
 
 import { useAppUpdates } from './useAppUpdates';
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   Object.values(hostMock.host).forEach((fn) => fn.mockClear?.());
   hostMock.host.getShellAutoUpdate.mockResolvedValue(null);
   hostMock.host.getShellUpdate.mockResolvedValue(null);
+  trackShellUpdatePhase.mockClear();
 });
 
 describe('useAppUpdates', () => {
@@ -46,6 +49,13 @@ describe('useAppUpdates', () => {
     expect(hostMock.host.onUpdateStatus).toHaveBeenCalledTimes(1);
     expect(hostMock.host.onShellAutoUpdate).toHaveBeenCalledTimes(1);
     expect(result.current.shellAutoUpdate).toEqual({ phase: 'available' });
+  });
+
+  it('reports both the hydrated and the pushed shell snapshots to analytics', async () => {
+    hostMock.host.getShellAutoUpdate.mockResolvedValue({ phase: 'idle' });
+    await mountFlushed();
+    act(() => hostMock.state.onShellAutoUpdateCb({ phase: 'available' }));
+    expect(trackShellUpdatePhase.mock.calls.map(([snapshot]) => snapshot.phase)).toEqual(['idle', 'available']);
   });
 
   it('routes a shell-available push into shellUpdate, other phases into updateStatus', async () => {

@@ -10,6 +10,13 @@
 export function trackBootScreenResolved(target: string): Promise<void>;
 
 /**
+ * Shell auto-update milestone from a main-process snapshot: found, downloaded,
+ * installing, failed, or the relaunch verdict. Each is sent once per app run.
+ * No-op off Electron. Never throws.
+ */
+export function trackShellUpdatePhase(snapshot: unknown): void;
+
+/**
  * MindsHub declined to provision an LLM key (ENG-1533). `outcome` records what
  * the UI did about it — `byok_offered`, `billing_opened` or `unhandled` — since
  * the refusal forks three ways and only the renderer knows which. Never throws.

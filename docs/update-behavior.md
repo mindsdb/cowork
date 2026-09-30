@@ -21,7 +21,9 @@ on their launch-time version until they relaunch or click the banner.
 
 ## Escape hatch: `UI_UPDATE_MODE=manual`
 
-- Env-only — hand-set `UI_UPDATE_MODE=manual` in `~/.anton/.env`. There is no
+- Env-only — hand-set `UI_UPDATE_MODE=manual` in the `.env` of the build's Cowork
+  home: `~/.cowork` for prod, `~/.cowork-stable` for stable, or that home's
+  `accounts/<id>/` when accounts have their own data roots. There is no
   UI for this; it's a support mitigation (pin a user to manual if a bad
   version ships) and a QA version-pinning lever, not a setting anyone
   discovers on their own.
@@ -110,6 +112,17 @@ When enabled, main owns one immutable shell-update snapshot:
   quit drain above.
 - Signature/checksum failures are terminal for automatic update, while the
   existing manual installer URL remains available.
+
+### Watching a rollout in PostHog
+
+- `shell_update_phase` records each shell auto-update milestone once per app
+  run: `available`, `ready-to-install`, `installing`, `failed` (with
+  `error_code` and `recoverable`), and `relaunched`. `relaunched` is the boot
+  verdict on the previous download: `error_code` is `install-not-applied` when
+  the app came back on the old shell. Checks that find nothing send nothing.
+- `boot_screen_resolved` carries `shell_version` and `build_kind` on every
+  launch. Use them for shell adoption, not `app_version`: that is the running
+  UI bundle, which OTA moves independently of the shell.
 
 ## Build kinds
 
