@@ -761,6 +761,7 @@ export default function CodeView({
             models={models}
             modelMeta={modelMeta}
             busy={busy}
+            applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
               await runAction(() => codingApi.updateSession(session.id, value), true, true);
