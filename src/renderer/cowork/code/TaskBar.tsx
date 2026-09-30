@@ -1,6 +1,9 @@
 import Ico from '../components/Icons';
+import { AppHeader } from '../components/appHeader';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
+import Tooltip from '../components/ui/Tooltip';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import type { CodingSession, DiffFile, GitState, ProjectActionSummary } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
@@ -28,6 +31,7 @@ export function TaskBar({
   onOpenControls,
   onOpenExtensions,
   onOpenProject = () => {},
+  onOpenProjectTasks = () => {},
   onRename,
   onFork,
   onCompact,
@@ -54,6 +58,7 @@ export function TaskBar({
   onOpenControls: () => void;
   onOpenExtensions: () => void;
   onOpenProject?: () => void;
+  onOpenProjectTasks?: () => void;
   onRename: () => void;
   onFork: () => void;
   onCompact: () => void;
@@ -83,63 +88,69 @@ export function TaskBar({
       ? scopedWorkspaceNames.join(', ')
       : `${selectedResourceCount} selected ${selectedResourceCount === 1 ? 'folder' : 'folders'}`;
 
+  // Rendered into the app titlebar row; inline where there is none.
   return (
-    <header className="code-taskbar">
+    <AppHeader>
+    <div className="code-taskbar">
+      {/* One line, in the same breadcrumb grammar as Cowork: project › task,
+          then status. Everything else about the task (origin, computer,
+          working copy, branch, agent, model) lives in the details menu. */}
       <div className="code-taskbar__identity">
-        <span className="code-taskbar__glyph">{Ico.code(15)}</span>
-        <div className="code-taskbar__copy">
-          <div className="code-taskbar__title-row">
-            <div className="code-taskbar__title" title={session.title}>{session.title}</div>
-            {/* A finished task at rest needs no badge; colour is kept for work in motion and for what needs you. */}
-            {status.tone !== 'success' && (
-              <span className={`code-task-status is-${status.tone}`}>
-                <span className="code-status-dot" aria-hidden="true" />
-                <span className="code-task-status__label">{status.label}</span>
-              </span>
-            )}
-          </div>
-          <div className="code-taskbar__meta">
-            <span>{repositoryLabel(session)}</span>
-            {origin && <>
-              <span aria-hidden="true">·</span>
-              <button type="button" className="code-taskbar__origin" onClick={() => void openCodeExternalUrl(origin.url)}>
-                {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
-              </button>
-            </>}
-            {session.computer_name && <>
-              <span aria-hidden="true">·</span>
-              <span>{session.computer_name}</span>
-            </>}
-            <span aria-hidden="true">·</span>
-            <Menu
-              side="bottom"
-              align="start"
-              width={280}
-              ariaLabel="Working copy and task details"
-              trigger={(
-                <button type="button" className="code-taskbar__detail-trigger" aria-label={`Show task details for ${workingCopyLabel.toLowerCase()}`}>
-                  <span>{workingCopyLabel}</span>{Ico.chevDown(10)}
-                </button>
-              )}
-              items={[{
-                key: 'task-details',
-                heading: (
-                  <div className="code-taskbar-details">
-                    <div className="code-taskbar-details__intro">
-                      <strong>Task setup</strong>
-                    </div>
-                    <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
-                    {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}
-                    {session.computer_name && <div><span>Computer</span><strong>{session.computer_name}</strong></div>}
-                    <div><span>Agent</span><strong>{engineLabel}</strong></div>
-                    <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
-                    <div><span>Folder</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
+        <Crumb
+          label={repositoryLabel(session)}
+          title={`All tasks in ${repositoryLabel(session)}`}
+          onClick={onOpenProjectTasks}
+          maxWidth={200}
+          // The task title gives way first; the project name ellipsizes only past 200px.
+          className="shrink-0"
+        />
+        <CrumbSep />
+        <CrumbCurrent label={session.title} maxWidth="min(42vw, 560px)" />
+        {/* A finished task at rest needs no badge; colour is kept for work in motion and for what needs you. */}
+        {status.tone !== 'success' && (
+          <span className={`code-task-status is-${status.tone}`}>
+            <span className="code-status-dot" aria-hidden="true" />
+            <span className="code-task-status__label">{status.label}</span>
+          </span>
+        )}
+        <Menu
+          side="bottom"
+          align="start"
+          width={280}
+          ariaLabel="Task details"
+          trigger={(
+            <button type="button" className="code-taskbar__detail-trigger" aria-label="Show task details">
+              {Ico.chevDown(12)}
+            </button>
+          )}
+          items={[
+            {
+              key: 'task-details',
+              heading: (
+                <div className="code-taskbar-details">
+                  <div className="code-taskbar-details__intro">
+                    <strong>{workingCopyLabel}</strong>
                   </div>
-                ),
-              }]}
-            />
-          </div>
-        </div>
+                  <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
+                  {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}
+                  {session.computer_name && <div><span>Computer</span><strong>{session.computer_name}</strong></div>}
+                  <div><span>Agent</span><strong>{engineLabel}</strong></div>
+                  <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
+                  <div><span>Folder</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
+                </div>
+              ),
+            },
+            ...(origin ? [
+              { key: 'origin-divider', divider: true },
+              {
+                key: 'origin',
+                icon: Ico.link(14),
+                label: `${sourceProviderLabel(origin.provider)} ${sourceContextLabel(origin)}`,
+                onClick: () => void openCodeExternalUrl(origin.url),
+              },
+            ] : []),
+          ]}
+        />
       </div>
       <div className="code-taskbar__actions">
         {can('project_actions') && !!projectActions.length && <div className="code-taskbar__action-group" aria-label="Run and preview">
@@ -190,44 +201,52 @@ export function TaskBar({
           </Button>
         </div>}
         {can('project_actions') && !!projectActions.length && <span className="code-taskbar__divider" aria-hidden="true" />}
+        {/* Icon-only surface toggles; the name is in the tooltip and the
+            accessible label. Review keeps its change counts beside the icon. */}
         <div className="code-taskbar__action-group" aria-label="Task surfaces">
-          {can('files') && <Button
-            size="sm"
-            variant={filesOpen ? 'tinted' : 'subtle'}
-            onClick={onToggleFiles}
-            aria-label="Files"
-            aria-expanded={filesOpen}
-            aria-controls="code-files-panel"
-          >
-            {Ico.folder(13)}
-            <span>Files</span>
-          </Button>}
-          {can('terminal') && <Button
-            size="sm"
-            variant={terminalOpen ? 'tinted' : 'subtle'}
-            onClick={onToggleTerminal}
-            aria-label="Terminal"
-            aria-expanded={terminalOpen}
-          >
-            {Ico.code(13)}
-            <span>Terminal</span>
-          </Button>}
-          {can('review') && <Button
-            size="sm"
-            variant={reviewOpen ? 'tinted' : 'subtle'}
-            onClick={onToggleReview}
-            aria-label="Review changes"
-            aria-expanded={reviewOpen}
-            aria-controls="code-review-panel"
-          >
-            {Ico.panelExpandLeft(13)}
-            <span>Review</span>
-            {files.length > 0 && (
-              <span className="code-taskbar__diff">
-                {files.length} <i>+{additions}</i> <b>−{deletions}</b>
-              </span>
-            )}
-          </Button>}
+          {can('files') && <Tooltip content="Files">
+            <Button
+              icon
+              size="sm"
+              variant={filesOpen ? 'tinted' : 'subtle'}
+              onClick={onToggleFiles}
+              aria-label="Files"
+              aria-expanded={filesOpen}
+              aria-controls="code-files-panel"
+            >
+              {Ico.folder(14)}
+            </Button>
+          </Tooltip>}
+          {can('terminal') && <Tooltip content="Terminal">
+            <Button
+              icon
+              size="sm"
+              variant={terminalOpen ? 'tinted' : 'subtle'}
+              onClick={onToggleTerminal}
+              aria-label="Terminal"
+              aria-expanded={terminalOpen}
+            >
+              {Ico.code(14)}
+            </Button>
+          </Tooltip>}
+          {can('review') && <Tooltip content="Review changes">
+            <Button
+              icon={files.length === 0}
+              size="sm"
+              variant={reviewOpen ? 'tinted' : 'subtle'}
+              onClick={onToggleReview}
+              aria-label="Review changes"
+              aria-expanded={reviewOpen}
+              aria-controls="code-review-panel"
+            >
+              {Ico.panelExpandLeft(14)}
+              {files.length > 0 && (
+                <span className="code-taskbar__diff">
+                  {files.length} <i>+{additions}</i> <b>−{deletions}</b>
+                </span>
+              )}
+            </Button>
+          </Tooltip>}
         </div>
         <Menu
           trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
@@ -294,6 +313,7 @@ export function TaskBar({
           ]}
         />
       </div>
-    </header>
+    </div>
+    </AppHeader>
   );
 }

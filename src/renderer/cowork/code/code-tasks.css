@@ -1,5 +1,4 @@
 .code-tasks-view { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding-bottom: 32px; container-type: inline-size; }
-.code-tasks-view__back { padding: 16px 32px 0; }
 .code-tasks-view__header h1 { overflow-wrap: anywhere; }
 .code-tasks-view__actions { display: flex; align-items: center; gap: 8px; }
 .code-tasks-view__project-filter { max-width: min(260px, 100%); }
