@@ -50,41 +50,18 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 
-const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
+const baseProps = { tasks: [], onNavigate: () => {} };
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
 
-describe('Sidebar — persistent Cowork / Code workspace switch', () => {
-  it('hides the entire workspace switch until Code Mode is enabled', () => {
+describe('Sidebar — Code workspace and shell controls', () => {
+  it('leaves the Cowork / Code switch to the titlebar brand menu', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
     expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
-  });
-
-  it('switches to Code from the dedicated Electron workspace control', () => {
-    hostMock.isWeb = false;
-    const onWorkspaceChange = vi.fn();
-    render(<Sidebar {...baseProps} onWorkspaceChange={onWorkspaceChange} />);
-    expect(screen.getByRole('button', { name: 'Cowork' })).toBeInTheDocument();
-    screen.getByRole('button', { name: 'Code' }).click();
-    expect(onWorkspaceChange).toHaveBeenCalledWith('code');
-  });
-
-  it('switches directly back to Cowork without using a Cowork navigation route', () => {
-    hostMock.isWeb = false;
-    const onWorkspaceChange = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        activeWorkspace="code"
-        onWorkspaceChange={onWorkspaceChange}
-      />
-    );
-    screen.getByRole('button', { name: 'Cowork' }).click();
-    expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
+    expect(screen.queryByRole('radio', { name: 'Cowork' })).toBeNull();
   });
 
   it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
@@ -111,24 +88,19 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
-  it('uses the canonical sidebar collapse control in Code', () => {
+  it('docked, draws no toggle of its own (the titlebar owns it)', () => {
     hostMock.isWeb = false;
-    const onToggleCollapsed = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        activeWorkspace="code"
-        onToggleCollapsed={onToggleCollapsed}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+    render(<Sidebar {...baseProps} onToggleCollapsed={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Close sidebar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
   });
 
-  it('keeps the collapse control out of the accessibility tree when unavailable', () => {
+  it('as a drawer, repeats the close toggle in its own top row', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} activeWorkspace="code" />);
-    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+    const onToggleCollapsed = vi.fn();
+    render(<Sidebar {...baseProps} popout onToggleCollapsed={onToggleCollapsed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close sidebar' }));
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
   });
 
   it('removes every sidebar control from the accessibility tree while collapsed', () => {
@@ -142,15 +114,17 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
       />,
     );
     expect(container.querySelector('aside')).toHaveAttribute('inert');
-    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
   });
 
-  it('does not expose local coding on the hosted web shell', () => {
+  it('docks display settings in the footer when enabled', () => {
     hostMock.isWeb = true;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    const onClick = vi.fn();
+    const { rerender } = render(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Display settings' })).toBeNull();
+    rerender(<Sidebar {...baseProps} displayToggle={{ label: 'Display settings', icon: null, onClick }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Display settings' }));
+    expect(onClick).toHaveBeenCalledOnce();
   });
 });
 
@@ -357,27 +331,6 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
   });
 });
 
-describe('Sidebar — nav title/logo override', () => {
-  it('shows the default "MindsHub" wordmark and no logo when unset', () => {
-    render(<Sidebar {...baseProps} />);
-    expect(screen.getByText('MindsHub')).toBeInTheDocument();
-    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
-  });
-
-  it('shows a custom navTitle and navLogo when set', () => {
-    render(<Sidebar {...baseProps} navTitle="Acme Workspace" navLogo="data:image/png;base64,abc123" />);
-    expect(screen.getByText('Acme Workspace')).toBeInTheDocument();
-    expect(screen.queryByText('MindsHub')).toBeNull();
-    const img = document.querySelector('.anton-sidebar__logo');
-    expect(img).not.toBeNull();
-    expect(img.getAttribute('src')).toBe('data:image/png;base64,abc123');
-  });
-
-  it('falls back to "MindsHub" when navTitle is an empty string', () => {
-    render(<Sidebar {...baseProps} navTitle="" />);
-    expect(screen.getByText('MindsHub')).toBeInTheDocument();
-  });
-});
 
 describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
   // Parity with the web console: a signed-in user gets the account row

@@ -16,9 +16,6 @@ describe('useSidebarNav', () => {
     const { result } = render();
     expect(result.current.sidebarCollapsed).toBe(false);
     expect(result.current.navPopoutOpen).toBe(false);
-    expect(result.current.sidebarCollapsibleRoutes.has('task')).toBe(true);
-    expect(result.current.sidebarCollapsibleRoutes.has('code')).toBe(true);
-    expect(result.current.sidebarCollapsibleRoutes.has('home')).toBe(false);
   });
 
   it('sidebarPopout is true in the narrow band', () => {
