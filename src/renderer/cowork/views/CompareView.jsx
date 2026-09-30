@@ -159,16 +159,49 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
   );
 }
 
-// What each side has cost so far, refetched whenever `revision` changes: a
-// turn starting or finishing is when the gateway's figures move.
-function useComparisonUsage(comparisonId, revision) {
+// A turn's last calls reach billing a moment after the turn ends, so the cost
+// is read once more after this long.
+export const SETTLE_REREAD_MS = 3000;
+
+// What each side has cost, read when the screen opens and when a side finishes
+// a turn -- never while one is running, where the figure would climb call by
+// call. A side still working keeps the figure from its last finished turn even
+// when the other side's finish triggers a read.
+function useComparisonUsage(comparisonId, busy) {
   const [usage, setUsage] = useState(null);
+  const [finishes, setFinishes] = useState(0);
+  const wasBusy = useRef({});
+  const busyNow = useRef(busy);
+  busyNow.current = busy;
+  const busyKey = SIDE_LABELS.map((l) => (busy[l] ? '1' : '0')).join('');
+  useEffect(() => {
+    const finished = SIDE_LABELS.some((l) => wasBusy.current[l] && !busy[l]);
+    wasBusy.current = { ...busy };
+    if (finished) setFinishes((n) => n + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busyKey]);
   useEffect(() => {
     let live = true;
-    fetchComparisonUsage(comparisonId).then((next) => { if (live && next) setUsage(next); });
-    return () => { live = false; };
-  }, [comparisonId, revision]);
+    const read = () => fetchComparisonUsage(comparisonId).then((next) => {
+      if (live && next) setUsage((prev) => keepWorkingSides(prev, next, busyNow.current));
+    });
+    read();
+    const settle = finishes ? setTimeout(read, SETTLE_REREAD_MS) : null;
+    return () => {
+      live = false;
+      if (settle) clearTimeout(settle);
+    };
+  }, [comparisonId, finishes]);
   return usage;
+}
+
+function keepWorkingSides(prev, next, busy) {
+  if (!prev?.sides) return next;
+  const sides = { ...next.sides };
+  for (const label of SIDE_LABELS) {
+    if (busy[label] && prev.sides[label]) sides[label] = prev.sides[label];
+  }
+  return { ...next, sides };
 }
 
 // Re-renders once a second while `active`, for a live "Working · 41s".
@@ -933,7 +966,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
   const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
-  const usage = useComparisonUsage(comparisonId, SIDE_LABELS.map((l) => `${turns[l].length}:${!!busy[l]}`).join('|'));
+  const usage = useComparisonUsage(comparisonId, busy);
   const combined = combinedCost(usage);
   // A side is held back for credits while its last turn stopped for them and
   // the account still cannot pay for its model. The next usage refresh (every

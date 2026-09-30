@@ -61,7 +61,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
-import CompareView, { EXAMPLES, filterComparisons } from './CompareView';
+import CompareView, { EXAMPLES, SETTLE_REREAD_MS, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import UsageBar from '../components/UsageBar';
 import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
@@ -671,16 +671,48 @@ describe('CompareView', () => {
     expect(screen.queryByLabelText(/estimated cost/)).toBeNull();
   });
 
-  it('reads the cost again when a turn finishes', async () => {
-    api.fetchComparisonUsage.mockResolvedValue(null);
-    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
-    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
-    const beforeDone = api.fetchComparisonUsage.mock.calls.length;
-    act(() => openStreams['conv-a'].onDone());
-    await waitFor(() => expect(api.fetchComparisonUsage.mock.calls.length).toBeGreaterThan(beforeDone));
+  it('holds the cost still while a turn runs, and reads it when the turn finishes and once more after', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usage = (a, b) => ({
+        sides: {
+          a: { available: true, estimatedCostUsd: a, turns: [{ turn: 1, estimatedCostUsd: a }] },
+          b: { available: true, estimatedCostUsd: b, turns: [{ turn: 1, estimatedCostUsd: b }] },
+        },
+      });
+      const costA = () => screen.getByRole('button', { name: /^Side A estimated cost/ }).textContent;
+      const costB = () => screen.getByRole('button', { name: /^Side B estimated cost/ }).textContent;
+      api.fetchComparisonUsage.mockResolvedValue(usage(1.25, 2.25));
+      await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+      await waitFor(() => expect(costA()).toBe('$1.25total'));
+
+      // The gateway's figure climbs as the running turn's calls land.
+      api.fetchComparisonUsage.mockResolvedValue(usage(5.25, 6.25));
+      const beforeSend = api.fetchComparisonUsage.mock.calls.length;
+      fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'more' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+      await act(async () => { vi.advanceTimersByTime(SETTLE_REREAD_MS * 2); });
+      expect(api.fetchComparisonUsage.mock.calls.length).toBe(beforeSend);
+      expect(costA()).toBe('$1.25total');
+
+      await act(async () => { openStreams['conv-a'].onDone(); });
+      await waitFor(() => expect(costA()).toBe('$5.25total'));
+      // B is still working, so it keeps the figure from its last finished turn.
+      expect(costB()).toBe('$2.25total');
+      const afterDone = api.fetchComparisonUsage.mock.calls.length;
+
+      api.fetchComparisonUsage.mockResolvedValue(usage(5.75, 7.25));
+      await act(async () => { vi.advanceTimersByTime(SETTLE_REREAD_MS); });
+      await waitFor(() => expect(costA()).toBe('$5.75total'));
+      expect(api.fetchComparisonUsage.mock.calls.length).toBe(afterDone + 1);
+      expect(costB()).toBe('$2.25total');
+
+      await act(async () => { openStreams['conv-b'].onDone(); });
+      await waitFor(() => expect(costB()).toBe('$7.25total'));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows each side under its model name with a quiet status line', async () => {
