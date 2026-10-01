@@ -578,6 +578,9 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
    user chooses to configure one folder or review a playbook update. */
 .code-project-settings { display: flex; flex-direction: column; }
 .code-project-field { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+/* Hand-rolled labels in resource details match the shared Field label. */
+.code-project-folder__details label > span,
+.code-project-resource__location > span { margin-bottom: 6px; color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
 .code-project-section { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .code-project-section:last-of-type { border-bottom: 0; }
 .code-project-section__heading { min-height: 30px; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
@@ -641,10 +644,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-folder__chevron { display: inline-flex; color: var(--ink-4); transition: transform .15s ease; }
 .code-project-folder[open] .code-project-folder__chevron { transform: rotate(180deg); }
 .code-project-folder__details { padding: 6px 2px 14px 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.code-project-folder__details label { min-width: 0; display: grid; gap: 4px; }
-.code-project-folder__details label > span { color: var(--ink-3); font-size: var(--text-xs); }
-.code-project-resource__location { min-width: 0; display: grid; gap: 4px; }
-.code-project-resource__location > span { color: var(--ink-3); font-size: var(--text-xs); }
+.code-project-folder__details label { min-width: 0; display: grid; }
+.code-project-resource__location { min-width: 0; display: grid; }
 .code-project-resource__location code { min-width: 0; overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font: var(--text-xs) var(--font-mono); }
 .code-project-empty-row { width: 100%; min-height: 52px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-3); cursor: pointer; font: var(--text-sm) var(--font-sans); }
 .code-project-empty-row:hover { border-color: var(--accent); color: var(--ink-2); }
@@ -697,7 +698,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-defaults__body { padding: 12px 0 2px; display: grid; gap: 14px; }
 .code-project-defaults { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .code-project-defaults button { width: 100%; }
-.code-project-defaults label { min-width: 0; display: flex; flex-direction: column; }
+.code-project-defaults > div { min-width: 0; }
 
 /* The app-level display toggle occupies the bottom-right corner. At the
    narrow end of the docked-sidebar band, reserve that corner for it; while

@@ -453,13 +453,13 @@ export function ProjectSettingsModal({
             {defaultsOpen && (
               <div id="code-project-defaults" className="code-project-defaults__body">
                 <div className="code-project-defaults">
-                  <label><span className="eyebrow">Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></label>
-                  <label><span className="eyebrow">Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
-                  <label><span className="eyebrow">Permissions</span><Select value={projectPermission} onValueChange={(value) => {
+                  <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
+                  <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
+                  <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
                     if (isPermissionMode(value)) setProjectPermission(value);
-                  }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></label>
+                  }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
                   {projectEffortLevels && (
-                    <label><span className="eyebrow">Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></label>
+                    <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                   )}
                 </div>
                 <Field label="Variables">
