@@ -84,6 +84,9 @@ const EMPTY_START = '__empty__';
 // with the turn and drawn by the transcript as its error card, so repeating it
 // above the pane would show it twice.
 const TRANSPORT_ERRORS = new Set(['stream_error', 'reconnect_error', 'stalled', 'interrupted']);
+// The stream stopped, not the turn: it may still be running. `stalled` is not
+// here because the tail cancels a stalled turn before reporting it.
+const DROPPED_STREAM = new Set(['stream_error', 'reconnect_error', 'interrupted']);
 // A stream that closes without a final event may still be running on the
 // server; re-attach this many times before leaving the side as stopped.
 const MAX_REATTACH = 2;
@@ -798,8 +801,7 @@ function useComparisonSides(comparison) {
       },
       onError(message, event) {
         finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
-        // Both mean the stream stopped, not the turn: it may still be running.
-        if (event?.code !== 'interrupted' && event?.code !== 'stream_error') return;
+        if (!DROPPED_STREAM.has(event?.code)) return;
         const tries = reattached.current[label] || 0;
         if (tries >= MAX_REATTACH) return;
         reattached.current[label] = tries + 1;

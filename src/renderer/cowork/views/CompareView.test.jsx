@@ -508,6 +508,23 @@ describe('CompareView', () => {
     await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-a', expect.anything()));
   });
 
+  it('re-attaches again when the re-attached stream itself drops', async () => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    const tails = [];
+    api.tailInFlight.mockImplementation((_id, callbacks) => { tails.push(callbacks); return { abort: vi.fn() }; });
+
+    act(() => openStreams['conv-a'].onError('The connection was reset.', { code: 'stream_error' }));
+    await waitFor(() => expect(tails).toHaveLength(1));
+    // How a tail reports its own connection dropping.
+    act(() => tails[0].onError('Failed to fetch', { code: 'reconnect_error' }));
+
+    await waitFor(() => expect(tails).toHaveLength(2));
+  });
+
   it('stops re-attaching to a side whose stream keeps dropping', async () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
