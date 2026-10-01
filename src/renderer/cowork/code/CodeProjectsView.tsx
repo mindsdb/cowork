@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import { PageHeader, FilterRow, SearchInput } from '../components/collection';
 import { projectResources, type CodeProject } from './api';
 import { relativeTime } from './presentation';
 
@@ -34,18 +34,12 @@ export function CodeProjectsView({
 
   return (
     <main className="code-projects-view">
-      <header className="code-projects-view__header">
-        <div>
-          <h1>Projects</h1>
-          <p>Repositories, folders, skills, and defaults shared by coding tasks.</p>
-        </div>
-        <Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>
-      </header>
-
-      <label className="code-projects-view__search">
-        <span aria-hidden="true">{Ico.search(15)}</span>
-        <Input value={query} onChange={setQuery} placeholder="Search projects" aria-label="Search projects" />
-      </label>
+      <PageHeader
+        title="Projects"
+        subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
+        actions={<Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>}
+      />
+      <FilterRow search={<SearchInput value={query} onChange={setQuery} placeholder="Search projects" shortcut="" />} />
 
       <div className="code-projects-table" aria-label="Code Projects">
         <div className="code-projects-table__head" aria-hidden="true">
