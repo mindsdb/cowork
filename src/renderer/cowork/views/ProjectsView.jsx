@@ -831,7 +831,7 @@ function ProjectDetail({
       </div>
 
       {!showMobileContext && (
-        <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <aside className={`project-detail-rail bg-transparent border-0 border-l border-solid border-line pt-[18px] px-5 pb-[22px] flex flex-col gap-[22px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
             <Tooltip content="Collapse panel">
               <button

@@ -2999,10 +2999,10 @@ export default function ChatView({
       <aside
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
+        className={`chat-rail-aside flex flex-col pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
           isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+            ? 'gap-2.5 pt-3.5 px-3.5 fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
+            : 'bg-transparent min-w-0 border-0 border-l border-solid border-line pt-[18px] px-5 gap-[22px] transition-opacity duration-[180ms] ease-[ease]'
         }`}
         style={isNarrow ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
