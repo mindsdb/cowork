@@ -166,21 +166,25 @@ export function CodeSidebarSessions({
         key={session.id}
         className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}`}
       >
+        {/* One line, like Cowork's recent rows: the title, then the live
+            status (running, or what needs you in its colour) or, at rest,
+            when it last changed. The project is left to the tooltip and
+            accessible name: rows mostly share one, and Organize › Projects
+            groups by it. */}
         <button
           type="button"
           className="code-sidebar-session"
           onClick={() => onSelect(session.id)}
           aria-current={selectedId === session.id ? 'page' : undefined}
           aria-label={`${session.title || 'Untitled coding task'}, ${status.label}${unread ? ', unread' : ''}, ${repository}, ${updated}`}
+          title={`${session.title || 'Untitled coding task'} · ${repository}`}
         >
           <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
-          <span className="code-sidebar-session__meta">
+          <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
             {working && <Spinner className="code-sidebar-session__spinner" />}
-            {needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
-            {unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
-            {(working || needsYou) && <span className={`code-sidebar-session__status is-${status.tone}`}>{status.label}</span>}
-            <span className="code-sidebar-session__repo">{repository}</span>
-            <span className="code-sidebar-session__time">{updated}</span>
+            {!working && needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
+            {!working && !needsYou && unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
+            <span className="code-sidebar-session__aside-label">{working || needsYou ? status.label : updated}</span>
           </span>
         </button>
         <Button

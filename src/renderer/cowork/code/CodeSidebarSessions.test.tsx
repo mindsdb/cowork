@@ -199,6 +199,25 @@ describe('CodeSidebarSessions', () => {
     expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
   });
 
+  it('keeps each row to one line without repeating the shared project name', () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[
+          { ...session('a', 'completed', '2026-08-21T12:00:00Z'), project_name: 'atlas-web' },
+          { ...session('b', 'completed', '2026-08-21T11:00:00Z'), project_name: 'atlas-web' },
+        ]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /^Task a,/ });
+    // The project stays reachable (accessible name, hover title) but is not printed on the row.
+    expect(button).toHaveAccessibleName(/atlas-web/);
+    expect(button).toHaveAttribute('title', 'Task a · atlas-web');
+    expect(button).not.toHaveTextContent('atlas-web');
+  });
+
   it('keeps a queued remote run visibly in motion', () => {
     render(
       <CodeSidebarSessions
