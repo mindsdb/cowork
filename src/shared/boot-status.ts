@@ -1,21 +1,10 @@
 // The progress line under the welcome orb while the loading screen is held open
-// through a boot-time update (ENG-749).
+// through a boot-time update (ENG-749). OTA-only (ENG-2764): a shell download is
+// never applied by the boot gate, so naming it here announced an update the app
+// then asked the user to apply by hand. The copy is never completion-shaped, so
+// it can't contradict a pending shell update (ENG-2296).
 //
-// This line describes ONLY what the boot gate is actually waiting on, which is
-// the OTA (UI + server) apply and nothing else (ENG-2764). The gate is released
-// by the updater's boot poll (`onBootPollComplete`); the shell auto-updater runs
-// on its own timer and the gate never waits for it. Reporting the shell channel
-// here — as this unit did between ENG-2296 and ENG-2764 — made the loading
-// screen announce a download it could not finish, hand the user the app anyway,
-// and then ask them to click Restart in a banner.
-//
-// ENG-2296's underlying concern still holds: the line must never claim the
-// update is done while something is still pending. That is met by never saying
-// anything completion-shaped, rather than by importing a phase boot cannot act
-// on. A pending shell update is the sidebar banner's business, not this line's.
-//
-// This is presentation only — it never decides *whether* to update, just what
-// the loading screen says while a boot-time OTA is in flight.
+// Presentation only — it never decides *whether* to update.
 
 export interface BootStatusInput {
   /** OTA (UI + server) status pushed from main. Only `downloading`/`reloading`
@@ -25,9 +14,6 @@ export interface BootStatusInput {
 }
 
 const DOWNLOADING = 'Downloading the latest update…';
-// Deliberately not completion-shaped. The OTA reload is the last thing the gate
-// waits for, but a shell update may still be pending behind it, so this reports
-// ongoing work and lets the sidebar banner own whatever remains (ENG-2296).
 const FINISHING = 'Finishing up…';
 
 /** The loading-screen status line, or null when no boot-time OTA is in flight

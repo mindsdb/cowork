@@ -298,10 +298,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={vi.fn()}
       />
     );
-    // Exactly one pill, and it is the shell's. Both ready banners now read
-    // "Update ready" (ENG-2764), so the discriminator is the action label —
-    // shell offers "Restart now", OTA a bare "Restart" — plus the absence of the
-    // OTA version the stacked pill used to carry.
+    // Both ready banners read "Update ready"; the shell's says "Restart now".
     const pills = screen.getAllByRole('button', { name: /Update ready/ });
     expect(pills).toHaveLength(1);
     expect(pills[0]).toHaveTextContent(/Restart now/);

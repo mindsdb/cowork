@@ -58,6 +58,8 @@ export interface UpdateBannerInput {
      *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
     targetVersion?: string;
     progress?: { percent?: number | null } | null;
+    /** `auto` installs a downloaded update on quit; `manual` never does. */
+    mode?: string;
   } | null;
   /** Prod-only manual installer notice, already filtered for per-version
    *  dismissal by the caller (a dismissed notice must arrive here as null). */
@@ -82,13 +84,8 @@ export interface UpdateBanner {
   disabled: boolean;
   /** Only the manual installer notice can be dismissed (per-version). */
   dismissible: boolean;
-  /** Longer-form explanation for the pill's tooltip, naming the path the update
-   *  takes if the user never clicks (ENG-2764). The pill reads as an
-   *  accelerator rather than a demand: a downloaded shell update installs on the
-   *  next normal quit, and a pending OTA applies at the next launch, so neither
-   *  banner is the only way to get the update. Absent where there is nothing to
-   *  reassure the user about — an in-flight download, or a failure that really
-   *  does need the user to act. */
+  /** Tooltip naming how the update lands if the pill is never clicked
+   *  (ENG-2764). Absent when clicking is the only way. */
   hint?: string;
   version?: string;
   /** Manual notice only: the installer is a Debian package, so the copy names
@@ -108,10 +105,14 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
     case 'installing':
       return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
     case 'ready-to-install':
-      // `autoInstallOnAppQuit` is on in auto mode, so this update lands on the
-      // next normal quit whether or not the pill is ever clicked. Say so: the
-      // bare "Restart" read as the only way out (ENG-2764).
-      return { kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version, hint: `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.` };
+      // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
+      // is the only way to install.
+      return {
+        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version,
+        hint: shellAuto.mode === 'auto'
+          ? `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
+          : undefined,
+      };
     case 'failed':
       // Recoverable → retry via the auto-updater; terminal → manual installer
       // link. The single `shell-auto` handler routes both.
@@ -165,8 +166,6 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       disabled: false,
       dismissible: false,
       version: otaVersion,
-      // The boot poll auto-applies a pending OTA, so this is a shortcut to a
-      // reload the next launch would perform anyway (ENG-2764).
       hint: `Reloads the app to finish updating${otaVersion ? ` to ${otaVersion}` : ''}. It also applies on its own the next time you open the app.`,
     };
   }
