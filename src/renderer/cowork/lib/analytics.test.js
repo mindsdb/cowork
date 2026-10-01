@@ -661,14 +661,32 @@ describe('billing + provisioning events (ENG-1533)', () => {
     for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
       if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
       const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
-      for (const call of src.matchAll(/trackBillingOpened\(([^)]*)\)/g)) {
+      // The trigger is the first argument; the second is workspace_mode.
+      for (const call of src.matchAll(/trackBillingOpened\(([^,)]*)/g)) {
         for (const literal of call[1].matchAll(/'([a-z_]+)'/g)) sent.add(literal[1]);
       }
+      // Code Mode's recovery cards name their trigger in a table, not a call.
+      for (const entry of src.matchAll(/billingTrigger: '([a-z_]+)'/g)) sent.add(entry[1]);
     }
 
     // Guards the sweep itself: a path or regex that matched nothing would pass.
     expect(sent.has('token_limit')).toBe(true);
+    expect(sent.has('included_allowance_exhausted')).toBe(true);
     expect([...sent].filter((trigger) => !vocabulary.has(trigger))).toEqual([]);
+  });
+
+  it('billing_opened marks a Code Mode route with workspace_mode and leaves chat routes unmarked', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened('included_allowance_exhausted', 'code');
+    trackBillingOpened('nav');
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [code, chat] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(code.trigger).toBe('included_allowance_exhausted');
+    expect(code.workspace_mode).toBe('code');
+    expect(chat).not.toHaveProperty('workspace_mode');
   });
 
   it('billing_opened records an unnamed trigger as unknown, never as a real one', async () => {
@@ -1139,5 +1157,126 @@ describe('identity transitions must not leak a prior session\'s org (ENG-2206, C
     expect((await sentEvent(fetchMock, 'token_cap_hit')).properties).not.toHaveProperty(
       'sso_organization_id'
     );
+  });
+});
+
+describe('Code Mode events', () => {
+  const created = {
+    id: 'task-1',
+    engine_id: 'codex',
+    model: 'gpt',
+    reasoning_effort: 'high',
+    permission_mode: 'workspace_write',
+    task_mode: 'plan',
+    workspace_kind: 'git_worktree',
+    project_id: 'project-1',
+    computer_is_local: true,
+    source_contexts: [{ kind: 'github_issue' }],
+    source_path: '/Users/someone/private-repo',
+    title: 'Fix the customer bug',
+  };
+
+  it('code_view_opened fires with the standard stamps', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeViewOpened } = await importAnalytics();
+
+    trackCodeViewOpened();
+
+    const event = await sentEvent(fetchMock, 'code_view_opened');
+    expect(event.properties.surface).toBe('desktop');
+  });
+
+  it('code_view_opened fires once per launch, however often Code is reopened', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeViewOpened, trackCodeTaskStarted, resetDeviceIdentity } = await importAnalytics();
+    const opened = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body).event)
+      .filter((event) => event === 'code_view_opened').length;
+
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    trackCodeViewOpened();
+    // A later event proves the repeats had their chance to send and did not.
+    trackCodeTaskStarted(created);
+    await sentEvent(fetchMock, 'code_task_started');
+    expect(opened()).toBe(1);
+
+    // A sign-out hands the launch to the next account, whose first visit counts.
+    resetDeviceIdentity();
+    trackCodeViewOpened();
+    await vi.waitFor(() => expect(opened()).toBe(2));
+  });
+
+  it('code_task_started describes the created task without its path or title', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted(created, { origin: 'new', attachmentCount: 2 });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({
+      task_id: 'task-1',
+      origin: 'new',
+      engine_id: 'codex',
+      model: 'gpt',
+      reasoning_effort: 'high',
+      permission_mode: 'workspace_write',
+      task_mode: 'plan',
+      workspace_kind: 'git_worktree',
+      in_project: true,
+      computer_is_local: true,
+      attachment_count: 2,
+      source_context_count: 1,
+    });
+    // A path or task title names a customer's code; neither may leave the app.
+    expect(JSON.stringify(properties)).not.toContain('private-repo');
+    expect(JSON.stringify(properties)).not.toContain('customer bug');
+  });
+
+  it('code_task_started reads a standalone build task as such', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted({ ...created, project_id: null, task_mode: undefined, workspace_kind: 'direct_folder' }, { origin: 'fork' });
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_started');
+    expect(properties).toMatchObject({ origin: 'fork', in_project: false, task_mode: 'build', workspace_kind: 'direct_folder' });
+    expect(properties).not.toHaveProperty('attachment_count');
+  });
+
+  it('code_task_started sends nothing for a session without an id', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStarted } = await importAnalytics();
+
+    trackCodeTaskStarted(null);
+    trackCodeTaskStarted({});
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('code_task_start_failed carries the server error code and status', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStartFailed } = await importAnalytics();
+    const reason = Object.assign(new Error('refused'), { status: 409, code: 'git_identity_missing' });
+
+    trackCodeTaskStartFailed('new', { engineId: 'codex', model: 'gpt', projectId: null }, reason);
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_start_failed');
+    expect(properties).toMatchObject({
+      origin: 'new', engine_id: 'codex', model: 'gpt', in_project: false, code: 'git_identity_missing', status: 409,
+    });
+  });
+
+  it('code_task_start_failed records a codeless failure as unknown', async () => {
+    const fetchMock = mockFetch();
+    const { trackCodeTaskStartFailed } = await importAnalytics();
+
+    trackCodeTaskStartFailed('fork', null, new Error('timed out'));
+
+    const { properties } = await sentEvent(fetchMock, 'code_task_start_failed');
+    expect(properties.code).toBe('unknown');
+    expect(properties).not.toHaveProperty('status');
+    expect(properties).not.toHaveProperty('in_project');
   });
 });

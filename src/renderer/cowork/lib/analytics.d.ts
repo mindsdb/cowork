@@ -17,7 +17,23 @@ export function trackBootScreenResolved(target: string): Promise<void>;
 export function trackKeyProvisioningRefused(outcome: string): void;
 
 /**
- * The desktop sent the user to the console billing page (ENG-1533). `trigger`
- * names the condition that sent them. Never throws.
+ * The desktop sent the user to the console billing page. `trigger` names the
+ * condition that sent them; `workspaceMode` is 'code' for a Code Mode route.
  */
-export function trackBillingOpened(trigger: string): void;
+export function trackBillingOpened(trigger: string, workspaceMode?: 'code'): void;
+
+/** First switch into the Code workspace per launch. Never throws. */
+export function trackCodeViewOpened(): void;
+
+/** A Code Mode task was created, read from the created session. Never throws. */
+export function trackCodeTaskStarted(
+  session: import('../code/api').CodingSession,
+  options?: { origin?: 'new' | 'fork'; attachmentCount?: number },
+): void;
+
+/** A Code Mode create or fork was refused. Never throws. */
+export function trackCodeTaskStartFailed(
+  origin: 'new' | 'fork',
+  input: { engineId?: string; model?: string; projectId?: string | null } | null,
+  reason: unknown,
+): void;

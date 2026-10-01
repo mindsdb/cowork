@@ -11,13 +11,19 @@ export interface FailureRecovery {
   // The turn stopped, but only until a short limit lifts. It reads as a wait,
   // not as a failure of the product.
   temporary?: boolean;
+  // The billing_opened trigger for "Add credits", in the vocabulary chat mode
+  // already reports, so a Code Mode click lands in the same series.
+  billingTrigger?: BillingTrigger;
 }
+
+export type BillingTrigger = 'token_limit' | 'included_allowance_exhausted' | 'free_serving_paused';
 
 export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   insufficient_credits: {
     title: (modelName) => `${modelName} needs credits`,
     body: 'Add credits or choose another model, then continue in this task.',
     addCredits: true,
+    billingTrigger: 'token_limit',
   },
   model_authentication_failed: {
     title: () => 'Your sign-in does not match this server',
@@ -37,11 +43,13 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
     title: () => 'Your included allowance is used up',
     body: 'Add credits to continue now, or wait for the allowance to refill, then continue in this task.',
     addCredits: true,
+    billingTrigger: 'included_allowance_exhausted',
   },
   free_air_daily_spend_fuse_exceeded: {
     title: () => 'Free MindsHub Air is paused',
     body: 'It resumes when the daily budget resets. Add credits or choose another model to continue now.',
     addCredits: true,
+    billingTrigger: 'free_serving_paused',
   },
 };
 
@@ -114,6 +122,7 @@ export interface ComposerNotice {
   detail?: string;
   chooseModel?: boolean;
   addCredits?: boolean;
+  billingTrigger?: BillingTrigger;
   /** The remote run stopped but kept its work; Reopen task restores it. */
   reopen?: boolean;
   reopening?: boolean;
@@ -147,6 +156,7 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,
     addCredits: recovery.addCredits,
+    billingTrigger: recovery.billingTrigger,
   };
 }
 

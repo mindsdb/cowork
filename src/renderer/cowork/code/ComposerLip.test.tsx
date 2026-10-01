@@ -66,7 +66,7 @@ describe('ComposerLip', () => {
     expect(screen.queryByText(/server returned 402/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Choose model' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onAddCredits).toHaveBeenCalledOnce();
+    expect(onAddCredits).toHaveBeenCalledWith('token_limit');
 
     await user.click(screen.getByRole('button', { name: 'More options' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
@@ -119,13 +119,15 @@ describe('ComposerLip', () => {
   });
 
   it.each([
-    ['included_allowance_exhausted', 'Your included allowance is used up'],
-    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused'],
-  ])('offers credits when %s blocks the turn until a reset', (code, title) => {
+    ['included_allowance_exhausted', 'Your included allowance is used up', 'included_allowance_exhausted'],
+    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused', 'free_serving_paused'],
+  ])('offers credits when %s blocks the turn until a reset', (code, title, billingTrigger) => {
     const { onAddCredits } = renderFailure(code, 'upstream 429');
     expect(screen.getByText(`${title}.`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
-    expect(onAddCredits).toHaveBeenCalledOnce();
+    // Reported under chat mode's billing_opened trigger for the same condition,
+    // not as a drained wallet.
+    expect(onAddCredits).toHaveBeenCalledWith(billingTrigger);
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 

@@ -33,7 +33,7 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   more?: number;
   onShowMore?: () => void;
   onChooseModel: () => void;
-  onAddCredits: () => void;
+  onAddCredits: (billingTrigger: string) => void;
   onReopen: () => void;
   onDismiss: (key: string) => void;
 }) {
@@ -43,7 +43,7 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   const text = [title, notice.body].filter(Boolean).join(' ');
   // Two controls at most: the step that unblocks the next send, then one
   // more as a plain button, or a menu when there are several.
-  const primary = notice.addCredits ? { label: 'Add credits', onClick: onAddCredits }
+  const primary = notice.addCredits ? { label: 'Add credits', onClick: () => onAddCredits(notice.billingTrigger || 'unknown') }
     : notice.reopen ? { label: notice.reopening ? 'Reopening…' : 'Reopen task', onClick: onReopen, disabled: notice.reopening }
       : notice.chooseModel ? { label: 'Choose model', onClick: onChooseModel }
         : null;

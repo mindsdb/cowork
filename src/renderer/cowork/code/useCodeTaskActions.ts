@@ -4,6 +4,7 @@ import {
   type CreateCodeTaskInput,
   type CodingSession,
 } from './api';
+import { trackCodeTaskStarted, trackCodeTaskStartFailed } from '../lib/analytics';
 
 
 const CONTROL_TIMEOUT_MS = 20_000;
@@ -145,12 +146,14 @@ export function useCodeTaskActions({
         attachments: input.attachments,
         source_contexts: input.sourceContexts,
       });
+      trackCodeTaskStarted(created, { origin: 'new', attachmentCount: input.attachments.length });
       // The new task opens from the list cache; without it the view shows
       // "Restoring task…" until the list or detail fetch returns.
       onSessionsChangeRef.current([created, ...sessionsRef.current.filter((item) => item.id !== created.id)]);
       onSelectionChangeRef.current(created.id, false);
       await reconcile(() => loadSessions(created.id), 'The task started');
     } catch (reason) {
+      trackCodeTaskStartFailed('new', input, reason);
       setError(errorMessage(reason, 'Could not start this task.'));
     } finally {
       endAction();
@@ -163,9 +166,11 @@ export function useCodeTaskActions({
     setError('');
     try {
       const forked = await codingApi.forkSession(session.id);
+      trackCodeTaskStarted(forked, { origin: 'fork' });
       onSelectionChangeRef.current(forked.id, false);
       await reconcile(() => loadSessions(forked.id), 'The task was forked');
     } catch (reason) {
+      trackCodeTaskStartFailed('fork', null, reason);
       setError(errorMessage(reason, 'Could not fork this coding task.'));
     } finally {
       endAction();
