@@ -57,6 +57,7 @@ export function ProjectResourcesEditor({
   connections,
   onRepositoryConnection,
   onOpenConnectors,
+  allowMultiple = true,
 }: {
   resources: ProjectResource[];
   computers: CodeComputer[];
@@ -70,6 +71,8 @@ export function ProjectResourcesEditor({
   connections: ConnectorConnection[];
   onRepositoryConnection: (name: string) => void;
   onOpenConnectors: () => void;
+  // Creating a project takes one source; more are added from Project settings.
+  allowMultiple?: boolean;
 }) {
   const [repositoryOpen, setRepositoryOpen] = useState(false);
   const repositoryTrigger = useRef<HTMLButtonElement>(null);
@@ -232,24 +235,24 @@ export function ProjectResourcesEditor({
               </div>
             );
           })}
-          <div className="code-project-list__actions">
+          {allowMultiple && <div className="code-project-list__actions">
             <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
               {Ico.folder(13)} {adding ? 'Adding…' : 'Add folder'}
             </Button>
             <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
               {Ico.plus(13)} Add repository
             </Button>
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="code-project-choices">
           <button type="button" className="code-project-choice" disabled={disabled || adding} onClick={() => void addFromComputer()}>
             <span className="code-project-choice__icon" aria-hidden="true">{Ico.folder(16)}</span>
-            <span><strong>{adding ? 'Adding…' : 'Choose a folder'}</strong><small>On this computer</small></span>
+            <span><strong>{adding ? 'Adding…' : 'Choose a folder'}</strong><small>Runs on this computer</small></span>
           </button>
           <button ref={repositoryTrigger} type="button" className="code-project-choice" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
             <span className="code-project-choice__icon" aria-hidden="true">{Ico.code(16)}</span>
-            <span><strong>Clone a repository</strong><small>From GitHub or a Git URL</small></span>
+            <span><strong>Clone a repository</strong><small>Runs on any computer</small></span>
           </button>
         </div>
       )}

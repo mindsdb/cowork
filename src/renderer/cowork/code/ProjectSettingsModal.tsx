@@ -349,6 +349,7 @@ export function ProjectSettingsModal({
             onCommandChange={updateCommand}
             onFirstResource={(resourceName) => { if (!name) setName(resourceName); }}
             onError={setError}
+            allowMultiple={!!project}
           />
 
           {/* Creating asks only for a name and code. Connectors, skills and

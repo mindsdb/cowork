@@ -107,9 +107,6 @@ describe('Task and project connector detours', () => {
     }
     fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Keep my project' } });
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Git repository URL' }), { target: { value: 'https://github.com/acme/seed.git' } });
-    await user.click(screen.getByRole('button', { name: 'Add' }));
-    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -128,19 +125,22 @@ describe('Task and project connector detours', () => {
       expect(taskModel).toHaveTextContent('Other model');
     }
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Keep my project');
-    expect(screen.getByRole('button', { name: 'Remove seed' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     if (outcome === 'connected') {
-      await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
       await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
+    } else {
+      await user.click(screen.getByRole('button', { name: 'Paste repository URL' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Git repository URL' }), { target: { value: 'https://github.com/acme/seed.git' } });
+      await user.click(screen.getByRole('button', { name: 'Add' }));
     }
+    expect(screen.getByRole('button', { name: outcome === 'connected' ? 'Remove private' : 'Remove seed' })).toBeVisible();
     expect(codingApi.updateProject).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
     await waitFor(() => expect(codingApi.createProject).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Keep my project',
-      resources: expect.arrayContaining([
-        expect.objectContaining({ source_url: 'https://github.com/acme/seed.git' }),
-        ...(outcome === 'connected' ? [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, default_branch: 'main' })] : []),
-      ]),
+      resources: [outcome === 'connected'
+        ? expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, default_branch: 'main' })
+        : expect.objectContaining({ source_url: 'https://github.com/acme/seed.git' })],
       ...(outcome === 'connected' ? { connections: [{ provider: 'github', name: 'work', label: 'work' }] } : {}),
     })));
     expect(codingApi.createProject).toHaveBeenCalledOnce();

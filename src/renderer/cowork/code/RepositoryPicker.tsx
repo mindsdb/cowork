@@ -66,7 +66,7 @@ export function RepositoryPicker({ connections, existingUrls, disabled = false, 
   const account = accounts.find((item) => item.name === chosenAccount) || accounts[0];
   const [query, setQuery] = useState('');
   const [url, setUrl] = useState('');
-  const [urlOpen, setUrlOpen] = useState(!accounts.length);
+  const [urlOpen, setUrlOpen] = useState(false);
   const unavailable = account?.status === 'needs_reconnect' || account?.status === 'missing';
   return <section className="code-repository-picker" aria-label="Add Git repository" onKeyDown={(event) => {
     if (event.key === 'Escape') { event.stopPropagation(); onClose(); }

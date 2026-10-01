@@ -88,7 +88,6 @@ describe('ProjectSettingsModal', () => {
       onClose={vi.fn()} onSave={onSave} />);
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
-    expect(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ })).toHaveFocus();
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('private');
     // Creating shows no Connectors section, yet the picked account is still saved with the project.
     expect(screen.queryByRole('checkbox', { name: /Work/ })).toBeNull();
@@ -136,6 +135,7 @@ describe('ProjectSettingsModal', () => {
     const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
     render(<ProjectSettingsModal open project={project} busy={false} connections={[]} onClose={vi.fn()} onSave={onSave} />);
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
+    await user.click(screen.getByRole('button', { name: 'Paste repository URL' }));
     const input = screen.getByRole('textbox', { name: 'Git repository URL' });
     await user.type(input, 'https://github.com/mindsdb/cowork/{Enter}');
     expect(screen.getByText('That repository is already in this project.')).toBeInTheDocument();
@@ -234,6 +234,7 @@ describe('ProjectSettingsModal', () => {
     expect(await screen.findByText('new-project')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('new-project');
     expect(screen.getByRole('button', { name: 'Create project' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Add repository' })).toBeNull();
   });
 
   it('turns an empty project skill picker into a path to the Skills library', async () => {
