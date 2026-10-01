@@ -297,7 +297,6 @@ export function ProjectSettingsModal({
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
-        subtitle="Code, connectors, skills, and defaults shared by every task in this project."
         onClose={onClose}
       />
       <ModalBody padding="0">
@@ -333,7 +332,7 @@ export function ProjectSettingsModal({
 
           <section className="code-project-section code-project-skills">
             <div className="code-project-section__heading">
-              <div><strong>Skills</strong><span>Team standards and workflows available to every task in this project</span></div>
+              <div><strong>Skills</strong></div>
             </div>
             <ProjectSkillSelector
               items={skillLibrary.items}

@@ -28,7 +28,7 @@ export function ProjectConnectedTools({
   return (
     <section className="code-project-section code-project-tools">
       <div className="code-project-section__heading">
-        <div><strong>Connectors</strong><span>Connected accounts available to every task in this project</span></div>
+        <div><strong>Connectors</strong></div>
         {canManage && <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Manage</Button>}
       </div>
       {developerAccounts.length ? (

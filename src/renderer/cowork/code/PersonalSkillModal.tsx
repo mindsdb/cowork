@@ -98,7 +98,7 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
 
   return <>
     <Modal open onClose={close} size="md" labelledBy="personal-skill-title" closeOnBackdrop={!busy} closeOnEsc={!busy} maxHeight="min(820px, 92vh)">
-      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} subtitle="For your Code tasks. No Git repository required." onClose={busy ? undefined : close} />
+      <ModalHeader id="personal-skill-title" title={skillId ? 'Edit personal skill' : 'Add personal skill'} onClose={busy ? undefined : close} />
       <ModalBody>
         {loading ? <div className="code-personal-skill__state" role="status"><Spinner /> Loading skill…</div>
           : skillId && !original ? <div className="code-personal-skill__state"><Alert variant="danger">{error}</Alert><Button variant="subtle" onClick={() => setRetry((value) => value + 1)}>Try again</Button></div>
@@ -110,7 +110,6 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
                   <div className="code-personal-skill__import">
                     <input ref={fileInput} type="file" accept=".md,.skill" aria-label="Skill file" hidden onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ''; }} />
                     <strong>Bring your own SKILL.md</strong>
-                    <p>Choose a text file with a name, description and instructions. It will be copied into your Code skills. The original file stays unchanged.</p>
                     <Button variant="tinted" onClick={() => fileInput.current?.click()}>{Ico.attach(15)} {upload ? 'Choose another file' : 'Choose file'}</Button>
                     <small>SKILL.md or .skill · Up to 120 KB</small>
                   </div>

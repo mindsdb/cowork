@@ -298,7 +298,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   return (
     <main className="code-skills-view">
       <header className="code-skills-view__header">
-        <div><h1>Skills</h1><p>Your workflows and your team’s engineering standards, ready for Code tasks.</p></div>
+        <div><h1>Skills</h1></div>
         <div className="code-skills-view__actions">
           <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
           <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>

@@ -55,7 +55,7 @@ export function GitIdentityCard({ setup, busy = false }: { setup: GitIdentitySet
     <section className="code-git-identity" aria-labelledby="code-git-identity-title">
       <div className="code-git-identity__intro">
         <div className="code-field-label" id="code-git-identity-title">Git needs to know who you are</div>
-        <p>Commits on this computer need a name and an email. Save them once and the commit runs again. Anything Git already has is kept.</p>
+        <p>Commits on this computer need a name and an email.</p>
       </div>
       <div className="code-git-identity__form">
         <Input value={name} onChange={setName} placeholder="Your name" aria-label="Name for Git commits" disabled={disabled} />

@@ -143,7 +143,6 @@ export function ProjectResourcesEditor({
       <div className="code-project-section__heading">
         <div>
           <strong>Resources</strong>
-          <span>{resources.length ? `${resources.length} available to each task by default` : 'Add the code and files this project spans'}</span>
         </div>
         <div className="code-resource-add-actions">
           <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>

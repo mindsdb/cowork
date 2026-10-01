@@ -37,7 +37,6 @@ export function CodeProjectsView({
       <header className="code-projects-view__header">
         <div>
           <h1>Projects</h1>
-          <p>Repositories, folders, skills, and defaults shared by coding tasks.</p>
         </div>
         <Button variant="primary" onClick={onCreate}>{Ico.plus(13)} New project</Button>
       </header>

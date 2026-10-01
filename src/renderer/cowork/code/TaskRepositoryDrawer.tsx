@@ -137,16 +137,14 @@ export function TaskRepositoryDrawer({
             <Input
               id={branchId}
               leading={<GitBranch size={15} />}
-              placeholder="feat/repo-status"
+              placeholder="Automatic"
               value={draft.branch || ''}
               onChange={(value) => setDraft({ ...draft, branch: value || null })}
               disabled={!repositories.length || checkingBranches}
               aria-invalid={!!issue}
-              aria-describedby={`${branchId}-hint`}
+              aria-describedby={issue ? `${branchId}-hint` : undefined}
             />
-            <small id={`${branchId}-hint`} className={issue ? 'is-error' : ''}>
-              {issue || 'Created in each selected repository. Leave blank for an automatic name.'}
-            </small>
+            {issue && <small id={`${branchId}-hint`} className="is-error">{issue}</small>}
             {branchCheckError && <Alert variant="danger">{branchCheckError}</Alert>}
           </div>
         )}
