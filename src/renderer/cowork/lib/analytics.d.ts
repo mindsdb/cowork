@@ -9,6 +9,9 @@
  */
 export function trackBootScreenResolved(target: string): Promise<void>;
 
+/** Shell auto-update milestone, once per app run. No-op off Electron. */
+export function trackShellUpdatePhase(snapshot: unknown): void;
+
 /**
  * MindsHub declined to provision an LLM key (ENG-1533). `outcome` records what
  * the UI did about it — `byok_offered`, `billing_opened` or `unhandled` — since

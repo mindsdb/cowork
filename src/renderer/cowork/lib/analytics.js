@@ -102,7 +102,8 @@ const EVENTS = {
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
+  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -865,10 +866,60 @@ export async function trackBootScreenResolved(target) {
     // signal worth seeing.
     status = null;
   }
+  // app_version is the OTA UI bundle, not the shell.
+  let version = null;
+  try {
+    version = await host.getVersionInfo();
+  } catch { /* older shell: send without it */ }
   await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
     target,
     anton_installed: Boolean(status?.antonInstalled),
     server_deps_ready: Boolean(status?.serverDepsReady),
+    build_kind: version?.buildKind ?? null,
+    shell_version: version?.app || null,
+  });
+}
+
+// Auto mode skips `available`, so `downloading` counts as it. An install on quit
+// shows up only as the next launch's `relaunched`. Sent milestones are kept in
+// sessionStorage so reloads don't resend them.
+const SHELL_UPDATE_MILESTONES = ['available', 'ready-to-install', 'installing', 'failed'];
+const SHELL_UPDATE_SENT_KEY = 'cowork_shell_update_milestones_sent';
+
+function claimShellUpdateMilestone(key) {
+  try {
+    const sent = JSON.parse(window.sessionStorage.getItem(SHELL_UPDATE_SENT_KEY) || '[]');
+    if (sent.includes(key)) return false;
+    window.sessionStorage.setItem(SHELL_UPDATE_SENT_KEY, JSON.stringify([...sent, key]));
+  } catch { /* a resend beats a drop */ }
+  return true;
+}
+
+export function trackShellUpdatePhase(snapshot) {
+  if (!host.isElectron || !snapshot) return;
+  const base = { channel: snapshot.channel, mode: snapshot.mode };
+  const install = snapshot.lastInstall;
+  if (install && claimShellUpdateMilestone(`relaunched|${install.expected}`)) {
+    void capture(EVENTS.SHELL_UPDATE_PHASE, {
+      ...base,
+      phase: 'relaunched',
+      current_version: install.version,
+      target_version: install.expected,
+      error_code: install.applied ? null : 'install-not-applied',
+    });
+  }
+  const phase = snapshot.phase === 'downloading' ? 'available' : snapshot.phase;
+  // install-not-applied is the relaunch verdict above, not a separate failure.
+  if (!SHELL_UPDATE_MILESTONES.includes(phase) || snapshot.errorCode === 'install-not-applied') return;
+  if (!claimShellUpdateMilestone([phase, snapshot.targetVersion, snapshot.errorCode].join('|'))) return;
+  void capture(EVENTS.SHELL_UPDATE_PHASE, {
+    ...base,
+    phase,
+    trigger: snapshot.trigger ?? null,
+    current_version: snapshot.currentVersion || null,
+    target_version: snapshot.targetVersion ?? null,
+    error_code: snapshot.errorCode ?? null,
+    recoverable: snapshot.phase === 'failed' ? Boolean(snapshot.recoverable) : null,
   });
 }
 

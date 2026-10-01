@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url';
 // hostState.isElectron is a hoisted mutable so a test can flip the surface to
 // web before importAnalytics() (SURFACE/LIB are read at import time); getters
 // keep the mock reading the current value on each fresh import.
-const { getAccessToken, checkInstall, hostState } = vi.hoisted(() => ({
+const { getAccessToken, checkInstall, getVersionInfo, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   checkInstall: vi.fn(),
+  getVersionInfo: vi.fn(),
   hostState: { isElectron: true },
 }));
 vi.mock('../../platform/host', () => ({
@@ -25,6 +26,7 @@ vi.mock('../../platform/host', () => ({
     },
     getAccessToken,
     checkInstall,
+    getVersionInfo,
   },
   get isElectron() {
     return hostState.isElectron;
@@ -77,6 +79,7 @@ beforeEach(() => {
   hostState.isElectron = true;
   getAccessToken.mockReset().mockResolvedValue(null); // unauthenticated by default
   checkInstall.mockReset().mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+  getVersionInfo.mockReset().mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: null });
   try {
     window.localStorage.clear();
   } catch {
@@ -347,6 +350,32 @@ describe('trackBootScreenResolved boot event (ENG-921)', () => {
     expect(body.properties.server_deps_ready).toBe(false);
   });
 
+  it('stamps the shell version and ring, which OTA does not move with app_version', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockResolvedValue({ app: '2.26.9.28.1', ui: '2.26.9.30.1', source: 'ota', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.build_kind).toBe('prod');
+    expect(body.properties.shell_version).toBe('2.26.9.28.1');
+  });
+
+  it('still fires without shell facts when the version bridge throws', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    getVersionInfo.mockRejectedValue(new Error('old shell'));
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.build_kind).toBeNull();
+    expect(body.properties.shell_version).toBeNull();
+  });
+
   it('is a no-op off Electron (the web SPA has no local server to install)', async () => {
     hostState.isElectron = false; // web SPA
     const fetchMock = mockFetch();
@@ -356,6 +385,80 @@ describe('trackBootScreenResolved boot event (ENG-921)', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(checkInstall).not.toHaveBeenCalled();
+  });
+});
+
+describe('trackShellUpdatePhase', () => {
+  const snapshot = (over = {}) => ({ phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.260928.1', ...over });
+  const sent = (fetchMock) => fetchMock.mock.calls
+    .map((c) => JSON.parse(c[1].body))
+    .filter((b) => b.event === 'shell_update_phase')
+    .map((b) => b.properties);
+
+  beforeEach(() => window.sessionStorage.clear());
+
+  it('sends each milestone once, even when a reload re-reads the same snapshot', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'checking', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'ready-to-install', targetVersion: '2.260930.1', trigger: 'boot' }));
+    trackShellUpdatePhase(snapshot({ phase: 'ready-to-install', targetVersion: '2.260930.1', trigger: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({
+      phase: 'ready-to-install', channel: 'prod', mode: 'auto', trigger: 'boot',
+      current_version: '2.260928.1', target_version: '2.260930.1', recoverable: null,
+    });
+  });
+
+  it('counts an auto-mode download as discovery, once, even when manual mode shows available first', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'available', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', mode: 'manual', targetVersion: '2.260930.1', trigger: 'periodic' }));
+    trackShellUpdatePhase(snapshot({ phase: 'downloading', targetVersion: '2.261001.1', trigger: 'boot' }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(2));
+    expect(sent(fetchMock).map((p) => [p.phase, p.target_version, p.trigger])).toEqual([
+      ['available', '2.260930.1', 'periodic'],
+      ['available', '2.261001.1', 'boot'],
+    ]);
+  });
+
+  it('reports a failure with its code and whether it can be retried', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'failed', targetVersion: '2.260930.1', errorCode: 'artifact-verification-failed', recoverable: false }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({ phase: 'failed', error_code: 'artifact-verification-failed', recoverable: false });
+  });
+
+  it('reports the relaunch verdict once, and not again as a failed phase', async () => {
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+    const lastInstall = { applied: false, version: '2.260928.1', expected: '2.260930.1' };
+
+    trackShellUpdatePhase(snapshot({ phase: 'failed', errorCode: 'install-not-applied', recoverable: true, targetVersion: '2.260930.1', lastInstall }));
+    trackShellUpdatePhase(snapshot({ phase: 'idle', lastInstall }));
+
+    await vi.waitFor(() => expect(sent(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]).toMatchObject({
+      phase: 'relaunched', current_version: '2.260928.1', target_version: '2.260930.1', error_code: 'install-not-applied',
+    });
+  });
+
+  it('is a no-op off Electron', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackShellUpdatePhase } = await importAnalytics();
+
+    trackShellUpdatePhase(snapshot({ phase: 'available', targetVersion: '2.260930.1' }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
