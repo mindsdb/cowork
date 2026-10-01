@@ -5,8 +5,8 @@ import { cn } from '../../lib/cn';
 // Form field wrapper — standardizes the label + control + help/error layout
 // and the `htmlFor` / `aria-describedby` / `aria-invalid` wiring that ~10+
 // forms currently hand-roll with inline `flexDirection:'column'` labels
-// (ENG-1147). The label reuses the Eyebrow (uppercase mono) treatment the app
-// already uses for field labels.
+// (ENG-1147). Labels are sentence case, like the app's other form labels;
+// the uppercase mono Eyebrow stays for section headings.
 //
 //   <Field label="Project name" help="Lowercase, no spaces.">
 //     <Input value={name} onChange={setName} />
@@ -76,18 +76,15 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
       })
     : children;
 
-  // No flex `gap`: `.eyebrow` carries its own `margin-bottom` for label→control
-  // spacing (its designed behaviour), so a uniform gap would double-count it.
-  // The message gets its own top margin instead.
+  // No flex `gap`: the label carries its own bottom margin, and the message
+  // gets its own top margin.
   return (
     <div className={cn('flex flex-col', className)}>
       {label != null && (
-        // The shared `.eyebrow` treatment (uppercase mono) the app already uses
-        // for field labels — same class Eyebrow paints, on a real <label>.
-        <label htmlFor={controlId} className="eyebrow">
+        <label htmlFor={controlId} className="mb-1.5 text-sm font-medium text-ink-2">
           {label}
           {required && <span className="text-danger"> *</span>}
-          {optional && <span className="normal-case tracking-normal font-normal text-ink-4"> (optional)</span>}
+          {optional && <span className="font-normal text-ink-4"> (optional)</span>}
         </label>
       )}
       {control}
