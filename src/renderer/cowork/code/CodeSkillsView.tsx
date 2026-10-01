@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { PageHeader, FilterRow, SearchInput } from '../components/collection';
 import {
   codingApi,
   type CodeProject,
@@ -297,17 +298,17 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
 
   return (
     <main className="code-skills-view">
-      <header className="code-skills-view__header">
-        <div><h1>Skills</h1><p>Your workflows and your team’s engineering standards, ready for Code tasks.</p></div>
-        <div className="code-skills-view__actions">
+      <PageHeader
+        title="Skills"
+        subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
+        actions={<div className="code-skills-view__actions">
           <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
           <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
-        </div>
-      </header>
-
-      <div className="code-skills-toolbar">
-        <label><span aria-hidden="true">{Ico.search(15)}</span><Input value={query} onChange={setQuery} placeholder="Search skills" aria-label="Search skills" /></label>
-        <ToggleGroup
+        </div>}
+      />
+      <FilterRow
+        search={<SearchInput value={query} onChange={setQuery} placeholder="Search skills" shortcut="" />}
+        sort={<ToggleGroup
           className="code-skills-filter"
           aria-label="Filter skills"
           value={filter}
@@ -318,8 +319,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             { value: 'personal', label: 'Yours' },
             { value: 'built_in', label: 'MindsHub' },
           ]}
-        />
-      </div>
+        />}
+      />
 
       {error && <div className="code-skills-view__notice"><Alert variant="danger">{error}</Alert></div>}
       {loading ? <div className="code-skills-empty">Loading skills…</div> : <div className="code-skills-catalog">
@@ -336,8 +337,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             <div>{items.length ? rows(items) : <div className="code-skill-group__empty">{source.error ? 'Source unavailable — open for details.' : query.trim() ? 'No items match this search.' : 'No shared items found.'}</div>}</div>
           </section>;
         })}
-        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
-        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
+        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
+        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
         {!hasVisibleCatalog && <div className="code-skills-empty">
           {query.trim() ? 'No skills match your search.' : filter === 'personal' || filter === 'all' ? <>
             <span>{Ico.cube(20)}</span><strong>No personal skills yet</strong>
