@@ -1091,8 +1091,13 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onSendHere={(text) => sendToSides(text, sendTargets(label, sideState))}
             onContinue={() => setContinuing(label)}
             onCopyRest={async () => {
-              await continueComparisonSide(comparisonId, label, sides[label].continuedProjectId, names[label]);
-              await loadComparison();
+              // Reloaded either way: a failed retry can still clear the notice
+              // (the server drops it when the files it kept are gone).
+              try {
+                await continueComparisonSide(comparisonId, label, sides[label].continuedProjectId, names[label]);
+              } finally {
+                await loadComparison();
+              }
             }}
             onRetryLoad={() => load(label)}
             onOpenSettings={onOpenSettings}

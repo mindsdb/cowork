@@ -915,6 +915,25 @@ describe('CompareView', () => {
     expect(within(paneA).getByRole('button', { name: 'Copy the remaining files' }).disabled).toBe(false);
   });
 
+  it('drops the offer when a failed copy finds the files it kept are gone', async () => {
+    const left = comparison({
+      sides: comparison().sides.map((side) => (side.label === 'a'
+        ? { ...side, continuedAt: '2026-09-30T10:00:00Z', continuedTurnCount: 1, carryIncomplete: true, continuedProjectId: 'p-real' }
+        : side)),
+    });
+    const cleared = comparison({
+      sides: left.sides.map((side) => (side.label === 'a' ? { ...side, carryIncomplete: false } : side)),
+    });
+    api.continueComparisonSide.mockRejectedValue(new Error('The files this side left behind are gone'));
+    await openDetail(left, { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    const paneA = screen.getByRole('region', { name: 'Side A' });
+
+    api.fetchComparison.mockResolvedValue(cleared);
+    fireEvent.click(within(paneA).getByRole('button', { name: 'Copy the remaining files' }));
+
+    await waitFor(() => expect(within(paneA).queryByText(/still in this comparison/)).toBeNull());
+  });
+
   it('opens the task when a partial carry is left as it is', async () => {
     const onOpenTask = vi.fn();
     api.continueComparisonSide.mockResolvedValue({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: false });
