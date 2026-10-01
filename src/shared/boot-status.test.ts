@@ -22,14 +22,18 @@ describe('deriveBootStatus', () => {
     expect(out).not.toBe('Almost ready…');
   });
 
-  // ENG-2764: the boot line is OTA-only.
-  it('ignores any shell-channel input', () => {
+  it('ignores a shell update the gate does not apply', () => {
     const shellOnly = { shell: { phase: 'downloading' }, manualShellPending: true };
     expect(deriveBootStatus(shellOnly as never)).toBeNull();
-    for (const phase of ['available', 'downloading', 'ready-to-install', 'installing', 'failed']) {
-      expect(deriveBootStatus({ ota: { phase: 'reloading' }, shell: { phase } } as never))
-        .toBe('Finishing up…');
-      expect(deriveBootStatus({ shell: { phase } } as never)).toBeNull();
+    for (const phase of ['available', 'downloading', 'ready-to-install', 'failed']) {
+      expect(deriveBootStatus({ ota: { phase: 'reloading' }, shell: { phase } })).toBe('Finishing up…');
+      expect(deriveBootStatus({ shell: { phase } })).toBeNull();
     }
+  });
+
+  it('installing → says the app will reopen, over any OTA line', () => {
+    const installing = 'Installing the update — Cowork will reopen…';
+    expect(deriveBootStatus({ shell: { phase: 'installing' } })).toBe(installing);
+    expect(deriveBootStatus({ ota: { phase: 'downloading' }, shell: { phase: 'installing' } })).toBe(installing);
   });
 });

@@ -46,6 +46,10 @@ let controller: ShellAutoUpdater | null = null;
 // Target of a boot auto-install that already failed. Kept until the target
 // changes or installs, and carried into every evidence write for it.
 let priorBootInstallTarget: string | null = null;
+// Target an earlier launch downloaded but this launch is not running, and not
+// yet tried as a boot install. Only then is a boot install possible, so only
+// then does the boot gate wait on the shell check.
+let strandedTarget: string | null = null;
 let currentSnapshot: ShellUpdateSnapshot = {
   phase: 'disabled',
   mode: 'auto',
@@ -183,6 +187,9 @@ export function configureShellAutoUpdate(options: {
   const channelEvidence = evidence?.channel === feed.channel ? evidence : null;
   const reconciled = reconcileDownloadedTarget(currentVersion, channelEvidence);
   priorBootInstallTarget = channelEvidence?.bootInstallAttemptedTarget ?? null;
+  strandedTarget = reconciled.phase === 'failed' && reconciled.targetVersion !== priorBootInstallTarget
+    ? reconciled.targetVersion ?? null
+    : null;
   if (evidence) clearEvidence();
   // A failed boot install must be remembered even through a launch that never
   // reaches ready-to-install (offline, say), so rewrite its marker now.
@@ -319,8 +326,9 @@ async function installStrandedShellUpdate(): Promise<boolean> {
 }
 
 /** Starts shell update polling. The returned promise settles once the boot
- *  check is done with the loading gate: either no stranded update was found,
- *  or one was installed and the app is quitting. */
+ *  check is done with the loading gate: at once when no earlier launch left an
+ *  uninstalled download, otherwise when no stranded update was found or one
+ *  was installed and the app is quitting. */
 export function startShellAutoUpdatePolling(rendererReady: Promise<void>): Promise<void> {
   if (!controller) return Promise.resolve();
   return rendererReady.then(async () => {
@@ -328,6 +336,8 @@ export function startShellAutoUpdatePolling(rendererReady: Promise<void>): Promi
       console.error('[shell-updater] boot check failed:', error);
     });
     schedulePeriodicChecks();
+    // Nothing an earlier launch left behind, so no boot install to decide.
+    if (!strandedTarget) return;
     const answered = await waitForSnapshot(bootCheckAnswered, BOOT_INSTALL_WINDOW_MS);
     if (answered && await installStrandedShellUpdate()) {
       // Hold the gate while the app quits; release it if the install stalls.

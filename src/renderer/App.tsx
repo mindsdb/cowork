@@ -76,9 +76,11 @@ export default function App() {
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
   // ENG-749: progress line under the welcome orb while the loading screen is
-  // held open through a boot-time update. OTA-only (ENG-2764).
+  // held open through a boot-time update: an OTA, or the boot install of a
+  // stranded shell update.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
-  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase } });
+  const [shellPhase, setShellPhase] = useState<string | null>(null);
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellPhase } });
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -122,13 +124,15 @@ export default function App() {
     });
   }, []);
 
-  // Report shell auto-update milestones to PostHog. Pull once for reload
-  // recovery, then subscribe. No-ops in web.
+  // Report shell auto-update milestones to PostHog, and feed the boot line.
+  // Pull once for reload recovery, then subscribe. No-ops in web.
   // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;
     const receive = (snapshot: ShellAutoUpdateSnapshot) => {
-      if (!cancelled) trackShellUpdatePhase(snapshot);
+      if (cancelled) return;
+      setShellPhase(snapshot?.phase ?? null);
+      trackShellUpdatePhase(snapshot);
     };
     host.getShellAutoUpdate().then(receive).catch(() => {});
     const unsubscribe = host.onShellAutoUpdate(receive);
