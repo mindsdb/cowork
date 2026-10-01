@@ -178,6 +178,35 @@ describe('HomeView console handoff', () => {
     expect(screen.getByRole('textbox')).toHaveValue('my own idea');
   });
 
+  it('keeps a prefill the composer never showed when Home is left', () => {
+    /* No provider yet: Home shows the connect-a-provider panel instead of the
+       composer, so a prefill sent now has not been applied and must wait. */
+    const onPrefillConsumed = vi.fn();
+    const { unmount } = render(
+      <HomeView
+        onSend={vi.fn()}
+        activeTasks={[]}
+        onSelectTask={vi.fn()}
+        onClearActive={vi.fn()}
+        project={{ name: 'general' }}
+        projects={[{ name: 'general' }]}
+        models={[]}
+        onProjectChange={vi.fn()}
+        onModelChange={vi.fn()}
+        configReady={false}
+        serverOnline
+        skipIntro
+        prefill={{ text: 'waiting text', bump: 1 }}
+        onPrefill={vi.fn()}
+        onPrefillConsumed={onPrefillConsumed}
+      />
+    );
+
+    unmount();
+
+    expect(onPrefillConsumed).not.toHaveBeenCalled();
+  });
+
   it('keeps an earlier sample the user edited', async () => {
     setDraft('new', `${snake.prompt} Make it two-player.`);
     arriveFromConsole('?from=console&mode=visualization&sample=track-monthly-kpis-across-departments');

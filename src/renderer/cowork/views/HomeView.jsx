@@ -252,8 +252,6 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
-  useEffect(() => () => onPrefillConsumed?.(), []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Shown under the composer while a sample from a console link is in it.
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
@@ -384,6 +382,20 @@ export default function HomeView({
   // sent. An unsent draft wins over the sample when it is the user's own text;
   // one that is still an earlier sample, untouched, is not, and is replaced.
   const composerUsable = showInteractiveSurface && !blocked;
+
+  // Drop the parent's prefill on the way out, but only once the composer has
+  // been on screen to take it. Behind the connect-a-provider panel there is
+  // no composer, so a prefill sent then is still waiting and must survive a
+  // trip to Settings.
+  const composerShownRef = useRef(false);
+  if (composerUsable) composerShownRef.current = true;
+  useEffect(
+    () => () => {
+      if (composerShownRef.current) onPrefillConsumed?.();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const handoffTakenRef = useRef(false);
   useEffect(() => {
     if (!composerUsable || handoffTakenRef.current) return;
