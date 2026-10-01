@@ -493,19 +493,39 @@ describe('CompareView', () => {
   it.each([
     ['interrupted', 'The response was interrupted before it finished. Please try again.'],
     ['stream_error', 'The connection was reset.'],
-  ])('says when a side\'s stream dropped (%s), and re-attaches to a turn still running', async (code, message) => {
+  ])('re-attaches a side whose stream dropped (%s) to a turn still running, still working and without reading its cost', async (code, message) => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
     api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
     api.tailInFlight.mockImplementation((_id, callbacks) => { openStreams.tail = callbacks; return { abort: vi.fn() }; });
+    const costReads = api.fetchComparisonUsage.mock.calls.length;
+
+    act(() => openStreams['conv-a'].onError(message, { code }));
+
+    await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-a', expect.anything()));
+    const paneA = screen.getByRole('region', { name: 'Side A' });
+    expect(within(paneA).queryByText(message)).toBeNull();
+    expect(within(paneA).getByRole('status', { name: 'Side A status' }).textContent).toMatch(/Working/);
+    expect(api.fetchComparisonUsage.mock.calls.length).toBe(costReads);
+  });
+
+  it.each([
+    ['interrupted', 'The response was interrupted before it finished. Please try again.'],
+    ['stream_error', 'The connection was reset.'],
+  ])('says when a side\'s stream dropped (%s) and its turn is no longer running', async (code, message) => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
 
     act(() => openStreams['conv-a'].onError(message, { code }));
 
     const paneA = screen.getByRole('region', { name: 'Side A' });
     expect(await within(paneA).findByText(message)).toBeTruthy();
-    await waitFor(() => expect(api.tailInFlight).toHaveBeenCalledWith('conv-a', expect.anything()));
+    expect(api.tailInFlight).not.toHaveBeenCalled();
   });
 
   it('re-attaches again when the re-attached stream itself drops', async () => {
@@ -849,12 +869,50 @@ describe('CompareView', () => {
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect((await within(dialog).findByRole('alert')).textContent).toMatch(/some of the files Kimi made could not be copied/);
+    expect((await within(dialog).findByRole('alert')).textContent).toMatch(/some of the files Kimi made did not come across/);
     expect(onOpenTask).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
     expect(api.continueComparisonSide).toHaveBeenNthCalledWith(2, 'cmp-1', 'a', 'p-real', 'Kimi');
+  });
+
+  it('keeps offering the files a continued side left behind, and copies them into the project it continued into', async () => {
+    const left = comparison({
+      sides: comparison().sides.map((side) => (side.label === 'a'
+        ? { ...side, continuedAt: '2026-09-30T10:00:00Z', continuedTurnCount: 1, carryIncomplete: true, continuedProjectId: 'p-real' }
+        : side)),
+    });
+    const done = comparison({
+      sides: left.sides.map((side) => (side.label === 'a' ? { ...side, carryIncomplete: false } : side)),
+    });
+    api.continueComparisonSide.mockResolvedValue({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: true });
+    await openDetail(left, { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    const paneA = screen.getByRole('region', { name: 'Side A' });
+    expect(within(paneA).getByText(/Some of the files Kimi made are still in this comparison/)).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Side B' })).queryByText(/still in this comparison/)).toBeNull();
+
+    api.fetchComparison.mockResolvedValue(done);
+    fireEvent.click(within(paneA).getByRole('button', { name: 'Copy the remaining files' }));
+
+    await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real', 'Kimi'));
+    await waitFor(() => expect(within(paneA).queryByText(/still in this comparison/)).toBeNull());
+  });
+
+  it('says so when copying the remaining files fails, and keeps the offer', async () => {
+    const left = comparison({
+      sides: comparison().sides.map((side) => (side.label === 'a'
+        ? { ...side, continuedAt: '2026-09-30T10:00:00Z', continuedTurnCount: 1, carryIncomplete: true, continuedProjectId: 'p-real' }
+        : side)),
+    });
+    api.continueComparisonSide.mockRejectedValue(new Error('Disk full'));
+    await openDetail(left, { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    const paneA = screen.getByRole('region', { name: 'Side A' });
+
+    fireEvent.click(within(paneA).getByRole('button', { name: 'Copy the remaining files' }));
+
+    expect(await within(paneA).findByText('Disk full')).toBeTruthy();
+    expect(within(paneA).getByRole('button', { name: 'Copy the remaining files' }).disabled).toBe(false);
   });
 
   it('opens the task when a partial carry is left as it is', async () => {
