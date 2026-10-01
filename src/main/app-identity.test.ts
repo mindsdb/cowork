@@ -33,29 +33,19 @@ describe('app-identity — per-channel app name (userData isolation)', () => {
   it('prod: NEVER calls app.setName (userData stays "anton", unchanged)', async () => {
     await loadForKind('prod');
     expect(appMock.setName).not.toHaveBeenCalled();
+    expect(startCrashReporterMock).toHaveBeenCalledOnce();
   });
 
+  // Order matters: see crash-reporter.ts.
   it.each(['dev', 'preview', 'stable'] as const)(
-    'non-prod %s: sets the channel appName from CHANNELS',
+    'non-prod %s: sets the channel appName from CHANNELS, then starts the crash reporter',
     async (kind) => {
       await loadForKind(kind);
-      expect(appMock.setName).toHaveBeenCalledTimes(1);
-      expect(appMock.setName).toHaveBeenCalledWith(CHANNELS[kind].appName);
-    },
-  );
-
-  // The reporter caches userData when it starts and setName does not reset that
-  // cache, so starting first would pin non-prod builds to prod's userData.
-  it.each(['dev', 'preview', 'stable', 'prod'] as const)(
-    '%s: starts the crash reporter once, after any setName',
-    async (kind) => {
-      await loadForKind(kind);
-      expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
-      if (kind !== 'prod') {
-        expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
-          startCrashReporterMock.mock.invocationCallOrder[0],
-        );
-      }
+      expect(appMock.setName).toHaveBeenCalledExactlyOnceWith(CHANNELS[kind].appName);
+      expect(startCrashReporterMock).toHaveBeenCalledOnce();
+      expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
+        startCrashReporterMock.mock.invocationCallOrder[0],
+      );
     },
   );
 });

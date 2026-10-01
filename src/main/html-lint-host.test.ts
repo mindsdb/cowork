@@ -5,7 +5,7 @@ import * as path from 'path';
 const { appMock, startCrashReporterMock, tmpState } = vi.hoisted(() => ({
   appMock: { setPath: vi.fn(), exit: vi.fn() },
   startCrashReporterMock: vi.fn(),
-  tmpState: { dir: '' },
+  tmpState: { real: '', dir: '' },
 }));
 vi.mock('electron', () => ({ app: appMock }));
 vi.mock('./crash-reporter', () => ({ startCrashReporter: () => startCrashReporterMock() }));
@@ -13,19 +13,17 @@ vi.mock('./crash-reporter', () => ({ startCrashReporter: () => startCrashReporte
 // Keeps the profile sweep and mkdtemp inside a per-test dir, away from the real tmpdir.
 vi.mock('os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('os')>();
+  tmpState.real = actual.tmpdir();
   const tmpdir = () => tmpState.dir;
-  return { ...actual, default: { ...actual, tmpdir }, tmpdir };
+  return { ...actual, tmpdir, default: { ...actual, tmpdir } };
 });
 
 import { runHtmlLint } from './html-lint-host';
 
 describe('runHtmlLint — crash reporter', () => {
-  beforeEach(async () => {
-    const realOs = await vi.importActual<typeof import('os')>('os');
-    tmpState.dir = fs.mkdtempSync(path.join(realOs.tmpdir(), 'html-lint-host-test-'));
-    appMock.setPath.mockClear();
-    appMock.exit.mockClear();
-    startCrashReporterMock.mockClear();
+  beforeEach(() => {
+    tmpState.dir = fs.mkdtempSync(path.join(tmpState.real, 'html-lint-host-test-'));
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -34,8 +32,7 @@ describe('runHtmlLint — crash reporter', () => {
     fs.rmSync(tmpState.dir, { recursive: true, force: true });
   });
 
-  // Started before setPath, it would cache the default userData and keep its
-  // crash database there instead of in the throwaway profile.
+  // Order matters: see crash-reporter.ts.
   it('starts after userData and sessionData move to the profile', () => {
     const runner = path.join(tmpState.dir, 'runner.js');
     fs.writeFileSync(runner, '');
@@ -43,7 +40,7 @@ describe('runHtmlLint — crash reporter', () => {
 
     runHtmlLint();
 
-    expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
+    expect(startCrashReporterMock).toHaveBeenCalledOnce();
     expect(appMock.setPath).toHaveBeenCalledTimes(2);
     const lastSetPath = Math.max(...appMock.setPath.mock.invocationCallOrder);
     expect(lastSetPath).toBeLessThan(startCrashReporterMock.mock.invocationCallOrder[0]);
