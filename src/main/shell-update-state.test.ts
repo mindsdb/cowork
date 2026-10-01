@@ -238,7 +238,6 @@ describe('transitionShellUpdate', () => {
       });
     }
 
-    // A newer build is the refresh's find.
     const superseded = transitionShellUpdate(refreshing, { type: 'SUPERSEDED', targetVersion: '2.2.0' });
     expect(superseded).toMatchObject({ phase: 'downloading', trigger: 'periodic', refreshTrigger: undefined });
   });

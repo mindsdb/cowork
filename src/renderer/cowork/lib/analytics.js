@@ -803,14 +803,11 @@ export async function trackBootScreenResolved(target) {
     // signal worth seeing.
     status = null;
   }
-  // app_version is the running UI bundle, which OTA moves independently of the
-  // installed shell, so shell adoption needs the shell's own version and ring.
+  // app_version is the OTA UI bundle, not the shell.
   let version = null;
   try {
     version = await host.getVersionInfo();
-  } catch {
-    // Older shells or a broken bridge: send the boot event without them.
-  }
+  } catch { /* older shell: send without it */ }
   await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
     target,
     anton_installed: Boolean(status?.antonInstalled),
@@ -820,14 +817,9 @@ export async function trackBootScreenResolved(target) {
   });
 }
 
-// Shell auto-update milestones. Checks that find nothing send nothing. Auto mode
-// goes straight from checking to downloading, so a download starting counts as
-// `available`. `installing` means the user clicked Restart; an install on quit
-// happens as the renderer shuts down and shows up only as `relaunched`, which
-// comes from `lastInstall`, the boot verdict on the previous download, rather
-// than the `complete`/`failed` phase the boot check overwrites within seconds.
-// The renderer re-reads the snapshot after every reload, so each sent milestone
-// is remembered in sessionStorage (cleared when the app quits) and not resent.
+// Auto mode skips `available`, so `downloading` counts as it. An install on quit
+// shows up only as the next launch's `relaunched`. Sent milestones are kept in
+// sessionStorage so reloads don't resend them.
 const SHELL_UPDATE_MILESTONES = ['available', 'ready-to-install', 'installing', 'failed'];
 const SHELL_UPDATE_SENT_KEY = 'cowork_shell_update_milestones_sent';
 
@@ -836,9 +828,7 @@ function claimShellUpdateMilestone(key) {
     const sent = JSON.parse(window.sessionStorage.getItem(SHELL_UPDATE_SENT_KEY) || '[]');
     if (sent.includes(key)) return false;
     window.sessionStorage.setItem(SHELL_UPDATE_SENT_KEY, JSON.stringify([...sent, key]));
-  } catch {
-    // Without storage a reload may resend a milestone; that beats dropping it.
-  }
+  } catch { /* a resend beats a drop */ }
   return true;
 }
 

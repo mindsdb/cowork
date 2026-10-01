@@ -36,14 +36,11 @@ export interface ShellUpdateSnapshot {
    *  The visible phase stays `ready-to-install` so the banner never flaps back
    *  to "Checking…" under the user. */
   refreshing?: boolean;
-  /** The trigger of the in-flight background re-check. Kept apart from
-   *  `trigger`, which stays the check that found the pending download unless
-   *  this re-check supersedes it. */
+  /** Trigger of the in-flight refresh; `trigger` stays the check that found
+   *  the pending download. */
   refreshTrigger?: ShellUpdateTrigger;
-  /** Whether the update downloaded before the last relaunch was applied. Set
-   *  once at boot and never cleared, because the boot check replaces the
-   *  `complete`/`failed` phase within seconds, possibly before any renderer is
-   *  listening. */
+  /** Whether the previous download was applied. Never cleared: the boot check
+   *  replaces `complete`/`failed` before a renderer may be listening. */
   lastInstall?: { applied: boolean; version: string; expected: string };
 }
 
@@ -147,7 +144,6 @@ export function transitionShellUpdate(
         ...clearTransient(snapshot),
         phase: snapshot.mode === 'auto' ? 'downloading' : 'available',
         targetVersion: event.targetVersion,
-        // Kept so later milestones and failures can say which check found it.
         trigger: snapshot.trigger,
       };
 
@@ -180,7 +176,6 @@ export function transitionShellUpdate(
         ...snapshot,
         phase: 'downloading',
         refreshing: undefined,
-        // The re-check found this build, so it now owns the attribution.
         trigger: snapshot.refreshTrigger ?? snapshot.trigger,
         refreshTrigger: undefined,
         targetVersion: event.targetVersion,

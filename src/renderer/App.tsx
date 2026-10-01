@@ -136,8 +136,7 @@ export default function App() {
   // previously blind to the shell channel and could claim "Almost ready…" while
   // a shell relaunch was still pending. Pull once for reload recovery, then
   // subscribe to the same authoritative main-process snapshot. No-ops in web.
-  // Update milestones are tracked here rather than in CoworkApp, which only
-  // mounts after onboarding, while shell checks already run during it.
+  // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;
     const receive = (snapshot: ShellAutoUpdateSnapshot) => {

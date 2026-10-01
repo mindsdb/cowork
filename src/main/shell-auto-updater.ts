@@ -131,9 +131,8 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
    *  electron-updater reports a single fault TWICE — it emits `error` and then
    *  rejects the promise it returned — and both land in fail(). `refresh` marks
    *  a background re-check behind a pending install: however that flight ends,
-   *  it must never move the phase. A check flight carries its own `trigger`,
-   *  because during a refresh the snapshot's `trigger` names the check that
-   *  found the pending download, not this one. */
+   *  it must never move the phase. `trigger` is the check's own, which a
+   *  refresh doesn't write to the snapshot's `trigger`. */
   type UpdateFlight = { settled: boolean; refresh: boolean; trigger?: ShellUpdateTrigger };
   let checkToken: UpdateFlight | null = null;
   let downloadToken: UpdateFlight | null = null;

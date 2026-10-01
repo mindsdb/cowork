@@ -9,11 +9,7 @@
  */
 export function trackBootScreenResolved(target: string): Promise<void>;
 
-/**
- * Shell auto-update milestone from a main-process snapshot: found, downloaded,
- * installing, failed, or the relaunch verdict. Each is sent once per app run.
- * No-op off Electron. Never throws.
- */
+/** Shell auto-update milestone, once per app run. No-op off Electron. */
 export function trackShellUpdatePhase(snapshot: unknown): void;
 
 /**
