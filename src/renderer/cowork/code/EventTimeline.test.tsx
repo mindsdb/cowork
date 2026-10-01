@@ -460,6 +460,9 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Fixed a.ts.')).toBeInTheDocument();
     expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
     expect(screen.getByText('src/a.ts')).toBeInTheDocument();
+    // The changed files stay with the answer, and its actions close the turn.
+    const answer = screen.getByRole('article', { name: 'Coding agent message' });
+    expect(answer.querySelector('.code-turn-changes + .code-response-actions')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
     expect(onOpenReview).toHaveBeenCalledOnce();
 
