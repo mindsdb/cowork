@@ -105,15 +105,15 @@ describe('Task and project connector detours', () => {
       await user.click(await screen.findByRole('combobox', { name: 'Code Project' }));
       await user.click(screen.getByRole('option', { name: /New project/ }));
     }
-    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Keep my project' } });
-    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Keep my project' } });
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Git repository URL' }), { target: { value: 'https://github.com/acme/seed.git' } });
     await user.click(screen.getByRole('button', { name: 'Add' }));
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: /^Advanced/ }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
     await user.click(screen.getByRole('option', { name: 'Full access' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Variables' }), { target: { value: 'QA_MODE=keep' } });
-    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Environment variables' }), { target: { value: 'QA_MODE=keep' } });
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -131,16 +131,16 @@ describe('Task and project connector detours', () => {
       expect(taskPermissions).toHaveTextContent('Full access');
       expect(taskModel).toHaveTextContent('Other model');
     }
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Keep my project');
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Keep my project');
     expect(screen.getByRole('button', { name: 'Remove seed' })).toBeVisible();
     expect(screen.getByRole('combobox', { name: 'Default coding permissions' })).toHaveTextContent('Full access');
-    expect(screen.getByRole('textbox', { name: 'Variables' })).toHaveValue('QA_MODE=keep');
+    expect(screen.getByRole('textbox', { name: 'Environment variables' })).toHaveValue('QA_MODE=keep');
     if (outcome === 'connected') {
-      await user.click(screen.getByRole('button', { name: 'Git repository' }));
+      await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
       await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
     }
     expect(codingApi.updateProject).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
     await waitFor(() => expect(codingApi.createProject).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Keep my project', permission_mode: 'full_access',
       environment: expect.objectContaining({ variables: { QA_MODE: 'keep' } }),
@@ -170,8 +170,8 @@ describe('Task and project connector detours', () => {
     const user = userEvent.setup();
     render(<App initialView="projects" />);
     await user.click(await screen.findByRole('button', { name: 'New project' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Discarded draft' } });
-    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Discarded draft' } });
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     await user.click(screen.getByRole('button', { name: 'Navigate to new task' }));
     // Base UI may retain the closing modal until its exit animation finishes.
@@ -181,7 +181,7 @@ describe('Task and project connector detours', () => {
     expect(screen.queryByRole('button', { name: 'Back to project settings' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Navigate to projects' }));
     await user.click(screen.getByRole('button', { name: 'New project' }));
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('');
   });
 
   it.each(['new', 'existing'])('keeps the selected task project when %s project setup is cancelled after a connector detour', async (setup) => {
@@ -205,11 +205,11 @@ describe('Task and project connector detours', () => {
     } else {
       await user.click(screen.getByRole('button', { name: 'Edit Existing project' }));
     }
-    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Unsaved project edit' } });
-    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Unsaved project edit' } });
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     await user.click(screen.getByRole('button', { name: 'Back to project settings' }));
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved project edit');
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Unsaved project edit');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByRole('textbox', { name: 'Coding task' })).toBe(prompt);
@@ -253,7 +253,7 @@ describe('Task and project connector detours', () => {
     else expect(screen.getByRole('button', { name: 'Open Connectors' })).toBeVisible();
   });
 
-  it.each(['Cancel', 'Save project'])('returns project settings to the existing task after Connectors and %s', async (closeAction) => {
+  it.each(['Cancel', 'Save changes'])('returns project settings to the existing task after Connectors and %s', async (closeAction) => {
     let project: CodeProject = {
       schema_version: 2, id: 'existing', name: 'Existing project', connections: [], folders: [],
       resources: [{ kind: 'local_folder', id: 'repo', name: 'my-app', path: '/work/my-app', computer_id: 'local', commands: [] }],
@@ -296,14 +296,14 @@ describe('Task and project connector detours', () => {
     await user.click(screen.getByRole('button', { name: 'Open existing task' }));
     await user.click(await screen.findByRole('button', { name: 'Coding task actions' }));
     await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Keep this project edit' } });
-    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Keep this project edit' } });
+    await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     const githubCard = screen.getByRole('heading', { name: 'GitHub' }).closest('section')!;
     await user.click(within(githubCard).getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(codingApi.updateProject).toHaveBeenCalledOnce());
     await user.click(screen.getByRole('button', { name: 'Back to project settings' }));
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Keep this project edit');
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Keep this project edit');
     await user.click(screen.getByRole('button', { name: closeAction }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByRole('button', { name: 'Coding task actions' })).toBeVisible();
