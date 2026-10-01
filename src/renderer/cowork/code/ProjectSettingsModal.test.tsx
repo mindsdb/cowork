@@ -87,7 +87,7 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('private');
     const checkbox = screen.getByRole('checkbox', { name: /Work/ });
     expect(checkbox).toBeChecked();
-    expect(checkbox).toBeDisabled();
+    expect(checkbox).toHaveAttribute('aria-disabled', 'true');
     await user.click(screen.getByRole('button', { name: 'Save project' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
@@ -154,7 +154,7 @@ describe('ProjectSettingsModal', () => {
     expect(checkbox).toBeEnabled();
     await user.click(checkbox);
     expect(checkbox).toBeChecked();
-    expect(checkbox).toBeDisabled();
+    expect(checkbox).toHaveAttribute('aria-disabled', 'true');
   });
 
   it.each(['local', 'shared'])('refreshes an open project’s %s catalogue without resetting its draft', async (source) => {

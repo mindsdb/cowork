@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import { Alert } from '../components/ui/Alert';
+import { Field } from '../components/ui/Field';
+import Input, { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -293,19 +295,27 @@ export function ProjectSettingsModal({
 
   return (
     <>
-    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy && !skillsSaving} closeOnEsc={!busy && !skillsSaving}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(560px, 92vw)"
+      maxHeight="min(720px, 88vh)"
+      labelledBy="code-project-settings-title"
+      closeOnBackdrop={!busy && !skillsSaving}
+      closeOnEsc={!busy && !skillsSaving}
+    >
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
         subtitle="Code, connectors, skills, and defaults shared by every task in this project."
         onClose={onClose}
       />
-      <ModalBody padding="0">
+      <ModalBody>
         <div className="code-project-settings">
-          <label className="code-project-field">
-            <span>Name</span>
+          <Field label="Name" className="code-project-field">
             <Input value={name} onChange={setName} placeholder="Project name" autoFocus />
-          </label>
+          </Field>
 
           <ProjectResourcesEditor
             connections={connections}
@@ -443,22 +453,25 @@ export function ProjectSettingsModal({
             {defaultsOpen && (
               <div id="code-project-defaults" className="code-project-defaults__body">
                 <div className="code-project-defaults">
-                  <label><span>Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
-                  <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
-                  <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
+                  <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
+                  <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
+                  <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
                     if (isPermissionMode(value)) setProjectPermission(value);
-                  }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
+                  }} options={PERMISSION_OPTIONS} ariaLabel="Default coding permissions" /></Field>
                   {projectEffortLevels && (
-                    <label><span>Reasoning</span><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} size="sm" ariaLabel="Default reasoning effort" /></label>
+                    <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                   )}
                 </div>
-                <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
-                <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>
-                <p>Each task receives its own available port numbers under these names.</p>
+                <Field label="Variables">
+                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
+                </Field>
+                <Field label="Development ports" help="Each task receives its own available port numbers under these names.">
+                  <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
+                </Field>
               </div>
             )}
           </section>
-          {error && <div className="code-project-error" role="alert">{error}</div>}
+          {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>
       <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
