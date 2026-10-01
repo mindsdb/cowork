@@ -36,6 +36,10 @@ export interface ShellUpdateSnapshot {
    *  The visible phase stays `ready-to-install` so the banner never flaps back
    *  to "Checking…" under the user. */
   refreshing?: boolean;
+  /** The trigger of the in-flight background re-check. Kept apart from
+   *  `trigger`, which stays the check that found the pending download unless
+   *  this re-check supersedes it. */
+  refreshTrigger?: ShellUpdateTrigger;
   /** Whether the update downloaded before the last relaunch was applied. Set
    *  once at boot and never cleared, because the boot check replaces the
    *  `complete`/`failed` phase within seconds, possibly before any renderer is
@@ -67,6 +71,7 @@ function clearTransient(snapshot: ShellUpdateSnapshot): ShellUpdateSnapshot {
     errorMessage: _errorMessage,
     disabledReason: _disabledReason,
     refreshing: _refreshing,
+    refreshTrigger: _refreshTrigger,
     ...stable
   } = snapshot;
   return stable;
@@ -97,7 +102,7 @@ export function transitionShellUpdate(
     // Without this, one flaky poll would swap a working "Restart to update"
     // banner for an error the user cannot act on.
     if (snapshot.phase === 'ready-to-install' && snapshot.refreshing) {
-      return { ...snapshot, refreshing: undefined };
+      return { ...snapshot, refreshing: undefined, refreshTrigger: undefined };
     }
     return {
       ...snapshot,
@@ -117,7 +122,7 @@ export function transitionShellUpdate(
       // the next boot check.
       if (snapshot.phase === 'ready-to-install') {
         if (snapshot.refreshing) return snapshot;
-        return { ...snapshot, refreshing: true, trigger: event.trigger };
+        return { ...snapshot, refreshing: true, refreshTrigger: event.trigger };
       }
       if (
         snapshot.phase !== 'idle'
@@ -165,7 +170,7 @@ export function transitionShellUpdate(
 
     case 'REFRESH_SETTLED':
       if (snapshot.phase !== 'ready-to-install' || !snapshot.refreshing) return snapshot;
-      return { ...snapshot, refreshing: undefined };
+      return { ...snapshot, refreshing: undefined, refreshTrigger: undefined };
 
     case 'SUPERSEDED':
       // Only the caller knows which version is newer, so this event is trusted:
@@ -175,13 +180,16 @@ export function transitionShellUpdate(
         ...snapshot,
         phase: 'downloading',
         refreshing: undefined,
+        // The re-check found this build, so it now owns the attribution.
+        trigger: snapshot.refreshTrigger ?? snapshot.trigger,
+        refreshTrigger: undefined,
         targetVersion: event.targetVersion,
         progress: undefined,
       };
 
     case 'INSTALL_REQUESTED':
       if (snapshot.phase !== 'ready-to-install') return snapshot;
-      return { ...snapshot, phase: 'installing', refreshing: undefined };
+      return { ...snapshot, phase: 'installing', refreshing: undefined, refreshTrigger: undefined };
 
     case 'RECONCILED':
       if (!event.installed) {
