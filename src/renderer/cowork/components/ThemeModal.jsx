@@ -41,7 +41,7 @@ function Choice({ active, onClick, children }) {
 function Group({ label, children }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-[0.08em] opacity-60 mb-2">
+      <div className="mb-2 text-sm font-medium text-ink-2">
         {label}
       </div>
       <div className="flex gap-2">{children}</div>
