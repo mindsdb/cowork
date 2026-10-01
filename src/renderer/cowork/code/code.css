@@ -42,9 +42,11 @@
 /* Route-specific session history inside the canonical Cowork sidebar. */
 .code-sidebar-sessions { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .code-sidebar-nav { padding-top: 1px; padding-bottom: 10px; }
-.code-sidebar-sessions__label { min-height: 28px; padding: 2px 18px 5px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.code-sidebar-organize-trigger { margin-right: -5px; text-transform: none; }
-.code-sidebar-organize-menu__heading { color: var(--ink-4); font: 600 9px var(--font-mono); letter-spacing: .055em; text-transform: uppercase; }
+/* Padding comes from .app-sidebar .section-label. Negative block margins keep
+   the Organize button from making this heading taller than the text-only ones. */
+.code-sidebar-sessions__label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.code-sidebar-organize-trigger { margin: -4px -5px -4px 0; text-transform: none; }
+.code-sidebar-organize-menu__heading { color: var(--ink-4); font: 500 11px var(--font-sans); }
 .code-sidebar-session-search { height: 30px; margin: 0 18px 7px; padding: 0 8px; display: flex; flex: none; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; background: color-mix(in srgb, var(--surface-1) 72%, transparent); color: var(--ink-4); }
 .code-sidebar-session-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: var(--ring); }
 .code-sidebar-session-search > span { display: inline-flex; flex: none; }
@@ -55,8 +57,8 @@
 .code-sidebar-sessions__empty { padding: 10px 8px; color: var(--ink-4); font-size: 11.5px; line-height: 1.5; }
 .code-sidebar-sessions__error { margin: 0 18px 7px; color: var(--danger); font-size: 10px; line-height: 1.35; }
 .code-sidebar-session-group + .code-sidebar-session-group { margin-top: 7px; }
-.code-sidebar-session-group__label { min-height: 23px; padding: 4px 8px 2px; display: flex; align-items: center; color: var(--ink-4); font: 600 8.5px var(--font-mono); letter-spacing: .055em; text-transform: uppercase; }
-.code-sidebar-session-group__label b { margin-left: auto; font-size: 8.5px; font-weight: 500; letter-spacing: 0; }
+.code-sidebar-session-group__label { min-height: 23px; padding: 4px 8px 2px; display: flex; align-items: center; color: var(--ink-4); font: 500 12px/18px var(--font-sans); }
+.code-sidebar-session-group__label b { margin-left: auto; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .code-sidebar-session-row { position: relative; border-radius: 7px; transition: background .1s ease, color .1s ease; }
 /* Same neutral ink washes as the chat rail's .nav-item / .recent-item hover and selection. */
 .code-sidebar-session-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }

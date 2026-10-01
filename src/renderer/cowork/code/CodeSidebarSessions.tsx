@@ -236,7 +236,7 @@ export function CodeSidebarSessions({
   return (
     <div className="code-sidebar-sessions">
       <div className="section-label code-sidebar-sessions__label">
-        <span>CODE TASKS</span>
+        <span>Code tasks</span>
         <Menu
           trigger={(
             <Button size="xxs" variant="subtle" className="code-sidebar-organize-trigger" aria-label="Organize coding tasks">
