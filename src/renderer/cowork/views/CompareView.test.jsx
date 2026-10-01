@@ -833,6 +833,47 @@ describe('CompareView', () => {
     await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledWith('cmp-1', 'a', 'p-real', 'Kimi'));
     await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
   });
+
+  it('says when some files stayed behind, retries into the same project, and opens the task once they are all carried', async () => {
+    const onOpenTask = vi.fn();
+    api.continueComparisonSide
+      .mockResolvedValueOnce({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: false })
+      .mockResolvedValueOnce({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: true });
+    mockHistory([comparison()]);
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+    render(<CompareView models={models} projects={projects} onOpenTask={onOpenTask} />);
+    fireEvent.click(await screen.findByText('Build a dashboard'));
+    const paneA = await screen.findByRole('region', { name: 'Side A' });
+    fireEvent.click(await within(paneA).findByRole('button', { name: 'Continue' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect((await within(dialog).findByRole('alert')).textContent).toMatch(/some of the files Kimi made could not be copied/);
+    expect(onOpenTask).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
+    expect(api.continueComparisonSide).toHaveBeenNthCalledWith(2, 'cmp-1', 'a', 'p-real', 'Kimi');
+  });
+
+  it('opens the task when a partial carry is left as it is', async () => {
+    const onOpenTask = vi.fn();
+    api.continueComparisonSide.mockResolvedValue({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: false });
+    mockHistory([comparison()]);
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+    render(<CompareView models={models} projects={projects} onOpenTask={onOpenTask} />);
+    fireEvent.click(await screen.findByText('Build a dashboard'));
+    const paneA = await screen.findByRole('region', { name: 'Side A' });
+    fireEvent.click(await within(paneA).findByRole('button', { name: 'Continue' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    fireEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: 'Open the task' }));
+
+    await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('conv-a'));
+    expect(api.continueComparisonSide).toHaveBeenCalledTimes(1);
+  });
 });
 
 
