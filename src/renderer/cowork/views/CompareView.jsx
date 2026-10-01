@@ -1163,12 +1163,20 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         <ContinueDialog
           name={names[continuing]}
           projects={projects}
-          onClose={() => setContinuing(null)}
+          onClose={async (openedTaskId) => {
+            setContinuing(null);
+            if (!openedTaskId) return;
+            await loadComparison();
+            onOpenTask?.(openedTaskId);
+          }}
           onContinue={async (projectId) => {
             const result = await continueComparisonSide(comparisonId, continuing, projectId, names[continuing]);
+            // An older server says nothing about the files: it carried them or failed.
+            if (result?.carriedAll === false) return result;
             setContinuing(null);
             await loadComparison();
             onOpenTask?.(result?.conversationId);
+            return result;
           }}
         />
       )}
@@ -1383,15 +1391,24 @@ function UsageTable({ label, usage, turns, notes = [] }) {
   );
 }
 
+// After a partial carry the task already exists, so the dialog stays to offer
+// the rest (the server finishes a carry only into the same project), and
+// closing it opens the task.
 function ContinueDialog({ name, projects, onClose, onContinue }) {
   const [projectId, setProjectId] = useState(projects[0] ? String(projects[0].id) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [partial, setPartial] = useState(null);
   return (
     <ConfirmModal
       open
       title={`Continue with ${name}`}
-      message={(
+      message={partial ? (
+        <span role="alert">
+          The task is ready, but some of the files {name} made could not be copied, so they are still in
+          this comparison. Try again to copy the rest into the same folder.
+        </span>
+      ) : (
         <div className="flex flex-col gap-3">
           <span>
             This side becomes an ordinary task in the project you pick, with its history and artifacts.
@@ -1406,7 +1423,8 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
           />
         </div>
       )}
-      confirmLabel="Continue"
+      confirmLabel={partial ? 'Try again' : 'Continue'}
+      cancelLabel={partial ? 'Open the task' : undefined}
       busy={busy}
       error={error}
       onConfirm={async () => {
@@ -1414,13 +1432,17 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
         setBusy(true);
         setError('');
         try {
-          await onContinue(projectId);
+          const result = await onContinue(projectId);
+          if (result?.carriedAll === false) {
+            setPartial(result);
+            setBusy(false);
+          }
         } catch (err) {
           setError(err?.message || 'Could not continue with this model.');
           setBusy(false);
         }
       }}
-      onClose={onClose}
+      onClose={() => onClose(partial?.conversationId)}
     />
   );
 }
