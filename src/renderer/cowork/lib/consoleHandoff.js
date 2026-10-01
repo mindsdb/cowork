@@ -62,7 +62,7 @@ export function captureConsoleHandoff(loc = window.location, storage = sessionSt
   for (const key of HANDOFF_PARAMS) params.delete(key);
   const query = params.toString();
   try {
-    window.history.replaceState(window.history.state, '', `${loc.pathname}${query ? `?${query}` : ''}${loc.hash}`);
+    window.history.replaceState(window.history.state, '', `${loc.pathname}${query ? `?${query}` : ''}${loc.hash || ''}`);
   } catch {}
 }
 

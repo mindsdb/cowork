@@ -2,7 +2,7 @@
 // land editable, never send on its own, and never overwrite the user's draft.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { captureConsoleHandoff, findSample } from '../lib/consoleHandoff';
@@ -43,7 +43,38 @@ function Home({ onSend, configReady = true }) {
       skipIntro
       prefill={prefill}
       onPrefill={(text, select) => setPrefill({ text, bump: Date.now(), select })}
+      onPrefillConsumed={() => setPrefill(null)}
     />
+  );
+}
+
+/* App keeps the prefill above Home and unmounts Home for other views, so this
+   holds the prefill outside a Home that can come and go. */
+let showHome;
+function HomeThatComesAndGoes() {
+  const [prefill, setPrefill] = useState(null);
+  const [show, setShow] = useState(true);
+  showHome = setShow;
+  return show ? (
+    <HomeView
+      onSend={vi.fn()}
+      activeTasks={[]}
+      onSelectTask={vi.fn()}
+      onClearActive={vi.fn()}
+      project={{ name: 'general' }}
+      projects={[{ name: 'general' }]}
+      models={[]}
+      onProjectChange={vi.fn()}
+      onModelChange={vi.fn()}
+      configReady
+      serverOnline
+      skipIntro
+      prefill={prefill}
+      onPrefill={(text, select) => setPrefill({ text, bump: Date.now(), select })}
+      onPrefillConsumed={() => setPrefill(null)}
+    />
+  ) : (
+    <div>another view</div>
   );
 }
 
@@ -122,6 +153,31 @@ describe('HomeView console handoff', () => {
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
   });
 
+  it('keeps the user\'s edits to a sample after leaving Home and coming back', async () => {
+    arriveFromConsole('?from=console&mode=games&sample=classic-snake-game');
+    render(<HomeThatComesAndGoes />);
+    const box = await screen.findByDisplayValue(snake.prompt);
+    await userEvent.setup().type(box, ' EDITED');
+
+    act(() => showHome(false));
+    act(() => showHome(true));
+
+    expect(screen.getByRole('textbox')).toHaveValue(`${snake.prompt} EDITED`);
+  });
+
+  it('keeps a draft written after "Start a task" when Home is revisited', async () => {
+    setDraft('new', snake.prompt);
+    arriveFromConsole('?from=console');
+    render(<HomeThatComesAndGoes />);
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    await userEvent.setup().type(screen.getByRole('textbox'), 'my own idea');
+
+    act(() => showHome(false));
+    act(() => showHome(true));
+
+    expect(screen.getByRole('textbox')).toHaveValue('my own idea');
+  });
+
   it('keeps an earlier sample the user edited', async () => {
     setDraft('new', `${snake.prompt} Make it two-player.`);
     arriveFromConsole('?from=console&mode=visualization&sample=track-monthly-kpis-across-departments');
@@ -139,6 +195,8 @@ describe('HomeView console handoff', () => {
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
     expect(screen.queryByDisplayValue(snake.prompt)).not.toBeInTheDocument();
     expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', false);
+    // The next task is the user's own draft, not the example's.
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null);
   });
 
   it('"Start a task" opens an empty composer', async () => {

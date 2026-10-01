@@ -20,6 +20,7 @@ import { act } from 'react';
 
 const rendered = {
   provider: false,
+  handoffAtProvider: null as string | null,
   app: false,
   identityRequired: false,
   identityToken: null as string | null,
@@ -37,6 +38,7 @@ vi.mock('@react-keycloak/web', () => ({
     LoadingComponent?: unknown;
   }) => {
     rendered.provider = true;
+    rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
     return children ?? null;
@@ -76,6 +78,7 @@ vi.mock('./styles.css', () => ({}));
 
 async function renderOnHost(hostname: string, search = '') {
   rendered.provider = false;
+  rendered.handoffAtProvider = null;
   rendered.app = false;
   rendered.identityRequired = false;
   rendered.identityToken = null;
@@ -200,5 +203,46 @@ describe('web-main loading view while Keycloak initializes', () => {
     keycloakState.initialized = false;
     await renderOnHost('cowork.mindshub.ai');
     expect(document.body.dataset.arcadePreset).toBe(preset);
+  });
+});
+
+// The Keycloak redirect keeps only the pathname, so a console link's params
+// must be saved before the provider starts the login. Without the capture call
+// every other test here stays green.
+describe('web-main console handoff', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    window.sessionStorage.clear();
+    keycloakState.initialized = true;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+  });
+
+  it('saves a console link before the Keycloak provider renders', async () => {
+    const r = await renderOnHost(
+      'cowork.mindshub.ai',
+      '?from=console&mode=games&sample=classic-snake-game'
+    );
+
+    expect(r.provider).toBe(true);
+    expect(JSON.parse(r.handoffAtProvider ?? 'null')).toMatchObject({
+      entrySource: 'console',
+      modeId: 'games',
+      sampleId: 'classic-snake-game',
+    });
+  });
+
+  it('saves nothing for an ordinary visit', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai');
+
+    expect(r.handoffAtProvider).toBeNull();
   });
 });

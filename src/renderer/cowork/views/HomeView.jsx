@@ -238,6 +238,10 @@ export default function HomeView({
   // Fills the composer without sending — task-mode sample prompts (ENG-1594)
   // and any other surface that pre-drafts text route through this.
   onPrefill,
+  // Drops the parent's prefill once Home is left. The composer has already
+  // copied it into the draft, which keeps the user's edits; replaying it on
+  // the way back would overwrite them.
+  onPrefillConsumed,
   codingModeEnabled = false,
   codingModelDefault,
   harnessClaudeCodeEnabled,
@@ -248,6 +252,8 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
+  useEffect(() => () => onPrefillConsumed?.(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Shown under the composer while a sample from a console link is in it.
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
@@ -398,7 +404,9 @@ export default function HomeView({
       onPrefill('');
     }
     const exampleId = sample ? sampleId(sample.label) : null;
-    setEntryAttribution(handoff.entrySource, exampleId);
+    // The task is credited to the example only if the example was placed; a
+    // kept draft of the user's own is not the example's doing.
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
     trackComposerReady(handoff.entrySource, exampleId, prefilled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerUsable]);
