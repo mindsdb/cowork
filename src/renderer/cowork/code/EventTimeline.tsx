@@ -396,7 +396,7 @@ function answerSeqs(items: TimelineItem[], turnActive: boolean): Set<number> {
 type RenderItem =
   | TimelineItem
   | { kind: 'worked'; key: string; items: TimelineItem[]; label: string }
-  | { kind: 'changes'; key: string; diff: CodingEvent };
+  | { kind: 'answer'; key: string; event: CodingEvent; diff?: CodingEvent };
 
 
 function hasVisibleContent(item: TimelineItem): boolean {
@@ -446,9 +446,8 @@ function foldFinishedTurns(items: TimelineItem[], answers: Set<number>): RenderI
       } else {
         rendered.push(...work);
       }
-      rendered.push(item);
       const diff = work.flatMap((entry) => (entry.kind === 'activity' ? entry.events : [])).filter((event) => event.type === 'diff' && event.text).at(-1);
-      if (diff) rendered.push({ kind: 'changes', key: `changes-${item.event.seq}`, diff });
+      rendered.push({ kind: 'answer', key: `${item.event.seq}-${item.event.type}`, event: item.event, diff });
       work = [];
       continue;
     }
@@ -609,7 +608,9 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 }
 
 
-function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyable?: boolean }) {
+// The files a turn changed sit with its answer, ahead of the answer's
+// actions, so the actions close the turn.
+function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
   if (event.type === 'user_message') {
     return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
   }
@@ -622,6 +623,7 @@ function TimelineEvent({ event, copyable = false }: { event: CodingEvent; copyab
           complete={event.phase === 'completed'}
           animateStreamingWords={false}
         />
+        {changes}
         {copyable && <CopyResponseButton text={event.text} />}
       </article>
     );
@@ -761,7 +763,10 @@ export const EventTimeline = memo(function EventTimeline({
         )}
         {foldFinishedTurns(visibleItems, answers).map((item) => {
           if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
-          if (item.kind === 'changes') return <TurnChanges key={item.key} diff={item.diff} onOpenReview={onOpenReview} />;
+          if (item.kind === 'answer') {
+            const changes = item.diff && <TurnChanges diff={item.diff} onOpenReview={onOpenReview} />;
+            return <TimelineEvent key={item.key} event={item.event} copyable changes={changes} />;
+          }
           return renderItem(item);
         })}
         {session.status === 'running' && (

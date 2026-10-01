@@ -275,6 +275,19 @@ function fixtureState(name: string) {
       'Tests pass locally: `npx vitest related src/checkout/api.ts` reports 4 of 4.',
     ].join('\n\n').replace(/\n\n(?=- |2\. )/g, '\n') }];
     files = [];
+  } else if (name === 'follow-up') {
+    // A turn that changed files, then the next request, for checking where
+    // one turn ends and the next begins.
+    primary = session({ status: 'completed', updated_at: NOW });
+    const turn = activityEvents(false);
+    const last = turn.at(-1)!;
+    const later = (offset: number) => new Date(Date.parse(last.timestamp) + offset * 1_000).toISOString();
+    events = [
+      ...turn,
+      event(last.seq + 1, 'user_message', { timestamp: later(60), text: 'Does the saved-card form need the same recovery?' }),
+      event(last.seq + 2, 'agent_message', { timestamp: later(75), item_id: 'm4', text: 'No. The saved-card form submits through `submitCheckout` too, so it already keeps the draft.' }),
+    ];
+    files = [];
   } else if (name === 'running' || name === 'sidebar') {
     primary = session({ status: 'running', active_turn_id: 'turn-1', updated_at: NOW });
     events = BASE_EVENTS.slice(0, 8).map((item) => item.seq === 8 ? { ...item, phase: 'progress' as const } : item);

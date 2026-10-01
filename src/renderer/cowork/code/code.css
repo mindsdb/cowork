@@ -345,7 +345,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-worked > summary::-webkit-details-marker { display: none; }
 .code-worked[open] > summary .code-activity-group__chevron { transform: rotate(180deg); }
 .code-worked__body { padding-top: 1px; }
-.code-turn-changes { margin: 12px 0 4px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-raised); }
+.code-turn-changes { margin: 12px 0 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-raised); }
 .code-turn-changes header { min-height: 38px; padding: 5px 7px 5px 11px; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12.5px; }
 .code-turn-changes header strong { font-weight: 550; }
 .code-turn-changes__icon { display: inline-flex; color: var(--ink-4); }
