@@ -134,9 +134,12 @@ Install-on-quit only runs on a clean quit. After a force-quit, crash, or reboot,
 the update stays downloaded and uninstalled, and the user meets the same banner
 every launch.
 
-The loading gate therefore also waits on the shell boot check, for up to 10
-seconds. If that check replays a cached download, the app installs it and
-relaunches before it is shown. `decideBootShellInstall` in
+When `shell-update-target.json` shows an earlier launch downloaded a target
+this launch is not running, and that target has not already failed a boot
+install, the loading gate also waits on the shell boot check, for up to 10
+seconds. Every other launch skips the wait. If that check replays a cached
+download, the app installs it and relaunches before it is shown, and the
+loading screen reads "Installing the update — Cowork will reopen…". `decideBootShellInstall` in
 `src/main/update-logic.ts` requires all of:
 
 - the snapshot is at `ready-to-install`;

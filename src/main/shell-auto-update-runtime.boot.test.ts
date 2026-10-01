@@ -58,7 +58,7 @@ const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
 /** A fake updater that finds TARGET. `cached` replays it from disk with no
  *  progress, after a short validation delay, as electron-updater does. */
-function fakeUpdater({ cached }: { cached: boolean }) {
+function fakeUpdater({ cached, hangCheck = false }: { cached: boolean; hangCheck?: boolean }) {
   const on: Record<string, (...args: any[]) => void> = {};
   const quitAndInstall = vi.fn(() => {
     // Simulate an install that leaves the app running on the old version.
@@ -71,7 +71,9 @@ function fakeUpdater({ cached }: { cached: boolean }) {
     onDownloadProgress: l => { on.progress = l; },
     onUpdateDownloaded: l => { on.downloaded = l; },
     onError: l => { on.error = l; },
-    checkForUpdates: async () => { on.available(TARGET); },
+    checkForUpdates: () => (hangCheck
+      ? new Promise<void>(() => undefined)
+      : Promise.resolve().then(() => on.available(TARGET))),
     downloadUpdate: async () => {
       if (!cached) {
         on.progress({ transferred: 1, total: 100, percent: 1, bytesPerSecond: 1 });
@@ -85,8 +87,16 @@ function fakeUpdater({ cached }: { cached: boolean }) {
   return { adapter, quitAndInstall };
 }
 
-async function launch({ cached }: { cached: boolean }) {
-  const updater = fakeUpdater({ cached });
+/** The evidence an earlier launch leaves when it downloads TARGET and quits
+ *  without installing it. */
+function strandTarget() {
+  env.files.set('/userdata/shell-update-target.json', JSON.stringify({
+    targetVersion: TARGET, channel: 'prod', downloadedAt: new Date().toISOString(),
+  }));
+}
+
+async function launch({ cached, hangCheck }: { cached: boolean; hangCheck?: boolean }) {
+  const updater = fakeUpdater({ cached, hangCheck });
   env.adapter = updater.adapter;
   vi.resetModules();
   const runtime = await import('./shell-auto-update-runtime');
@@ -105,29 +115,49 @@ describe('boot install of a stranded shell update (ENG-2764)', () => {
   });
 
   it('waits for a cached download to finish validating, then installs it', async () => {
+    strandTarget();
     const { quitAndInstall } = await launch({ cached: true });
     expect(quitAndInstall).toHaveBeenCalledTimes(1);
   });
 
   it('releases the gate at the first progress event and leaves a fresh download alone', async () => {
+    strandTarget();
     const { quitAndInstall } = await launch({ cached: false });
     expect(quitAndInstall).not.toHaveBeenCalled();
   });
 
   it('does not retry a failed install on any later launch', async () => {
+    strandTarget();
     expect((await launch({ cached: true })).quitAndInstall).toHaveBeenCalledTimes(1);
     expect((await launch({ cached: true })).quitAndInstall).not.toHaveBeenCalled();
     expect((await launch({ cached: true })).quitAndInstall).not.toHaveBeenCalled();
   });
 
   it('keeps the marker through a launch that never reaches ready-to-install', async () => {
+    strandTarget();
     await launch({ cached: true });
     await launch({ cached: false });
     expect((await launch({ cached: true })).quitAndInstall).not.toHaveBeenCalled();
   });
 
   it('skips the install when the attempt cannot be recorded', async () => {
+    strandTarget();
     env.failWrites = true;
     expect((await launch({ cached: true })).quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  // A check that never answers would hold the gate for the full window if the
+  // boot path waited on it; these resolve only because it does not.
+  it('does not hold the gate when no earlier launch left a download', async () => {
+    const { quitAndInstall } = await launch({ cached: true, hangCheck: true });
+    expect(quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('does not hold the gate once the downloaded target is running', async () => {
+    env.files.set('/userdata/shell-update-target.json', JSON.stringify({
+      targetVersion: env.version, channel: 'prod', downloadedAt: new Date().toISOString(),
+    }));
+    const { quitAndInstall } = await launch({ cached: true, hangCheck: true });
+    expect(quitAndInstall).not.toHaveBeenCalled();
   });
 });
