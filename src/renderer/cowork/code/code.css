@@ -59,15 +59,21 @@
 .code-sidebar-session-group + .code-sidebar-session-group { margin-top: 7px; }
 .code-sidebar-session-group__label { min-height: 23px; padding: 4px 8px 2px; display: flex; align-items: center; color: var(--ink-4); font: 500 12px/18px var(--font-sans); }
 .code-sidebar-session-group__label b { margin-left: auto; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.code-sidebar-session-row { position: relative; border-radius: 7px; transition: background .1s ease, color .1s ease; }
+.code-sidebar-session-row { position: relative; border-radius: var(--r); transition: background .1s ease, color .1s ease; }
+.code-sidebar-session-row + .code-sidebar-session-row { margin-top: 1px; }
 /* Same neutral ink washes as the chat rail's .nav-item / .recent-item hover and selection. */
 .code-sidebar-session-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .code-sidebar-session-row.is-selected { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .code-sidebar-session {
   width: 100%;
-  padding: 9px 30px 8px 9px;
+  /* Matches Cowork's .app-sidebar .recent-item: 30px rows, 10px inset. */
+  min-height: 30px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r);
   background: transparent;
   color: var(--ink);
   cursor: pointer;
@@ -76,22 +82,21 @@
   transition: color .12s ease;
 }
 .code-sidebar-session:focus-visible { outline: 0; box-shadow: inset var(--ring); }
-.code-sidebar-session__pin { position: absolute; top: 7px; right: 6px; opacity: 0; }
+.code-sidebar-session__pin { position: absolute; top: 50%; right: 4px; opacity: 0; transform: translateY(-50%); }
+/* The pin takes the right slot on hover/focus; the time or status fades out under it. */
 .code-sidebar-session-row:hover .code-sidebar-session__pin,
-.code-sidebar-session-row:focus-within .code-sidebar-session__pin,
-.code-sidebar-session-row.is-pinned .code-sidebar-session__pin { opacity: 1; }
+.code-sidebar-session-row:focus-within .code-sidebar-session__pin { opacity: 1; }
+.code-sidebar-session-row:hover .code-sidebar-session__aside,
+.code-sidebar-session-row:focus-within .code-sidebar-session__aside { opacity: 0; }
 .code-sidebar-session__pin[aria-pressed='true'] { color: var(--accent); }
-.code-sidebar-session__title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 560; }
-.code-sidebar-session__meta { margin-top: 5px; display: flex; min-width: 0; align-items: center; gap: 5px; color: var(--ink-4); font-size: 10px; }
-.code-sidebar-session__status { flex: none; color: var(--ink-3); }
-.code-sidebar-session__status.is-warning { color: var(--warning); }
-.code-sidebar-session__status.is-danger { color: var(--danger); }
+.code-sidebar-session__title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.code-sidebar-session__aside { flex: none; max-width: 45%; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; color: var(--ink-4); font-size: 11px; font-variant-numeric: tabular-nums; transition: opacity .12s ease; }
+.code-sidebar-session__aside.is-warning { color: var(--warning); }
+.code-sidebar-session__aside.is-danger { color: var(--danger); }
+.code-sidebar-session__aside-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .code-sidebar-session__spinner { flex: none; width: 9px; color: var(--accent); font-size: 12.5px; font-weight: 700; line-height: 1; text-align: center; }
 .code-status-dot.is-unread { background: var(--accent); }
-.code-sidebar-session-row.is-resting .code-sidebar-session__title { color: var(--ink-2); font-weight: 500; }
-.code-sidebar-session__status::after { margin-left: 5px; color: var(--ink-4); content: '·'; }
-.code-sidebar-session__repo { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code-sidebar-session__time { flex: none; font-family: var(--font-mono); font-size: 9.5px; }
+.code-sidebar-session-row.is-resting .code-sidebar-session__title { color: var(--ink-2); font-weight: 400; }
 .code-sidebar-archived { margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); }
 .code-sidebar-archived > summary { min-height: 28px; padding: 5px 8px; display: flex; align-items: center; gap: 5px; color: var(--ink-4); cursor: pointer; list-style: none; font-size: 10.5px; }
 .code-sidebar-archived > summary::-webkit-details-marker { display: none; }
