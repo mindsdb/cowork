@@ -12,6 +12,9 @@ import { CHANNELS } from './channels';
 const appMock = { setName: vi.fn(), getName: vi.fn(() => 'mock-name') };
 vi.mock('electron', () => ({ app: appMock }));
 
+const startCrashReporterMock = vi.fn();
+vi.mock('./crash-reporter', () => ({ startCrashReporter: () => startCrashReporterMock() }));
+
 const buildKindMock = vi.fn();
 vi.mock('./cowork-home', () => ({ buildKind: () => buildKindMock() }));
 
@@ -24,6 +27,7 @@ async function loadForKind(kind: string): Promise<void> {
 describe('app-identity — per-channel app name (userData isolation)', () => {
   beforeEach(() => {
     appMock.setName.mockClear();
+    startCrashReporterMock.mockClear();
   });
 
   it('prod: NEVER calls app.setName (userData stays "anton", unchanged)', async () => {
@@ -39,4 +43,26 @@ describe('app-identity — per-channel app name (userData isolation)', () => {
       expect(appMock.setName).toHaveBeenCalledWith(CHANNELS[kind].appName);
     },
   );
+});
+
+describe('app-identity — crash reporter start', () => {
+  beforeEach(() => {
+    appMock.setName.mockClear();
+    startCrashReporterMock.mockClear();
+  });
+
+  // The reporter caches userData when it starts and setName does not reset that
+  // cache, so starting first would pin non-prod builds to prod's userData.
+  it.each(['dev', 'preview', 'stable'] as const)('non-prod %s: starts it once, after setName', async (kind) => {
+    await loadForKind(kind);
+    expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
+    expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
+      startCrashReporterMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('prod: starts it once', async () => {
+    await loadForKind('prod');
+    expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
+  });
 });

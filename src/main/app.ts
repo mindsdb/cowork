@@ -1598,10 +1598,16 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  // One line per startup step up to [channels], so the stdout of a startup that
+  // dies natively names the last step it reached.
+  console.log('[boot] modules loaded, app ready');
+
+  console.log('[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
+  console.log('[boot] account data root');
   // Answer, once and before anything can create a database, whether this
   // install already held data. It decides whether an account may take the
   // default root or has to be asked, and it can only be observed BEFORE the
@@ -1625,11 +1631,13 @@ app.whenReady().then(async () => {
     void refreshMindsCredentialAfterResume();
   });
 
+  console.log('[boot] uv isolation');
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
   // build kinds on one machine don't share one binary. Must run before the
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
 
+  console.log('[boot] channel consistency');
   // Guard the two environment axes against silent disagreement: the build kind
   // (data home / branch) must target the API host the canonical channel model
   // says it should. A mismatch means a build was wired to talk to the wrong
