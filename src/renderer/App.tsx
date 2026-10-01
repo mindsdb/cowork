@@ -76,11 +76,7 @@ export default function App() {
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
   // ENG-749: progress line under the welcome orb while the loading screen is
-  // held open through a boot-time update, so a download isn't a silent stall.
-  // OTA-only by design (ENG-2764): the gate waits on the updater's boot poll and
-  // nothing else, so the shell auto-updater — which downloads on its own timer
-  // and installs on quit — must not appear here. deriveBootStatus keeps the copy
-  // clear of completion claims so a pending shell update isn't contradicted.
+  // held open through a boot-time update. OTA-only (ENG-2764).
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
   const bootStatus = deriveBootStatus({ ota: { phase: otaPhase } });
   // No setter needed here — the onboarding corner no longer offers a skin
@@ -117,9 +113,8 @@ export default function App() {
 
   // Reflect boot-time OTA progress on the loading screen (ENG-749). Mounted for
   // the app's lifetime so the message is live while init() holds on the gate.
-  // `shell-available` is the manual shell-reinstall notice (ENG-849), not an OTA
-  // phase, so it's dropped rather than stored: the sidebar banner owns it, and
-  // the boot line must not report an update the gate can't apply (ENG-2764).
+  // `shell-available` is the manual reinstall notice (ENG-849), which the
+  // sidebar banner owns.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       if (status?.phase === 'shell-available') return;
@@ -127,9 +122,8 @@ export default function App() {
     });
   }, []);
 
-  // Report shell auto-update milestones to PostHog. Telemetry only: the boot
-  // line stays OTA-only, so the phase is not stored. Pull once for reload
-  // recovery, then subscribe to the main-process snapshot. No-ops in web.
+  // Report shell auto-update milestones to PostHog. Pull once for reload
+  // recovery, then subscribe. No-ops in web.
   // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;

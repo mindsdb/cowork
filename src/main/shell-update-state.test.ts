@@ -58,10 +58,7 @@ describe('transitionShellUpdate', () => {
     expect(ready.progress).toBeUndefined();
   });
 
-  // ENG-2764: the discriminator for a stranded update. electron-updater replays
-  // a download cached by an earlier launch without emitting any progress, so no
-  // bytes this session means the update was already on disk — the only case the
-  // boot check installs and relaunches on its own.
+  // ENG-2764: no progress before ready-to-install means a cached replay.
   describe('bytesTransferred', () => {
     const readyAfter = (events: Parameters<typeof transitionShellUpdate>[1][]) =>
       events.reduce(transitionShellUpdate, idle());

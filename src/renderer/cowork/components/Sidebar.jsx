@@ -916,9 +916,7 @@ export default function Sidebar({
               {dot}{label}{action}
             </button>
           );
-          // A `hint` means the update lands on its own even if this is never
-          // clicked, so the tooltip says which path it takes (ENG-2764). Without
-          // it the pill read as the only way to get the update.
+          // A `hint` says how the update lands without a click (ENG-2764).
           return updateBanner.hint
             ? <Tooltip content={updateBanner.hint}>{pill}</Tooltip>
             : pill;

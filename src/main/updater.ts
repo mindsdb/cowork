@@ -256,7 +256,9 @@ export function initUpdater(
     getWindow,
     getMode,
   });
-  startShellAutoUpdatePolling(rendererReady);
+  // The loading gate also waits on the shell boot check, so a stranded update
+  // installs before the app is shown (ENG-2764).
+  const shellBootSettled = startShellAutoUpdatePolling(rendererReady);
 
   async function poll(autoApply: boolean) {
     // hasInternet() probes the OTA manifest host (GitHub Pages). The server
@@ -361,6 +363,7 @@ export function initUpdater(
       // hanging bundle still self-heals.
       await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
     } finally {
+      await shellBootSettled.catch(err => console.error('[updater] shell boot check failed:', err));
       onBootPollComplete(); // release the loading gate, whatever the poll did
     }
 

@@ -118,7 +118,7 @@ When enabled, main owns one immutable shell-update snapshot:
 - `shell_update_phase` records each shell auto-update milestone once per app
   run, from the first launch screen onward: `available` (an update was found;
   in auto mode, its download started), `ready-to-install`, `installing` (the
-  user clicked Restart, or launch installed a stranded update — see below),
+  user clicked Restart, or launch installed a stranded update),
   `failed` (with `error_code` and `recoverable`), and
   `relaunched`. `relaunched` is the boot verdict on the previous download:
   `error_code` is `install-not-applied` when the app came back on the old
@@ -130,31 +130,27 @@ When enabled, main owns one immutable shell-update snapshot:
 
 ### Stranded updates: installed at the next launch (ENG-2764)
 
-Install-on-quit only runs on a *clean* quit. A session that is force-quit,
-crashes, or is cut off by a reboot leaves the update downloaded and uninstalled,
-and nothing clears it — the user meets the same "Update ready" banner on every
-launch until they happen to quit cleanly.
+Install-on-quit only runs on a clean quit. After a force-quit, crash, or reboot,
+the update stays downloaded and uninstalled, and the user meets the same banner
+every launch.
 
-So the boot check installs a **stranded** update on its own and relaunches,
-before the user engages. It applies only when all of these hold
-(`decideBootShellInstall` in `src/main/update-logic.ts`):
+The loading gate therefore also waits on the shell boot check, for up to 10
+seconds. If that check replays a cached download, the app installs it and
+relaunches before it is shown. `decideBootShellInstall` in
+`src/main/update-logic.ts` requires all of:
 
 - the snapshot is at `ready-to-install`;
-- the mode is `auto` (manual mode never acts on its own);
-- **no bytes were transferred this launch.** electron-updater replays a download
-  cached by an earlier launch without emitting any `download-progress` event, so
-  this is what separates a stranded update from one downloaded just now. A fresh
-  download is deliberately left to the banner and the next quit — relaunching out
-  from under someone who has started working is the surprise this avoids, not a
-  fix for it;
-- this app has not already tried and failed to boot-install that same target.
+- the mode is `auto`;
+- no bytes were transferred this launch. electron-updater replays a cached
+  download without emitting `download-progress`, so this separates a stranded
+  update from a fresh one. The gate is released at the first progress event, and
+  a fresh download is left to the banner and the next quit;
+- this target has not already failed a boot install.
 
-The last point needs durable evidence, because a stranded update and a failed
-auto-install look identical afterwards: both leave the app running the old
-version with the download still cached. The attempt is therefore recorded in
-`shell-update-target.json` *before* it is made, and a launch that finds the
-marker for the target it is about to install hands the update to the banner
-instead. The guard is per-target, so a newer release is still tried.
+A stranded update and a failed install look the same afterwards, so the attempt
+is recorded in `shell-update-target.json` before it is made. The marker persists
+until the target installs or a newer target replaces it, and the install is
+skipped if the marker cannot be written.
 
 ## Build kinds
 
@@ -265,10 +261,9 @@ The possible banners, in priority order:
 - **Shell** (auto-update) → a pill that walks the phases **"New app version
   available — Download" → "Downloading update (42%)…" → "Update ready — Restart
   now"** (in auto mode the download happens on its own; a restart installs it).
-  The pill is an **accelerator, not the only path**: `autoInstallOnAppQuit` lands
-  the update on the next normal quit whether or not it is ever clicked, and its
-  tooltip says so. Likewise the OTA pill shortcuts a reload the next launch would
-  perform anyway.
+  In auto mode the pill is a shortcut: `autoInstallOnAppQuit` installs the update
+  on the next normal quit, and the tooltip says so. Manual mode shows no such
+  tooltip. The OTA pill's tooltip likewise notes the next launch applies it.
 - **Shell** (manual fallback) → a dismissible **"New version available —
   Download"** notice linking to the installer.
 - **UI/server found mid-session** (only when no shell update is pending) → a
@@ -278,13 +273,10 @@ The possible banners, in priority order:
   overlay (spinner + "Downloading the latest update…" / "Finishing up…"), then
   the window reloads.
 
-The boot overlay describes **OTA only** (ENG-2764). The loading gate waits on the
-updater's boot poll and nothing else, so the shell auto-updater — which downloads
-on its own timer and installs on quit — never appears there. Reporting it made the
-loading screen announce a download it could not finish, hand the user the app, and
-then ask them to click Restart in a banner. The overlay's copy also avoids any
-completion claim ("Finishing up…", never "Almost ready…"), so it cannot contradict
-a shell update still pending behind it.
+The boot overlay describes **OTA only** (ENG-2764). A shell download is never
+applied by the gate, so naming it announced an update the app then asked the user
+to apply by hand. The copy makes no completion claim ("Finishing up…"), so it
+cannot contradict a pending shell update.
 
 | Updates pending | What the user sees |
 |---|---|
@@ -295,8 +287,8 @@ a shell update still pending behind it.
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
 | **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
-| **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches on its own, before the user engages — no banner, no click. Guarded so a failed attempt falls back to the banner instead of relaunching every launch. |
-| **Shell only** (auto-update eligible) | Independent of the overlay, and never named on the boot loading screen. The pill/card walk "available → downloading (%) → ready-to-install". Background download; the update installs on the next normal quit in auto mode, and **Restart now** is the shortcut to it. |
+| **Shell downloaded but never installed** (force-quit, crash, reboot) | The next launch installs it and relaunches before the app is shown. A failed attempt falls back to the banner. |
+| **Shell only** (auto-update eligible) | Never named on the loading screen. The pill/card walk "available → downloading (%) → ready-to-install". In auto mode the update installs on the next normal quit, and **Restart now** is the shortcut. |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
 | **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
 

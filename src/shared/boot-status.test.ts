@@ -16,19 +16,13 @@ describe('deriveBootStatus', () => {
     expect(deriveBootStatus({ ota: { phase: 'downloading' } })).toBe('Downloading the latest update…');
   });
 
-  // ENG-2296's concern, met by copy rather than by reading the shell channel:
-  // the last phase the gate waits on must not read as "done", because a shell
-  // update may still be pending behind it.
   it('reloading → "Finishing up…", never a completion claim', () => {
     const out = deriveBootStatus({ ota: { phase: 'reloading' } });
     expect(out).toBe('Finishing up…');
     expect(out).not.toBe('Almost ready…');
   });
 
-  // ENG-2764: the boot gate waits on the OTA poll alone. The shell auto-updater
-  // downloads on its own timer and installs on quit, so its phases must never
-  // reach this line — announcing a download the gate cannot finish is what made
-  // the old flow promise an update it then asked the user to apply by hand.
+  // ENG-2764: the boot line is OTA-only.
   it('ignores any shell-channel input', () => {
     const shellOnly = { shell: { phase: 'downloading' }, manualShellPending: true };
     expect(deriveBootStatus(shellOnly as never)).toBeNull();
