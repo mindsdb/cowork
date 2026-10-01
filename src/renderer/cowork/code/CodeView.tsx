@@ -395,6 +395,7 @@ export default function CodeView({
             onOpenControls={() => setControlsOpen(true)}
             onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
             onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
+            onOpenProjectTasks={() => onOpenTasks(taskBarSession.project_id || null)}
             onRename={() => setRenameOpen(true)}
             onFork={() => void forkTask()}
             onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
