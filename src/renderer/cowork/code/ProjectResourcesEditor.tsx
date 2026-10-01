@@ -217,6 +217,7 @@ export function ProjectResourcesEditor({
                         <Input size="sm" value={resource.default_branch || ''} onChange={(value) => updateRepository(resource.id, { default_branch: value || null })} placeholder="Repository default" />
                       </label>
                     )}
+                    <span className="code-project-resource__commands-label">Commands <span className="code-project-optional">(optional)</span></span>
                     <label>
                       <span>Setup</span>
                       <Input size="sm" variant="mono" aria-label="Setup command" value={commandDrafts[`${resource.id}:setup`] ?? commandValue(resource.commands, 'setup').join(' ')} onChange={(value) => onCommandChange(resource.id, 'setup', value)} placeholder="npm install" />

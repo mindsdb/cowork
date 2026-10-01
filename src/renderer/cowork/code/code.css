@@ -614,6 +614,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-resource + .code-project-resource { border-top: 1px solid var(--line); }
 .code-project-resource__row { min-height: 56px; padding: 8px 40px 8px 12px; }
 .code-project-resource__row:hover { background: var(--ghost-hover); }
+.code-project-resource__row > svg { width: 16px; height: 16px; color: var(--ink-3); }
 .code-project-resource__main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
 .code-project-resource__icon { display: inline-flex; flex: none; color: var(--ink-3); }
 .code-project-resource__identity { min-width: 0; flex: 1; display: grid; gap: 1px; }
@@ -624,6 +625,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-resource__availability.is-offline { background: var(--warning-bg); color: var(--warning); }
 .code-project-resource__remove { position: absolute; top: 14px; right: 8px; }
 .code-project-resource__commands { padding: 0 12px 12px 38px; display: grid; gap: 8px; }
+.code-project-resource__commands-label { margin-top: 4px; color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
 .code-project-resource__commands label { min-width: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; }
 .code-project-resource__commands label > span { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
 
