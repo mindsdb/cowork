@@ -1,6 +1,5 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import Kbd from '../components/ui/Kbd';
 import Tooltip from '../components/ui/Tooltip';
 import type { ApprovalDecision, PendingApproval } from './api';
 import { DecisionTray, isTrayShortcut } from './DecisionTray';
@@ -43,7 +42,7 @@ export function ApprovalCard({
       <div className="code-decision-tray__actions">
         {approval.risk ? <p className="code-decision-tray__note" title={approval.risk}>{approval.risk}</p> : <span className="code-decision-tray__spacer" aria-hidden="true" />}
         <Button size="sm" variant="subtle" disabled={busy} aria-keyshortcuts="Escape" onClick={() => decide('deny')}>
-          Deny <Kbd aria-hidden="true">Esc</Kbd>
+          Deny
         </Button>
         {approval.allow_session && (
           <Tooltip content="Allow this now, and similar commands for the rest of this task">
@@ -51,7 +50,7 @@ export function ApprovalCard({
           </Tooltip>
         )}
         <Button size="sm" variant="primary" disabled={busy} aria-keyshortcuts="Enter" onClick={() => decide('approve_once')}>
-          Allow once <Kbd aria-hidden="true">⏎</Kbd>
+          Allow once
         </Button>
       </div>
     </DecisionTray>

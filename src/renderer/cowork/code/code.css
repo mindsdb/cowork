@@ -127,7 +127,6 @@
 .code-taskbar-details > div:not(.code-taskbar-details__intro) { min-width: 0; display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: baseline; gap: 10px; }
 .code-taskbar-details__intro { margin-bottom: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .code-taskbar-details__intro strong { display: block; color: var(--ink); font-size: 11.5px; font-weight: 620; }
-.code-taskbar-details__intro p { margin: 3px 0 0; color: var(--ink-4); font-size: 10px; line-height: 1.35; }
 .code-taskbar-details span { color: var(--ink-4); font-size: 9.5px; font-weight: 500; }
 .code-taskbar-details strong,
 .code-taskbar-details code { min-width: 0; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 560; }
@@ -242,7 +241,6 @@
 .code-repository-state__isolation { margin-left: auto; color: var(--ink-4); }
 .code-new-task__content > .alert { margin: 9px 4px 0; }
 .code-start-status-slot { min-height: 27px; padding: 6px 5px 0; display: flex; align-items: flex-start; gap: 12px; }
-.code-start-status-slot > .code-composer__hint { margin-left: auto; line-height: 1.5; }
 .code-start-readiness { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 10.5px; line-height: 1.4; }
 .code-start-readiness__icon { display: inline-flex; flex: none; color: var(--ink-4); }
 .code-start-readiness > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -405,7 +403,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-composer__actions { display: flex; align-items: center; gap: 6px; }
 .code-permission-picker { color: var(--ink-2); }
 .code-composer__actions-spacer { min-width: 5px; flex: 1 1 auto; }
-.code-composer__hint { color: var(--ink-4); white-space: nowrap; font-size: 9.5px; }
 .code-slash-menu { position: absolute; z-index: 24; right: 0; bottom: calc(100% + 7px); left: 0; max-height: min(390px, 52vh); padding: 6px; overflow-y: auto; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--surface-0); box-shadow: var(--sh-3); }
 .code-slash-menu__label { padding: 5px 8px 7px; color: var(--ink-4); text-transform: uppercase; font: 650 9px var(--font-mono); letter-spacing: .08em; }
 .code-slash-menu button { width: 100%; min-height: 50px; padding: 7px 9px; display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
@@ -426,12 +423,10 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-command-palette__search > span { display: inline-flex; }
 .code-command-palette__search input { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; color: var(--ink); outline: none; font: 11.5px var(--font-sans); }
 .code-command-palette__search input::placeholder { color: var(--ink-4); }
-.code-command-palette__search kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-2); color: var(--ink-4); font: 8.5px var(--font-mono); }
 .code-command-palette__list { min-height: 0; padding: 5px; overflow-y: auto; }
 .code-command-palette__list section + section { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
 .code-command-palette__section { min-height: 25px; padding: 4px 8px 5px; display: flex; align-items: center; gap: 8px; color: var(--ink-4); }
 .code-command-palette__section span { text-transform: uppercase; font: 650 8.5px var(--font-mono); letter-spacing: .08em; }
-.code-command-palette__section small { margin-left: auto; font-size: 9px; }
 .code-command-palette__item { min-height: 48px; display: flex; align-items: stretch; border-radius: var(--r); }
 .code-command-palette__item:hover,
 .code-command-palette__item.is-selected { background: var(--surface-2); }
@@ -738,7 +733,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
    docked sidebar and an open review inspector can make the conversation
    compact while the outer window is still wide. */
 @container code-conversation (max-width: 700px) {
-  .code-composer__hint { display: none; }
   .code-composer__actions { gap: 5px; }
 }
 
@@ -752,7 +746,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-model-picker { max-width: none; flex: 1 1 180px; }
   .code-effort-picker { max-width: none; flex: 1 1 140px; }
   .code-start-task-button { flex: none; }
-  .code-start-status-slot > .code-composer__hint { display: none; }
 }
 
 /* Contextual, resizable review surface. */
@@ -789,7 +782,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-git-panel { display: flex; flex-direction: column; gap: 12px; }
 .code-delivery-heading { padding-bottom: 11px; display: grid; gap: 3px; border-bottom: 1px solid var(--line); }
 .code-delivery-heading strong { color: var(--ink-2); font-size: 12px; }
-.code-delivery-heading span { color: var(--ink-4); font-size: 10px; line-height: 1.45; }
 .code-handoff-summary { display: grid; gap: 8px; padding: 2px; }
 .code-handoff-summary__folder { padding-top: 8px; display: grid; gap: 6px; border-top: 1px solid var(--line); }
 .code-handoff-summary__row { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 8px; }
@@ -967,7 +959,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-context-control { flex: 1 1 180px; max-width: none; }
   .code-agent-picker { flex: 0 1 126px; }
   .code-model-picker { margin-left: auto; }
-  .code-composer__hint { display: none; }
   .code-composer__actions .btn:first-of-type { margin-left: auto; }
   .code-projects-view,
   .code-connectors-view { padding: 34px 22px 48px; }

@@ -173,7 +173,6 @@ describe('TaskBar', () => {
     expect(screen.getByText('Original folder')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show task details for original folder' }));
     expect(screen.getByText('Task setup')).toBeInTheDocument();
-    expect(screen.getByText('Edits happen in the folder you selected.')).toBeInTheDocument();
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
   });
 
@@ -214,7 +213,6 @@ describe('TaskBar', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
-    expect(screen.getByText('Task-only files keep parallel work separate.')).toBeInTheDocument();
     expect(screen.getByText('codex/task-1')).toBeInTheDocument();
     expect(screen.queryByText(/worktree/i)).not.toBeInTheDocument();
   });

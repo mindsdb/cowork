@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import Button from '../components/ui/Button';
 import Ico from '../components/Icons';
-import Kbd from '../components/ui/Kbd';
 import type { PendingQuestion } from './api';
 import { DecisionTray } from './DecisionTray';
 
@@ -40,9 +39,8 @@ export function QuestionCard({ pending, busy, onAnswer }: {
     </fieldset>)}
     {error && <p className="code-decision__error" role="alert">{error}</p>}
     <div className="code-decision-tray__actions">
-      <span className="code-decision-tray__note">No answer is sent until you continue.</span>
       <span className="code-decision-tray__spacer" aria-hidden="true" />
-      <Button type="submit" variant="primary" size="sm" disabled={busy || !complete}>{busy ? 'Sending…' : <>Continue <Kbd aria-hidden="true">⏎</Kbd></>}</Button>
+      <Button type="submit" variant="primary" size="sm" disabled={busy || !complete}>{busy ? 'Sending…' : 'Continue'}</Button>
     </div>
     </form>
   </DecisionTray>;

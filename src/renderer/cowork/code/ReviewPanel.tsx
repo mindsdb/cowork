@@ -5,6 +5,7 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Tab, TabList, Tabs } from '../components/ui/Tabs';
+import Tooltip from '../components/ui/Tooltip';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandRefresh, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
@@ -251,7 +252,6 @@ export function ReviewPanel({
           <div className="code-review__body code-git-panel scroll-clean">
             <div className="code-delivery-heading">
               <strong>Deliver this task</strong>
-              <span>Run checks, then open a pull request or apply the reviewed changes locally.</span>
             </div>
             {gitIdentitySetup && <GitIdentityCard setup={gitIdentitySetup} busy={busy} />}
             <section className="code-handoff-summary">
@@ -278,7 +278,7 @@ export function ReviewPanel({
               <>
                 {session.project_id && (
                   <section className="code-handoff-secondary">
-                    <div><div className="code-field-label">Project checks</div><p>Run the project's validation commands before delivery.</p></div>
+                    <div><div className="code-field-label">Project checks</div></div>
                     <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void runChecks()}>Run checks</Button>
                   </section>
                 )}
@@ -314,11 +314,12 @@ export function ReviewPanel({
                 <section className="code-handoff-primary code-handoff-local">
                   <div>
                     <div className="code-field-label">Apply locally</div>
-                    <p>Copy the reviewed changes back to the original folders.</p>
                   </div>
-                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
-                    {applied ? 'Applied' : 'Apply locally'}
-                  </Button>
+                  <Tooltip content="Copy the reviewed changes back to the original folders">
+                    <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
+                      {applied ? 'Applied' : 'Apply locally'}
+                    </Button>
+                  </Tooltip>
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
                 {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
