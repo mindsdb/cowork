@@ -1,5 +1,6 @@
 import type { ConnectorConnection } from '../api';
 import Button from '../components/ui/Button';
+import { Checkbox } from '../components/ui/Checkbox';
 
 function accountLabel(connection: ConnectorConnection): string {
   return connection.display_name || connection.user_label || connection.label || connection.name;
@@ -36,11 +37,12 @@ export function ProjectConnectedTools({
           {developerAccounts.map((connection) => {
             const key = `${connection.engine}:${connection.name}`;
             const unavailable = connection.status === 'needs_reconnect' || connection.status === 'missing';
+            const label = accountLabel(connection);
             return (
               <div key={key} className={`code-project-connection${unavailable ? ' is-unavailable' : ''}`}>
                 <label>
-                  <input type="checkbox" checked={selected.includes(key)} disabled={unavailable || (required.includes(key) && selected.includes(key))} onChange={() => toggle(key)} />
-                  <span><strong>{accountLabel(connection)}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}{required.includes(key) ? ' · Used by a repository' : ''}</small></span>
+                  <Checkbox size="sm" checked={selected.includes(key)} disabled={unavailable || (required.includes(key) && selected.includes(key))} onCheckedChange={() => toggle(key)} aria-label={label} />
+                  <span><strong>{label}</strong><small>{connection.engine === 'github' ? 'GitHub' : 'Linear'}{required.includes(key) ? ' · Used by a repository' : ''}</small></span>
                 </label>
                 {unavailable && <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Reconnect</Button>}
               </div>
