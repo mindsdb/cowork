@@ -211,14 +211,12 @@ export function CodeCommandPalette({
           placeholder="Search skills and commands"
           aria-label="Search skills and commands"
         />
-        <kbd>esc</kbd>
       </label>
       <div className="code-command-palette__list">
         {skills.length > 0 && (
           <section aria-label="MindsHub skills">
             <div className="code-command-palette__section">
               <span>MindsHub skills</span>
-              <small>Available in Code Mode</small>
             </div>
             {skills.map(renderItem)}
           </section>
@@ -227,7 +225,6 @@ export function CodeCommandPalette({
           <section aria-label={`${agentLabel} commands`}>
             <div className="code-command-palette__section">
               <span>{agentLabel} commands</span>
-              <small>Provided by the coding agent</small>
             </div>
             {commands.map(renderItem)}
           </section>

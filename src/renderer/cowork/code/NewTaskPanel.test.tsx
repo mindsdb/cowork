@@ -193,7 +193,7 @@ describe('NewTaskPanel', () => {
     const onCreate = vi.fn(async () => {});
     render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol" models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
     await user.click(await screen.findByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     expect(screen.getByRole('button', { name: 'Turn plan mode off' })).toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Plan a timer');
     await user.click(screen.getByRole('button', { name: 'Start planning' }));
@@ -217,7 +217,7 @@ describe('NewTaskPanel', () => {
     render(<CatalogTaskPanel source={source} busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
       models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     const input = screen.getByRole('textbox', { name: 'Coding task' });
     await user.type(input, 'Plan without changing files');
     let resolve!: (value: typeof engines) => void;
@@ -241,7 +241,7 @@ describe('NewTaskPanel', () => {
     render(<NewTaskPanel busy={false} error="" defaultEngineId="codex" defaultModel="gpt-5.6-sol"
       models={models} modelMeta={modelMeta} {...projectProps} onCreate={onCreate} />);
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     const input = screen.getByRole('textbox', { name: 'Coding task' });
     await user.type(input, 'Keep my instructions');
     act(() => credentialListeners.forEach(listener => listener()));
@@ -1544,7 +1544,6 @@ describe('NewTaskPanel', () => {
 
       expect(pickCodeFolder).not.toHaveBeenCalled();
       expect(onCreate).not.toHaveBeenCalled();
-      expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
     });
 
     it('preselects the folder of the last folder-only task', async () => {

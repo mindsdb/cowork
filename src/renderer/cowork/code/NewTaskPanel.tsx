@@ -397,7 +397,6 @@ export function NewTaskPanel({
               <span>{readinessText}</span>
             </div>
           )}
-          <span className="code-composer__hint">Enter to send · Shift+Enter for a new line</span>
         </div>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
         <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />

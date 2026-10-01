@@ -23,7 +23,7 @@ export function ComposerAddMenu({ disabled, onAttach, planMode = false, onPlanCh
           id: 'plan',
           icon: <Lightbulb size={15} strokeWidth={1.5} aria-hidden="true" />,
           label: 'Plan mode',
-          hint: <span className="font-body text-[12px]">Turn plan mode {planMode ? 'off' : 'on'}</span>,
+          hint: planMode ? Ico.check(11) : undefined,
           disabled: disabled || planDisabled,
           title: planDisabled ? 'Available after the current turn finishes' : undefined,
           onClick: () => onPlanChange(!planMode),

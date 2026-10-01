@@ -73,9 +73,6 @@ export function TaskBar({
     : folderCount > 1
       ? `${folderCount} isolated folders`
       : 'Isolated copy';
-  const workingCopyDescription = usesOriginalFolder
-    ? 'Edits happen in the folder you selected.'
-    : 'Task-only files keep parallel work separate.';
   const origin = session.source_contexts?.[0] || null;
   const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
   const scopedWorkspaceNames = (session.workspaces || []).map((workspace) => workspace.folder_name);
@@ -130,7 +127,6 @@ export function TaskBar({
                   <div className="code-taskbar-details">
                     <div className="code-taskbar-details__intro">
                       <strong>Task setup</strong>
-                      <p>{workingCopyDescription}</p>
                     </div>
                     <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
                     {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}

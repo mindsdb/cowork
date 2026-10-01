@@ -336,8 +336,8 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
             <div>{items.length ? rows(items) : <div className="code-skill-group__empty">{source.error ? 'Source unavailable — open for details.' : query.trim() ? 'No items match this search.' : 'No shared items found.'}</div>}</div>
           </section>;
         })}
-        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
-        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
+        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
+        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
         {!hasVisibleCatalog && <div className="code-skills-empty">
           {query.trim() ? 'No skills match your search.' : filter === 'personal' || filter === 'all' ? <>
             <span>{Ico.cube(20)}</span><strong>No personal skills yet</strong>

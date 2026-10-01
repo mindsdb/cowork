@@ -677,7 +677,6 @@ function TaskOutcome({
       <span className="code-task-outcome__icon">{Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
         <strong>{status.label}</strong>
-        <p>The active turn was stopped. You can continue in the same task.</p>
         {errorDetail && session.status === 'failed' && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>

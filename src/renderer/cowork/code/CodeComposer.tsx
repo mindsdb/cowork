@@ -367,7 +367,6 @@ export const CodeComposer = memo(function CodeComposer({
             disabledReason={active ? 'Permissions can be changed after the current turn finishes' : undefined}
           />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
-          <span className="code-composer__hint">{active ? waiting ? 'Answer above · follow-ups wait in the queue' : delivery === 'steer' ? 'Enter to steer · Shift+Enter for a new line' : 'Runs after the active turn' : 'Enter to send · Shift+Enter for a new line'}</span>
           <div className="code-composer__delivery">
             {active && <Button variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">{Ico.stop(12)} Stop</Button>}
             {active && hasDraft && <Select variant="pill" aria-label="Instruction delivery" value={waiting ? 'queue' : delivery} disabled={busy || waiting}

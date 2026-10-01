@@ -11,7 +11,7 @@ describe('ComposerAddMenu', () => {
     expect(await screen.findByRole('menu')).toBeInTheDocument();
     expect(screen.getByText('Add')).toBeInTheDocument();
     expect(screen.getAllByRole('menuitem')).toHaveLength(2);
-    await user.click(screen.getByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Plan mode' }));
     expect(onPlanChange).toHaveBeenCalledExactlyOnceWith(true);
     expect(onAttach).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
@@ -34,7 +34,7 @@ describe('ComposerAddMenu', () => {
     const user = userEvent.setup(), onPlanChange = vi.fn();
     render(<ComposerAddMenu disabled={false} onAttach={vi.fn()} onPlanChange={onPlanChange} planMode />);
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode off' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     expect(onPlanChange).toHaveBeenCalledWith(false);
     await user.click(screen.getByRole('button', { name: 'Turn plan mode off' }));
     expect(onPlanChange).toHaveBeenCalledTimes(2);

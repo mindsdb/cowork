@@ -154,7 +154,7 @@ describe('CodeComposer', () => {
     const { onModeSend } = renderComposer({ ...baseSession, status: 'completed' }, [], { id: 1, item: attachment }, true);
     onModeSend.mockRejectedValue(new Error('Task changed'));
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode Turn plan mode on' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Plan mode' }));
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
     await user.type(input, 'Plan the change');
     await user.keyboard('{Enter}');
