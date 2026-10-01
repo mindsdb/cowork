@@ -108,16 +108,6 @@ export function CodeSidebarSessions({
     .filter((session) => session.archived && matchesSession(session, normalizedQuery))
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at)), [normalizedQuery, visibleSessions]);
 
-  const needsAttention: CodingSession[] = [];
-  const running: CodingSession[] = [];
-  const recent: CodingSession[] = [];
-  unpinned.forEach((session) => {
-    const tone = codingSessionStatus(session).tone;
-    if (tone === 'warning' || tone === 'danger') needsAttention.push(session);
-    else if (tone === 'accent') running.push(session);
-    else recent.push(session);
-  });
-
   const projectGroups = new Map<string, CodingSession[]>();
   unpinned.forEach((session) => {
     const label = projectLabel(session);
@@ -269,13 +259,9 @@ export function CodeSidebarSessions({
         {sessionGroup('Pinned', pinned)}
         {organization === 'project'
           ? projects.map(([label, items]) => sessionGroup(label, items))
-          : sortOrder === 'priority'
-            ? <>
-                {sessionGroup('Needs attention', needsAttention)}
-                {sessionGroup('Running', running)}
-                {sessionGroup('Recent', recent)}
-              </>
-            : unpinned.map(sessionRow)}
+          // One list either way: priority order already puts what needs you
+          // first and work in motion next, and each row's status shows why.
+          : unpinned.map(sessionRow)}
         {archived.length > 0 && (
           <details className="code-sidebar-archived" open={archived.some((session) => session.id === selectedId)}>
             <summary>Archived <span>{archived.length}</span></summary>
