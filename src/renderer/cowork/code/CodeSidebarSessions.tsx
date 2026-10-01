@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
-import Spinner from '../components/ui/Spinner';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
 import { useTaskSeen } from './taskSeen';
@@ -109,16 +108,6 @@ export function CodeSidebarSessions({
     .filter((session) => session.archived && matchesSession(session, normalizedQuery))
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at)), [normalizedQuery, visibleSessions]);
 
-  const needsAttention: CodingSession[] = [];
-  const running: CodingSession[] = [];
-  const recent: CodingSession[] = [];
-  unpinned.forEach((session) => {
-    const tone = codingSessionStatus(session).tone;
-    if (tone === 'warning' || tone === 'danger') needsAttention.push(session);
-    else if (tone === 'accent') running.push(session);
-    else recent.push(session);
-  });
-
   const projectGroups = new Map<string, CodingSession[]>();
   unpinned.forEach((session) => {
     const label = projectLabel(session);
@@ -167,7 +156,7 @@ export function CodeSidebarSessions({
         className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}`}
       >
         {/* One line, like Cowork's recent rows: the title, then the live
-            status (running, or what needs you in its colour) or, at rest,
+            status (a spinner while it runs, or what needs you in its colour) or, at rest,
             when it last changed. The project is left to the tooltip and
             accessible name: rows mostly share one, and Organize › Projects
             groups by it. */}
@@ -181,10 +170,10 @@ export function CodeSidebarSessions({
         >
           <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
           <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
-            {working && <Spinner className="code-sidebar-session__spinner" />}
+            {working && <span className="code-sidebar-session__spinner" aria-hidden="true" />}
             {!working && needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
             {!working && !needsYou && unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
-            <span className="code-sidebar-session__aside-label">{working || needsYou ? status.label : updated}</span>
+            {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
           </span>
         </button>
         <Button
@@ -270,13 +259,9 @@ export function CodeSidebarSessions({
         {sessionGroup('Pinned', pinned)}
         {organization === 'project'
           ? projects.map(([label, items]) => sessionGroup(label, items))
-          : sortOrder === 'priority'
-            ? <>
-                {sessionGroup('Needs attention', needsAttention)}
-                {sessionGroup('Running', running)}
-                {sessionGroup('Recent', recent)}
-              </>
-            : unpinned.map(sessionRow)}
+          // One list either way: priority order already puts what needs you
+          // first and work in motion next, and each row's status shows why.
+          : unpinned.map(sessionRow)}
         {archived.length > 0 && (
           <details className="code-sidebar-archived" open={archived.some((session) => session.id === selectedId)}>
             <summary>Archived <span>{archived.length}</span></summary>

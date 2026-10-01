@@ -69,7 +69,7 @@ describe('CodeSidebarSessions', () => {
     expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
   });
 
-  it('groups actionable and running work and spells out remote status', () => {
+  it('orders actionable work first in one list and spells out remote status', () => {
     render(
       <CodeSidebarSessions
         sessions={[
@@ -83,9 +83,12 @@ describe('CodeSidebarSessions', () => {
       />,
     );
 
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Running' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Task offline, Computer offline/ })).toBeInTheDocument();
+    const offline = screen.getByRole('button', { name: /Task offline, Computer offline/ });
+    const running = screen.getByRole('button', { name: /Task running, Working/ });
+    const done = screen.getByRole('button', { name: /Task done, Completed/ });
+    expect(offline.compareDocumentPosition(running) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(running.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
   });
 
@@ -105,7 +108,7 @@ describe('CodeSidebarSessions', () => {
     expect(screen.queryByRole('button', { name: /Task task-2, Completed/ })).not.toBeInTheDocument();
   });
 
-  it('pins a task immediately and keeps it out of the lower navigation groups', async () => {
+  it('pins a task immediately and moves it out of the main list', async () => {
     const onSetPinned = vi.fn().mockResolvedValue(undefined);
     render(
       <CodeSidebarSessions
@@ -122,8 +125,9 @@ describe('CodeSidebarSessions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pin Task done' }));
 
     await waitFor(() => expect(onSetPinned).toHaveBeenCalledWith('done', true));
-    expect(screen.getByRole('region', { name: 'Pinned' })).toHaveTextContent('Task done');
-    expect(screen.queryByRole('region', { name: 'Recent' })).not.toBeInTheDocument();
+    const pinnedGroup = screen.getByRole('region', { name: 'Pinned' });
+    expect(pinnedGroup).toHaveTextContent('Task done');
+    expect(pinnedGroup).not.toHaveTextContent('Task running');
     expect(screen.getByRole('button', { name: 'Unpin Task done' })).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -142,7 +146,7 @@ describe('CodeSidebarSessions', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent("Couldn't pin this task.");
     expect(screen.queryByRole('region', { name: 'Pinned' })).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Recent' })).toHaveTextContent('Task done');
+    expect(screen.getByRole('button', { name: 'Pin Task done' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('can organize tasks by project and remembers that display choice', () => {
@@ -187,7 +191,9 @@ describe('CodeSidebarSessions', () => {
     );
 
     const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
-    expect(row('running')).toHaveTextContent('Working');
+    expect(row('running').querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Task running, Working/ })).toBeInTheDocument();
+    expect(row('running')).not.toHaveTextContent('Working');
     expect(row('approval')).toHaveTextContent('Needs approval');
     expect(row('unread').querySelector('.code-status-dot.is-unread')).not.toBeNull();
     expect(screen.getByRole('button', { name: /^Task unread, Completed, unread/ })).toBeInTheDocument();
@@ -230,9 +236,10 @@ describe('CodeSidebarSessions', () => {
 
     const row = screen.getByRole('button', { name: /^Task queued,/ }).closest('.code-sidebar-session-row')!;
     expect(row).not.toHaveClass('is-resting');
-    expect(row).toHaveTextContent('Preparing');
+    // The spinner carries the motion; the status word stays in the accessible name only.
+    expect(screen.getByRole('button', { name: /^Task queued, Preparing/ })).toBeInTheDocument();
+    expect(row).not.toHaveTextContent('Preparing');
     expect(row.querySelector('.code-sidebar-session__spinner')).not.toBeNull();
-    expect(screen.getByRole('region', { name: 'Running' })).toContainElement(row as HTMLElement);
   });
 
   it('clears the unread mark once the task has been opened', () => {
@@ -247,7 +254,7 @@ describe('CodeSidebarSessions', () => {
     expect(screen.queryByRole('button', { name: /unread/ })).toBeNull();
   });
 
-  it('offers a flat last-updated view without status sections', () => {
+  it('offers a last-updated order that ignores status', () => {
     render(
       <CodeSidebarSessions
         sessions={[
@@ -266,7 +273,6 @@ describe('CodeSidebarSessions', () => {
     const newer = screen.getByRole('button', { name: /Task newer-complete, Completed/ });
     const older = screen.getByRole('button', { name: /Task older-running, Working/ });
     expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Running' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Recent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
 });
