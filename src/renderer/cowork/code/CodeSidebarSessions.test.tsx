@@ -187,7 +187,9 @@ describe('CodeSidebarSessions', () => {
     );
 
     const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
-    expect(row('running')).toHaveTextContent('Working');
+    expect(row('running').querySelector('.code-sidebar-session__spinner')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Task running, Working/ })).toBeInTheDocument();
+    expect(row('running')).not.toHaveTextContent('Working');
     expect(row('approval')).toHaveTextContent('Needs approval');
     expect(row('unread').querySelector('.code-status-dot.is-unread')).not.toBeNull();
     expect(screen.getByRole('button', { name: /^Task unread, Completed, unread/ })).toBeInTheDocument();
@@ -230,7 +232,9 @@ describe('CodeSidebarSessions', () => {
 
     const row = screen.getByRole('button', { name: /^Task queued,/ }).closest('.code-sidebar-session-row')!;
     expect(row).not.toHaveClass('is-resting');
-    expect(row).toHaveTextContent('Preparing');
+    // The spinner carries the motion; the status word stays in the accessible name only.
+    expect(screen.getByRole('button', { name: /^Task queued, Preparing/ })).toBeInTheDocument();
+    expect(row).not.toHaveTextContent('Preparing');
     expect(row.querySelector('.code-sidebar-session__spinner')).not.toBeNull();
     expect(screen.getByRole('region', { name: 'Running' })).toContainElement(row as HTMLElement);
   });

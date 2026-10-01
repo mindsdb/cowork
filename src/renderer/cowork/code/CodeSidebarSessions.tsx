@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
-import Spinner from '../components/ui/Spinner';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
 import { useTaskSeen } from './taskSeen';
@@ -167,7 +166,7 @@ export function CodeSidebarSessions({
         className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}`}
       >
         {/* One line, like Cowork's recent rows: the title, then the live
-            status (running, or what needs you in its colour) or, at rest,
+            status (a spinner while it runs, or what needs you in its colour) or, at rest,
             when it last changed. The project is left to the tooltip and
             accessible name: rows mostly share one, and Organize › Projects
             groups by it. */}
@@ -181,10 +180,10 @@ export function CodeSidebarSessions({
         >
           <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
           <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
-            {working && <Spinner className="code-sidebar-session__spinner" />}
+            {working && <span className="code-sidebar-session__spinner" aria-hidden="true" />}
             {!working && needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
             {!working && !needsYou && unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
-            <span className="code-sidebar-session__aside-label">{working || needsYou ? status.label : updated}</span>
+            {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
           </span>
         </button>
         <Button

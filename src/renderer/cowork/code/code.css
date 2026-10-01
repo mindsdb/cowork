@@ -94,7 +94,8 @@
 .code-sidebar-session__aside.is-warning { color: var(--warning); }
 .code-sidebar-session__aside.is-danger { color: var(--danger); }
 .code-sidebar-session__aside-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.code-sidebar-session__spinner { flex: none; width: 9px; color: var(--accent); font-size: 12.5px; font-weight: 700; line-height: 1; text-align: center; }
+/* A rotating ring rather than the braille glyph: at sidebar size the glyph's frames barely read as motion. */
+.code-sidebar-session__spinner { flex: none; width: 11px; height: 11px; border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 .code-status-dot.is-unread { background: var(--accent); }
 .code-sidebar-session-row.is-resting .code-sidebar-session__title { color: var(--ink-2); font-weight: 400; }
 .code-sidebar-archived { margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); }
@@ -986,5 +987,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 
 @media (prefers-reduced-motion: reduce) {
   .code-review { animation: none; }
+  .code-sidebar-session__spinner { animation: none; }
   .code-timeline { scroll-behavior: auto; }
 }
