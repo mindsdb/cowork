@@ -105,6 +105,23 @@ describe('HomeView console handoff', () => {
     expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', true);
   });
 
+  it('"Start a task" clears an earlier sample left unsent', async () => {
+    setDraft('new', snake.prompt);
+    arriveFromConsole('?from=console');
+    render(<Home onSend={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
+    expect(trackComposerReady).toHaveBeenCalledWith('console', null, false);
+  });
+
+  it('"Start a task" keeps a draft the user wrote', async () => {
+    setDraft('new', 'my half-written idea');
+    arriveFromConsole('?from=console');
+    render(<Home onSend={vi.fn()} />);
+
+    expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
+  });
+
   it('keeps an earlier sample the user edited', async () => {
     setDraft('new', `${snake.prompt} Make it two-player.`);
     arriveFromConsole('?from=console&mode=visualization&sample=track-monthly-kpis-across-departments');

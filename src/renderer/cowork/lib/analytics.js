@@ -29,7 +29,7 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — set only on the first task after a console handoff
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
@@ -594,18 +594,25 @@ export function trackArtifactPublished(artifactId, visibility) {
 // here rather than threaded through App's send path because the handoff is
 // consumed in HomeView and the event fires in App; it attributes exactly one
 // task and is then cleared. Ids only: never prompt text.
+// Bounded in time too: a task started long after the handoff, say after an
+// afternoon spent in existing conversations, is not the one the link led to.
+const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
 let pendingEntryAttribution = null;
 
 export function setEntryAttribution(entrySource, exampleId) {
   pendingEntryAttribution = entrySource
-    ? { entry_source: entrySource, example_id: exampleId || null }
+    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
     : null;
 }
 
 export function trackAgentSessionStarted() {
-  const attribution = pendingEntryAttribution;
+  const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
-  capture(EVENTS.AGENT_SESSION_STARTED, attribution || {});
+  const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
+  capture(
+    EVENTS.AGENT_SESSION_STARTED,
+    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+  );
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,

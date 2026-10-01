@@ -1402,6 +1402,24 @@ describe('console handoff attribution', () => {
     expect(second.properties).not.toHaveProperty('example_id');
   });
 
+  it('drops the handoff from a task started more than 30 minutes later', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+    const now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      setEntryAttribution('console', 'classic-snake-game');
+      now.mockReturnValue(1_000_000 + 31 * 60 * 1000);
+      trackAgentSessionStarted();
+    } finally {
+      now.mockRestore();
+    }
+
+    const body = await sentEvent(fetchMock, 'agent_session_started');
+    expect(body.properties).not.toHaveProperty('entry_source');
+    expect(body.properties).not.toHaveProperty('example_id');
+  });
+
   it('composer_ready carries only the source, the example id and whether it was prefilled', async () => {
     const fetchMock = mockFetch();
     const { trackComposerReady } = await importAnalytics();

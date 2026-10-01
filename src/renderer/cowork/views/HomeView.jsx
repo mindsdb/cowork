@@ -392,6 +392,10 @@ export default function HomeView({
       setTaskMode(handoff.mode);
       onPrefill(sample.prompt);
       setHandoffHint(true);
+    } else if (!sample && onPrefill && draft && !draftIsUsers) {
+      // "Start a task" promises an empty composer. A sample left there from an
+      // earlier visit is not the user's text, so it goes; their own draft stays.
+      onPrefill('');
     }
     const exampleId = sample ? sampleId(sample.label) : null;
     setEntryAttribution(handoff.entrySource, exampleId);
