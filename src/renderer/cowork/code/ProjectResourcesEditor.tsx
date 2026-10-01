@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
 import Input from '../components/ui/Input';
 import Tooltip from '../components/ui/Tooltip';
 import type { ConnectorConnection } from '../api';
@@ -182,6 +183,8 @@ export function ProjectResourcesEditor({
                 ? 'Any computer'
                 : `Only ${owner?.name || 'this computer'}`;
             const commandsVisible = commandsOpen.has(resource.id);
+            const phases = (['setup', 'validate', 'run'] as const).filter((phase) => (commandDrafts[`${resource.id}:${phase}`] ?? commandValue(resource.commands, phase).join(' ')).trim());
+            const commandsSummary = [resource.kind === 'repository' ? resource.default_branch : '', ...phases].filter(Boolean).join(' · ') || 'None set';
             return (
               <div className="code-project-resource" key={resource.id}>
                 <div className="code-project-resource__row">
@@ -195,23 +198,20 @@ export function ProjectResourcesEditor({
                   <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
                     {status}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="subtle"
-                    aria-expanded={commandsVisible}
-                    aria-label={`Commands for ${resource.name}`}
-                    onClick={() => toggleCommands(resource.id)}
-                  >
-                    Commands
-                  </Button>
                   <Tooltip content="Remove">
                     <button type="button" className="code-project-icon-button" aria-label={`Remove ${resource.name}`} onClick={() => {
                       onChange(resources.filter((item) => item.id !== resource.id));
                     }}>{Ico.close(12)}</button>
                   </Tooltip>
                 </div>
-                {commandsVisible && (
-                  <div className="code-project-resource__commands">
+                <Collapsible
+                  open={commandsVisible}
+                  onOpenChange={() => toggleCommands(resource.id)}
+                  disabled={disabled}
+                  triggerClassName="code-project-resource__trigger"
+                  panelClassName="code-project-resource__commands"
+                  title={<span className="code-project-resource__trigger-title"><strong>Commands</strong><small>{commandsSummary}</small></span>}
+                >
                     {resource.kind === 'repository' && (
                       <label>
                         <span>Base branch</span>
@@ -230,8 +230,7 @@ export function ProjectResourcesEditor({
                       <span>Run</span>
                       <Input size="sm" variant="mono" aria-label="Run command" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
                     </label>
-                  </div>
-                )}
+                </Collapsible>
               </div>
             );
           })}

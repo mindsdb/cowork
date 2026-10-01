@@ -611,14 +611,18 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-resource-url-row > :first-child { min-width: 0; flex: 1; }
 
 .code-project-resource + .code-project-resource { border-top: 1px solid var(--line); }
-.code-project-resource__row { min-height: 56px; padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 10px; }
+.code-project-resource__row { min-height: 52px; padding: 8px 8px 2px 12px; display: flex; align-items: center; gap: 10px; }
 .code-project-resource__icon { display: inline-flex; flex: none; color: var(--ink-3); }
 .code-project-resource__identity { min-width: 0; flex: 1; display: grid; gap: 1px; }
 .code-project-resource__identity strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 500; }
 .code-project-resource__identity code { overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font: 12px var(--font-mono); }
 .code-project-resource__availability { max-width: 150px; flex: none; overflow: hidden; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .code-project-resource__availability.is-offline { background: var(--warning-bg); color: var(--warning); }
-.code-project-resource__commands { padding: 2px 12px 12px 38px; display: grid; gap: 8px; }
+.code-project-resource__trigger { padding: 0 12px 8px 38px; }
+.code-project-resource__trigger-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.code-project-resource__trigger-title strong { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
+.code-project-resource__trigger-title small { overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
+.code-project-resource__commands { padding: 0 12px 12px 38px; display: grid; gap: 8px; }
 .code-project-resource__commands label { min-width: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; }
 .code-project-resource__commands label > span { color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
 
