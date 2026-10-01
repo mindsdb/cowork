@@ -107,7 +107,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(onOpenCodingProjects).toHaveBeenCalledOnce();
     expect(onOpenCodingTasks).toHaveBeenCalledOnce();
     expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
-    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.getByText('Code tasks')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 

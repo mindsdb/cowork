@@ -2675,11 +2675,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* Section labels */
 .app-sidebar .section-label {
+  /* Group headers (Pinned, Recent tasks, Agent, Code tasks) are a quiet label
+     on the text scale, not a spaced-caps overline. */
   font-family: var(--font-sans);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-4);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
   font-weight: 600;
   /* Tighter top gap so each group reads as attached to its heading, and a
      10px left edge lined up with the nav-list gutter for structure. */
