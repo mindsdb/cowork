@@ -327,7 +327,7 @@ export function ProjectSettingsModal({
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New code project'}
-        subtitle="Tasks in this project share its code, connectors, and defaults."
+        subtitle={project ? 'Tasks in this project share its code, connectors, and defaults.' : undefined}
         onClose={onClose}
       />
       <ModalBody>
@@ -351,15 +351,19 @@ export function ProjectSettingsModal({
             onError={setError}
           />
 
-          <ProjectConnectedTools
+          {/* Creating asks only for a name and code. Connectors, skills and
+              task defaults are optional, so they wait for Project settings.
+              A repository picked through a GitHub account still records that
+              connection, it just isn't shown here. */}
+          {project && <ProjectConnectedTools
             required={resources.flatMap((resource) => resource.kind === 'repository' && resource.connector_name ? [`github:${resource.connector_name}`] : [])}
             connections={availableConnections}
             selected={selectedConnections}
             onChange={setSelectedConnections}
             onOpenConnectors={onOpenConnectors}
-          />
+          />}
 
-          <Collapsible
+          {project && <Collapsible
             open={defaultsOpen}
             onOpenChange={setDefaultsOpen}
             className="code-project-advanced"
@@ -484,7 +488,7 @@ export function ProjectSettingsModal({
                 <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
               </Field>
             </section>
-          </Collapsible>
+          </Collapsible>}
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
       </ModalBody>

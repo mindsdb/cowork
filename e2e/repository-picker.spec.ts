@@ -43,9 +43,11 @@ for (const variant of [
     await expect(page.getByRole('button', { name: 'mindsdb/cowork Private Add', exact: true })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('textbox', { name: 'Project name', exact: true })).toHaveValue('cowork');
-    await expect(page.getByRole('checkbox', { name: /MindsDB/ })).toBeChecked();
+    // Creating shows no Connectors section; the picked account is still saved with the project.
+    await expect(page.getByRole('checkbox', { name: /MindsDB/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(page.getByLabel('Saved project')).toContainText('"connector_name": "work"');
+    await expect(page.getByLabel('Saved project')).toContainText('"provider": "github"');
     await expect(page.getByLabel('Saved project')).toContainText('"use_connector_for_clone": true');
     await expect(page.getByLabel('Saved project')).toContainText('"default_branch": "staging"');
     expect(errors).toEqual([]);

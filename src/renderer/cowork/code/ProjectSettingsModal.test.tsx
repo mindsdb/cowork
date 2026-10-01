@@ -90,9 +90,8 @@ describe('ProjectSettingsModal', () => {
     await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
     expect(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ })).toHaveFocus();
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('private');
-    const checkbox = screen.getByRole('checkbox', { name: /Work/ });
-    expect(checkbox).toBeChecked();
-    expect(checkbox).toHaveAttribute('aria-disabled', 'true');
+    // Creating shows no Connectors section, yet the picked account is still saved with the project.
+    expect(screen.queryByRole('checkbox', { name: /Work/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'private', resources: [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, provider: 'github', repository: 'acme/private', default_branch: 'develop' })],
@@ -191,13 +190,23 @@ describe('ProjectSettingsModal', () => {
     })));
   });
 
-  it('offers Connectors from an unsaved project draft and keeps skills under Advanced', async () => {
+  it('asks only for a name and code while creating a project', () => {
+    render(<ProjectSettingsModal open project={null} connections={[]} busy={false} onClose={vi.fn()} onSave={vi.fn()} onOpenConnectors={vi.fn()} />);
+
+    expect(screen.getByRole('dialog', { name: 'New code project' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Project name' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Choose a folder/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Connectors' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Advanced/ })).toBeNull();
+  });
+
+  it('offers Connectors in Project settings and keeps skills under Advanced', async () => {
     const user = userEvent.setup();
     const onOpenConnectors = vi.fn();
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
@@ -206,7 +215,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    expect(screen.getByRole('dialog', { name: 'New code project' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Open Connectors' }));
     expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(screen.queryByText('Choose skills')).toBeNull();
@@ -249,7 +258,7 @@ describe('ProjectSettingsModal', () => {
     expect(onOpenSkills).toHaveBeenCalledOnce();
   });
 
-  it('shows MindsHub-maintained skills as included while creating a project', async () => {
+  it('shows MindsHub-maintained skills as included in Project settings', async () => {
     const user = userEvent.setup();
     skillLibrary.mockResolvedValueOnce({
       sources: [],
@@ -264,7 +273,7 @@ describe('ProjectSettingsModal', () => {
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
@@ -305,13 +314,13 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ })).toBeChecked();
   });
 
-  it('assigns team skills while creating a project for the first time', async () => {
+  it('assigns team skills to an existing project', async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn(async (values) => ({ ...project, ...values, id: 'created-project' } as CodeProject));
+    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         onClose={vi.fn()}
@@ -319,11 +328,10 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /^Choose a folder/ }));
     await openAdvanced(user);
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md'] }],
@@ -508,7 +516,7 @@ describe('ProjectSettingsModal', () => {
     render(
       <ProjectSettingsModal
         open
-        project={null}
+        project={project}
         connections={[]}
         busy={false}
         defaultModel="gpt-5.6-sol"

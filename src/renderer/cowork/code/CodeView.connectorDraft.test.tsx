@@ -109,10 +109,6 @@ describe('Task and project connector detours', () => {
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Git repository URL' }), { target: { value: 'https://github.com/acme/seed.git' } });
     await user.click(screen.getByRole('button', { name: 'Add' }));
-    await user.click(screen.getByRole('button', { name: /^Advanced/ }));
-    await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
-    await user.click(screen.getByRole('option', { name: 'Full access' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Environment variables' }), { target: { value: 'QA_MODE=keep' } });
     await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
     await user.click(screen.getByRole('button', { name: 'Connect GitHub' }));
 
@@ -133,8 +129,6 @@ describe('Task and project connector detours', () => {
     }
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Keep my project');
     expect(screen.getByRole('button', { name: 'Remove seed' })).toBeVisible();
-    expect(screen.getByRole('combobox', { name: 'Default coding permissions' })).toHaveTextContent('Full access');
-    expect(screen.getByRole('textbox', { name: 'Environment variables' })).toHaveValue('QA_MODE=keep');
     if (outcome === 'connected') {
       await user.click(screen.getByRole('button', { name: /^(Clone a repository|Add repository)/ }));
       await user.click(await screen.findByRole('button', { name: 'acme/private Private Add' }));
@@ -142,8 +136,7 @@ describe('Task and project connector detours', () => {
     expect(codingApi.updateProject).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: /^(Create project|Save changes)$/ }));
     await waitFor(() => expect(codingApi.createProject).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Keep my project', permission_mode: 'full_access',
-      environment: expect.objectContaining({ variables: { QA_MODE: 'keep' } }),
+      name: 'Keep my project',
       resources: expect.arrayContaining([
         expect.objectContaining({ source_url: 'https://github.com/acme/seed.git' }),
         ...(outcome === 'connected' ? [expect.objectContaining({ source_url: 'https://github.com/acme/private.git', connector_name: 'work', use_connector_for_clone: true, default_branch: 'main' })] : []),
@@ -158,9 +151,11 @@ describe('Task and project connector detours', () => {
       expect(screen.getByRole('combobox', { name: 'Code Project' })).toHaveTextContent('Keep my project');
       await waitFor(() => expect(screen.getByRole('button', { name: 'Start task' })).toBeEnabled());
       await user.click(screen.getByRole('button', { name: 'Start task' }));
+      // Selecting the new project applies its defaults to the task, so the
+      // permission the task chose before project setup gives way to the project's.
       await waitFor(() => expect(codingApi.create).toHaveBeenCalledWith(expect.objectContaining({
         project_id: 'saved-project', prompt: 'Keep the task underneath project setup',
-        permission_mode: 'full_access', computer_id: 'local',
+        permission_mode: 'supervised', computer_id: 'local',
         attachments: [expect.objectContaining({ path: '/work/brief.md' })],
       })));
     }
