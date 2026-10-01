@@ -800,12 +800,17 @@ function useComparisonSides(comparison) {
         finish('');
       },
       onError(message, event) {
-        finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
-        if (!DROPPED_STREAM.has(event?.code)) return;
+        const ended = () => finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
         const tries = reattached.current[label] || 0;
-        if (tries >= MAX_REATTACH) return;
+        if (!DROPPED_STREAM.has(event?.code) || tries >= MAX_REATTACH) {
+          ended();
+          return;
+        }
+        // The side stays busy while it re-attaches: a drop is not the turn
+        // finishing, and its cost is read only once the turn has.
         reattached.current[label] = tries + 1;
-        followRunningRef.current?.(label);
+        streams.current[label] = null;
+        Promise.resolve(followRunningRef.current?.(label)).then((attached) => { if (!attached) ended(); }, ended);
       },
     });
   }, [refresh]);
@@ -1085,6 +1090,10 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onStop={() => stop(label)}
             onSendHere={(text) => sendToSides(text, sendTargets(label, sideState))}
             onContinue={() => setContinuing(label)}
+            onCopyRest={async () => {
+              await continueComparisonSide(comparisonId, label, sides[label].continuedProjectId, names[label]);
+              await loadComparison();
+            }}
             onRetryLoad={() => load(label)}
             onOpenSettings={onOpenSettings}
             onOpenTask={onOpenTask}
@@ -1233,7 +1242,7 @@ function VerdictBar({ turnIndex, showTurn, chosen, saving, names, sides, onChoos
   );
 }
 
-function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, onOpenSettings, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue }) {
+function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUsage, onRetryLoad, onOpenSettings, busy, lastEventAt, error, projects, agentLabel, onStop, onSendHere, onContinue, onCopyRest }) {
   const last = turns[turns.length - 1];
   const total = totalDurationMs(turns);
   const status = sideStatus(turns, { busy, continued: !!side?.continuedAt });
@@ -1305,6 +1314,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
         </div>
       </header>
       {cost && usageOpen && <UsageTable label={label} usage={usage} turns={turns} notes={cost.notes} />}
+      {side?.carryIncomplete && side?.continuedProjectId && <CarryNotice name={name} onCopyRest={onCopyRest} />}
       {error && <div className="px-4 pt-2"><Alert variant="danger">{error}</Alert></div>}
       <div className="flex-1 min-h-0 flex flex-col">
         {task ? (
@@ -1391,6 +1401,42 @@ function UsageTable({ label, usage, turns, notes = [] }) {
   );
 }
 
+// Some of a continued side's files are still in the comparison; the server
+// says so on every load, so this stays until they are all across.
+function CarryNotice({ name, onCopyRest }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <div className="px-4 pt-2">
+      <Alert variant="warning">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="flex-1 min-w-0">
+            Some of the files {name} made are still in this comparison and did not reach the task.
+          </span>
+          <Button
+            size="xs"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError('');
+              try {
+                await onCopyRest();
+              } catch (err) {
+                setError(err?.message || 'Could not copy the remaining files.');
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Copy the remaining files
+          </Button>
+        </div>
+        {error && <div className="mt-1">{error}</div>}
+      </Alert>
+    </div>
+  );
+}
+
 // After a partial carry the task already exists, so the dialog stays to offer
 // the rest (the server finishes a carry only into the same project), and
 // closing it opens the task.
@@ -1405,8 +1451,8 @@ function ContinueDialog({ name, projects, onClose, onContinue }) {
       title={`Continue with ${name}`}
       message={partial ? (
         <span role="alert">
-          The task is ready, but some of the files {name} made could not be copied, so they are still in
-          this comparison. Try again to copy the rest into the same folder.
+          The task is ready, but some of the files {name} made did not come across, so they are still in
+          this comparison. Try again to bring the rest into the task.
         </span>
       ) : (
         <div className="flex flex-col gap-3">
