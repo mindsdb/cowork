@@ -1,4 +1,4 @@
-import { createContext, memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
@@ -237,17 +237,11 @@ function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb:
 }
 
 
-// A failure opens itself while the turn is live, because it may be what the
-// agent is stuck on. Inside a finished turn's fold it is history the agent
-// already moved past, so it stays closed and keeps only its failed marker.
-const SettledWork = createContext(false);
-
-
 // A step with nothing more to show is a plain line; otherwise the line
-// opens onto its detail. Failed steps open by default outside a settled fold.
+// opens onto its detail. A failure starts closed like any other step: the
+// agent usually moves past it, and its failed marker already says so.
 function Step({ head, failed = false, detail }: { head: ReactNode; failed?: boolean; detail?: () => ReactNode }) {
-  const settled = useContext(SettledWork);
-  const [open, setOpen] = useState(failed && !settled);
+  const [open, setOpen] = useState(false);
   const className = `code-step${failed ? ' is-failed' : ''}`;
   if (!detail) return <div className={className}><div className="code-step__head">{head}</div></div>;
   return (
@@ -340,13 +334,10 @@ function stepHeadline(row: ActivityRow): string {
 
 function ActivityGroup({ events }: { events: CodingEvent[] }) {
   const rows = activityRows(events);
-  // Retries are recoverable, so they neither count as failures nor force
-  // the group open.
+  // Retries are recoverable, so they do not count as failures.
   const failures = rows.filter((row) => row.kind === 'step' && stepFailed(row.event)).length;
   const failed = failures > 0;
-  const settled = useContext(SettledWork);
-  const [open, setOpen] = useState(failed && !settled);
-  useEffect(() => { if (failed && !settled) setOpen(true); }, [failed, settled]);
+  const [open, setOpen] = useState(false);
   // A lone step's headline already names it, so the group opens straight
   // onto its detail instead of repeating the line.
   const [only] = rows;
@@ -476,7 +467,7 @@ function WorkedSummary({ label, children }: { label: string; children: () => Rea
         <span>{label}</span>
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
-      {open && <div className="code-worked__body"><SettledWork.Provider value>{children()}</SettledWork.Provider></div>}
+      {open && <div className="code-worked__body">{children()}</div>}
     </details>
   );
 }
