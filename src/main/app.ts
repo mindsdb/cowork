@@ -1,5 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
-// any module that reads app.getPath('userData') at load time (e.g. token-store).
+// any module that reads app.getPath('userData') at load time (e.g. token-store),
+// then starts the crash reporter so a native crash while the rest loads leaves
+// a minidump.
 import './app-identity';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
@@ -1597,10 +1599,12 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
   }
 }
 
+// One line per startup step up to [channels], so the stdout of a startup that
+// dies natively names the last step it reached.
+console.log('[boot] modules loaded');
+
 app.whenReady().then(async () => {
-  // One line per startup step up to [channels], so the stdout of a startup that
-  // dies natively names the last step it reached.
-  console.log('[boot] modules loaded, app ready');
+  console.log('[boot] app ready');
 
   console.log('[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before

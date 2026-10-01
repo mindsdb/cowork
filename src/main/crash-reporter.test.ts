@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 const startMock = vi.fn();
 vi.mock('electron', () => ({
@@ -8,6 +8,10 @@ vi.mock('electron', () => ({
 
 import { startCrashReporter } from './crash-reporter';
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('startCrashReporter', () => {
   it('collects locally only and logs where dumps go', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -15,6 +19,5 @@ describe('startCrashReporter', () => {
     expect(startMock).toHaveBeenCalledTimes(1);
     expect(startMock).toHaveBeenCalledWith({ uploadToServer: false });
     expect(log).toHaveBeenCalledWith('[crash-reporter] minidumps → /mock/crashDumps');
-    log.mockRestore();
   });
 });

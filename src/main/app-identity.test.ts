@@ -43,26 +43,19 @@ describe('app-identity — per-channel app name (userData isolation)', () => {
       expect(appMock.setName).toHaveBeenCalledWith(CHANNELS[kind].appName);
     },
   );
-});
-
-describe('app-identity — crash reporter start', () => {
-  beforeEach(() => {
-    appMock.setName.mockClear();
-    startCrashReporterMock.mockClear();
-  });
 
   // The reporter caches userData when it starts and setName does not reset that
   // cache, so starting first would pin non-prod builds to prod's userData.
-  it.each(['dev', 'preview', 'stable'] as const)('non-prod %s: starts it once, after setName', async (kind) => {
-    await loadForKind(kind);
-    expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
-    expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
-      startCrashReporterMock.mock.invocationCallOrder[0],
-    );
-  });
-
-  it('prod: starts it once', async () => {
-    await loadForKind('prod');
-    expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
-  });
+  it.each(['dev', 'preview', 'stable', 'prod'] as const)(
+    '%s: starts the crash reporter once, after any setName',
+    async (kind) => {
+      await loadForKind(kind);
+      expect(startCrashReporterMock).toHaveBeenCalledTimes(1);
+      if (kind !== 'prod') {
+        expect(appMock.setName.mock.invocationCallOrder[0]).toBeLessThan(
+          startCrashReporterMock.mock.invocationCallOrder[0],
+        );
+      }
+    },
+  );
 });

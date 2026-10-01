@@ -9,8 +9,7 @@
 // so leaving app.name untouched keeps prod byte-for-byte as shipped.
 //
 // Also starts the crash reporter, which must follow the final app name (see
-// crash-reporter.ts) and precede every other main-process module, so a native
-// crash while they load still leaves a minidump.
+// crash-reporter.ts). Only this module's own imports load before it.
 //
 // Covers only the RUNTIME name; the packaged bundle identity (appId/productName/
 // icon) is set at build time — see scripts/channel-identity.mjs.
