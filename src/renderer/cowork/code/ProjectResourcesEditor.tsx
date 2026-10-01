@@ -184,33 +184,32 @@ export function ProjectResourcesEditor({
                 : `Only ${owner?.name || 'this computer'}`;
             const commandsVisible = commandsOpen.has(resource.id);
             const phases = (['setup', 'validate', 'run'] as const).filter((phase) => (commandDrafts[`${resource.id}:${phase}`] ?? commandValue(resource.commands, phase).join(' ')).trim());
-            const commandsSummary = [resource.kind === 'repository' ? resource.default_branch : '', ...phases].filter(Boolean).join(' · ') || 'None set';
+            const commandsSummary = [resource.kind === 'repository' ? resource.default_branch : '', ...phases].filter(Boolean).join(' · ');
             return (
               <div className="code-project-resource" key={resource.id}>
-                <div className="code-project-resource__row">
-                  <span className="code-project-resource__icon" aria-hidden="true">
-                    {resource.kind === 'repository' ? Ico.code(16) : Ico.folder(16)}
-                  </span>
-                  <span className="code-project-resource__identity">
-                    <strong>{resource.name}</strong>
-                    <code title={location}>{location}</code>
-                  </span>
-                  <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
-                    {status}
-                  </span>
-                  <Tooltip content="Remove">
-                    <button type="button" className="code-project-icon-button" aria-label={`Remove ${resource.name}`} onClick={() => {
-                      onChange(resources.filter((item) => item.id !== resource.id));
-                    }}>{Ico.close(12)}</button>
-                  </Tooltip>
-                </div>
+                {/* The row itself discloses the source's base branch and commands;
+                    the remove control sits beside it, outside the trigger. */}
                 <Collapsible
                   open={commandsVisible}
                   onOpenChange={() => toggleCommands(resource.id)}
                   disabled={disabled}
-                  triggerClassName="code-project-resource__trigger"
+                  triggerClassName="code-project-resource__row"
                   panelClassName="code-project-resource__commands"
-                  title={<span className="code-project-resource__trigger-title"><strong>Commands</strong><small>{commandsSummary}</small></span>}
+                  title={(
+                    <span className="code-project-resource__main">
+                      <span className="code-project-resource__icon" aria-hidden="true">
+                        {resource.kind === 'repository' ? Ico.code(16) : Ico.folder(16)}
+                      </span>
+                      <span className="code-project-resource__identity">
+                        <strong>{resource.name}</strong>
+                        <code title={location}>{location}</code>
+                      </span>
+                      {commandsSummary && <span className="code-project-resource__summary">{commandsSummary}</span>}
+                      <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
+                        {status}
+                      </span>
+                    </span>
+                  )}
                 >
                     {resource.kind === 'repository' && (
                       <label>
@@ -231,6 +230,11 @@ export function ProjectResourcesEditor({
                       <Input size="sm" variant="mono" aria-label="Run command" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
                     </label>
                 </Collapsible>
+                <Tooltip content="Remove">
+                  <button type="button" className="code-project-icon-button code-project-resource__remove" aria-label={`Remove ${resource.name}`} onClick={() => {
+                    onChange(resources.filter((item) => item.id !== resource.id));
+                  }}>{Ico.close(12)}</button>
+                </Tooltip>
               </div>
             );
           })}
