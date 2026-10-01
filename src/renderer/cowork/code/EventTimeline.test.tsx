@@ -361,7 +361,7 @@ describe('EventTimeline', () => {
     expect(screen.getAllByText('curl https://example.com')).toHaveLength(1);
   });
 
-  it('opens a failed command onto its exit code and output', () => {
+  it('keeps a failed command closed until the user opens it onto its exit code and output', () => {
     const failed = {
       ...event(1, 'command', ''),
       item_id: 'c1',
@@ -370,7 +370,10 @@ describe('EventTimeline', () => {
     const { container } = render(<EventTimeline {...timelineProps([failed])} session={session('completed')} />);
 
     expect(screen.getByText('1 failed')).toBeInTheDocument();
-    expect(container.querySelector('.code-activity-group.is-failed[open]')).not.toBeNull();
+    expect(container.querySelector('.code-activity-group.is-failed')).not.toHaveAttribute('open');
+    expect(screen.queryByText('Exit code 1')).toBeNull();
+
+    fireEvent.click(screen.getByText('1 failed'));
     expect(screen.getByText('Exit code 1')).toBeInTheDocument();
     expect(screen.getByText('ls: /missing: No such file or directory')).toBeInTheDocument();
   });
@@ -382,7 +385,11 @@ describe('EventTimeline', () => {
     ];
     const { container } = render(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
 
+    fireEvent.click(screen.getByText('1 failed'));
     expect(container.querySelector('.code-step.is-failed')).toHaveTextContent('Ran npm test');
+    expect(screen.queryByText('boom')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /npm test/ }));
     expect(screen.getByText('boom')).toBeInTheDocument();
     expect(screen.queryByText('Exit code 0')).toBeNull();
   });
@@ -480,16 +487,17 @@ describe('EventTimeline', () => {
     expect(screen.getByText('Thought it through')).toBeInTheDocument();
   });
 
-  it('keeps a failure closed inside a finished turn, but opens it while the turn is live', () => {
+  it('keeps a failure closed while the turn is live and inside its finished fold', () => {
     const events: CodingEvent[] = [
       { ...event(1, 'user_message', 'Fix a'), timestamp: '2026-08-21T09:00:00Z' },
       { ...event(2, 'command', ''), item_id: 'c1', data: { command: 'npm test', exitCode: 1, aggregatedOutput: 'FAIL a.test.ts\n' } },
       { ...event(3, 'command', ''), item_id: 'c2', data: { command: 'npm run lint', exitCode: 0 } },
       { ...event(4, 'agent_message', 'Fixed a.ts.'), item_id: 'answer', timestamp: '2026-08-21T09:01:00Z' },
     ];
-    const view = render(<EventTimeline {...timelineProps(events)} session={session('running')} />);
-    expect(view.container.querySelector('.code-activity-group.is-failed[open]')).not.toBeNull();
-    expect(screen.getByText('Exit code 1')).toBeInTheDocument();
+    const view = render(<EventTimeline {...timelineProps(events.slice(0, 3))} session={session('running')} />);
+    expect(view.container.querySelector('.code-activity-group.is-failed')).not.toHaveAttribute('open');
+    expect(screen.getByText('1 failed')).toBeInTheDocument();
+    expect(screen.queryByText('Exit code 1')).toBeNull();
 
     view.rerender(<EventTimeline {...timelineProps(events)} session={session('completed')} />);
     fireEvent.click(screen.getByText('Worked for 1m 0s'));
