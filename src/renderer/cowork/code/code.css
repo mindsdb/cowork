@@ -882,9 +882,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-source-update__receipt.is-failed > span { color: var(--danger); }
 .code-source-update__receipt i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .code-source-update__receipt small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
-.code-source-update__composer { margin-top: 7px; padding: 8px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
-/* The composer box carries the chrome; its Textarea sits flush inside it, like the Code composer's. */
-.code-source-update__composer .field-textarea { min-height: 0; padding: 2px; border: 0; background: transparent; box-shadow: none; font-size: 10.5px; line-height: 1.45; }
+.code-source-update__composer { margin-top: 7px; display: grid; gap: 7px; }
 .code-source-update__composer footer { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .code-source-update__composer footer > div { display: flex; gap: 5px; }
 .code-git-advanced { border-top: 1px solid var(--line); }
