@@ -112,6 +112,25 @@ describe('usePublish — server is the source of truth for the access list (ENG-
     expect(result.current.accessEmails).toEqual(['alice@x.com', 'bob@x.com']);
   });
 
+  // The viewer turns the key into the preview's comment bridge, so losing it
+  // here flips the bridge off and back on with every refresh (ENG-3070).
+  it('keeps the loaded artifactKey when onChange feeds back into the prop', async () => {
+    let artifact = { path: '/p/a.html' };
+    const onChange = vi.fn((updated) => { artifact = updated; });
+    const { result, rerender } = renderHook(
+      ({ a }) => usePublish(a, { onChange, enabled: true }),
+      { initialProps: { a: artifact } },
+    );
+
+    await waitFor(() => expect(result.current.artifactKey).toBe('user/report'));
+    expect(artifact.artifactKey).toBeUndefined();
+    rerender({ a: artifact });
+    expect(result.current.artifactKey).toBe('user/report');
+
+    rerender({ a: { path: '/p/b.html' } });
+    expect(result.current.artifactKey).toBe('');
+  });
+
   it('publish(restricted) shows the new list immediately and marks it loaded (same-session)', async () => {
     apiMock.publishArtifact.mockResolvedValue({
       url: 'https://share/abc', accessMode: 'restricted',
