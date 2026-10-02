@@ -7,6 +7,7 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { startCrashReporter } from './crash-reporter';
 
 const RUNNER_ENV = 'ANTON_HTML_LINT_RUNNER';
 const PROFILE_PREFIX = 'cowork-html-lint-';
@@ -46,6 +47,8 @@ export function runHtmlLint(): void {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), PROFILE_PREFIX));
   app.setPath('userData', profile);
   app.setPath('sessionData', profile); // cookies/caches: separate path, must also move before ready
+  // After setPath: dumps go to the throwaway profile and are swept with it.
+  startCrashReporter();
 
   require(runner);
 }
