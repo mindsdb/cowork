@@ -106,6 +106,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // answer 4xx, so the menu hides them instead. Content stays in sync there
   // anyway: autopublish re-publishes on the turn that changes the artifact.
   const supportsPublishRoutes = !orgMode;
+  // Names the artifact a refresh() response belongs to. Written during render
+  // so a switch is seen before any response from the previous artifact lands.
+  const identityKey = orgMode
+    ? `${artifact?.projectId || ''}/${artifact?.id || ''}`
+    : targetPath;
+  const identityKeyRef = useRef(identityKey);
+  identityKeyRef.current = identityKey;
+  const refreshRequestRef = useRef(0);
   const busy = phase !== 'idle';
 
   const publish = useCallback(async (access) => {
@@ -199,6 +207,13 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // no-op when nothing actually changed (no needless parent re-render).
   const refresh = useCallback(async () => {
     if (phase !== 'idle' || !canAct) return;
+    // A response is applied only if it is still the latest request for the
+    // artifact on screen. Without this, A's slow read landing after the viewer
+    // moved to B writes A's recipients into B's editable list (ENG-3070).
+    const request = ++refreshRequestRef.current;
+    const identity = identityKey;
+    const isCurrent = () => request === refreshRequestRef.current
+      && identity === identityKeyRef.current;
     // Org mode reads the owner-only access route instead of the path-addressed
     // status endpoint. It is the ONLY way the real email list reaches this
     // client: the artifact card withholds `accessEmails`/`accessPassword` on a
@@ -209,7 +224,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     if (orgMode) {
       let a = null;
       try { a = await loadArtifactAccess(artifact); } catch { /* leave state as-is */ }
-      if (!a) return;
+      if (!a || !isCurrent()) return;
       const nextMode = a.accessMode || 'public';
       const nextEmails = Array.isArray(a.accessEmails) ? a.accessEmails : [];
       const nextOrg = !!a.orgAllowed;
@@ -222,6 +237,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessLoaded(true);
       // Same self-clobber hazard as the desktop branch below: the broad re-sync
       // effect re-seeds from the prop, so the loaded list has to go back into it.
+      // Once the prop already carries it, a repeat report only churns the
+      // parent — and this runs on every open and window focus (ENG-3070).
+      const propSame = modeFromArtifact(artifact) === nextMode
+        && !!artifact?.orgAllowed === nextOrg
+        && !!artifact?.ownerOnly === !!a.ownerOnly
+        && Array.isArray(artifact?.accessEmails)
+        && artifact.accessEmails.join(',') === nextEmails.join(',');
+      if (propSame) return;
       onChange?.({
         ...artifact,
         accessMode: nextMode,
@@ -232,7 +255,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       return;
     }
     const s = await fetchArtifactStatus(targetPath);
-    if (!s) return;
+    if (!s || !isCurrent()) return;
     const nextModified = !!s.modified;
     const nextUrl = s.publishedUrl || '';
     // The server is authoritative for the access list on every refresh — and
@@ -276,7 +299,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       orgAllowed: nextOrg,
       ownerOnly: nextOwnerOnly,
     });
-  }, [phase, canAct, orgMode, targetPath, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
 
   // Fetch the publish history for the rollback UI. Lazy: the panel calls this
   // when it opens, not on every render. Any error (404 / older server / not

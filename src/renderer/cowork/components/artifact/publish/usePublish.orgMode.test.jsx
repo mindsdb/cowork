@@ -36,6 +36,12 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => wsMock);
 
 import { usePublish } from './usePublish';
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
 // No `path`: an org card is addressed by identity, and relying on a path here
 // is exactly the bug this guards against.
 const ORG_ARTIFACT = {
@@ -133,6 +139,47 @@ describe('usePublish on Cloud', () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ accessEmails: ['alice@x.com'] }),
     );
+  });
+
+  it('does not re-report access the artifact already carries', async () => {
+    // refresh() runs on every open and window focus. Reporting an unchanged
+    // list churns the host's preview state for nothing (ENG-3070).
+    const onChange = vi.fn();
+    const loaded = { ...ORG_ARTIFACT, accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false };
+    const { result } = renderHook(() => usePublish(loaded, { onChange, enabled: true }));
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalled());
+    await act(async () => { await result.current.refresh(); });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(result.current.accessEmails).toEqual(['alice@x.com']);
+  });
+
+  it("drops the previous artifact's access read when it lands late", async () => {
+    // Open A, close, open B; B's read lands first, then A's. The hook must not
+    // put A's recipients in B's editable list (ENG-3070 review).
+    const B = { ...ORG_ARTIFACT, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
+    const readA = deferred();
+    const readB = deferred();
+    wsMock.loadArtifactAccess.mockImplementation((a) => (a.id === B.id ? readB.promise : readA.promise));
+    const onChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ artifact, enabled }) => usePublish(artifact, { onChange, enabled }),
+      { initialProps: { artifact: ORG_ARTIFACT, enabled: true } },
+    );
+
+    rerender({ artifact: ORG_ARTIFACT, enabled: false });
+    rerender({ artifact: B, enabled: true });
+    await act(async () => {
+      readB.resolve({ accessMode: 'restricted', accessEmails: ['bob@x.com'], orgAllowed: false, ownerOnly: false });
+    });
+    await act(async () => {
+      readA.resolve({ accessMode: 'restricted', accessEmails: ['alice@x.com'], orgAllowed: true, ownerOnly: false });
+    });
+
+    expect(result.current.accessEmails).toEqual(['bob@x.com']);
+    expect(result.current.orgAllowed).toBe(false);
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ accessEmails: ['alice@x.com'] }));
   });
 
   it('survives an access read that fails', async () => {

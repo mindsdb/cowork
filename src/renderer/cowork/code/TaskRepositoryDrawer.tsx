@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { GitBranch, Folder, RefreshCw, ShieldCheck } from 'lucide-react';
+import { GitBranch, Folder, RefreshCw } from 'lucide-react';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import Alert from '../components/ui/Alert';
@@ -281,10 +281,6 @@ export function TaskRepositoryDrawer({
             )}
           </>
         )}
-        <p className="code-repository-safety">
-          <ShieldCheck size={16} />
-          <span>These choices apply to this task. Your original checkouts and folders stay unchanged.</span>
-        </p>
       </ModalBody>
       <ModalFooter align="space-between">
         <span className="code-repository-count">

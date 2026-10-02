@@ -5,13 +5,14 @@ import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import CoworkApp from './CoworkApp';
 import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
-import { host, type AccountOwnershipQuestion } from './platform/host';
+import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget';
 import { setOrgMode } from './lib/orgMode';
-import { trackBootScreenResolved } from './cowork/lib/analytics';
+import { trackBootScreenResolved, trackShellUpdatePhase } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import { deriveBootStatus } from '../shared/boot-status';
@@ -49,18 +50,6 @@ function hasLocalTermsConsent(): boolean {
 
 function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
-}
-
-// Map skin + theme → the onboarding shell's look. arcade.css reads
-// body[data-arcade-preset]: 'midnight'/'daylight' = clean (Inter, no CRT),
-// 'gameboy' = 8-bit light, default (no preset) = 8-bit dark CRT.
-function applyArcadePreset(skin: string): void {
-  const theme = document.body.dataset.theme === 'light' ? 'light' : 'dark';
-  const preset = skin === '8bit'
-    ? (theme === 'light' ? 'gameboy' : null)         // null → default arcade dark
-    : (theme === 'light' ? 'daylight' : 'midnight'); // clean / "normal"
-  if (preset) document.body.dataset.arcadePreset = preset;
-  else delete document.body.dataset.arcadePreset;
 }
 
 function SunIcon({ size = 15 }: { size?: number }) {
@@ -147,14 +136,16 @@ export default function App() {
   // previously blind to the shell channel and could claim "Almost ready…" while
   // a shell relaunch was still pending. Pull once for reload recovery, then
   // subscribe to the same authoritative main-process snapshot. No-ops in web.
+  // Tracked here, not in CoworkApp, so onboarding screens are covered.
   useEffect(() => {
     let cancelled = false;
-    host.getShellAutoUpdate()
-      .then((snapshot) => { if (!cancelled) setShellPhase(snapshot?.phase ?? null); })
-      .catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellPhase(snapshot?.phase ?? null);
-    });
+    const receive = (snapshot: ShellAutoUpdateSnapshot) => {
+      if (cancelled) return;
+      setShellPhase(snapshot?.phase ?? null);
+      trackShellUpdatePhase(snapshot);
+    };
+    host.getShellAutoUpdate().then(receive).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate(receive);
     return () => { cancelled = true; unsubscribe(); };
   }, []);
 
@@ -344,22 +335,7 @@ export default function App() {
         />
       )}
 
-      {page === 'loading' && (
-        <div
-          className="arc-root welcome-loading"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}
-        >
-          <OrbitMorph state="thinking" size={72} />
-          <div className="arc-welcome-title">
-            Welcome to MindsHub Cowork
-          </div>
-          {bootStatus && (
-            <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>
-              {bootStatus}
-            </div>
-          )}
-        </div>
-      )}
+      {page === 'loading' && <WelcomeLoading status={bootStatus} />}
 
       {page === 'auth' && (
         <OnboardingScreen onComplete={handleAuthComplete} />

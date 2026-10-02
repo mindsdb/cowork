@@ -44,11 +44,21 @@ export function ConfirmModal({
   const locked = busy && !dismissableWhileBusy;
   // Enter-to-confirm. Esc + backdrop dismissal are Modal's job (disabled
   // while busy via closeOnEsc / closeOnBackdrop below).
+  // Armed a task late so the Enter that opened the dialog can't confirm it.
+  // Repeats are swallowed so a held Enter can't click the focused button.
   useEffect(() => {
     if (!open || busy) return undefined;
-    const onKey = (e) => { if (e.key === 'Enter') onConfirm?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e) => {
+      if (e.key !== 'Enter') return;
+      if (e.repeat) { e.preventDefault(); return; }
+      if (e.target?.closest?.('button')) return;
+      onConfirm?.();
+    };
+    const arm = window.setTimeout(() => window.addEventListener('keydown', onKey));
+    return () => {
+      window.clearTimeout(arm);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [open, busy, onConfirm]);
 
   return (

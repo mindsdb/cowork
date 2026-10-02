@@ -4,8 +4,10 @@ import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { Tab, TabList, Tabs } from '../components/ui/Tabs';
+import Tooltip from '../components/ui/Tooltip';
 import { ConfirmModal } from '../components/ConfirmModal';
-import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
+import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandRefresh, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
 import { openCodePath } from './shellLinks';
 import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
@@ -31,6 +33,7 @@ export function ReviewPanel({
   onCommit,
   onApply,
   onValidate = async () => [],
+  onAdoptProjectCommands,
   onPublish = async () => {},
   onCompleteSource = async () => {},
   onDraftPullRequests = async () => [],
@@ -56,6 +59,8 @@ export function ReviewPanel({
   onCommit: (message: string) => Promise<void>;
   onApply: () => Promise<void>;
   onValidate?: () => Promise<ProjectCommandResult[]>;
+  /** Copies the commands now saved in Project settings onto this task. Absent when the host cannot offer it. */
+  onAdoptProjectCommands?: () => Promise<ProjectCommandRefresh>;
   onPublish?: (target: NonNullable<CodingSession['source_contexts']>[number], text: string, action: 'progress' | 'result') => Promise<void>;
   onCompleteSource?: (target: NonNullable<CodingSession['source_contexts']>[number]) => Promise<void>;
   onDraftPullRequests?: (title: string, body: string, connectionName: string | null, drafts: DraftPullRequestInput[]) => Promise<DeliveryRecord[]>;
@@ -76,7 +81,47 @@ export function ReviewPanel({
   const [message, setMessage] = useState('');
   const [applyOpen, setApplyOpen] = useState(false);
   const [applyError, setApplyError] = useState('');
-  const [validationNotice, setValidationNotice] = useState<{ variant: 'info' | 'success' | 'danger'; text: string } | null>(null);
+  const [validationNotice, setValidationNotice] = useState<{ variant: 'info' | 'success' | 'danger'; text: string; offerAdopt?: boolean } | null>(null);
+
+  const runChecks = async (): Promise<ProjectCommandResult[] | null> => {
+    let results: ProjectCommandResult[];
+    try {
+      results = await onValidate();
+    } catch {
+      return null;
+    }
+    const failed = results.filter((item) => item.return_code !== 0).length;
+    setValidationNotice(failed
+      ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
+      : results.length
+        ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
+        // A task keeps the commands its project had when it started. The
+        // recovery for an older task is to adopt the current ones explicitly;
+        // editing Project settings alone never reaches it (ENG-2895).
+        : { variant: 'info', text: 'This task has no project checks. Tasks started from this project use the commands saved in Project settings.', offerAdopt: true });
+    return results;
+  };
+
+  const adoptProjectCommands = async () => {
+    if (!onAdoptProjectCommands) return;
+    let refreshed: ProjectCommandRefresh;
+    try {
+      refreshed = await onAdoptProjectCommands();
+    } catch {
+      return;
+    }
+    if (refreshed.validate_count === 0) {
+      setValidationNotice({
+        variant: 'info',
+        text: refreshed.run_count
+          ? `Project settings have no validation commands for this task's folders, so there is nothing to check. ${refreshed.run_count === 1 ? '1 run action is' : `${refreshed.run_count} run actions are`} now available.`
+          : "Project settings have no commands for this task's folders yet. Add validation commands there, then use this again.",
+        offerAdopt: true,
+      });
+      return;
+    }
+    await runChecks();
+  };
   const [appliedChangeKey, setAppliedChangeKey] = useState('');
   const [width, setWidth] = useState(460);
   const { additions, deletions } = diffStats(files);
@@ -163,12 +208,12 @@ export function ReviewPanel({
           </div>
           <Button icon size="sm" variant="subtle" aria-label="Close review panel" onClick={onClose}>{Ico.close(14)}</Button>
         </header>
-        <div className="code-review__tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'changes'} className={tab === 'changes' ? 'is-active' : ''} onClick={() => setTab('changes')}>
-            Changes <span>{files.length}</span>
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Deliver</button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as 'changes' | 'git')}>
+          <TabList className="code-review__tabs" aria-label="Review sections">
+            <Tab value="changes">Changes <span>{files.length}</span></Tab>
+            <Tab value="git">Deliver</Tab>
+          </TabList>
+        </Tabs>
         {error && <div className="code-review__error"><Alert variant="danger">{error}</Alert></div>}
 
         {tab === 'changes' ? (
@@ -207,7 +252,6 @@ export function ReviewPanel({
           <div className="code-review__body code-git-panel scroll-clean">
             <div className="code-delivery-heading">
               <strong>Deliver this task</strong>
-              <span>Run checks, then open a pull request or apply the reviewed changes locally.</span>
             </div>
             {gitIdentitySetup && <GitIdentityCard setup={gitIdentitySetup} busy={busy} />}
             <section className="code-handoff-summary">
@@ -234,24 +278,22 @@ export function ReviewPanel({
               <>
                 {session.project_id && (
                   <section className="code-handoff-secondary">
-                    <div><div className="code-field-label">Project checks</div><p>Run the project's validation commands before delivery.</p></div>
-                    <Button size="sm" variant="subtle" disabled={active || busy} onClick={async () => {
-                      let results: ProjectCommandResult[];
-                      try {
-                        results = await onValidate();
-                      } catch {
-                        return;
-                      }
-                      const failed = results.filter((item) => item.return_code !== 0).length;
-                      setValidationNotice(failed
-                        ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
-                        : results.length
-                          ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
-                          : { variant: 'info', text: 'This task has no project checks. Tasks started from this project use the commands saved in Project settings.' });
-                    }}>Run checks</Button>
+                    <div><div className="code-field-label">Project checks</div></div>
+                    <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void runChecks()}>Run checks</Button>
                   </section>
                 )}
-                {validationNotice && <Alert variant={validationNotice.variant}>{validationNotice.text}</Alert>}
+                {validationNotice && (
+                  <Alert variant={validationNotice.variant}>
+                    {validationNotice.text}
+                    {validationNotice.offerAdopt && onAdoptProjectCommands && (
+                      <div className="mt-[8px]">
+                        <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void adoptProjectCommands()}>
+                          Use latest project commands
+                        </Button>
+                      </div>
+                    )}
+                  </Alert>
+                )}
                 {session.project_id && gitWorkspaces.length > 0 && (
                   <DraftPullRequestSection
                     sessionId={session.id}
@@ -272,11 +314,12 @@ export function ReviewPanel({
                 <section className="code-handoff-primary code-handoff-local">
                   <div>
                     <div className="code-field-label">Apply locally</div>
-                    <p>Copy the reviewed changes back to the original folders.</p>
                   </div>
-                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
-                    {applied ? 'Applied' : 'Apply locally'}
-                  </Button>
+                  <Tooltip content="Copy the reviewed changes back to the original folders">
+                    <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => { setApplyError(''); setApplyOpen(true); }}>
+                      {applied ? 'Applied' : 'Apply locally'}
+                    </Button>
+                  </Tooltip>
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
                 {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">

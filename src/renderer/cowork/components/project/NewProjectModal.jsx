@@ -315,7 +315,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           )}
 
           <div className="flex flex-col gap-[6px]">
-            <span className="font-[family-name:var(--font-mono)] text-xs tracking-[0.06em] uppercase text-ink-4 font-semibold">Files <span className="normal-case tracking-[0] text-ink-4 font-[family-name:var(--font-body)] font-normal">(optional)</span></span>
+            <span className="text-sm font-medium text-ink-2">Files <span className="font-normal text-ink-4">(optional)</span></span>
             <div
               onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
               onDragLeave={() => setDragActive(false)}

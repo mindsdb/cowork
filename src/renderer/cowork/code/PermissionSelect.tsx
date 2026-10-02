@@ -7,10 +7,12 @@ export function PermissionSelect({
   value,
   onValueChange,
   disabled = false,
+  disabledReason,
 }: {
   value: PermissionMode;
   onValueChange: (value: PermissionMode) => void;
   disabled?: boolean;
+  disabledReason?: string;
 }) {
   return (
     <Select
@@ -24,6 +26,9 @@ export function PermissionSelect({
       ariaLabel="Coding permissions"
       menuLabel="Permissions"
       disabled={disabled}
+      // A disabled trigger fires no hover events, so ui/Tooltip can't open;
+      // the native title is the only way to explain why it's locked.
+      title={disabled ? disabledReason : undefined}
       className="meta-pill code-composer-picker code-permission-picker"
     />
   );

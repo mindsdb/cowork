@@ -73,9 +73,6 @@ export function TaskBar({
     : folderCount > 1
       ? `${folderCount} isolated folders`
       : 'Isolated copy';
-  const workingCopyDescription = usesOriginalFolder
-    ? 'Edits happen in the folder you selected.'
-    : 'Task-only files keep parallel work separate.';
   const origin = session.source_contexts?.[0] || null;
   const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
   const scopedWorkspaceNames = (session.workspaces || []).map((workspace) => workspace.folder_name);
@@ -93,10 +90,13 @@ export function TaskBar({
         <div className="code-taskbar__copy">
           <div className="code-taskbar__title-row">
             <div className="code-taskbar__title" title={session.title}>{session.title}</div>
-            <span className={`code-task-status is-${status.tone}`}>
-              <span className="code-status-dot" aria-hidden="true" />
-              <span className="code-task-status__label">{status.label}</span>
-            </span>
+            {/* A finished task at rest needs no badge; colour is kept for work in motion and for what needs you. */}
+            {status.tone !== 'success' && (
+              <span className={`code-task-status is-${status.tone}`}>
+                <span className="code-status-dot" aria-hidden="true" />
+                <span className="code-task-status__label">{status.label}</span>
+              </span>
+            )}
           </div>
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
@@ -127,7 +127,6 @@ export function TaskBar({
                   <div className="code-taskbar-details">
                     <div className="code-taskbar-details__intro">
                       <strong>Task setup</strong>
-                      <p>{workingCopyDescription}</p>
                     </div>
                     <div><span>Files</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
                     {git?.branch && !usesOriginalFolder && <div><span>Branch</span><strong>{git.branch}</strong></div>}

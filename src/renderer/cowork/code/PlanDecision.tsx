@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import Button from '../components/ui/Button';
+import Ico from '../components/Icons';
 import { Textarea } from '../components/ui/Input';
-import './task-control.css';
+import Tooltip from '../components/ui/Tooltip';
+import { DecisionTray, isTrayShortcut } from './DecisionTray';
 
 export function PlanDecision({ busy, onBuild, onRevise }: {
   busy: boolean;
@@ -15,14 +17,24 @@ export function PlanDecision({ busy, onBuild, onRevise }: {
     setError('');
     try { await operation(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not continue. Try again.'); }
   };
-  return <section className="code-decision code-plan-decision" aria-label="Review plan">
-    <header className="code-decision__header"><span className="code-decision__eyebrow">Ready for your review</span><h3>Start building from this plan?</h3><p>Planning is read-only. Building uses this task’s selected permissions.</p></header>
+  return <DecisionTray
+    label="Review plan"
+    kind="Plan ready"
+    icon={Ico.list(12)}
+    onKeyDown={event => {
+      if (!editing && !busy && isTrayShortcut(event, 'Enter') && !(event.target instanceof HTMLButtonElement)) { event.preventDefault(); void act(onBuild); }
+    }}
+  >
+    <h2 className="code-decision-tray__question">Start building from this plan?</h2>
     {editing && <Textarea aria-label="Changes to the plan" placeholder="What should change in the plan?" value={changes} onChange={setChanges} rows={3} disabled={busy} />}
     {error && <p className="code-decision__error" role="alert">{error}</p>}
-    <footer><span>You decide when execution begins.</span><div className="code-decision__buttons">
+    <div className="code-decision-tray__actions">
       <Button variant="subtle" size="sm" disabled={busy} onClick={() => setEditing(value => !value)}>{editing ? 'Cancel revision' : 'Revise plan'}</Button>
+      <span className="code-decision-tray__spacer" aria-hidden="true" />
       {editing ? <Button variant="primary" size="sm" disabled={busy || !changes.trim()} onClick={() => void act(() => onRevise(changes.trim()))}>Update plan</Button>
-        : <Button variant="primary" size="sm" disabled={busy} onClick={() => void act(onBuild)}>Build from plan</Button>}
-    </div></footer>
-  </section>;
+        : <Tooltip content="Builds with this task’s selected permissions">
+          <Button variant="primary" size="sm" disabled={busy} aria-keyshortcuts="Enter" onClick={() => void act(onBuild)}>Build from plan</Button>
+        </Tooltip>}
+    </div>
+  </DecisionTray>;
 }

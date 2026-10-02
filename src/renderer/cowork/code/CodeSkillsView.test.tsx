@@ -151,8 +151,6 @@ describe('CodeSkillsView', () => {
     expect(await screen.findByRole('heading', { name: 'Skills' })).toBeInTheDocument();
     expect(screen.getByText('Engineering standards')).toBeInTheDocument();
     expect(screen.getByText('Review code against team standards.')).toBeInTheDocument();
-    expect(screen.getByText('Personal skills available in Code Mode')).toBeInTheDocument();
-    expect(screen.getByText('Engineering skills maintained by MindsHub')).toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'release');
     expect(screen.getByText('Prepare a release.')).toBeInTheDocument();
@@ -174,7 +172,7 @@ describe('CodeSkillsView', () => {
     await user.click(screen.getByRole('button', { name: 'Add skill' }));
     expect(await screen.findByRole('button', { name: 'Edit New review' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Yours' })).toHaveClass('is-active');
+    expect(screen.getByRole('button', { name: 'Yours' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

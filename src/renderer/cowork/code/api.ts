@@ -374,6 +374,12 @@ export interface ProjectActionPage {
   preview_pending?: boolean;
 }
 
+/** Commands a task can run, within its own folders, after adopting the project's current settings. */
+export interface ProjectCommandRefresh {
+  validate_count: number;
+  run_count: number;
+}
+
 export interface ProjectFolderInspection {
   folder: ProjectFolder;
   inspection: WorkspaceInspection;
@@ -384,6 +390,20 @@ export interface ProjectConnection {
   provider: 'github' | 'linear' | 'slack';
   name: string;
   label: string;
+}
+
+export interface GitHubRepository {
+  full_name: string;
+  clone_url: string;
+  private: boolean;
+  default_branch: string | null;
+  archived: boolean;
+  connection_name: string;
+}
+
+export interface GitHubRepositoryPage {
+  items: GitHubRepository[];
+  next_page: number | null;
 }
 
 export interface PlaybookReference {
@@ -768,6 +788,9 @@ async function ensureCodeService(): Promise<void> {
 
 const liveCodingApi = {
   engines: () => requestJson<EngineCapability[]>('/engines'),
+  githubRepositories: (connectionName: string, page = 1) => requestJson<GitHubRepositoryPage>(
+    `/github/repositories?${new URLSearchParams({ connection_name: connectionName, page: String(page) })}`,
+  ),
   models: (engineId: string) => requestJson<{ items: string[] }>(`/models?engineId=${encodeURIComponent(engineId)}`),
   inspect: (path: string) => requestJson<WorkspaceInspection>(`/workspace/inspect?path=${encodeURIComponent(path)}`),
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
@@ -907,6 +930,8 @@ const liveCodingApi = {
       method: 'POST', body: JSON.stringify(body),
     }),
   projectActions: (id: string) => requestJson<ProjectActionPage>(`/sessions/${encodeURIComponent(id)}/project-actions`),
+  /** Copies the project's current commands onto an existing task; its resource scope stays frozen. */
+  refreshProjectCommands: (id: string) => requestJson<ProjectCommandRefresh>(`/sessions/${encodeURIComponent(id)}/project-commands/refresh`, { method: 'POST' }),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
   updateDeliveryPolicy: (id: string, body: DeliveryAutomationPolicy) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/delivery-policy`, {
     method: 'PUT', body: JSON.stringify(body),

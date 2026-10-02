@@ -162,7 +162,7 @@ export function ArtifactComparison({
       <footer className="artifact-compare-footer">
         {isAgent ? (
           <>
-            <Button variant="ghost" disabled={busy} onClick={onReject}>Reject & restore</Button>
+            <Button variant="subtle" disabled={busy} onClick={onReject}>Reject & restore</Button>
             <Button disabled={busy} onClick={onAccept}>{Ico.check(14)} Accept & resolve</Button>
           </>
         ) : (
