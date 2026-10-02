@@ -27,7 +27,7 @@ export function ProjectConnectedTools({
 
   return (
     <section className="code-project-field code-project-tools" aria-labelledby="code-project-connectors-label">
-      <span id="code-project-connectors-label" className="code-project-label">Connectors <span className="code-project-optional">(optional)</span></span>
+      <span id="code-project-connectors-label" className="code-project-label">Connectors</span>
       {developerAccounts.length ? (
         <div className="code-project-list">
           {developerAccounts.map((connection) => {

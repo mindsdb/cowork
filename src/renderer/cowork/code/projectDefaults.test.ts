@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { countEnvironmentVariables, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { countEnvironmentVariables, describeEnvironment, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 
 
 describe('projectDefaults', () => {
@@ -27,10 +27,10 @@ describe('projectDefaults', () => {
     expect(parsePortNames('')).toEqual([]);
   });
 
-  it('describes the defaults in one line and leaves out what is not set', () => {
-    expect(describeTaskDefaults({ agent: 'Codex', model: 'GPT 5.6 Sol', permission: 'Ask first', variableCount: 0, portNames: [] }))
-      .toBe('Codex · GPT 5.6 Sol · Ask first');
-    expect(describeTaskDefaults({ agent: 'Codex', model: 'GPT 5.6 Sol', permission: 'Ask first', variableCount: 1, portNames: ['PORT'] }))
-      .toBe('Codex · GPT 5.6 Sol · Ask first · 1 variable · PORT');
+  it('describes the defaults and the environment in one line each', () => {
+    expect(describeTaskDefaults({ agent: 'Codex', model: 'GPT 5.6 Sol', permission: 'Ask first' })).toBe('Codex · GPT 5.6 Sol · Ask first');
+    expect(describeEnvironment({ variableCount: 0, portNames: [] })).toBe('Nothing set');
+    expect(describeEnvironment({ variableCount: 1, portNames: ['PORT'] })).toBe('1 variable · PORT');
+    expect(describeEnvironment({ variableCount: 2, portNames: ['PORT', 'API_PORT'] })).toBe('2 variables · PORT, API_PORT');
   });
 });
