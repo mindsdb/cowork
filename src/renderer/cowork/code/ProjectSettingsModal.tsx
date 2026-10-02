@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
+import Badge from '../components/ui/Badge';
 import { Collapsible } from '../components/ui/Collapsible';
 import { Field } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
@@ -404,7 +405,7 @@ export function ProjectSettingsModal({
                       <strong>{repositoryLabel(project.playbook.repository)}</strong>
                       <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
                     </div>
-                    {playbookStatus?.update_available && <em>Update available</em>}
+                    {playbookStatus?.update_available && <Badge variant="warning" size="sm">Update available</Badge>}
                   </div>
                   <div className="code-playbook-actions">
                     <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
@@ -465,7 +466,7 @@ export function ProjectSettingsModal({
                       {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
                     </div>
                   </details>
-                  {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}
+                  {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
                   </div>
                 </details>
               )}
