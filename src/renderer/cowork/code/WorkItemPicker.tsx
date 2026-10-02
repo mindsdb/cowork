@@ -1,4 +1,5 @@
 import Ico from '../components/Icons';
+import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
@@ -122,7 +123,7 @@ export function WorkItemPicker({
                 onClick={() => onChoose(item)}
                 disabled={busy}
               >
-                <span className="code-work-picker__kind">{item.kind === 'pull_request' ? 'PR' : item.provider === 'linear' ? 'LIN' : 'ISS'}</span>
+                <Badge size="xs" className="code-work-picker__kind">{item.kind === 'pull_request' ? 'PR' : item.provider === 'linear' ? 'LIN' : 'ISS'}</Badge>
                 <span className="code-work-picker__identity">
                   <strong>{item.title}</strong>
                   <small>{[item.external_id, item.state, item.assignee].filter(Boolean).join(' · ')}</small>

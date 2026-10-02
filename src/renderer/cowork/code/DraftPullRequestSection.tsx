@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Checkbox from '../components/ui/Checkbox';
 import { Collapsible } from '../components/ui/Collapsible';
@@ -304,7 +305,7 @@ export function DraftPullRequestSection({
         </div>
       </header>
 
-      {error && <div className="code-delivery__error" role="alert">{error}</div>}
+      {error && <Alert variant="danger" className="code-delivery__error">{error}</Alert>}
       {lastAttempt.length > 0 && (
         <div className={`code-delivery-attempt${failures.length ? ' has-failures' : ''}`}>
           <span>{successes.length ? `${successes.length} created` : ''}{successes.length && failures.length ? ' · ' : ''}{failures.length ? `${failures.length} failed` : ''}</span>

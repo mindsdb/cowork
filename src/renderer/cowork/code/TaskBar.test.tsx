@@ -99,7 +99,8 @@ describe('TaskBar', () => {
     expect(onPreview).toHaveBeenCalledOnce();
   });
 
-  it('keeps preview visible but unavailable until a run action starts', () => {
+  it('keeps preview visible but unavailable until a run action starts', async () => {
+    const user = userEvent.setup();
     render(
       <TaskBar
         session={session}
@@ -126,11 +127,11 @@ describe('TaskBar', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Preview running project' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Preview running project' })).toHaveAttribute(
-      'title',
-      'Run the project to enable preview',
-    );
+    const preview = screen.getByRole('button', { name: 'Preview running project' });
+    expect(preview).toBeDisabled();
+    // `.btn:disabled` drops pointer events, so the reason hangs off a wrapper.
+    await user.hover(preview.parentElement!);
+    expect(await screen.findByText('Run the project to enable preview')).toBeInTheDocument();
   });
 
   it('explains direct-folder tasks as work in the original folder', async () => {

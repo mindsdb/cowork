@@ -16,7 +16,7 @@ export function ComposerAddMenu({ disabled, onAttach, planMode = false, onPlanCh
       side="top"
       align="start"
       width={290}
-      trigger={<Button icon variant="subtle" size="sm" disabled={disabled} aria-label="Add to prompt" title="Add">{Ico.plus(16)}</Button>}
+      trigger={<Button icon variant="subtle" size="sm" disabled={disabled} aria-label="Add to prompt">{Ico.plus(16)}</Button>}
       items={[
         { id: 'heading', heading: <span className="text-[11px] font-semibold text-ink-3">Add</span> },
         ...(onPlanChange ? [{
