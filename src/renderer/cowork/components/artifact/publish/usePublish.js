@@ -80,16 +80,22 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [versions, setVersions] = useState([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
 
+  const seededPathRef = useRef(artifact?.path);
   // Re-sync when the artifact identity changes (opening a different one
   // without unmounting) or the server pushed fresh state via the parent.
   useEffect(() => {
+    const samePath = seededPathRef.current === artifact?.path;
+    seededPathRef.current = artifact?.path;
     setPublishedUrl(artifact?.publishedUrl || '');
     setAccessMode(modeFromArtifact(artifact));
     setAccessPassword(artifact?.accessPassword || '');
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
     setOwnerOnly(!!artifact?.ownerOnly);
-    setArtifactKey(artifact?.artifactKey || '');
+    // A refresh learns the key from the server, but its report back to the
+    // parent doesn't carry it, so an access change in that report would reset
+    // it to the prop's empty one. Keep it until the artifact itself changes.
+    setArtifactKey((cur) => artifact?.artifactKey || (samePath ? cur : ''));
     setModified(!!artifact?.modified);
     setError('');
     setVersions([]);  // stale history must never carry across artifacts
