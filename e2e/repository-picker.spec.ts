@@ -32,7 +32,7 @@ for (const variant of [
     await page.setViewportSize({ width: variant.width, height: variant.height });
     await fixture(page);
     await page.goto(`/?${variant.query}`);
-    await page.getByRole('button', { name: 'Git repository', exact: true }).click();
+    await page.getByRole('button', { name: /^(Clone a repository|Add repository)/ }).click();
     await expect(page.getByRole('button', { name: 'mindsdb/cowork Private Add', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`${variant.name}.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -42,10 +42,12 @@ for (const variant of [
     await search.press('Tab');
     await expect(page.getByRole('button', { name: 'mindsdb/cowork Private Add', exact: true })).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('cowork');
-    await expect(page.getByRole('checkbox', { name: /MindsDB/ })).toBeChecked();
-    await page.getByRole('button', { name: 'Save project' }).click();
+    await expect(page.getByRole('textbox', { name: 'Project name', exact: true })).toHaveValue('cowork');
+    // Creating shows no Connectors section; the picked account is still saved with the project.
+    await expect(page.getByRole('checkbox', { name: /MindsDB/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Create project' }).click();
     await expect(page.getByLabel('Saved project')).toContainText('"connector_name": "work"');
+    await expect(page.getByLabel('Saved project')).toContainText('"provider": "github"');
     await expect(page.getByLabel('Saved project')).toContainText('"use_connector_for_clone": true');
     await expect(page.getByLabel('Saved project')).toContainText('"default_branch": "staging"');
     expect(errors).toEqual([]);
@@ -55,26 +57,26 @@ for (const variant of [
 test('connecting an account preserves an unsaved project draft', async ({ page }) => {
   await fixture(page);
   await page.goto('/?disconnected');
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Keep this draft');
-  await page.getByRole('button', { name: 'Git repository', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Project name', exact: true }).fill('Keep this draft');
+  await page.getByRole('button', { name: /^(Clone a repository|Add repository)/ }).click();
   await page.getByRole('button', { name: 'Connect GitHub' }).click();
   await page.getByRole('button', { name: 'Finish connection (test fixture)' }).click();
-  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Keep this draft');
-  await page.getByRole('button', { name: 'Git repository', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Project name', exact: true })).toHaveValue('Keep this draft');
+  await page.getByRole('button', { name: /^(Clone a repository|Add repository)/ }).click();
   await page.getByRole('button', { name: 'mindsdb/cowork Private Add', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Keep this draft');
+  await expect(page.getByRole('textbox', { name: 'Project name', exact: true })).toHaveValue('Keep this draft');
 });
 
 test('permission errors leave manual URL entry usable', async ({ page }, testInfo) => {
   await fixture(page, 409);
   await page.goto('/?theme=dark');
-  await page.getByRole('button', { name: 'Git repository', exact: true }).click();
+  await page.getByRole('button', { name: /^(Clone a repository|Add repository)/ }).click();
   await expect(page.getByRole('alert')).toContainText('lacks permission');
   await page.screenshot({ path: testInfo.outputPath('permission-error.png') });
   await page.getByRole('button', { name: 'Paste repository URL' }).click();
   await page.getByRole('textbox', { name: 'Git repository URL' }).fill('https://gitlab.com/acme/api.git');
   await page.getByRole('textbox', { name: 'Git repository URL' }).press('Enter');
-  await page.getByRole('button', { name: 'Save project' }).click();
+  await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.getByLabel('Saved project')).toContainText('https://gitlab.com/acme/api.git');
   await expect(page.getByLabel('Saved project')).not.toContainText('"use_connector_for_clone": true');
 });

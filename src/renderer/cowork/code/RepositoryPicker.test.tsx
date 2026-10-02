@@ -63,6 +63,8 @@ describe('RepositoryPicker', () => {
     render(<RepositoryPicker {...values} />);
     await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     expect(values.onOpenConnectors).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('textbox', { name: 'Git repository URL' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Paste repository URL' }));
     const input = screen.getByRole('textbox', { name: 'Git repository URL' });
     await userEvent.type(input, 'https://gitlab.com/acme/api.git{Enter}');
     expect(values.onAddUrl).toHaveBeenCalledWith('https://gitlab.com/acme/api.git');

@@ -15,10 +15,14 @@ export function useComposerNotice(candidates: Array<ComposerNotice | null | unde
   const present = candidates.filter((notice): notice is ComposerNotice => !!notice);
   const presentKeys = present.map((notice) => notice.key).join('\n');
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
-  const [steppedTo, setSteppedTo] = useState<string | null>(null);
+  // A step holds only for the task and notice set it was taken against: a
+  // new or resolved notice changes the order, so the top one leads again.
+  // Deriving this during render, instead of resetting it in an effect, keeps
+  // a late effect from undoing a step the user took after the change.
+  const [stepped, setStepped] = useState<{ key: string; keys: string; scope: string | null } | null>(null);
+  const steppedTo = stepped && stepped.keys === presentKeys && stepped.scope === scope ? stepped.key : null;
   useEffect(() => {
     setDismissed(new Set());
-    setSteppedTo(null);
   }, [scope]);
   useEffect(() => {
     const keys = new Set(presentKeys.split('\n'));
@@ -26,8 +30,6 @@ export function useComposerNotice(candidates: Array<ComposerNotice | null | unde
       const kept = [...current].filter((key) => keys.has(key));
       return kept.length === current.size ? current : new Set(kept);
     });
-    // A new or resolved notice changes the order, so the top one leads again.
-    setSteppedTo(null);
   }, [presentKeys]);
 
   const visible = present.filter((notice) => !dismissed.has(notice.key));
@@ -37,7 +39,9 @@ export function useComposerNotice(candidates: Array<ComposerNotice | null | unde
     notice,
     /** How many other notices wait behind the one shown. */
     more: Math.max(0, visible.length - 1),
-    showNext: () => { if (visible.length > 1) setSteppedTo(visible[(index + 1) % visible.length].key); },
+    showNext: () => {
+      if (visible.length > 1) setStepped({ key: visible[(index + 1) % visible.length].key, keys: presentKeys, scope });
+    },
     dismiss: (key: string) => setDismissed((current) => new Set(current).add(key)),
   };
 }

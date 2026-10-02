@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
 import Input from '../components/ui/Input';
+import Tooltip from '../components/ui/Tooltip';
 import type { ConnectorConnection } from '../api';
 import { RepositoryPicker, repositoryKey } from './RepositoryPicker';
 import { host } from '../../platform/host';
@@ -56,6 +58,7 @@ export function ProjectResourcesEditor({
   connections,
   onRepositoryConnection,
   onOpenConnectors,
+  allowMultiple = true,
 }: {
   resources: ProjectResource[];
   computers: CodeComputer[];
@@ -69,10 +72,21 @@ export function ProjectResourcesEditor({
   connections: ConnectorConnection[];
   onRepositoryConnection: (name: string) => void;
   onOpenConnectors: () => void;
+  // Creating a project takes one source; more are added from Project settings.
+  allowMultiple?: boolean;
 }) {
   const [repositoryOpen, setRepositoryOpen] = useState(false);
   const repositoryTrigger = useRef<HTMLButtonElement>(null);
+  // The trigger swaps from the empty-state choice to "Add repository" once a
+  // source exists, so focus returns after render to whichever one is mounted.
+  const [focusTrigger, setFocusTrigger] = useState(false);
+  useEffect(() => {
+    if (!focusTrigger) return;
+    repositoryTrigger.current?.focus();
+    setFocusTrigger(false);
+  }, [focusTrigger]);
   const [adding, setAdding] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState<Set<string>>(() => new Set());
   const computersById = useMemo(() => new Map(computers.map((computer) => [computer.id, computer])), [computers]);
   const availabilityById = useMemo(() => new Map(availability.map((item) => [item.resource_id, item])), [availability]);
 
@@ -128,7 +142,7 @@ export function ProjectResourcesEditor({
     if (repository) onRepositoryConnection(repository.connection_name);
     if (!resources.length) onFirstResource(name);
     setRepositoryOpen(false);
-    repositoryTrigger.current?.focus();
+    setFocusTrigger(true);
     onError('');
   };
 
@@ -138,92 +152,116 @@ export function ProjectResourcesEditor({
       : resource));
   };
 
-  return (
-    <section className="code-project-section code-project-resources">
-      <div className="code-project-section__heading">
-        <div>
-          <strong>Resources</strong>
-          <span>{resources.length ? `${resources.length} available to each task by default` : 'Add the code and files this project spans'}</span>
-        </div>
-        <div className="code-resource-add-actions">
-          <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-            {Ico.folder(13)} {adding ? 'Adding…' : 'Local folder'}
-          </Button>
-          <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
-            {Ico.plus(13)} Git repository
-          </Button>
-        </div>
-      </div>
+  const toggleCommands = (id: string) => setCommandsOpen((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
-      {repositoryOpen && (
-        <RepositoryPicker connections={connections} disabled={!!disabled}
-          existingUrls={resources.flatMap((resource) => resource.kind === 'repository' && resource.source_url ? [resource.source_url] : [])}
-          onChoose={(repository) => addRepository(repository.clone_url, repository)} onAddUrl={addRepository}
-          onOpenConnectors={onOpenConnectors} onClose={() => { setRepositoryOpen(false); repositoryTrigger.current?.focus(); }} />
+  const closeRepositoryPicker = () => { setRepositoryOpen(false); setFocusTrigger(true); };
+  const repositoryForm = repositoryOpen && (
+    <RepositoryPicker connections={connections} disabled={!!disabled}
+      existingUrls={resources.flatMap((resource) => resource.kind === 'repository' && resource.source_url ? [resource.source_url] : [])}
+      onChoose={(repository) => addRepository(repository.clone_url, repository)} onAddUrl={addRepository}
+      onOpenConnectors={onOpenConnectors} onClose={closeRepositoryPicker} />
+  );
+
+  return (
+    <section className="code-project-field code-project-resources" aria-labelledby="code-project-code-label">
+      <span id="code-project-code-label" className="code-project-label">Code</span>
+
+      {resources.length ? (
+        <div className="code-project-list">
+          {resources.map((resource) => {
+            const state = availabilityById.get(resource.id);
+            const owner = resource.computer_id ? computersById.get(resource.computer_id) : undefined;
+            const portable = resource.kind === 'repository' && !!resource.source_url;
+            const location = resourceLocation(resource);
+            const status = state?.status === 'offline'
+              ? `${owner?.name || 'Computer'} offline`
+              : portable
+                ? 'Any computer'
+                : `Only ${owner?.name || 'this computer'}`;
+            const commandsVisible = commandsOpen.has(resource.id);
+            const phases = (['setup', 'validate', 'run'] as const).filter((phase) => (commandDrafts[`${resource.id}:${phase}`] ?? commandValue(resource.commands, phase).join(' ')).trim());
+            const commandsSummary = [resource.kind === 'repository' ? resource.default_branch : '', ...phases].filter(Boolean).join(' · ');
+            return (
+              <div className="code-project-resource" key={resource.id}>
+                {/* The row itself discloses the source's base branch and commands;
+                    the remove control sits beside it, outside the trigger. */}
+                <Collapsible
+                  open={commandsVisible}
+                  onOpenChange={() => toggleCommands(resource.id)}
+                  disabled={disabled}
+                  triggerClassName="code-project-resource__row"
+                  panelClassName="code-project-resource__commands"
+                  title={(
+                    <span className="code-project-resource__main">
+                      <span className="code-project-resource__icon" aria-hidden="true">
+                        {resource.kind === 'repository' ? Ico.code(16) : Ico.folder(16)}
+                      </span>
+                      <span className="code-project-resource__identity">
+                        <strong>{resource.name}</strong>
+                        <code title={location}>{location}</code>
+                      </span>
+                      {commandsSummary && <span className="code-project-resource__summary">{commandsSummary}</span>}
+                      <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
+                        {status}
+                      </span>
+                    </span>
+                  )}
+                >
+                    {resource.kind === 'repository' && (
+                      <label>
+                        <span>Base branch</span>
+                        <Input size="sm" value={resource.default_branch || ''} onChange={(value) => updateRepository(resource.id, { default_branch: value || null })} placeholder="Repository default" />
+                      </label>
+                    )}
+                    <span className="code-project-resource__commands-label">Commands <span className="code-project-optional">(optional)</span></span>
+                    <label>
+                      <span>Setup</span>
+                      <Input size="sm" variant="mono" aria-label="Setup command" value={commandDrafts[`${resource.id}:setup`] ?? commandValue(resource.commands, 'setup').join(' ')} onChange={(value) => onCommandChange(resource.id, 'setup', value)} placeholder="npm install" />
+                    </label>
+                    <label>
+                      <span>Validate</span>
+                      <Input size="sm" variant="mono" aria-label="Validation command" value={commandDrafts[`${resource.id}:validate`] ?? commandValue(resource.commands, 'validate').join(' ')} onChange={(value) => onCommandChange(resource.id, 'validate', value)} placeholder="npm test" />
+                    </label>
+                    <label>
+                      <span>Run</span>
+                      <Input size="sm" variant="mono" aria-label="Run command" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
+                    </label>
+                </Collapsible>
+                <Tooltip content="Remove">
+                  <button type="button" className="code-project-icon-button code-project-resource__remove" aria-label={`Remove ${resource.name}`} onClick={() => {
+                    onChange(resources.filter((item) => item.id !== resource.id));
+                  }}>{Ico.close(12)}</button>
+                </Tooltip>
+              </div>
+            );
+          })}
+          {allowMultiple && <div className="code-project-list__actions">
+            <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
+              {Ico.folder(13)} {adding ? 'Adding…' : 'Add folder'}
+            </Button>
+            <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
+              {Ico.plus(13)} Add repository
+            </Button>
+          </div>}
+        </div>
+      ) : (
+        <div className="code-project-choices">
+          <button type="button" className="code-project-choice" disabled={disabled || adding} onClick={() => void addFromComputer()}>
+            <span className="code-project-choice__icon" aria-hidden="true">{Ico.folder(16)}</span>
+            <span><strong>{adding ? 'Adding…' : 'Choose a folder'}</strong><small>Runs on this computer</small></span>
+          </button>
+          <button ref={repositoryTrigger} type="button" className="code-project-choice" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
+            <span className="code-project-choice__icon" aria-hidden="true">{Ico.code(16)}</span>
+            <span><strong>Clone a repository</strong><small>Runs on any computer</small></span>
+          </button>
+        </div>
       )}
 
-      <div className="code-project-folder-list">
-        {resources.map((resource) => {
-          const state = availabilityById.get(resource.id);
-          const owner = resource.computer_id ? computersById.get(resource.computer_id) : undefined;
-          const portable = resource.kind === 'repository' && !!resource.source_url;
-          const location = resourceLocation(resource);
-          const status = state?.status === 'offline'
-            ? `${owner?.name || 'Computer'} offline`
-            : portable
-              ? 'Any online computer'
-              : `Only ${owner?.name || 'this computer'}`;
-          return (
-            <details className="code-project-folder code-project-resource" key={resource.id}>
-              <summary>
-                <span className={`code-project-folder__icon is-${resource.kind}`} aria-hidden="true">
-                  {resource.kind === 'repository' ? Ico.code(14) : Ico.folder(14)}
-                </span>
-                <span className="code-project-folder__identity">
-                  <strong>{resource.name}<em>{resource.kind === 'repository' ? 'Repository' : 'Folder'}</em></strong>
-                </span>
-                <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
-                  {status}
-                </span>
-                <button type="button" aria-label={`Remove ${resource.name}`} onClick={(event) => {
-                  event.preventDefault();
-                  onChange(resources.filter((item) => item.id !== resource.id));
-                }}>{Ico.close(12)}</button>
-                <span className="code-project-folder__chevron">{Ico.chevDown(11)}</span>
-              </summary>
-              <div className="code-project-folder__details">
-                <div className="code-project-resource__location">
-                  <span>{resource.kind === 'repository' ? 'Source' : 'Location'}</span>
-                  <code title={location}>{location}</code>
-                </div>
-                {resource.kind === 'repository' && (
-                  <label>
-                    <span>Base branch</span>
-                    <Input size="sm" value={resource.default_branch || ''} onChange={(value) => updateRepository(resource.id, { default_branch: value || null })} placeholder="Repository default" />
-                  </label>
-                )}
-                <label>
-                  <span>Setup command</span>
-                  <Input size="sm" variant="mono" value={commandDrafts[`${resource.id}:setup`] ?? commandValue(resource.commands, 'setup').join(' ')} onChange={(value) => onCommandChange(resource.id, 'setup', value)} placeholder="npm install" />
-                </label>
-                <label>
-                  <span>Validation command</span>
-                  <Input size="sm" variant="mono" value={commandDrafts[`${resource.id}:validate`] ?? commandValue(resource.commands, 'validate').join(' ')} onChange={(value) => onCommandChange(resource.id, 'validate', value)} placeholder="npm test" />
-                </label>
-                <label>
-                  <span>Run command</span>
-                  <Input size="sm" variant="mono" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
-                </label>
-              </div>
-            </details>
-          );
-        })}
-        {!resources.length && (
-          <button type="button" className="code-project-empty-row" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-            {Ico.folder(15)} Add a local folder
-          </button>
-        )}
-      </div>
+      {repositoryForm}
     </section>
   );
 }
