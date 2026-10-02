@@ -69,11 +69,6 @@ const project: CodeProject = {
   updated_at: '2026-08-23T09:00:00Z',
 };
 
-// Skills, task defaults and environment each sit in their own collapsed group.
-async function openGroup(user: ReturnType<typeof userEvent.setup>, name: 'Skills' | 'Team Setup' | 'Task defaults' | 'Environment') {
-  await user.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
-}
-
 describe('ProjectSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,7 +165,6 @@ describe('ProjectSettingsModal', () => {
         catalog={source === 'shared' ? catalog : undefined} onClose={vi.fn()} onSave={onSave} />;
     }
     render(<Editor />);
-    await openGroup(user, 'Task defaults');
     await user.click(screen.getByRole('combobox', { name: 'Default coding model' }));
     expect(screen.getByRole('option', { name: /fable/ })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -197,7 +191,7 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('textbox', { name: 'Project name' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Choose a folder/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Connectors' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^(Skills|Task defaults|Environment)/ })).toBeNull();
+    expect(screen.queryByText(/^(Skills|Task defaults|Environment)$/)).toBeNull();
   });
 
   it('offers Connectors in Project settings and keeps skills in their own group', async () => {
@@ -218,8 +212,6 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Open Connectors' }));
     expect(onOpenConnectors).toHaveBeenCalledOnce();
-    expect(screen.queryByText('Choose skills')).toBeNull();
-    await openGroup(user, 'Skills');
     expect(await screen.findByText('1 available')).toBeInTheDocument();
     expect(screen.getByText('Choose skills')).toBeInTheDocument();
   });
@@ -253,7 +245,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('button', { name: 'Open Skills' }));
     expect(onOpenSkills).toHaveBeenCalledOnce();
@@ -282,7 +273,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('1 skill included'));
     expect(screen.getByText('Thermo-Nuclear Code Quality Review')).toBeInTheDocument();
     expect(screen.getByText('MindsHub maintained')).toBeInTheDocument();
@@ -308,9 +298,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    // The collapsed Skills group still says what the project carries.
-    expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('2 skills added');
-    await openGroup(user, 'Skills');
     await user.click(screen.getByText('2 skills added', { selector: 'strong' }));
     expect(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ })).toBeChecked();
   });
@@ -329,7 +316,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -356,7 +342,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Skills');
     await user.click(screen.getByText('1 skill added', { selector: 'strong' }));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -379,7 +364,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -456,7 +440,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Task defaults');
     await user.click(await screen.findByRole('combobox', { name: 'Default coding model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Fable 5' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
@@ -512,7 +495,6 @@ describe('ProjectSettingsModal', () => {
   });
 
   it('resolves the legacy default id to the live GPT 5.6 Sol catalog model', async () => {
-    const user = userEvent.setup();
     models.mockResolvedValueOnce({ items: ['gpt', 'gpt-codex'] });
     render(
       <ProjectSettingsModal
@@ -531,8 +513,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openGroup(user, 'Task defaults');
-    expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex'));
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
 
@@ -567,7 +548,6 @@ describe('ProjectSettingsModal', () => {
 
     rerender(<ProjectSettingsModal {...props} open />);
 
-    await openGroup(user, 'Task defaults');
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
@@ -588,19 +568,13 @@ describe('ProjectSettingsModal', () => {
     const view = render(<ProjectSettingsModal {...props} open project={withPlaybook('project-a')} />);
 
     view.rerender(<ProjectSettingsModal {...props} open project={withPlaybook('project-b')} />);
-    const user = userEvent.setup();
-    await openGroup(user, 'Team Setup');
-    await user.click(screen.getByRole('button', { name: 'Details' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Details' }));
     expect(await screen.findByText('bbbbbbbb')).toBeInTheDocument();
     await act(async () => { await late; });
 
     expect(screen.getByText('bbbbbbbb')).toBeInTheDocument();
     expect(screen.queryByText('Update available')).toBeNull();
   });
-
-  async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
-    await openGroup(user, 'Task defaults');
-  }
 
   it('saves a default reasoning effort for the project', async () => {
     const onSave = vi.fn(async () => project);
@@ -621,7 +595,6 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openTaskDefaults(user);
     const effort = await screen.findByRole('combobox', { name: 'Default reasoning effort' });
     expect(effort).toHaveTextContent('Model default');
     await user.click(effort);
@@ -635,7 +608,6 @@ describe('ProjectSettingsModal', () => {
   });
 
   it('offers no reasoning default for a model that advertises no levels', async () => {
-    const user = userEvent.setup();
     render(
       <ProjectSettingsModal
         open
@@ -649,38 +621,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openTaskDefaults(user);
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
-  });
-
-  it('summarises task defaults and environment in their collapsed groups and reveals the fields when opened', async () => {
-    const user = userEvent.setup();
-    render(
-      <ProjectSettingsModal
-        open
-        project={{
-          ...project,
-          environment: { variables: { API_URL: 'http://127.0.0.1', NODE_ENV: 'development' }, port_names: ['PORT', 'API_PORT'] },
-        }}
-        connections={[]}
-        busy={false}
-        models={[{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }]}
-        modelMeta={{ modelProviders: { 'gpt-5.6-sol': 'openai' } }}
-        onClose={vi.fn()}
-        onSave={vi.fn()}
-      />,
-    );
-
-    // Each group row tells the reader what it holds without opening anything.
-    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first')).toBeInTheDocument();
-    expect(screen.getByText('2 variables · PORT, API_PORT')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Default coding model' })).toBeNull();
-
-    const toggle = screen.getByRole('button', { name: /^Task defaults/ });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await user.click(toggle);
-    expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
 });

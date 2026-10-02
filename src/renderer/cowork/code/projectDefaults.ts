@@ -1,5 +1,5 @@
-// The project modal edits task defaults as free text; these helpers own the
-// text format so the summary line and the saved payload cannot disagree.
+// The project modal edits the environment as free text; these helpers own the
+// text format it is saved in.
 
 export function parseEnvironmentVariables(text: string): [string, string][] {
   return text
@@ -13,32 +13,6 @@ export function parseEnvironmentVariables(text: string): [string, string][] {
 }
 
 
-// The summary must never throw while the user is mid-edit, so it reads names
-// loosely instead of parsing; parseEnvironmentVariables validates on save.
-// Saving keeps one value per name, so a name typed twice counts once here too.
-export function countEnvironmentVariables(text: string): number {
-  const names = new Set<string>();
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    const separator = line.indexOf('=');
-    names.add((separator > 0 ? line.slice(0, separator) : line).trim());
-  }
-  return names.size;
-}
-
-
 export function parsePortNames(text: string): string[] {
   return text.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
-}
-
-
-export function describeTaskDefaults({ agent, model, permission }: { agent: string; model: string; permission: string }): string {
-  return [agent, model, permission].filter(Boolean).join(' · ');
-}
-
-export function describeEnvironment({ variableCount, portNames }: { variableCount: number; portNames: string[] }): string {
-  const parts: string[] = [];
-  if (variableCount) parts.push(`${variableCount} variable${variableCount === 1 ? '' : 's'}`);
-  if (portNames.length) parts.push(portNames.join(', '));
-  return parts.join(' · ') || 'Nothing set';
 }

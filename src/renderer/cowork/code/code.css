@@ -514,14 +514,12 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-connector-return { min-height: 42px; margin: 0 32px 18px; padding: 7px 9px 7px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line)); border-radius: var(--r-lg); background: color-mix(in srgb, var(--accent-bg) 44%, var(--surface-1)); color: var(--ink-3); font-size: 10.5px; }
 .code-connector-return strong { color: var(--ink-2); font-weight: 620; }
 
-/* Project settings are quiet, editable rows. Details stay folded until the
-   user chooses to configure one folder or review a playbook update. */
 /* Project editor: the chat-side new-project modal's layout (stacked Field
    labels, gap-spaced sections) on the shared type scale. */
 .code-project-settings { display: flex; flex-direction: column; gap: 18px; }
 .code-project-field { min-width: 0; display: flex; flex-direction: column; }
-/* Group labels over a list match the shared Field label. */
-.code-project-label { margin-bottom: 6px; color: var(--ink-2); font-size: var(--text-sm); font-weight: 500; }
+/* Section headings sit a step above Field labels, like Settings row titles. */
+.code-project-label { margin-bottom: 8px; color: var(--ink); font-size: var(--text-base); font-weight: 600; }
 .code-project-optional { color: var(--ink-4); font-weight: 400; }
 
 /* Bordered list shared by code sources and connector accounts. */
@@ -571,16 +569,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-connected-empty > .btn { flex: none; }
 .code-project-connected-empty { padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--ink-3); font-size: var(--text-sm); line-height: 1.45; }
 
-/* Advanced: a quiet disclosure row over skills and task defaults. */
-.code-project-group { border-top: 1px solid var(--line); }
-.code-project-group__trigger { padding-block: 12px; }
-.code-project-group__title { min-width: 0; display: flex; align-items: center; gap: 11px; }
-.code-project-group__icon { display: inline-flex; flex: none; color: var(--ink-3); }
-.code-project-group__title > span:last-child { min-width: 0; display: grid; gap: 1px; }
-.code-project-group__title strong { color: var(--ink); font-size: var(--text-base); font-weight: 500; }
-.code-project-group__title small { overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
-.code-project-group__panel { padding: 2px 0 16px; display: flex; flex-direction: column; gap: 14px; }
-
 .code-project-skill-picker { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .code-project-skill-picker > summary { min-height: 56px; padding: 8px 12px; display: flex; align-items: center; gap: 11px; cursor: pointer; list-style: none; }
 .code-project-skill-picker > summary::-webkit-details-marker { display: none; }
@@ -613,7 +601,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-skill-picker__panel > footer { padding: 8px 12px; border-top: 1px solid var(--line); color: var(--ink-4); font-size: var(--text-xs); }
 
 .code-team-setup__icon { width: 28px; height: 28px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); }
-.code-team-setup__connected { margin-top: 8px; border-top: 1px solid var(--line); }
 .code-team-setup__summary { min-height: 56px; padding: 8px 2px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
 .code-team-setup__summary > div { min-width: 0; flex: 1; display: grid; gap: 1px; }
 .code-team-setup__summary strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
@@ -634,9 +621,9 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-team-setup__details dl + div { padding-top: 6px; display: flex; gap: 6px; }
 .code-project-error { margin-top: 10px; }
 .code-project-footer-actions { display: flex; gap: 8px; margin-left: auto; }
-.code-project-defaults { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.code-project-defaults button { width: 100%; }
-.code-project-defaults > div { min-width: 0; }
+.code-project-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.code-project-columns button { width: 100%; }
+.code-project-columns > div { min-width: 0; }
 
 /* The app-level display toggle occupies the bottom-right corner. At the
    narrow end of the docked-sidebar band, reserve that corner for it; while
@@ -873,7 +860,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-handoff-primary { align-items: stretch; flex-direction: column; }
   .code-handoff-primary .btn { align-self: flex-end; }
   .code-project-choices,
-  .code-project-defaults { grid-template-columns: 1fr; }
+  .code-project-columns { grid-template-columns: 1fr; }
   .code-project-resource__commands { padding-left: 12px; }
   .code-project-resource__commands label { grid-template-columns: 1fr; gap: 4px; }
 }

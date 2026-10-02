@@ -36,7 +36,7 @@ import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { MODEL_DEFAULT_VALUE, effortLevelsFor, projectEffortOptions } from './reasoning';
-import { countEnvironmentVariables, describeEnvironment, describeTaskDefaults, parseEnvironmentVariables, parsePortNames } from './projectDefaults';
+import { parseEnvironmentVariables, parsePortNames } from './projectDefaults';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
@@ -53,22 +53,13 @@ function command(id: string, phase: CommandPhase): ProjectCommand {
   return { id, label: labels[phase], argv: [], phase };
 }
 
-// One optional settings group per decision, each saying what it holds while closed.
-function Group({ icon, title, summary, children }: { icon: ReactNode; title: string; summary: string; children: ReactNode }) {
+// Optional settings sit open under the same label as Code and Connectors.
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <Collapsible
-      className="code-project-group"
-      triggerClassName="code-project-group__trigger"
-      panelClassName="code-project-group__panel"
-      title={(
-        <span className="code-project-group__title">
-          <span className="code-project-group__icon" aria-hidden="true">{icon}</span>
-          <span><strong>{title}</strong><small>{summary}</small></span>
-        </span>
-      )}
-    >
+    <section className="code-project-field" aria-labelledby={id}>
+      <span id={id} className="code-project-label">{title}</span>
       {children}
-    </Collapsible>
+    </section>
   );
 }
 
@@ -275,14 +266,6 @@ export function ProjectSettingsModal({
   }, [projectEffortLevels]);
 
   const availableEngines = engines.filter((engine) => engine.available);
-  const defaultsSummary = describeTaskDefaults({
-    agent: availableEngines.find((engine) => engine.id === projectEngineId)?.label || projectEngineId,
-    model: projectModelOptions.find((option) => option.value === projectModel)?.label || projectModel,
-    permission: PERMISSION_OPTIONS.find((option) => option.value === projectPermission)?.label || projectPermission,
-  });
-  const environmentSummary = describeEnvironment({ variableCount: countEnvironmentVariables(environmentText), portNames: parsePortNames(portNames) });
-  const selectedSkillCount = selectedSkillSources.reduce((total, source) => total + source.enabled_paths.length, 0);
-  const skillsSummary = selectedSkillCount ? `${selectedSkillCount} ${selectedSkillCount === 1 ? 'skill' : 'skills'} added` : 'None added';
 
   const updateCommand = (folderId: string, phase: CommandPhase, value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
@@ -334,7 +317,6 @@ export function ProjectSettingsModal({
       open={open}
       onClose={onClose}
       size="md"
-      width="min(560px, 92vw)"
       maxHeight="min(720px, 88vh)"
       labelledBy="code-project-settings-title"
       closeOnBackdrop={!busy && !skillsSaving}
@@ -381,7 +363,7 @@ export function ProjectSettingsModal({
           />}
 
           {project && <>
-            <Group icon={Ico.cube(16)} title="Skills" summary={skillsSummary}>
+            <Section id="code-project-skills-label" title="Skills">
               <ProjectSkillSelector
                 items={skillLibrary.items}
                 selected={selectedSkillSources}
@@ -390,10 +372,10 @@ export function ProjectSettingsModal({
                 onChange={setSelectedSkillSources}
                 onOpenSkills={onOpenSkills}
               />
-            </Group>
+            </Section>
 
             {project.playbook && (
-              <Group icon={Ico.doc(16)} title="Team Setup" summary={`${repositoryLabel(project.playbook.repository)} · ${project.playbook.branch}`}>
+              <Section id="code-project-team-setup-label" title="Team Setup">
                 <div className="code-team-setup__connected">
                 <div className="code-team-setup__summary">
                   <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
@@ -461,11 +443,11 @@ export function ProjectSettingsModal({
                 </Collapsible>
                 {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
                 </div>
-              </Group>
+              </Section>
             )}
 
-            <Group icon={Ico.slider(16)} title="Task defaults" summary={defaultsSummary}>
-              <div className="code-project-defaults">
+            <Section id="code-project-defaults-label" title="Task defaults">
+              <div className="code-project-columns">
                 <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
                 <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
                 <Field label="Permissions"><Select value={projectPermission} onValueChange={(value) => {
@@ -475,16 +457,18 @@ export function ProjectSettingsModal({
                   <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                 )}
               </div>
-            </Group>
+            </Section>
 
-            <Group icon={Ico.computer(16)} title="Environment" summary={environmentSummary}>
-              <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
-                <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
-              </Field>
-              <Field label="Development ports" help="Each task gets its own free port under each name.">
-                <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
-              </Field>
-            </Group>
+            <Section id="code-project-environment-label" title="Environment">
+              <div className="code-project-columns">
+                <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
+                  <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
+                </Field>
+                <Field label="Development ports" help="Each task gets its own free port under each name.">
+                  <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
+                </Field>
+              </div>
+            </Section>
           </>}
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
