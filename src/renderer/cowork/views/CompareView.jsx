@@ -981,7 +981,8 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const outOfCredits = SIDE_LABELS.filter((l, i) => (
     isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
   ));
-  const unloaded = SIDE_LABELS.filter((label) => !tasks[label]);
+  // A continued side takes no messages, so it is never waited for.
+  const unloaded = SIDE_LABELS.filter((label) => !tasks[label] && !sides[label]?.continuedAt);
   let starting = null;
   if (unloaded.length) starting = unloaded.some((label) => errors[label]) ? 'loadFailed' : 'loading';
   else if (firstSend) starting = firstSendFailed ? 'firstFailed' : 'sending';
