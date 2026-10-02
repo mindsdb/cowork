@@ -22,9 +22,6 @@
   letter-spacing: .08em;
 }
 
-/* Collapsible title with a trailing count or meta, kept beside the chevron. */
-.code-disclosure-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
-.code-disclosure-title > small { margin-left: auto; color: var(--ink-4); }
 
 .code-status-dot {
   width: 6px;
@@ -103,8 +100,6 @@
 .code-status-dot.is-unread { background: var(--accent); }
 .code-sidebar-session-row.is-resting .code-sidebar-session__title { color: var(--ink-2); font-weight: 400; }
 .code-sidebar-archived { margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); }
-.code-sidebar-archived .code-sidebar-archived__trigger { min-height: 28px; padding: 5px 8px; font-size: 10.5px; }
-.code-sidebar-archived .code-disclosure-title small { font: 9px var(--font-mono); }
 .code-sidebar-archived .code-sidebar-archived__panel { padding-top: 0; }
 .code-sidebar-archived .code-sidebar-session-row { opacity: .78; }
 
@@ -515,8 +510,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-extension-row > small { margin-top: 3px; color: var(--ink-4); text-transform: capitalize; font-size: 9.5px; }
 .code-extension-empty { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--ink-4); font-size: 11px; }
 .code-extension-empty.is-error { color: var(--danger); }
-.code-extension-errors { margin-top: 10px; color: var(--warning); font-size: 10px; }
-.code-extension-errors .code-extension-errors__trigger { padding-block: 0; color: inherit; }
+.code-extension-errors { margin-top: 10px; }
 .code-extension-errors pre { max-height: 120px; margin: 7px 0 0; padding: 8px; overflow: auto; border-radius: var(--r); background: var(--surface-2); color: var(--ink-4); white-space: pre-wrap; font: 9px/1.45 var(--font-mono); }
 .code-extension-config { margin-top: 12px; padding: 10px 0 0; display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--line); }
 .code-extension-config > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
@@ -685,10 +679,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-project-skill-picker__panel > footer { padding: 8px 12px; border-top: 1px solid var(--line); color: var(--ink-4); font-size: var(--text-xs); }
 
 .code-project-legacy-setup { margin-top: 8px; border-top: 1px solid var(--line); }
-.code-project-legacy-setup .code-project-legacy-setup__trigger { min-height: 48px; padding-block: 0; }
 .code-project-legacy-setup__title { min-width: 0; display: grid; gap: 1px; }
-.code-project-legacy-setup__title strong { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
-.code-project-legacy-setup__title small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .code-team-setup__icon { width: 28px; height: 28px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: var(--r); background: var(--surface-2); color: var(--ink-3); }
 .code-team-setup__connected { margin-top: 8px; border-top: 1px solid var(--line); }
 .code-team-setup__summary { min-height: 56px; padding: 8px 2px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
@@ -698,17 +689,14 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-team-setup__summary em { padding: 2px 8px; border-radius: 999px; background: var(--warning-bg); color: var(--warning); font: normal var(--text-xs) var(--font-sans); }
 .code-playbook-actions { margin-top: 8px; display: flex; gap: 6px; }
 .code-playbook-update { margin-top: 8px; border-top: 1px solid var(--line); }
-.code-playbook-update .code-playbook-update__trigger { padding: 10px 2px 6px; font-size: var(--text-sm); }
 .code-playbook-update pre { max-height: 180px; margin: 6px 0 8px; padding: 10px; overflow: auto; border-radius: var(--r); background: var(--bg); color: var(--ink-3); white-space: pre-wrap; font: var(--text-xs)/1.5 var(--font-mono); }
 .code-playbook-items { margin-top: 8px; border-top: 1px solid var(--line); }
-.code-playbook-items .code-playbook-items__trigger { min-height: 40px; padding: 8px 2px; font-size: var(--text-sm); }
 .code-playbook-items label { min-height: 44px; padding: 6px 2px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); cursor: pointer; }
 .code-playbook-items input { accent-color: var(--accent); }
 .code-playbook-items label > span { min-width: 0; display: grid; gap: 1px; }
 .code-playbook-items strong { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
 .code-playbook-items small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .code-team-setup__details { margin-top: 6px; border-top: 1px solid var(--line); }
-.code-team-setup__details .code-team-setup__details-trigger { min-height: 36px; padding: 8px 2px; font-size: var(--text-xs); }
 .code-team-setup__details dl { margin: 0; display: grid; }
 .code-team-setup__details dl > div { min-height: 32px; display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; border-top: 1px solid var(--line); }
 .code-team-setup__details dt { color: var(--ink-4); font-size: var(--text-xs); }
@@ -829,8 +817,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-repository textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .code-delivery-compose > .btn { justify-self: end; }
 .code-delivery-repositories { border-top: 1px solid var(--line); }
-.code-delivery-repositories .code-delivery-repositories__trigger { min-height: 34px; padding-block: 0; font-size: 10px; }
-.code-delivery-repositories .code-disclosure-title small { font: 9px var(--font-mono); }
 .code-delivery-repository { padding: 7px 1px; border-top: 1px solid var(--line); }
 .code-delivery-repository > label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .code-delivery-repository input { accent-color: var(--accent); }
@@ -839,7 +825,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-repository small { color: var(--ink-4); font-size: 9px; }
 /* Indent with padding: the Collapsible root is full width, so a left margin would push it past the row. */
 .code-delivery-repository__override { margin-top: 5px; padding-left: 22px; }
-.code-delivery-repository__override .code-delivery-repository__override-trigger { padding-block: 0; font-size: 9px; }
 .code-delivery-repository__override .code-delivery-repository__override-panel { padding-top: 6px; display: grid; gap: 6px; }
 .code-pr-card { padding: 9px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
 .code-pr-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -853,8 +838,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-pr-card__notice { color: var(--warning-text); font-size: 9px; line-height: 1.4; }
 .code-pr-card > footer { display: flex; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
 .code-pr-details { border-top: 1px solid var(--line); }
-.code-pr-details .code-pr-details__trigger { min-height: 29px; padding-block: 0; font-size: 9.5px; }
-.code-pr-details .code-disclosure-title small { font: 8.5px var(--font-mono); }
 .code-pr-details .code-pr-details__list { padding-top: 0; display: grid; }
 .code-pr-detail-item { padding: 7px 1px; display: grid; gap: 5px; border-top: 1px solid var(--line); }
 .code-pr-detail-item > div { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -896,7 +879,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-source-update__composer footer { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .code-source-update__composer footer > div { display: flex; gap: 5px; }
 .code-git-advanced { border-top: 1px solid var(--line); }
-.code-git-advanced .code-git-advanced__trigger { padding: 11px 2px 5px; font-size: 11px; }
 .code-git-advanced .code-git-advanced__body { padding-top: 6px; display: grid; gap: 15px; }
 .code-git-action { padding-top: 12px; border-top: 1px solid var(--line); }
 .code-inline-form { display: flex; align-items: center; gap: 7px; }

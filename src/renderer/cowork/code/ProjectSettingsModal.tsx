@@ -394,8 +394,7 @@ export function ProjectSettingsModal({
               {project?.playbook && (
                 <Collapsible
                   className="code-project-legacy-setup"
-                  triggerClassName="code-project-legacy-setup__trigger"
-                  title={<span className="code-project-legacy-setup__title"><strong>Project-only Team Setup</strong><small>{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>}
+                  title={<span className="code-project-legacy-setup__title"><span>Project-only Team Setup</span><small className="text-xs text-ink-4">{repositoryLabel(project.playbook.repository)} · {project.playbook.branch}</small></span>}
                 >
                   <div className="code-team-setup__connected">
                   <div className="code-team-setup__summary">
@@ -416,7 +415,7 @@ export function ProjectSettingsModal({
                   </div>
 
                   {playbookStatus?.update_available && (
-                    <Collapsible className="code-playbook-update" triggerClassName="code-playbook-update__trigger" title="Review update">
+                    <Collapsible className="code-playbook-update" title="Review update">
                       <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
                       <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                         setPlaybookBusy(true); setError('');
@@ -430,8 +429,8 @@ export function ProjectSettingsModal({
                   {!!playbookStatus?.items.length && (
                     <Collapsible
                       className="code-playbook-items"
-                      triggerClassName="code-playbook-items__trigger"
-                      title={<span className="code-disclosure-title"><span>Included guidance</span><small>{playbookStatus.items.filter((item) => item.enabled).length} of {playbookStatus.items.length}</small></span>}
+                      title="Included guidance"
+                      meta={`${playbookStatus.items.filter((item) => item.enabled).length} of ${playbookStatus.items.length}`}
                     >
                       <div>
                         {playbookStatus.items.map((item) => (
@@ -452,7 +451,7 @@ export function ProjectSettingsModal({
                     </Collapsible>
                   )}
 
-                  <Collapsible className="code-team-setup__details" triggerClassName="code-team-setup__details-trigger" title="Details">
+                  <Collapsible className="code-team-setup__details" title="Details">
                     <dl>
                       <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
                       <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
