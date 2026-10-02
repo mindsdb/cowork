@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
@@ -244,10 +245,16 @@ export function CodeSidebarSessions({
         />
       </div>
       {sessions.length >= 5 && (
-        <label className="code-sidebar-session-search">
-          <span aria-hidden="true">{Ico.search(12)}</span>
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a task" aria-label="Find a coding task" />
-        </label>
+        <Input
+          type="search"
+          value={query}
+          onChange={setQuery}
+          size="sm"
+          leading={Ico.search(12)}
+          wrapperClassName="code-sidebar-session-search"
+          placeholder="Find a task"
+          aria-label="Find a coding task"
+        />
       )}
       {pinError && <div className="code-sidebar-sessions__error" role="status">{pinError}</div>}
       <div className="scroll-clean code-sidebar-sessions__list">

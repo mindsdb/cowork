@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import Ico from '../components/Icons';
 import type { PendingQuestion } from './api';
 import { DecisionTray } from './DecisionTray';
@@ -32,9 +33,9 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       </label>)}
       {(question.isSecret || question.isOther || !question.options?.length) && <label className="code-question__custom">
         <span>{question.isSecret ? 'Private answer' : question.options?.length ? 'Or write your own answer' : 'Your answer'}</span>
-        <input type={question.isSecret ? 'password' : 'text'} autoComplete="off" maxLength={8000}
+        <Input type={question.isSecret ? 'password' : 'text'} autoComplete="off" maxLength={8000}
           value={!question.isSecret && question.options?.some(option => option.label === answers[question.id]) ? '' : answers[question.id] || ''}
-          onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} />
+          onChange={value => setAnswers(current => ({ ...current, [question.id]: value }))} />
       </label>}
     </fieldset>)}
     {error && <p className="code-decision__error" role="alert">{error}</p>}
