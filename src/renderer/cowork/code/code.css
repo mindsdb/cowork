@@ -517,9 +517,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 /* Project editor: the chat-side new-project modal's layout (stacked Field
    labels, gap-spaced sections) on the shared type scale. */
 .code-project-settings { display: flex; flex-direction: column; gap: 18px; }
-.code-project-field { min-width: 0; display: flex; flex-direction: column; }
-/* Section headings sit a step above Field labels, like Settings row titles. */
-.code-project-label { margin-bottom: 8px; color: var(--ink); font-size: var(--text-base); font-weight: 600; }
 .code-project-optional { color: var(--ink-4); font-weight: 400; }
 
 /* Bordered list shared by code sources and connector accounts. */

@@ -5,8 +5,7 @@ import { cn } from '../../lib/cn';
 // Form field wrapper — standardizes the label + control + help/error layout
 // and the `htmlFor` / `aria-describedby` / `aria-invalid` wiring that ~10+
 // forms currently hand-roll with inline `flexDirection:'column'` labels
-// (ENG-1147). Labels are sentence case, like the app's other form labels;
-// the uppercase mono Eyebrow stays for section headings.
+// (ENG-1147). Labels are sentence case, like the app's other form labels.
 //
 //   <Field label="Project name" help="Lowercase, no spaces.">
 //     <Input value={name} onChange={setName} />
@@ -98,6 +97,18 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
         </p>
       ) : null}
     </div>
+  );
+}
+
+// Groups related fields under a heading one step above Field labels, after
+// shadcn's FieldSet/FieldLegend; the fieldset names the group for assistive
+// tech. min-w-0 undoes the fieldset's min-content width so rows can truncate.
+export function FieldSet({ legend, children }: { legend: ReactNode; children: ReactNode }) {
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-col border-0 p-0">
+      <legend className="mb-2 p-0 text-base font-semibold text-ink">{legend}</legend>
+      {children}
+    </fieldset>
   );
 }
 

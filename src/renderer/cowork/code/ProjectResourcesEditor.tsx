@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Collapsible } from '../components/ui/Collapsible';
+import { FieldSet } from '../components/ui/Field';
 import Input from '../components/ui/Input';
 import Tooltip from '../components/ui/Tooltip';
 import type { ConnectorConnection } from '../api';
@@ -167,8 +168,7 @@ export function ProjectResourcesEditor({
   );
 
   return (
-    <section className="code-project-field code-project-resources" aria-labelledby="code-project-code-label">
-      <span id="code-project-code-label" className="code-project-label">Code</span>
+    <FieldSet legend="Code">
 
       {resources.length ? (
         <div className="code-project-list">
@@ -262,6 +262,6 @@ export function ProjectResourcesEditor({
       )}
 
       {repositoryForm}
-    </section>
+    </FieldSet>
   );
 }

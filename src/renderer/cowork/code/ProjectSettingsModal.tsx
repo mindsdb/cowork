@@ -6,9 +6,8 @@ import Button from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Checkbox from '../components/ui/Checkbox';
-import type { ReactNode } from 'react';
 import { Collapsible } from '../components/ui/Collapsible';
-import { Field } from '../components/ui/Field';
+import { Field, FieldSet } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -51,16 +50,6 @@ type CommandPhase = ProjectCommand['phase'];
 function command(id: string, phase: CommandPhase): ProjectCommand {
   const labels: Record<CommandPhase, string> = { setup: 'Set up', validate: 'Validate', run: 'Run' };
   return { id, label: labels[phase], argv: [], phase };
-}
-
-// Optional settings sit open under the same label as Code and Connectors.
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <section className="code-project-field" aria-labelledby={id}>
-      <span id={id} className="code-project-label">{title}</span>
-      {children}
-    </section>
-  );
 }
 
 function repositoryLabel(repository: string): string {
@@ -363,7 +352,7 @@ export function ProjectSettingsModal({
           />}
 
           {project && <>
-            <Section id="code-project-skills-label" title="Skills">
+            <FieldSet legend="Skills">
               <ProjectSkillSelector
                 items={skillLibrary.items}
                 selected={selectedSkillSources}
@@ -372,10 +361,10 @@ export function ProjectSettingsModal({
                 onChange={setSelectedSkillSources}
                 onOpenSkills={onOpenSkills}
               />
-            </Section>
+            </FieldSet>
 
             {project.playbook && (
-              <Section id="code-project-team-setup-label" title="Team Setup">
+              <FieldSet legend="Team Setup">
                 <div className="code-team-setup__connected">
                 <div className="code-team-setup__summary">
                   <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
@@ -443,10 +432,10 @@ export function ProjectSettingsModal({
                 </Collapsible>
                 {playbookStatus?.error && <Alert variant="danger" className="code-project-error">{playbookStatus.error}</Alert>}
                 </div>
-              </Section>
+              </FieldSet>
             )}
 
-            <Section id="code-project-defaults-label" title="Task defaults">
+            <FieldSet legend="Task defaults">
               <div className="code-project-columns">
                 <Field label="Agent"><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} ariaLabel="Default coding agent" /></Field>
                 <Field label="Model"><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></Field>
@@ -457,9 +446,9 @@ export function ProjectSettingsModal({
                   <Field label="Reasoning"><Select value={projectReasoningEffort || MODEL_DEFAULT_VALUE} onValueChange={(value) => setProjectReasoningEffort(value === MODEL_DEFAULT_VALUE ? null : value)} options={projectEffortOptions(projectEffortLevels)} ariaLabel="Default reasoning effort" /></Field>
                 )}
               </div>
-            </Section>
+            </FieldSet>
 
-            <Section id="code-project-environment-label" title="Environment">
+            <FieldSet legend="Environment">
               <div className="code-project-columns">
                 <Field label="Environment variables" help="Visible to every task in this project. Don’t put secrets here.">
                   <Textarea variant="mono" value={environmentText} onChange={setEnvironmentText} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} />
@@ -468,7 +457,7 @@ export function ProjectSettingsModal({
                   <Input variant="mono" value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" />
                 </Field>
               </div>
-            </Section>
+            </FieldSet>
           </>}
           {error && <Alert variant="danger">{error}</Alert>}
         </div>
