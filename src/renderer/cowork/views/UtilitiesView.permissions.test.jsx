@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
@@ -151,10 +151,6 @@ describe('UtilitiesView memory editor targeting', () => {
 
 describe('UtilitiesView memory capability gates', () => {
   it('offers edit and delete on a memory the server says is writable', async () => {
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
     render(<UtilitiesView kind="memory" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Rules/ }));
@@ -164,6 +160,11 @@ describe('UtilitiesView memory capability gates', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // The delete is behind a confirmation now.
+    const confirm = await screen.findByRole('dialog');
+    expect(api.deleteMemory).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Project',
