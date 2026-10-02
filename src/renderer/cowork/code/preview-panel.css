@@ -8,10 +8,6 @@
 .code-preview__viewports { flex: 0 0 auto; }
 .code-preview__stage { flex: 1; min-height: 0; padding: 12px; display: flex; justify-content: center; overflow: auto; background: color-mix(in srgb, var(--bg) 72%, var(--surface-2)); }
 .code-preview__stage iframe { height: 100%; min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-lg); background: white; box-shadow: var(--sh-1); }
-.code-preview__empty { margin: auto; padding: 32px; display: grid; justify-items: center; color: var(--ink-4); text-align: center; }
-.code-preview__empty > span { margin-bottom: 10px; display: inline-flex; }
-.code-preview__empty strong { color: var(--ink-3); font-size: 12px; }
-.code-preview__empty p { max-width: 250px; margin: 5px 0 0; font-size: 11px; line-height: 1.5; }
 
 body:has(.code-preview) .floating-toggle-row { opacity: 0; pointer-events: none; }
 

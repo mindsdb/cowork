@@ -8,6 +8,14 @@
 //     description="Create your first project to start grouping…"
 //     action={<Button variant="primary" onClick={onNew}>New project</Button>} />
 //   <EmptyState bordered icon={…} title="…" description="…" />
+//
+// `size="sm"` is the dense variant for side panels and tool surfaces (Code
+// mode's Files, Preview and Review panels): a small muted icon, a 12px
+// heading and an 11px description, with no min-height. The caller owns the
+// outer padding through `style`.
+//
+//   <EmptyState size="sm" icon={Ico.search(18)} title="No matches"
+//     description="Try a filename, symbol, or phrase from the code." />
 
 import { Card } from './Card.tsx';
 
@@ -19,9 +27,46 @@ export function EmptyState({
   description,
   action,
   bordered = false,
+  size = 'md',
   style,
+  className,
   children,
 }) {
+  if (size === 'sm') {
+    return (
+      <div
+        className={className}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          textAlign: 'center', color: 'var(--ink-4)', fontFamily: FONT_BODY,
+          padding: '32px 24px', ...style,
+        }}
+      >
+        {icon && (
+          <span style={{ display: 'inline-flex', marginBottom: 10 }}>
+            {icon}
+          </span>
+        )}
+        {title && (
+          <div style={{ color: 'var(--ink-3)', fontSize: 12, fontWeight: 600 }}>
+            {title}
+          </div>
+        )}
+        {description && (
+          <div style={{ maxWidth: 240, marginTop: 5, fontSize: 11, lineHeight: 1.5 }}>
+            {description}
+          </div>
+        )}
+        {action && (
+          <div style={{ marginTop: 10 }}>
+            {action}
+          </div>
+        )}
+        {children}
+      </div>
+    );
+  }
+
   const content = (
     <>
       {icon && (
@@ -61,6 +106,7 @@ export function EmptyState({
       <Card
         variant="dashed"
         flat
+        className={className}
         style={{ ...centering, padding: '48px 24px', ...style }}
       >
         {content}
@@ -69,7 +115,7 @@ export function EmptyState({
   }
 
   return (
-    <div style={{ ...centering, padding: '48px 24px', ...style }}>
+    <div className={className} style={{ ...centering, padding: '48px 24px', ...style }}>
       {content}
     </div>
   );
