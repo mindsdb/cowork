@@ -35,6 +35,9 @@ let transition = DOCUMENT_ORGANIZATION_TRANSITION;
 let ownedPendingId = null;
 let pendingTimer = null;
 let reloadStarted = false;
+/** Set once the budget refuses a reload, so the UI can ask the user to reload. */
+let reloadBlocked = false;
+const reloadBlockedListeners = new Set();
 /**
  * This is deliberately document-local. sessionStorage belongs to the tab and
  * can be shared with a bfcached predecessor or copied into a new window, so it
@@ -210,9 +213,24 @@ export function prepareForOrganizationReload({
   }
   if (!consumeReloadBudget()) {
     console.warn('[organization] too many reloads in a row; staying put and refusing tokens');
+    reloadBlocked = true;
+    for (const listener of reloadBlockedListeners) listener();
     return;
   }
   globalThis.location?.reload();
+}
+
+/** Whether this document stopped reloading because its reload budget ran out. */
+export function isOrganizationReloadBlocked() {
+  return reloadBlocked;
+}
+
+/** Call `listener` when the reload budget runs out. Returns the unsubscribe. */
+export function subscribeOrganizationReloadBlocked(listener) {
+  reloadBlockedListeners.add(listener);
+  return () => {
+    reloadBlockedListeners.delete(listener);
+  };
 }
 
 function publishReload(id, applyLocally) {
@@ -382,6 +400,8 @@ export function __resetOrganizationTransitionForTests() {
   transition = null;
   ownedPendingId = null;
   reloadStarted = false;
+  reloadBlocked = false;
+  reloadBlockedListeners.clear();
   appliedReloadId = organizationEpochForTransition(transition);
   storageUnavailable = false;
   try { globalThis.localStorage?.removeItem(STORAGE_KEY); } catch { /* test cleanup */ }

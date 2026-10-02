@@ -47,6 +47,7 @@ import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
+import { OrganizationReloadBlocked } from './OrganizationReloadBlocked';
 import { RootErrorBoundary } from './RootErrorBoundary';
 import { WelcomeLoading, WelcomeNotice, applyArcadePreset } from './WelcomeLoading';
 
@@ -124,6 +125,7 @@ function KeycloakGate() {
         <RootErrorBoundary>
           <App />
         </RootErrorBoundary>
+        <OrganizationReloadBlocked />
       </StrictMode>
     </ReactKeycloakProvider>
   );
@@ -138,6 +140,7 @@ createRoot(root).render(
       <RootErrorBoundary>
         <App />
       </RootErrorBoundary>
+      <OrganizationReloadBlocked />
     </StrictMode>
   ) : (
     <KeycloakGate />

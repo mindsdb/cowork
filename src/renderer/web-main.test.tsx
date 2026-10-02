@@ -69,8 +69,12 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
   },
 }));
 
+const transitionState = { reloadBlocked: false };
+
 vi.mock('./cowork/lib/organizationTransition', () => ({
   prepareForOrganizationReload: vi.fn(),
+  isOrganizationReloadBlocked: () => transitionState.reloadBlocked,
+  subscribeOrganizationReloadBlocked: () => () => {},
 }));
 
 // Constructing the real Keycloak client reaches for browser APIs happy-dom
@@ -292,6 +296,34 @@ describe('web-main render error', () => {
   ])('shows a reload notice, not an empty root, on %s', async (_label, host) => {
     await renderOnHost(host);
     expect(document.getElementById('root')?.textContent).toContain('Something went wrong');
+  });
+});
+
+describe('web-main reload budget prompt', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    transitionState.reloadBlocked = true;
+  });
+
+  afterEach(() => {
+    transitionState.reloadBlocked = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+  });
+
+  it.each([
+    ['the canonical host', 'cowork.mindshub.ai'],
+    ['a legacy cw- host', 'cw-9a9e789c.4nton.ai'],
+  ])('covers the app on %s once the budget is spent', async (_label, host) => {
+    await renderOnHost(host);
+    expect(rendered.app).toBe(true);
+    expect(document.getElementById('root')?.textContent).toContain('Your organization changed');
   });
 });
 

@@ -20,6 +20,8 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
 }));
 vi.mock('./cowork/lib/organizationTransition', () => ({
   prepareForOrganizationReload: vi.fn(),
+  isOrganizationReloadBlocked: () => false,
+  subscribeOrganizationReloadBlocked: () => () => {},
 }));
 vi.mock('./lib/skins', () => ({ loadSkin: () => 'normal' }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
