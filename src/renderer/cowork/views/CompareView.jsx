@@ -981,7 +981,11 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const outOfCredits = SIDE_LABELS.filter((l, i) => (
     isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
   ));
-  const block = composerBlock(target, sideState, names, { outOfCredits });
+  const unloaded = SIDE_LABELS.filter((label) => !tasks[label]);
+  let starting = null;
+  if (unloaded.length) starting = unloaded.some((label) => errors[label]) ? 'loadFailed' : 'loading';
+  else if (firstSend) starting = firstSendFailed ? 'firstFailed' : 'sending';
+  const block = composerBlock(target, sideState, names, { outOfCredits, starting });
   const cannotJudge = unjudgeableReason(turns.a, turns.b, names);
 
   const submit = () => {
@@ -1127,7 +1131,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             // A message cannot go out right now. Say so where the text box
             // would be, rather than showing a box that looks usable.
             <div role="status" aria-label="Follow-up message" className="flex items-center gap-2 min-h-[56px] px-[18px] text-[13.5px] text-ink-2">
-              {!block.canSwitch && !block.action && SIDE_LABELS.some((l) => sideState[l].busy) && <Spinner />}
+              {!block.canSwitch && !block.action && (starting === 'loading' || starting === 'sending' || SIDE_LABELS.some((l) => sideState[l].busy)) && <Spinner />}
               <span className="flex-1">{block.message}</span>
               {block.action === 'addFunds' && (
                 <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>

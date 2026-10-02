@@ -469,6 +469,39 @@ describe('CompareView', () => {
     expect(api.streamMessage.mock.calls.map((c) => c[0]).sort()).toEqual(['conv-a', 'conv-b']);
   });
 
+  it('takes no follow-up while a side has not loaded', async () => {
+    mockHistory([]);
+    api.createComparison.mockResolvedValue(comparison());
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => (id === 'conv-b' ? null : session(id)));
+    await startComparison();
+
+    const paneB = await screen.findByRole('region', { name: 'Side B' });
+    await within(paneB).findByText("Couldn't load this side.");
+    expect(screen.getByText("A side couldn't load. Retry it above before following up.")).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+  });
+
+  it('takes no follow-up until the task has gone out to both sides, so it cannot overtake it', async () => {
+    mockHistory([]);
+    api.createComparison.mockResolvedValue(comparison());
+    api.fetchComparison.mockResolvedValue(comparison());
+    api.fetchSession.mockImplementation(async (id) => session(id));
+    let finishUpload;
+    api.uploadAttachments.mockImplementation(() => new Promise((resolve) => { finishUpload = resolve; }));
+    const file = new File(['a,b'], 'sales.csv', { type: 'text/csv' });
+    await startComparison({ files: [file] });
+
+    expect(await screen.findByText('Sending the task to both models…')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+
+    api.uploadAttachments.mockResolvedValue([{ id: 'att-b' }]);
+    await act(async () => { finishUpload([{ id: 'att-a' }]); });
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    // The first thing either side was sent is the task itself.
+    expect(api.streamMessage.mock.calls.every((c) => c[1] !== 'more')).toBe(true);
+  });
+
   it('sends nothing when a file cannot be attached for one side, and offers to try again', async () => {
     mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
