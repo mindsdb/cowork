@@ -7,6 +7,8 @@ import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { PageHeader, FilterRow, SearchInput } from '../components/collection';
 import {
   codingApi,
   type CodeProject,
@@ -296,22 +298,29 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
 
   return (
     <main className="code-skills-view">
-      <header className="code-skills-view__header">
-        <div><h1>Skills</h1><p>Your workflows and your team’s engineering standards, ready for Code tasks.</p></div>
-        <div className="code-skills-view__actions">
+      <PageHeader
+        title="Skills"
+        subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
+        actions={<div className="code-skills-view__actions">
           <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
           <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
-        </div>
-      </header>
-
-      <div className="code-skills-toolbar">
-        <label><span aria-hidden="true">{Ico.search(15)}</span><Input value={query} onChange={setQuery} placeholder="Search skills" aria-label="Search skills" /></label>
-        <div role="group" aria-label="Filter skills">
-          {([['all', 'All'], ['team', 'Team'], ['personal', 'Yours'], ['built_in', 'MindsHub']] as const).map(([value, label]) => (
-            <button type="button" key={value} className={filter === value ? 'is-active' : ''} onClick={() => setFilter(value)}>{label}</button>
-          ))}
-        </div>
-      </div>
+        </div>}
+      />
+      <FilterRow
+        search={<SearchInput value={query} onChange={setQuery} placeholder="Search skills" shortcut="" />}
+        sort={<ToggleGroup
+          className="code-skills-filter"
+          aria-label="Filter skills"
+          value={filter}
+          onValueChange={(value) => setFilter(value as OriginFilter)}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'team', label: 'Team' },
+            { value: 'personal', label: 'Yours' },
+            { value: 'built_in', label: 'MindsHub' },
+          ]}
+        />}
+      />
 
       {error && <div className="code-skills-view__notice"><Alert variant="danger">{error}</Alert></div>}
       {loading ? <div className="code-skills-empty">Loading skills…</div> : <div className="code-skills-catalog">

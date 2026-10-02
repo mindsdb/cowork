@@ -731,6 +731,10 @@ export interface ShellAutoUpdateSnapshot {
   errorCode?: string;
   errorMessage?: string;
   disabledReason?: string;
+  trigger?: 'boot' | 'periodic' | 'manual' | 'retry';
+  /** Whether the update downloaded before the last relaunch was applied. Absent
+   *  on older shells. */
+  lastInstall?: { applied: boolean; version: string; expected: string };
 }
 
 const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {

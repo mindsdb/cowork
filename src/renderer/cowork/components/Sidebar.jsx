@@ -741,7 +741,7 @@ export default function Sidebar({
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span className="flex-1">RECENT TASKS</span>
+          <span className="flex-1">Recent tasks</span>
           <Tooltip content="View all tasks">
             <button
               type="button"

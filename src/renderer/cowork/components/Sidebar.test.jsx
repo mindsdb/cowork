@@ -7,7 +7,7 @@ import { ToastProvider } from './ui/Toast';
 // token behind the footer user menu — null (signed out) unless a test sets
 // one; openExternal/logout are consumed by the UserMenu the footer renders
 // when signed in.
-const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {} }));
+const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {}, onWindowVisibility: () => () => {} }));
 const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
@@ -107,7 +107,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(onOpenCodingProjects).toHaveBeenCalledOnce();
     expect(onOpenCodingTasks).toHaveBeenCalledOnce();
     expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
-    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.getByText('Code tasks')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 

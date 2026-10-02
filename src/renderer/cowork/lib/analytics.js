@@ -29,7 +29,8 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // {}
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -102,12 +103,20 @@ const EVENTS = {
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
+  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
   // event names one (the model-403/404 and provider-auth families).
   CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label?, request_id? }
+  // Code Mode. Named apart from the chat events rather than folded into them so
+  // "who uses Code Mode" is one event filter, not an inference from app version
+  // or model. A Code Mode route onto a shared event (billing_opened) carries
+  // `workspace_mode: 'code'` instead.
+  CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
+  CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
+  CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -581,8 +590,40 @@ export function trackArtifactPublished(artifactId, visibility) {
   });
 }
 
+// Where the next task came from, when Home was opened by a console link. Held
+// here rather than threaded through App's send path because the handoff is
+// consumed in HomeView and the event fires in App; it attributes exactly one
+// task and is then cleared. Ids only: never prompt text.
+// Bounded in time too: a task started long after the handoff, say after an
+// afternoon spent in existing conversations, is not the one the link led to.
+const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
+let pendingEntryAttribution = null;
+
+export function setEntryAttribution(entrySource, exampleId) {
+  pendingEntryAttribution = entrySource
+    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
+    : null;
+}
+
 export function trackAgentSessionStarted() {
-  capture(EVENTS.AGENT_SESSION_STARTED);
+  const pending = pendingEntryAttribution;
+  pendingEntryAttribution = null;
+  const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
+  capture(
+    EVENTS.AGENT_SESSION_STARTED,
+    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+  );
+}
+
+// The console handoff's arrival: the Home composer is on screen and usable,
+// with the sample in it (`prefilled`) or empty. Separate from the console's
+// click, which only says the user asked to come here.
+export function trackComposerReady(entrySource, exampleId, prefilled) {
+  capture(EVENTS.COMPOSER_READY, {
+    entry_source: entrySource,
+    example_id: exampleId || null,
+    prefilled: Boolean(prefilled),
+  });
 }
 
 // The key upgrade-intent signal: a turn was blocked on credits. Fired from the
@@ -663,8 +704,64 @@ export function trackTurnFailed(conversationId, event) {
 // Deliberately no impression event alongside any of this: token_cap_hit already
 // fires once per receipt in the stream adapter, and an impression in the render
 // path would re-fire on every paint.
-export function trackBillingOpened(trigger) {
-  capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
+//
+// `workspaceMode` is 'code' when Code Mode sent them and omitted otherwise, so
+// every existing chat-side series keeps its meaning.
+export function trackBillingOpened(trigger, workspaceMode) {
+  capture(EVENTS.BILLING_OPENED, {
+    trigger: trigger || 'unknown',
+    workspace_mode: workspaceMode || undefined,
+  });
+}
+
+// First switch into the Code workspace per launch, from any entry point. The
+// denominator for Code Mode reach: a person who opens it and never starts a task
+// is a different problem from one who never opens it. Once per launch rather
+// than per switch, so someone toggling between Cowork and Code all day counts
+// as one visit and code_task_started carries the depth of use.
+let codeViewOpenedThisLaunch = false;
+export function trackCodeViewOpened() {
+  if (codeViewOpenedThisLaunch) return;
+  codeViewOpenedThisLaunch = true;
+  capture(EVENTS.CODE_VIEW_OPENED);
+}
+
+// A Code Mode task was created on the server. Fired on the create response, not
+// the click, so a refused create is not counted as a start. Everything here is
+// read from the created session, which is what actually ran, rather than from
+// the draft. No path, repo name or prompt: those identify a customer's code.
+// `attachmentCount` comes from the request, since the session does not echo
+// attachments back; a fork has none of its own and leaves it out.
+export function trackCodeTaskStarted(session, { origin = 'new', attachmentCount } = {}) {
+  if (!session?.id) return;
+  capture(EVENTS.CODE_TASK_STARTED, {
+    task_id: session.id,
+    origin,
+    engine_id: session.engine_id || 'unknown',
+    model: session.model || 'unknown',
+    reasoning_effort: session.reasoning_effort || undefined,
+    permission_mode: session.permission_mode || undefined,
+    task_mode: session.task_mode || 'build',
+    workspace_kind: session.workspace_kind || 'unknown',
+    in_project: Boolean(session.project_id),
+    computer_is_local: session.computer_is_local !== false,
+    attachment_count: typeof attachmentCount === 'number' ? attachmentCount : undefined,
+    source_context_count: Array.isArray(session.source_contexts) ? session.source_contexts.length : 0,
+  });
+}
+
+// A Code Mode create or fork was refused. `code` is the server's
+// X-MindsHub-Error-Code when it named one, else 'unknown'; `status` is the HTTP
+// status, absent for a client-side failure such as a timeout.
+export function trackCodeTaskStartFailed(origin, input, reason) {
+  capture(EVENTS.CODE_TASK_START_FAILED, {
+    origin: origin || 'new',
+    engine_id: input?.engineId || undefined,
+    model: input?.model || undefined,
+    in_project: input ? Boolean(input.projectId) : undefined,
+    code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
+    status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
 }
 
 // MindsHub declined to provision an LLM key (ENG-1533) — the earliest point a
@@ -802,10 +899,60 @@ export async function trackBootScreenResolved(target) {
     // signal worth seeing.
     status = null;
   }
+  // app_version is the OTA UI bundle, not the shell.
+  let version = null;
+  try {
+    version = await host.getVersionInfo();
+  } catch { /* older shell: send without it */ }
   await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
     target,
     anton_installed: Boolean(status?.antonInstalled),
     server_deps_ready: Boolean(status?.serverDepsReady),
+    build_kind: version?.buildKind ?? null,
+    shell_version: version?.app || null,
+  });
+}
+
+// Auto mode skips `available`, so `downloading` counts as it. An install on quit
+// shows up only as the next launch's `relaunched`. Sent milestones are kept in
+// sessionStorage so reloads don't resend them.
+const SHELL_UPDATE_MILESTONES = ['available', 'ready-to-install', 'installing', 'failed'];
+const SHELL_UPDATE_SENT_KEY = 'cowork_shell_update_milestones_sent';
+
+function claimShellUpdateMilestone(key) {
+  try {
+    const sent = JSON.parse(window.sessionStorage.getItem(SHELL_UPDATE_SENT_KEY) || '[]');
+    if (sent.includes(key)) return false;
+    window.sessionStorage.setItem(SHELL_UPDATE_SENT_KEY, JSON.stringify([...sent, key]));
+  } catch { /* a resend beats a drop */ }
+  return true;
+}
+
+export function trackShellUpdatePhase(snapshot) {
+  if (!host.isElectron || !snapshot) return;
+  const base = { channel: snapshot.channel, mode: snapshot.mode };
+  const install = snapshot.lastInstall;
+  if (install && claimShellUpdateMilestone(`relaunched|${install.expected}`)) {
+    void capture(EVENTS.SHELL_UPDATE_PHASE, {
+      ...base,
+      phase: 'relaunched',
+      current_version: install.version,
+      target_version: install.expected,
+      error_code: install.applied ? null : 'install-not-applied',
+    });
+  }
+  const phase = snapshot.phase === 'downloading' ? 'available' : snapshot.phase;
+  // install-not-applied is the relaunch verdict above, not a separate failure.
+  if (!SHELL_UPDATE_MILESTONES.includes(phase) || snapshot.errorCode === 'install-not-applied') return;
+  if (!claimShellUpdateMilestone([phase, snapshot.targetVersion, snapshot.errorCode].join('|'))) return;
+  void capture(EVENTS.SHELL_UPDATE_PHASE, {
+    ...base,
+    phase,
+    trigger: snapshot.trigger ?? null,
+    current_version: snapshot.currentVersion || null,
+    target_version: snapshot.targetVersion ?? null,
+    error_code: snapshot.errorCode ?? null,
+    recoverable: snapshot.phase === 'failed' ? Boolean(snapshot.recoverable) : null,
   });
 }
 
@@ -822,6 +969,8 @@ export function resetDeviceIdentity() {
   identity.distinctId = null;
   identity.cacheExpiry = 0;
   mergeInFlight.clear();
+  // The next account's first Code visit is its own.
+  codeViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

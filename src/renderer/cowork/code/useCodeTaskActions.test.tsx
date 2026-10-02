@@ -3,13 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
 
-const { createSession } = vi.hoisted(() => ({
-  createSession: vi.fn(async () => ({ id: 'task-created' })),
+const { createSession, forkSession, analytics } = vi.hoisted(() => ({
+  createSession: vi.fn(async (): Promise<{ id: string }> => ({ id: 'task-created' })),
+  forkSession: vi.fn(async (): Promise<{ id: string }> => ({ id: 'task-forked' })),
+  analytics: { trackCodeTaskStarted: vi.fn(), trackCodeTaskStartFailed: vi.fn() },
 }));
 
 vi.mock('./api', () => ({
-  codingApi: { create: createSession },
+  codingApi: { create: createSession, forkSession },
 }));
+vi.mock('../lib/analytics', () => analytics);
 
 import { useCodeTaskActions } from './useCodeTaskActions';
 
@@ -17,17 +20,26 @@ import { useCodeTaskActions } from './useCodeTaskActions';
 function renderActions({
   refresh = vi.fn(async () => {}),
   loadSessions = vi.fn(async () => []),
+  session = null,
+  sessions = [],
+  onSessionsChange = vi.fn(),
+  onSelectionChange = vi.fn(),
 }: {
   refresh?: () => Promise<void>;
   loadSessions?: () => Promise<CodingSession[]>;
+  session?: CodingSession | null;
+  sessions?: CodingSession[];
+  onSessionsChange?: (sessions: CodingSession[]) => void;
+  onSelectionChange?: (sessionId: string | null, newTask?: boolean) => void;
 } = {}) {
   return renderHook(() => useCodeTaskActions({
     selectedId: 'task-1',
-    session: null,
+    session,
+    sessions,
     refresh,
     loadSessions,
-    onSessionsChange: vi.fn(),
-    onSelectionChange: vi.fn(),
+    onSessionsChange,
+    onSelectionChange,
   }));
 }
 
@@ -117,6 +129,23 @@ describe('useCodeTaskActions', () => {
     });
   });
 
+  it('caches a created task before opening it so the view does not show a restoring state', async () => {
+    const existing = { id: 'task-1' } as CodingSession;
+    const calls: string[] = [];
+    const onSessionsChange = vi.fn((items: CodingSession[]) => { calls.push(`list:${items.map((item) => item.id).join(',')}`); });
+    const onSelectionChange = vi.fn((id: string | null) => { calls.push(`select:${id}`); });
+    const { result } = renderActions({ sessions: [existing], onSessionsChange, onSelectionChange });
+
+    await act(async () => {
+      await result.current.create({
+        projectId: 'project-1', prompt: 'Ship it', engineId: 'codex', model: 'gpt',
+        permissionMode: 'supervised', attachments: [], sourceContexts: [],
+      });
+    });
+
+    expect(calls.slice(0, 2)).toEqual(['list:task-created,task-1', 'select:task-created']);
+  });
+
   it('does not report a successful mutation as failed when list reconciliation drops', async () => {
     const loadSessions = vi.fn(async () => { throw new Error('temporary list failure'); });
     const action = vi.fn(async () => {});
@@ -156,5 +185,65 @@ describe('useCodeTaskActions', () => {
     });
 
     expect(result.current.error).toBe('turn rejected');
+  });
+
+  it('reports a created task once, from the created session, with the request attachment count', async () => {
+    createSession.mockClear();
+    analytics.trackCodeTaskStarted.mockClear();
+    const { result } = renderActions();
+    const input = {
+      projectId: 'project-1', prompt: 'Ship it', engineId: 'codex', model: 'gpt', permissionMode: 'supervised' as const,
+      attachments: [{ kind: 'file', path: 'a.png' }] as never[], sourceContexts: [],
+    };
+
+    await act(async () => { await result.current.create(input); });
+
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledOnce();
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledWith({ id: 'task-created' }, { origin: 'new', attachmentCount: 1 });
+    expect(analytics.trackCodeTaskStartFailed).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused create as a failed start, not a start', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const refusal = Object.assign(new Error('Git identity missing'), { status: 409, code: 'git_identity_missing' });
+    createSession.mockRejectedValueOnce(refusal);
+    const { result } = renderActions();
+    const input = {
+      projectId: null, path: '/tmp/work', prompt: 'Ship it', engineId: 'codex', model: 'gpt', permissionMode: 'supervised' as const,
+      attachments: [], sourceContexts: [],
+    };
+
+    await act(async () => { await result.current.create(input); });
+
+    expect(analytics.trackCodeTaskStarted).not.toHaveBeenCalled();
+    expect(analytics.trackCodeTaskStartFailed).toHaveBeenCalledWith('new', input, refusal);
+  });
+
+  it('reports a fork once, from the forked session', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const { result } = renderActions({ session: { id: 'task-1' } as CodingSession });
+
+    await act(async () => { await result.current.fork(); });
+
+    expect(forkSession).toHaveBeenCalledWith('task-1');
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledOnce();
+    expect(analytics.trackCodeTaskStarted).toHaveBeenCalledWith({ id: 'task-forked' }, { origin: 'fork' });
+    expect(analytics.trackCodeTaskStartFailed).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused fork as a failed start, not a start', async () => {
+    analytics.trackCodeTaskStarted.mockClear();
+    analytics.trackCodeTaskStartFailed.mockClear();
+    const refusal = Object.assign(new Error('Workspace missing'), { status: 409, code: 'workspace_missing' });
+    forkSession.mockRejectedValueOnce(refusal);
+    const { result } = renderActions({ session: { id: 'task-1' } as CodingSession });
+
+    await act(async () => { await result.current.fork(); });
+
+    expect(analytics.trackCodeTaskStarted).not.toHaveBeenCalled();
+    expect(analytics.trackCodeTaskStartFailed).toHaveBeenCalledWith('fork', null, refusal);
+    expect(result.current.error).toBe('Workspace missing');
   });
 });

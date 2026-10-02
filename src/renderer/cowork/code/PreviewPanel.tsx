@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { getApiOrigin } from '../../platform/host';
 import { safeCodeExternalUrl } from './developerTools';
 import { openCodeExternalUrl } from './shellLinks';
@@ -64,20 +65,18 @@ export function PreviewPanel({
         </header>
         <div className="code-preview__toolbar">
           <code title={previewUrl || undefined}>{previewUrl || 'Preview is not available'}</code>
-          <div className="code-preview__viewports" aria-label="Preview width">
-            {(['responsive', 'tablet', 'mobile'] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                className={viewport === value ? 'is-active' : ''}
-                aria-label={`${value} preview`}
-                aria-pressed={viewport === value}
-                onClick={() => setViewport(value)}
-              >
-                {value === 'responsive' ? Ico.computer(13) : value === 'tablet' ? Ico.appWindow(13) : Ico.phone(13)}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup
+            size="sm"
+            className="code-preview__viewports"
+            aria-label="Preview width"
+            value={viewport}
+            onValueChange={(value) => setViewport(value as Viewport)}
+            options={[
+              { value: 'responsive', label: Ico.computer(13), 'aria-label': 'responsive preview' },
+              { value: 'tablet', label: Ico.appWindow(13), 'aria-label': 'tablet preview' },
+              { value: 'mobile', label: Ico.phone(13), 'aria-label': 'mobile preview' },
+            ]}
+          />
         </div>
         <div className="code-preview__stage">
           {previewUrl ? (

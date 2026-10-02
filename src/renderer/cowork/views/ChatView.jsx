@@ -260,7 +260,7 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
       className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
-          : 'bg-transparent border-transparent text-ink-3 hover:bg-surface-2 hover:border-line hover:text-ink'
+          : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
       }`}
     >
       <span className="inline-flex items-center">

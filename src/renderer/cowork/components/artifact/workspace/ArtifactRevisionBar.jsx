@@ -62,7 +62,7 @@ export function ArtifactRevisionBar({
         )}
         {canEdit && dirty && (
           <>
-            <Button variant="ghost" onClick={onDiscard}>Discard</Button>
+            <Button variant="subtle" onClick={onDiscard}>Discard</Button>
             <Tooltip content="Save revision (⌘S)">
               <Button onClick={onSave} disabled={status === 'saving'}>
                 {Ico.save(14)} Save

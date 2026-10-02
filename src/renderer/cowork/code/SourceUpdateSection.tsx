@@ -65,7 +65,7 @@ export function SourceUpdateSection({
 
   return (
     <section className="code-source-updates" aria-label="Linked work updates">
-      <header><strong>Linked work</strong><span>Post only when you choose</span></header>
+      <header><strong>Linked work</strong></header>
       <div className="code-source-update-list">
         {contexts.map((context) => {
           const delivery = latestDeliveryFor(context, deliveries);

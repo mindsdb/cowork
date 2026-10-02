@@ -3,8 +3,7 @@
 .code-personal-skill textarea { min-height: 170px; line-height: 1.6; resize: vertical; }
 .code-personal-skill__availability { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .code-personal-skill__availability strong { color: var(--ink-2); font-size: 13px; font-weight: 600; }
-.code-personal-skill__availability p, .code-personal-skill__note { margin: 5px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
-.code-personal-skill__note { margin: 18px 0 0; }
+.code-personal-skill__availability p { margin: 5px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
 .code-personal-skill > [role="alert"] { margin-top: 14px; }
 .code-personal-skill__import { min-height: 220px; padding: 28px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px dashed var(--line-2); border-radius: 9px; text-align: center; }
 .code-personal-skill__import strong { color: var(--ink); font-size: 15px; }
