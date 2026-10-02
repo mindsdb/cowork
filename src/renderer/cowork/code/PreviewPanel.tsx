@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { getApiOrigin } from '../../platform/host';
 import { safeCodeExternalUrl } from './developerTools';
@@ -92,11 +93,13 @@ export function PreviewPanel({
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="code-preview__empty">
-              <span>{Ico.globe(20)}</span>
-              <strong>No local preview yet</strong>
-              <p>Run a project action that listens on the task’s development port.</p>
-            </div>
+            <EmptyState
+              size="sm"
+              className="code-preview__empty"
+              icon={Ico.globe(20)}
+              title="No local preview yet"
+              description="Run a project action that listens on the task’s development port."
+            />
           )}
         </div>
       </aside>
