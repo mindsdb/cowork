@@ -17,6 +17,7 @@ import type {
   ShellUpdateSnapshot,
   ShellUpdateTrigger,
 } from './shell-update-state';
+import { decideBootShellInstall } from './update-logic';
 import { withUpdateMaintenance } from './update-maintenance';
 import { withServerMaintenance } from './server-process';
 
@@ -26,16 +27,29 @@ const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
  *  it is, the less chance of a restart landing on an already-superseded build. */
 const PENDING_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const EVIDENCE_FILE = 'shell-update-target.json';
+/** How long the boot gate waits on the shell check to tell a stranded update
+ *  from a fresh download. Past this, the update is left to the banner. */
+const BOOT_INSTALL_WINDOW_MS = 10_000;
 
 interface DownloadedTargetEvidence {
   targetVersion: string;
   channel: ShellUpdateChannel;
   downloadedAt: string;
+  /** Written before a boot auto-install, so a launch still on the old version
+   *  knows that attempt failed and does not retry it (ENG-2764). */
+  bootInstallAttemptedTarget?: string;
 }
 
 type GetWindow = () => BrowserWindow | null;
 
 let controller: ShellAutoUpdater | null = null;
+// Target of a boot auto-install that already failed. Kept until the target
+// changes or installs, and carried into every evidence write for it.
+let priorBootInstallTarget: string | null = null;
+// Target an earlier launch downloaded but this launch is not running, and not
+// yet tried as a boot install. Only then is a boot install possible, so only
+// then does the boot gate wait on the shell check.
+let strandedTarget: string | null = null;
 let currentSnapshot: ShellUpdateSnapshot = {
   phase: 'disabled',
   mode: 'auto',
@@ -55,6 +69,8 @@ function readEvidence(): DownloadedTargetEvidence | null {
       typeof parsed.targetVersion !== 'string'
       || (parsed.channel !== 'prod' && parsed.channel !== 'stable')
       || typeof parsed.downloadedAt !== 'string'
+      || (parsed.bootInstallAttemptedTarget !== undefined
+        && typeof parsed.bootInstallAttemptedTarget !== 'string')
     ) return null;
     return parsed as DownloadedTargetEvidence;
   } catch {
@@ -64,26 +80,48 @@ function readEvidence(): DownloadedTargetEvidence | null {
 
 let lastEvidenceVersion: string | null = null;
 
+/** Write the evidence file, reporting whether it actually landed. */
+function persistEvidence(evidence: DownloadedTargetEvidence): boolean {
+  try {
+    fs.writeFileSync(evidencePath(), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+    return true;
+  } catch (error) {
+    console.warn('[shell-updater] could not persist downloaded target:', error);
+    return false;
+  }
+}
+
 /** Exported for tests; only `onSnapshot` calls it in production. */
 export function writeEvidence(snapshot: ShellUpdateSnapshot): void {
   if (snapshot.phase !== 'ready-to-install' || !snapshot.targetVersion) return;
   // Background refreshes republish the snapshot twice per poll with the same
   // pending target; only a changed target is worth rewriting to disk.
   if (snapshot.targetVersion === lastEvidenceVersion) return;
-  const evidence: DownloadedTargetEvidence = {
+  const persisted = persistEvidence({
     targetVersion: snapshot.targetVersion,
     channel: snapshot.channel,
     downloadedAt: new Date().toISOString(),
-  };
-  try {
-    fs.writeFileSync(evidencePath(), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
-    // Only a target actually on disk may be skipped next time. Caching before
-    // the write would let one transient failure suppress every later attempt,
-    // and the relaunch check would then have no evidence to reconcile.
-    lastEvidenceVersion = snapshot.targetVersion;
-  } catch (error) {
-    console.warn('[shell-updater] could not persist downloaded target:', error);
-  }
+    ...(priorBootInstallTarget === snapshot.targetVersion
+      ? { bootInstallAttemptedTarget: priorBootInstallTarget }
+      : {}),
+  });
+  // Only a target actually on disk may be skipped next time.
+  if (persisted) lastEvidenceVersion = snapshot.targetVersion;
+}
+
+/** Record a boot auto-install before attempting it. False if the record did
+ *  not land, in which case the attempt must not be made. */
+function markBootInstallAttempt(snapshot: ShellUpdateSnapshot): boolean {
+  if (!snapshot.targetVersion) return false;
+  if (!persistEvidence({
+    targetVersion: snapshot.targetVersion,
+    channel: snapshot.channel,
+    downloadedAt: new Date().toISOString(),
+    bootInstallAttemptedTarget: snapshot.targetVersion,
+  })) return false;
+  priorBootInstallTarget = snapshot.targetVersion;
+  lastEvidenceVersion = snapshot.targetVersion;
+  return true;
 }
 
 function clearEvidence(): void {
@@ -148,7 +186,16 @@ export function configureShellAutoUpdate(options: {
   // durable evidence from another feed as if it belonged to this channel.
   const channelEvidence = evidence?.channel === feed.channel ? evidence : null;
   const reconciled = reconcileDownloadedTarget(currentVersion, channelEvidence);
+  priorBootInstallTarget = channelEvidence?.bootInstallAttemptedTarget ?? null;
+  strandedTarget = reconciled.phase === 'failed' && reconciled.targetVersion !== priorBootInstallTarget
+    ? reconciled.targetVersion ?? null
+    : null;
   if (evidence) clearEvidence();
+  // A failed boot install must be remembered even through a launch that never
+  // reaches ready-to-install (offline, say), so rewrite its marker now.
+  if (channelEvidence && priorBootInstallTarget && reconciled.phase === 'failed') {
+    persistEvidence(channelEvidence);
+  }
 
   currentSnapshot = {
     ...reconciled,
@@ -224,25 +271,94 @@ export function registerShellAutoUpdateHandlers(): void {
   ipcMain.handle(IPC.SHELL_UPDATE_INSTALL, () => installShellAutoUpdate());
 }
 
-export function startShellAutoUpdatePolling(rendererReady: Promise<void>): void {
-  if (!controller) return;
-  rendererReady.then(async () => {
-    await checkShellAutoUpdate('boot').catch(error => {
+/** Resolve true once `predicate` holds for the controller's snapshot, or
+ *  false after `timeoutMs`. */
+function waitForSnapshot(
+  predicate: (snapshot: ShellUpdateSnapshot) => boolean,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise(resolve => {
+    let unsubscribe: (() => void) | null = null;
+    let done = false;
+    const finish = (met: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      unsubscribe?.();
+      resolve(met);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    unsubscribe = controller?.subscribe(snapshot => {
+      if (predicate(snapshot)) finish(true);
+    }) ?? null;
+    if (done) unsubscribe?.();
+    if (!controller) finish(true);
+  });
+}
+
+/** The boot check has answered whether a ready update was already on disk: a
+ *  cached replay reaches ready-to-install with no bytes, a fresh download moves
+ *  bytes first. */
+function bootCheckAnswered(snapshot: ShellUpdateSnapshot): boolean {
+  if (snapshot.phase === 'checking') return false;
+  if (snapshot.phase === 'downloading') return Boolean(snapshot.bytesTransferred);
+  return true;
+}
+
+/** Install an update a previous launch downloaded but never installed
+ *  (ENG-2764). Returns whether the install was handed to the updater. */
+async function installStrandedShellUpdate(): Promise<boolean> {
+  const snapshot = getShellAutoUpdateSnapshot();
+  if (!decideBootShellInstall({
+    phase: snapshot.phase,
+    mode: snapshot.mode,
+    bytesTransferred: snapshot.bytesTransferred,
+    targetVersion: snapshot.targetVersion,
+    priorAttemptTarget: priorBootInstallTarget,
+  })) return false;
+  if (!markBootInstallAttempt(snapshot)) return false;
+
+  console.log(`[shell-updater] installing ${snapshot.targetVersion}, downloaded by an earlier launch`);
+  return installShellAutoUpdate().catch(error => {
+    console.error('[shell-updater] stranded install failed:', error);
+    return false;
+  });
+}
+
+/** Starts shell update polling. The returned promise settles once the boot
+ *  check is done with the loading gate: at once when no earlier launch left an
+ *  uninstalled download, otherwise when no stranded update was found or one
+ *  was installed and the app is quitting. */
+export function startShellAutoUpdatePolling(rendererReady: Promise<void>): Promise<void> {
+  if (!controller) return Promise.resolve();
+  return rendererReady.then(async () => {
+    void checkShellAutoUpdate('boot').catch(error => {
       console.error('[shell-updater] boot check failed:', error);
     });
-    let lastCheckAt = Date.now();
-    // One timer at the shorter cadence, gated on when a check is actually due:
-    // every 30 minutes with an install pending, every 4 hours otherwise.
-    const timer = setInterval(() => {
-      const pending = getShellAutoUpdateSnapshot().phase === 'ready-to-install';
-      const due = pending ? PENDING_REFRESH_INTERVAL_MS : CHECK_INTERVAL_MS;
-      if (Date.now() - lastCheckAt < due) return;
-      lastCheckAt = Date.now();
-      void checkShellAutoUpdate('periodic').catch(error => {
-        console.error('[shell-updater] periodic check failed:', error);
-      });
-    }, PENDING_REFRESH_INTERVAL_MS);
-    timer.unref?.();
-    app.once('before-quit', () => clearInterval(timer));
+    schedulePeriodicChecks();
+    // Nothing an earlier launch left behind, so no boot install to decide.
+    if (!strandedTarget) return;
+    const answered = await waitForSnapshot(bootCheckAnswered, BOOT_INSTALL_WINDOW_MS);
+    if (answered && await installStrandedShellUpdate()) {
+      // Hold the gate while the app quits; release it if the install stalls.
+      await waitForSnapshot(snapshot => snapshot.phase !== 'installing', BOOT_INSTALL_WINDOW_MS);
+    }
   });
+}
+
+function schedulePeriodicChecks(): void {
+  let lastCheckAt = Date.now();
+  // One timer at the shorter cadence, gated on when a check is actually due:
+  // every 30 minutes with an install pending, every 4 hours otherwise.
+  const timer = setInterval(() => {
+    const pending = getShellAutoUpdateSnapshot().phase === 'ready-to-install';
+    const due = pending ? PENDING_REFRESH_INTERVAL_MS : CHECK_INTERVAL_MS;
+    if (Date.now() - lastCheckAt < due) return;
+    lastCheckAt = Date.now();
+    void checkShellAutoUpdate('periodic').catch(error => {
+      console.error('[shell-updater] periodic check failed:', error);
+    });
+  }, PENDING_REFRESH_INTERVAL_MS);
+  timer.unref?.();
+  app.once('before-quit', () => clearInterval(timer));
 }

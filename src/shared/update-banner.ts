@@ -58,6 +58,8 @@ export interface UpdateBannerInput {
      *  absent on a check-only failure — the discriminator in shellAutoOwnsBanner. */
     targetVersion?: string;
     progress?: { percent?: number | null } | null;
+    /** `auto` installs a downloaded update on quit; `manual` never does. */
+    mode?: string;
   } | null;
   /** Prod-only manual installer notice, already filtered for per-version
    *  dismissal by the caller (a dismissed notice must arrive here as null). */
@@ -82,6 +84,9 @@ export interface UpdateBanner {
   disabled: boolean;
   /** Only the manual installer notice can be dismissed (per-version). */
   dismissible: boolean;
+  /** Tooltip naming how the update lands if the pill is never clicked
+   *  (ENG-2764). Absent when clicking is the only way. */
+  hint?: string;
   version?: string;
   /** Manual notice only: the installer is a Debian package, so the copy names
    *  the install command instead of telling the user to open it. */
@@ -100,7 +105,14 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
     case 'installing':
       return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
     case 'ready-to-install':
-      return { kind: 'shell-auto', tone: 'ready', title: 'App update ready', actionLabel: 'Restart', action: 'shell-auto', disabled: false, dismissible: false, version };
+      // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
+      // is the only way to install.
+      return {
+        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version,
+        hint: shellAuto.mode === 'auto'
+          ? `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
+          : undefined,
+      };
     case 'failed':
       // Recoverable → retry via the auto-updater; terminal → manual installer
       // link. The single `shell-auto` handler routes both.
@@ -154,6 +166,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       disabled: false,
       dismissible: false,
       version: otaVersion,
+      hint: `Reloads the app to finish updating${otaVersion ? ` to ${otaVersion}` : ''}. It also applies on its own the next time you open the app.`,
     };
   }
   if (otaPhase === 'error') {

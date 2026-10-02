@@ -42,6 +42,11 @@ export interface ShellUpdateSnapshot {
   /** Whether the previous download was applied. Never cleared: the boot check
    *  replaces `complete`/`failed` before a renderer may be listening. */
   lastInstall?: { applied: boolean; version: string; expected: string };
+  /** True once this process has transferred bytes for the current target.
+   *  electron-updater replays a cached download without emitting progress, so
+   *  unset at ready-to-install means an earlier launch downloaded it (ENG-2764).
+   *  Cleared by a new check. */
+  bytesTransferred?: boolean;
 }
 
 export type ShellUpdateEvent =
@@ -63,6 +68,7 @@ function clearTransient(snapshot: ShellUpdateSnapshot): ShellUpdateSnapshot {
     trigger: _trigger,
     targetVersion: _targetVersion,
     progress: _progress,
+    bytesTransferred: _bytesTransferred,
     recoverable: _recoverable,
     errorCode: _errorCode,
     errorMessage: _errorMessage,
@@ -153,7 +159,7 @@ export function transitionShellUpdate(
 
     case 'DOWNLOAD_PROGRESS':
       if (snapshot.phase !== 'downloading') return snapshot;
-      return { ...snapshot, progress: event.progress };
+      return { ...snapshot, progress: event.progress, bytesTransferred: true };
 
     case 'DOWNLOAD_COMPLETE':
       if (snapshot.phase !== 'downloading') return snapshot;
@@ -172,6 +178,8 @@ export function transitionShellUpdate(
       // Only the caller knows which version is newer, so this event is trusted:
       // it is dispatched solely for a strictly newer build than the pending one.
       if (snapshot.phase !== 'ready-to-install') return snapshot;
+      // `bytesTransferred` carries over: a stale `true` only skips a boot
+      // install, while a stale `false` could relaunch on a fresh download.
       return {
         ...snapshot,
         phase: 'downloading',

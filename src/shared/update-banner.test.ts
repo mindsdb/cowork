@@ -25,6 +25,14 @@ describe('deriveUpdateBanner', () => {
     it('omits the version suffix when unknown', () => {
       expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.title).toBe('Update ready');
     });
+
+    it('ota-ready hints the next-launch path; ota-error does not', () => {
+      expect(deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' } })?.hint)
+        .toBe('Reloads the app to finish updating to 0.26.8.1. It also applies on its own the next time you open the app.');
+      expect(deriveUpdateBanner({ ota: { phase: 'available' } })?.hint)
+        .toContain('the next time you open the app');
+      expect(deriveUpdateBanner({ ota: { phase: 'error', version: 'ui-1' } })?.hint).toBeUndefined();
+    });
   });
 
   describe('shell auto-update only', () => {
@@ -44,9 +52,29 @@ describe('deriveUpdateBanner', () => {
       expect(deriveUpdateBanner({ shellAuto: { phase: 'downloading', progress: { percent: null } } })?.title).toBe('Downloading update…');
     });
 
-    it('ready-to-install → "Restart"', () => {
+    it('ready-to-install → "Restart now"', () => {
       const b = deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } });
-      expect(b).toMatchObject({ tone: 'ready', title: 'App update ready', actionLabel: 'Restart', action: 'shell-auto', disabled: false });
+      expect(b).toMatchObject({ tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false });
+    });
+
+    it('ready-to-install in auto mode hints the install-on-quit path', () => {
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto', version: '25.9.1' } })?.hint)
+        .toBe('The new version (25.9.1) is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.');
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'auto' } })?.hint)
+        .toContain('the next time you quit the app');
+    });
+
+    it('ready-to-install in manual mode promises no install on quit', () => {
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install', mode: 'manual', version: '25.9.1' } })?.hint)
+        .toBeUndefined();
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'ready-to-install' } })?.hint).toBeUndefined();
+    });
+
+    it('no hint on in-flight or failed shell phases', () => {
+      for (const phase of ['available', 'downloading', 'installing']) {
+        expect(deriveUpdateBanner({ shellAuto: { phase } })?.hint).toBeUndefined();
+      }
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.hint).toBeUndefined();
     });
 
     it('installing → progress, disabled', () => {
