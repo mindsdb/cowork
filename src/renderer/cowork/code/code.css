@@ -491,8 +491,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-controls-folders__list { margin-top: 8px; display: grid; gap: 4px; }
 .code-controls-folders__list > div { min-width: 0; min-height: 30px; padding: 3px 3px 3px 8px; display: flex; align-items: center; gap: 6px; border-radius: var(--r); background: var(--surface-2); }
 .code-controls-folders__list span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: 9.5px var(--font-mono); }
-.code-controls-folders__error,
 .code-controls-error { grid-column: 1 / -1; }
+.code-controls-folders__error,
 .code-rename-error { display: block; margin-top: 7px; color: var(--danger); font-size: 10px; }
 .code-controls-windows { grid-column: 1 / -1; min-height: 44px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); }
 .code-controls-windows > div { display: grid; gap: 3px; }
