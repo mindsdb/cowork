@@ -228,7 +228,6 @@ export function ReviewPanel({
             {files.length === 0 && (
               <EmptyState
                 size="sm"
-                style={{ padding: '58px 20px' }}
                 icon={Ico.code(18)}
                 title={directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}
                 description={directFolderWithoutDiff

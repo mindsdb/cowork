@@ -274,10 +274,10 @@ export function FilesPanel({
         <div className="code-files__body scroll-clean">
           {loading && !file && <div className="code-files__loading"><Spinner /> Loading…</div>}
           {!loading && resources.length === 0 && !error && (
-            <EmptyState size="sm" style={{ padding: '72px 24px' }} icon={Ico.folder(18)} title="No task files available" description="This task does not have a prepared working copy on this computer." />
+            <EmptyState size="sm" icon={Ico.folder(18)} title="No task files available" description="This task does not have a prepared working copy on this computer." />
           )}
           {!!query && !loading && results.length === 0 && !error && (
-            <EmptyState size="sm" style={{ padding: '72px 24px' }} icon={Ico.search(18)} title="No matches" description="Try a filename, symbol, or phrase from the code." />
+            <EmptyState size="sm" icon={Ico.search(18)} title="No matches" description="Try a filename, symbol, or phrase from the code." />
           )}
           {!!query && results.length > 0 && (
             <div className="code-files__results">

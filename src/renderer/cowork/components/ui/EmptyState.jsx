@@ -25,13 +25,13 @@ const FONT_BODY = 'var(--font-body)';
 // The icon/action gaps add to the column gap.
 const SIZES = {
   md: {
-    gap: 10, minHeight: 360, padding: '48px 24px', iconGap: undefined, actionGap: 6,
+    gap: 10, minHeight: 360, iconGap: undefined, actionGap: 6,
     titleClassName: 's-h3',
     title: { color: 'var(--ink)' },
     description: { fontSize: 13.5, color: 'var(--ink-3)', maxWidth: '44ch' },
   },
   sm: {
-    gap: 5, minHeight: undefined, padding: '32px 24px', iconGap: 5, actionGap: 5,
+    gap: 5, minHeight: undefined, iconGap: 5, actionGap: 5,
     titleClassName: undefined,
     title: { color: 'var(--ink-3)', fontSize: 12, fontWeight: 600 },
     description: { fontSize: 11, color: 'var(--ink-4)', maxWidth: 240 },
@@ -81,7 +81,7 @@ export function EmptyState({
 
   const centering = {
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    gap: s.gap, textAlign: 'center', minHeight: s.minHeight,
+    gap: s.gap, textAlign: 'center', minHeight: s.minHeight, padding: '48px 24px',
   };
 
   if (bordered) {
@@ -90,7 +90,7 @@ export function EmptyState({
         variant="dashed"
         flat
         className={className}
-        style={{ ...centering, padding: s.padding, ...style }}
+        style={{ ...centering, ...style }}
       >
         {content}
       </Card>
@@ -98,7 +98,7 @@ export function EmptyState({
   }
 
   return (
-    <div className={className} style={{ ...centering, padding: s.padding, ...style }}>
+    <div className={className} style={{ ...centering, ...style }}>
       {content}
     </div>
   );

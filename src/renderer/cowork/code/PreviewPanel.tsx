@@ -95,7 +95,7 @@ export function PreviewPanel({
           ) : (
             <EmptyState
               size="sm"
-              style={{ margin: 'auto', padding: 32 }}
+              className="code-preview__empty"
               icon={Ico.globe(20)}
               title="No local preview yet"
               description="Run a project action that listens on the task’s development port."

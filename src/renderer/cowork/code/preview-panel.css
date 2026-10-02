@@ -25,3 +25,5 @@ body:has(.code-preview) .floating-toggle-row { opacity: 0; pointer-events: none;
 @media (prefers-reduced-motion: reduce) {
   .code-preview { animation: none; }
 }
+/* Centre the empty state in the stage's flex column. */
+.code-preview__empty { margin: auto; }
