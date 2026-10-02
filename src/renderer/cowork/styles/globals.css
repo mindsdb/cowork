@@ -194,12 +194,24 @@ body, body[data-theme="light"] {
   --r-24:         24px;
   --r-pill:       9999px;
 
-  /* Shadows — brandbook "flat-but-physical" with 1px bottom edge */
-  --sh-1:         0 1px 0 rgba(15,16,17,0.04), 0 1px 2px rgba(15,16,17,0.05);
-  --sh-2:         0 1px 0 rgba(15,16,17,0.04), 0 4px 12px rgba(15,16,17,0.06);
-  --sh-3:         0 1px 0 rgba(15,16,17,0.04), 0 12px 28px rgba(15,16,17,0.08);
-  --sh-popup:     0 1px 0 rgba(15,16,17,0.04), 0 8px 24px rgba(15,16,17,0.10);
-  --sh-modal:     0 1px 0 rgba(15,16,17,0.04), 0 24px 60px rgba(15,16,17,0.18);
+  /* Shadows — the layered inset-highlight material first designed for the
+     onboarding card: a pressed bottom edge, a hairline inner ring and a
+     white top highlight, over a tight contact shadow. --sh-1 is that
+     material exactly; higher levels add a progressively softer drop. */
+  --sh-material:  0 -1px 0 -0.5px rgba(0,0,0,0.08) inset,
+                  0 0 0 0.5px rgba(39,39,42,0.10) inset,
+                  0 1px 1px 0.5px #FFF inset,
+                  0 2px 2px -1px rgba(0,0,0,0.06);
+  --sh-1:         var(--sh-material);
+  /* --sh-1 for solid colour fills (primary, danger-solid): the #FFF ring
+     would read as a bevel there, so keep just a soft top highlight. */
+  --sh-1-fill:    0 -1px 0 -0.5px rgba(0,0,0,0.08) inset,
+                  0 1px 0 0 rgba(255,255,255,0.18) inset,
+                  0 2px 2px -1px rgba(0,0,0,0.06);
+  --sh-2:         var(--sh-material), 0 4px 12px rgba(15,16,17,0.06);
+  --sh-3:         var(--sh-material), 0 12px 28px rgba(15,16,17,0.08);
+  --sh-popup:     var(--sh-material), 0 8px 24px rgba(15,16,17,0.10);
+  --sh-modal:     var(--sh-material), 0 24px 60px rgba(15,16,17,0.18);
   --ring:         0 0 0 1px rgba(31,156,176,0.22);
 
   /* Legacy/cowork token aliases — keep existing components working */
@@ -321,11 +333,15 @@ body[data-theme="dark"] {
   --success-text: #86EFAC;
   --success-glow: rgba(74, 222, 128, 0.55);
 
-  --sh-1:         0 1px 3px rgba(0, 0, 0, 0.20);
-  --sh-2:         0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
-  --sh-3:         0 6px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
-  --sh-popup:     0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
-  --sh-modal:     0 24px 60px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.12);
+  /* Dark material — the #FFF inset blows out here, so (as on the
+     onboarding card) only a whisper of top highlight survives. */
+  --sh-material:  0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+  --sh-1:         var(--sh-material), 0 1px 3px rgba(0, 0, 0, 0.20);
+  --sh-1-fill:    var(--sh-1);
+  --sh-2:         var(--sh-material), 0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --sh-3:         var(--sh-material), 0 6px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --sh-popup:     var(--sh-material), 0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --sh-modal:     var(--sh-material), 0 24px 60px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.12);
   --ring:         0 0 0 1px rgba(34, 211, 238, 0.28);
 
   /* Frost — remap to dark ink tones so sidebar text, nav items,
@@ -1955,7 +1971,7 @@ body[data-theme="dark"] .btn.default:active {
      glow halo appears on hover, matching every other variant's hover
      signature (no inset/3d drop shadow). Dark mode overrides this with
      the luminous-glass treatment below. */
-  box-shadow: var(--sh-1);
+  box-shadow: var(--sh-1-fill);
   font-family: var(--font-sans);
   font-size: 13px;
   letter-spacing: 0;
@@ -2114,7 +2130,7 @@ body:not([data-theme="dark"]) .btn.danger-solid {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
-  box-shadow: var(--sh-1);
+  box-shadow: var(--sh-1-fill);
 }
 body:not([data-theme="dark"]) .btn.danger-solid:hover {
   background: color-mix(in srgb, var(--danger) 88%, var(--ink));
@@ -2346,6 +2362,27 @@ body {
   padding: 24px;
 }
 
+/* Light mode: raised surfaces soften their border to half-strength --line
+   (--raised-edge) so the --sh-* material (inset ring + highlight, as on the
+   onboarding card) reads through it while the edge stays distinct on the
+   near-white page. State
+   borders like selection and composer focus still win (:where keeps each
+   selector at one-class specificity); clipping the fill to the padding box
+   lets the softened border mix with the page rather than the fill. Flat and
+   dashed cards have no shadow, so they keep their full border. The 8-bit
+   skin keeps its hard pixel borders. */
+body { --raised-edge: color-mix(in srgb, var(--line) 50%, transparent); }
+:where(body:not([data-theme="dark"]):not([data-skin="8bit"])) .composer-wrap,
+:where(body:not([data-theme="dark"]):not([data-skin="8bit"])) .card:where(:not(.flat):not(.dashed)),
+:where(body:not([data-theme="dark"]):not([data-skin="8bit"])) .customize-directory-card,
+:where(body:not([data-theme="dark"]):not([data-skin="8bit"])) .home-connect-card {
+  border-color: var(--raised-edge);
+  background-clip: padding-box;
+}
+:where(body:not([data-theme="dark"]):not([data-skin="8bit"])) .chat-floating-composer .composer-wrap:not(.focused) {
+  border-color: var(--raised-edge);
+}
+
 .card.flat     { box-shadow: none; }
 .card.compact  { padding: 16px; }
 .card.snug     { padding: 12px; }
@@ -2496,18 +2533,14 @@ body.custom-bg-active .app-sidebar::before {
 .app-sidebar > * { position: relative; z-index: 1; }
 
 /* Onboarding "Get to know Cowork" card.
-   Light: the layered inset-highlight shadow from the design spec, on a
+   Light: the shared --sh-1 material (which originated here), on a
    white surface that reads as a raised card against the grey sidebar.
    Dark: the #FFF inset blows out, so swap to an elevated surface with a
    crisp ring + soft drop shadow and only a whisper of top highlight. */
 .onboarding-card {
   background: var(--surface-0);
   border-radius: var(--r-lg);
-  box-shadow:
-    0 -1px 0 -0.5px rgba(0, 0, 0, 0.08) inset,
-    0 2px 2px -1px rgba(0, 0, 0, 0.06),
-    0 0 0 0.5px rgba(39, 39, 42, 0.10) inset,
-    0 1px 1px 0.5px #FFF inset;
+  box-shadow: var(--sh-1);
 }
 body[data-theme="dark"] .onboarding-card {
   background: var(--surface-3);
@@ -3318,7 +3351,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
      soft even glow reads as "floating panel" without darkening the
      gravity field below. */
   box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
+    var(--sh-material),
     0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
@@ -3374,6 +3407,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
      light-mode shadow's restraint, just dialed up enough to read
      against the navy surface. */
   box-shadow:
+    var(--sh-material),
     0 4px 18px rgba(0, 0, 0, 0.28),
     0 0 0 1px rgba(255, 255, 255, 0.03);
 }
@@ -3383,7 +3417,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
      state so the card doesn't jump on focus. */
   border-color: var(--accent);
   box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
+    var(--sh-material),
     0 6px 20px rgba(15, 16, 17, 0.08);
 }
 
