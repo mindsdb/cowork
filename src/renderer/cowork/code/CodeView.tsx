@@ -247,13 +247,20 @@ export default function CodeView({
   }, [newTask, projectsOpen, tasksOpen, connectorsOpen, skillsOpen, selectedId]);
 
   // Keep the editor across explicit Connectors round trips, including a new
-  // project with no ID. Other navigation still closes it.
+  // project with no ID. Other navigation still closes it. This runs during
+  // render, not in an effect: an effect would commit one frame with the stale
+  // editor open, and a Base UI dialog opened and closed in consecutive commits
+  // never unmounts, leaving its backdrop over the app.
   const resumeProjectEditor = useRef<{ id: string | null } | null>(null);
+  const editorRoute = [newTask, projectsOpen, tasksOpen, tasksProjectId, connectorsOpen, skillsOpen, selectedId].join('|');
+  const [projectEditorRoute, setProjectEditorRoute] = useState(editorRoute);
+  if (projectEditorRoute !== editorRoute) {
+    setProjectEditorRoute(editorRoute);
+    setProjectEditor(resumeProjectEditor.current);
+  }
   useEffect(() => {
-    const editor = resumeProjectEditor.current;
     resumeProjectEditor.current = null;
-    setProjectEditor(editor);
-  }, [newTask, projectsOpen, tasksOpen, tasksProjectId, connectorsOpen, skillsOpen, selectedId]);
+  }, [editorRoute]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
