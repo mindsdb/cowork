@@ -22,6 +22,36 @@ import { streamNewSession } from './api';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A body that yields each scripted frame after its delay, then goes silent
+// until the caller aborts. Every wait rejects on abort, like a real reader.
+const scriptedBody = (getSignal, script) => {
+  const enc = new TextEncoder();
+  let i = 0;
+  return {
+    getReader: () => ({
+      read: () => new Promise((resolve, reject) => {
+        const signal = getSignal();
+        const abort = () => {
+          clearTimeout(timer);
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        };
+        let timer = null;
+        if (signal.aborted) return abort();
+        signal.addEventListener('abort', abort, { once: true });
+        const step = script[i];
+        if (!step) return;
+        i += 1;
+        timer = setTimeout(() => {
+          signal.removeEventListener('abort', abort);
+          resolve({ done: false, value: enc.encode(`data: ${JSON.stringify(step.frame)}\n\n`) });
+        }, step.after);
+      }),
+    }),
+  };
+};
+
 // A body reader that never yields a frame and rejects only once the caller
 // aborts — mirroring a real body stream reader on ctrl.abort().
 const silentBody = (getSignal) => ({
@@ -197,5 +227,62 @@ describe('streamNewSession idle timeout', () => {
     await delay(20);
 
     expect(onError).not.toHaveBeenCalled();
+  });
+  // The server blocks an unanswered ask_user card for its own deadline, which
+  // used to equal the idle window — the client then cancelled a healthy turn
+  // as stalled just before the server's timeout frame arrived.
+  it('waits out a pending ask_user past the normal idle window', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.08, conversation_id: 'conv-1' } },
+          // Silent for 3x the 20ms idle window, inside the question's 80ms deadline.
+          { after: 60, frame: { type: 'response.ask_user_answered', question_id: 'q1', status: 'timeout' } },
+          { after: 0, frame: { type: 'response.completed', conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('done');
+  });
+
+  it('still reports a stall when nothing arrives after the ask_user deadline', async () => {
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: scriptedBody(() => signal, [
+          { after: 0, frame: { type: 'response.ask_user', question_id: 'q1', timeout_s: 0.03, conversation_id: 'conv-1' } },
+        ]),
+      };
+    }));
+
+    const started = Date.now();
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', {
+        idleTimeoutMs: 20,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event?.code).toBe('stalled');
+    // The 30ms deadline plus the 20ms idle window, not the bare idle window.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(45);
   });
 });

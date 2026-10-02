@@ -526,6 +526,20 @@ export function allocateConversationId() {
 // tailInFlight; timed against producer frames, not raw keepalive bytes.
 const STREAM_IDLE_TIMEOUT_MS = 300_000;
 
+// Server-side ask_user deadline, for a frame that doesn't state its own.
+const ASK_USER_DEFAULT_TIMEOUT_S = 300;
+
+// How long to wait for the next producer frame after `msg`. A turn blocked on
+// an ask_user card is legitimately silent until the user answers or the
+// server's own deadline passes, and that deadline equals the normal idle
+// window — so the two timers raced and the client cancelled a healthy turn
+// as "stalled". Past the question's deadline the usual window applies again.
+function idleWindowAfter(msg, idleTimeoutMs) {
+  if (msg?.type !== 'response.ask_user') return idleTimeoutMs;
+  const timeoutS = Number(msg.timeout_s) > 0 ? Number(msg.timeout_s) : ASK_USER_DEFAULT_TIMEOUT_S;
+  return timeoutS * 1000 + idleTimeoutMs;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
@@ -542,9 +556,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // proxy connection had none before this.
   let idleTimer = null;
   let idledOut = false;
-  const bumpIdle = () => {
+  const bumpIdle = (ms = idleTimeoutMs) => {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
   (async () => {
     try {
@@ -610,7 +624,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
-          bumpIdle();
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
           // structured ThinkingStep[] for the UI. Fires before the
@@ -739,9 +753,9 @@ export function tailInFlight(conversationId, {
   // finished tail leaves no dangling timer.
   let idleTimer = null;
   let idledOut = false;
-  const bumpIdle = () => {
+  const bumpIdle = (ms = idleTimeoutMs) => {
     if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
   (async () => {
     try {
@@ -780,7 +794,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
-          bumpIdle();
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
             case 'response.created':
