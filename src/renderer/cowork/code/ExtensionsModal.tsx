@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
 import { Modal, ModalBody, ModalHeader } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
 import { Tab, TabList, Tabs } from '../components/ui/Tabs';
@@ -114,10 +115,9 @@ export function ExtensionsModal({
           <div className="code-extension-empty">No {label.toLowerCase()} are active for this task.</div>
         )}
         {inventory.errors.length > 0 && (
-          <details className="code-extension-errors">
-            <summary>Some extension sources could not be inspected</summary>
+          <Collapsible className="code-extension-errors" triggerClassName="code-extension-errors__trigger" title="Some extension sources could not be inspected">
             <pre>{inventory.errors.join('\n')}</pre>
-          </details>
+          </Collapsible>
         )}
         {inventory.config_path && (
           <div className="code-extension-config">
