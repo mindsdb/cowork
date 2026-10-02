@@ -50,7 +50,7 @@ import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
-import { OrganizationReloadBlocked } from './OrganizationReloadBlocked';
+import { OrganizationReloadGate } from './OrganizationReloadGate';
 import { RootErrorBoundary } from './RootErrorBoundary';
 import { WelcomeLoading, WelcomeNotice, applyArcadePreset } from './WelcomeLoading';
 
@@ -160,10 +160,11 @@ function KeycloakGate() {
       onTokens={bindOrganizationCacheTokens}
     >
       <StrictMode>
-        <RootErrorBoundary>
-          <App />
-        </RootErrorBoundary>
-        <OrganizationReloadBlocked />
+        <OrganizationReloadGate>
+          <RootErrorBoundary>
+            <App />
+          </RootErrorBoundary>
+        </OrganizationReloadGate>
       </StrictMode>
     </ReactKeycloakProvider>
   );
@@ -175,10 +176,11 @@ createRoot(root).render(
   legacyTenant || codeFixture ? (
     // Access is gated upstream; render directly without a Keycloak login.
     <StrictMode>
-      <RootErrorBoundary>
-        <App />
-      </RootErrorBoundary>
-      <OrganizationReloadBlocked />
+      <OrganizationReloadGate>
+        <RootErrorBoundary>
+          <App />
+        </RootErrorBoundary>
+      </OrganizationReloadGate>
     </StrictMode>
   ) : (
     <KeycloakGate />

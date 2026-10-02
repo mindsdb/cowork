@@ -5,7 +5,7 @@ import {
   __resetOrganizationTransitionForTests,
   prepareForOrganizationReload,
 } from './cowork/lib/organizationTransition';
-import { OrganizationReloadBlocked } from './OrganizationReloadBlocked';
+import { OrganizationReloadGate } from './OrganizationReloadGate';
 
 vi.mock('./cowork/lib/settingsCache', () => ({ clearCachedSettings: vi.fn() }));
 vi.mock('./cowork/lib/draftStore', () => ({ clearDraftsForOrganizationSwitch: vi.fn() }));
@@ -22,7 +22,7 @@ function spendReloadBudget() {
   }
 }
 
-describe('OrganizationReloadBlocked', () => {
+describe('OrganizationReloadGate', () => {
   let reloadSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -37,31 +37,40 @@ describe('OrganizationReloadBlocked', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders nothing while reloads are still allowed', () => {
-    const { container } = render(<OrganizationReloadBlocked />);
-    expect(container.textContent).toBe('');
+  const gated = () => (
+    <OrganizationReloadGate>
+      <div>old organization artifacts</div>
+    </OrganizationReloadGate>
+  );
+
+  it('renders the app while reloads are still allowed', () => {
+    const { container } = render(gated());
+    expect(container.textContent).toBe('old organization artifacts');
   });
 
-  it('appears when the budget runs out after mount, and its button reloads', async () => {
+  // The prompt is transparent like the welcome view, so the stale app must go.
+  it('replaces the app when the budget runs out after mount, and its button reloads', async () => {
     spendReloadBudget();
-    const { container } = render(<OrganizationReloadBlocked />);
-    expect(container.textContent).toBe('');
+    const { container } = render(gated());
+    expect(container.textContent).toBe('old organization artifacts');
 
     act(() => { prepareForOrganizationReload({ clearTenantState: false }); });
 
     expect(container.textContent).toContain('Your organization changed');
+    expect(container.textContent).not.toContain('old organization artifacts');
     const reloadsBeforeClick = reloadSpy.mock.calls.length;
     await userEvent.click(screen.getByRole('button', { name: 'Reload' }));
     expect(reloadSpy).toHaveBeenCalledTimes(reloadsBeforeClick + 1);
   });
 
   // The module's startup check can spend the budget before React mounts.
-  it('appears when the budget ran out before mount', () => {
+  it('shows only the prompt when the budget ran out before mount', () => {
     spendReloadBudget();
     prepareForOrganizationReload({ clearTenantState: false });
 
-    const { container } = render(<OrganizationReloadBlocked />);
+    const { container } = render(gated());
 
     expect(container.textContent).toContain('Your organization changed');
+    expect(container.textContent).not.toContain('old organization artifacts');
   });
 });

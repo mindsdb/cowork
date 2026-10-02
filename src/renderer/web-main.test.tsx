@@ -353,9 +353,9 @@ describe('web-main reload budget prompt', () => {
   it.each([
     ['the canonical host', 'cowork.mindshub.ai'],
     ['a legacy cw- host', 'cw-9a9e789c.4nton.ai'],
-  ])('covers the app on %s once the budget is spent', async (_label, host) => {
+  ])('shows the prompt instead of the app on %s once the budget is spent', async (_label, host) => {
     await renderOnHost(host);
-    expect(rendered.app).toBe(true);
+    expect(rendered.app).toBe(false);
     expect(document.getElementById('root')?.textContent).toContain('Your organization changed');
   });
 });
