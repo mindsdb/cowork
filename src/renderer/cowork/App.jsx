@@ -4856,6 +4856,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            onPrefillConsumed={() => setComposerPrefill(null)}
             codingModeEnabled={false}
           />
         )}
