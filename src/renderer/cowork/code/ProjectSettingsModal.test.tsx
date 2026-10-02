@@ -588,7 +588,10 @@ describe('ProjectSettingsModal', () => {
     const view = render(<ProjectSettingsModal {...props} open project={withPlaybook('project-a')} />);
 
     view.rerender(<ProjectSettingsModal {...props} open project={withPlaybook('project-b')} />);
-    await openAdvanced(userEvent.setup());
+    const user = userEvent.setup();
+    await openAdvanced(user);
+    await user.click(screen.getByRole('button', { name: /Project-only Team Setup/ }));
+    await user.click(screen.getByRole('button', { name: 'Details' }));
     expect(await screen.findByText('bbbbbbbb')).toBeInTheDocument();
     await act(async () => { await late; });
 

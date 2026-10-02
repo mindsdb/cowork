@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import type { CodingSession } from './api';
@@ -108,6 +109,12 @@ export function CodeSidebarSessions({
   const archived = useMemo(() => visibleSessions
     .filter((session) => session.archived && matchesSession(session, normalizedQuery))
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at)), [normalizedQuery, visibleSessions]);
+  // Archived stays folded until you open it, or until the selected task is one of them.
+  const selectedArchived = archived.some((session) => session.id === selectedId);
+  const [archivedOpen, setArchivedOpen] = useState(selectedArchived);
+  useEffect(() => {
+    if (selectedArchived) setArchivedOpen(true);
+  }, [selectedArchived]);
 
   const projectGroups = new Map<string, CodingSession[]>();
   unpinned.forEach((session) => {
@@ -270,10 +277,16 @@ export function CodeSidebarSessions({
           // first and work in motion next, and each row's status shows why.
           : unpinned.map(sessionRow)}
         {archived.length > 0 && (
-          <details className="code-sidebar-archived" open={archived.some((session) => session.id === selectedId)}>
-            <summary>Archived <span>{archived.length}</span></summary>
+          <Collapsible
+            open={archivedOpen}
+            onOpenChange={setArchivedOpen}
+            className="code-sidebar-archived"
+            triggerClassName="code-sidebar-archived__trigger"
+            panelClassName="code-sidebar-archived__panel"
+            title={<span className="code-disclosure-title"><span>Archived</span><small>{archived.length}</small></span>}
+          >
             {archived.map(sessionRow)}
-          </details>
+          </Collapsible>
         )}
       </div>
     </div>
