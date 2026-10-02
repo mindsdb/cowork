@@ -25,7 +25,7 @@
 //   - First-paint theme bootstrap (avoids palette flash).
 //   - Tailwind + cowork tokens loaded in the same order.
 
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 // Order matters: globals/skin/styles first, Tailwind utilities LAST so
@@ -47,7 +47,7 @@ import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
-import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
+import { WelcomeLoading, WelcomeNotice, applyArcadePreset } from './WelcomeLoading';
 
 (() => {
   let theme: 'light' | 'dark' = 'dark';
@@ -84,27 +84,57 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
   }
 }
 
+/**
+ * Holds the App mount until keycloak.init() resolves, and offers a reload when
+ * it rejects. Without LoadingComponent the provider renders App immediately,
+ * App's boot effect probes /api/v1/health before `authenticated` is set,
+ * getAccessToken() returns null so no Bearer is attached, the auth ingress 401s
+ * the probe, and resolveBootTarget lands a signed-in user on the auth screen.
+ *
+ * The provider sits outside StrictMode: it calls init() from componentDidMount
+ * with no unmount cleanup, so a dev double mount would call init() twice, and
+ * keycloak-js rejects a second init() on one instance.
+ */
+function KeycloakGate() {
+  const [initFailed, setInitFailed] = useState(false);
+  const loading = initFailed ? (
+    <WelcomeNotice
+      title="Couldn't sign you in"
+      message="We couldn't reach the sign in service. Check your connection, then reload."
+      actionLabel="Reload"
+      onAction={() => window.location.reload()}
+    />
+  ) : (
+    <WelcomeLoading />
+  );
+  return (
+    <ReactKeycloakProvider
+      authClient={keycloak}
+      initOptions={initOptions}
+      LoadingComponent={loading}
+      onEvent={(event, error) => {
+        if (event !== 'onInitError') return;
+        console.error('[auth] Keycloak init failed', error);
+        setInitFailed(true);
+      }}
+      onTokens={bindOrganizationCacheTokens}
+    >
+      <StrictMode>
+        <App />
+      </StrictMode>
+    </ReactKeycloakProvider>
+  );
+}
+
 const root = document.getElementById('root')!;
 
 createRoot(root).render(
-  <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
+  legacyTenant || codeFixture ? (
+    // Access is gated upstream; render directly without a Keycloak login.
+    <StrictMode>
       <App />
-    ) : (
-      // LoadingComponent holds the mount until keycloak.init() resolves. Without
-      // it the provider renders App immediately, App's boot effect probes
-      // /api/v1/health before `authenticated` is set, getAccessToken() returns
-      // null so no Bearer is attached, the auth ingress 401s the probe, and
-      // resolveBootTarget lands a signed-in user on the auth screen.
-      <ReactKeycloakProvider
-        authClient={keycloak}
-        initOptions={initOptions}
-        LoadingComponent={<WelcomeLoading />}
-        onTokens={bindOrganizationCacheTokens}
-      >
-        <App />
-      </ReactKeycloakProvider>
-    )}
-  </StrictMode>
+    </StrictMode>
+  ) : (
+    <KeycloakGate />
+  )
 );

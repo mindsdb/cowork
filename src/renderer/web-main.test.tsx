@@ -28,16 +28,21 @@ const rendered = {
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
-const keycloakState = { initialized: true };
+const keycloakState = {
+  initialized: true,
+  onEvent: null as ((event: string, error?: unknown) => void) | null,
+};
 const skinState = { skin: 'normal' };
 
 vi.mock('@react-keycloak/web', () => ({
-  ReactKeycloakProvider: ({ children, onTokens, LoadingComponent }: {
+  ReactKeycloakProvider: ({ children, onTokens, onEvent, LoadingComponent }: {
     children?: unknown;
     onTokens?: (tokens: { token?: string }) => void;
+    onEvent?: (event: string, error?: unknown) => void;
     LoadingComponent?: unknown;
   }) => {
     rendered.provider = true;
+    keycloakState.onEvent = onEvent ?? null;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
@@ -88,7 +93,7 @@ async function renderOnHost(hostname: string, search = '') {
   Object.defineProperty(window, 'location', {
     configurable: true,
     writable: true,
-    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search },
+    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search, reload: vi.fn() },
   });
 
   const root = document.createElement('div');
@@ -203,6 +208,58 @@ describe('web-main loading view while Keycloak initializes', () => {
     keycloakState.initialized = false;
     await renderOnHost('cowork.mindshub.ai');
     expect(document.body.dataset.arcadePreset).toBe(preset);
+  });
+});
+
+describe('web-main Keycloak init failure', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = false;
+    keycloakState.onEvent = null;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  const rootText = () => document.getElementById('root')?.textContent ?? '';
+
+  // A forced organization reload that cannot finish signing in must not sit on
+  // the loading view forever.
+  it('offers a reload when init rejects', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+    expect(rootText()).toContain('Welcome to MindsHub Cowork');
+
+    await act(async () => {
+      keycloakState.onEvent?.('onInitError', { error: 'network', error_description: 'failed' });
+    });
+
+    expect(rootText()).toContain("Couldn't sign you in");
+    expect(rendered.app).toBe(false);
+    const button = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Reload');
+    expect(button).toBeDefined();
+    await act(async () => { button?.click(); });
+    expect(window.location.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores refresh errors after init', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+
+    await act(async () => {
+      keycloakState.onEvent?.('onAuthRefreshError', { error: 'network', error_description: 'failed' });
+      keycloakState.onEvent?.('onAuthError', { error: 'network', error_description: 'failed' });
+    });
+
+    expect(rootText()).toContain('Welcome to MindsHub Cowork');
+    expect(rootText()).not.toContain("Couldn't sign you in");
   });
 });
 
