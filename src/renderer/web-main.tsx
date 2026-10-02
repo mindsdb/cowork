@@ -140,7 +140,7 @@ function KeycloakGate() {
   const loading = initFailed ? (
     <WelcomeNotice
       title="Couldn't sign you in"
-      message="We couldn't reach the sign in service. Check your connection, then reload."
+      message="Signing in didn't finish. Reload to try again."
       actionLabel="Reload"
       onAction={() => window.location.reload()}
     />
