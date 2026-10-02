@@ -430,6 +430,35 @@ describe('web-main focus token refresh', () => {
     expect(updateToken).not.toHaveBeenCalled();
   });
 
+  it('refreshes on the next focus once a held transition clears', async () => {
+    transitionState.assertClear.mock = () => { throw new Error('Organization change is in progress'); };
+    await renderOnHost('cowork.mindshub.ai');
+    await focus();
+    expect(updateToken).not.toHaveBeenCalled();
+
+    transitionState.assertClear.mock = null;
+    now += 5_000;
+    await focus();
+
+    expect(updateToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes when the tab becomes visible, not when it is hidden', async () => {
+    let visibility: DocumentVisibilityState = 'hidden';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    await renderOnHost('cowork.mindshub.ai');
+    const visibilityChange = async () => {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    };
+
+    await visibilityChange();
+    expect(updateToken).not.toHaveBeenCalled();
+
+    visibility = 'visible';
+    await visibilityChange();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+  });
+
   it('survives a failed refresh', async () => {
     updateToken.mockImplementation(() => Promise.reject(new Error('network')));
     await renderOnHost('cowork.mindshub.ai');

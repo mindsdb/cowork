@@ -103,13 +103,13 @@ function useFocusTokenRefresh() {
       if (document.visibilityState === 'hidden' || !keycloak.authenticated) return;
       const now = Date.now();
       if (lastRefreshAt !== null && now - lastRefreshAt < FOCUS_TOKEN_REFRESH_INTERVAL_MS) return;
-      lastRefreshAt = now;
       try {
         assertOrganizationTransitionClear();
       } catch (error) {
         console.warn('[organization] focus token refresh skipped', error);
         return;
       }
+      lastRefreshAt = now;
       keycloak.updateToken(-1).catch((error: unknown) => {
         console.warn('[organization] focus token refresh failed', error);
       });
