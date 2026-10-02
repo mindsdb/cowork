@@ -20,6 +20,7 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
 }));
 vi.mock('./cowork/lib/organizationTransition', () => ({
   prepareForOrganizationReload: vi.fn(),
+  assertOrganizationTransitionClear: () => {},
   isOrganizationReloadBlocked: () => false,
   subscribeOrganizationReloadBlocked: () => () => {},
 }));

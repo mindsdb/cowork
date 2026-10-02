@@ -25,7 +25,7 @@
 //   - First-paint theme bootstrap (avoids palette flash).
 //   - Tailwind + cowork tokens loaded in the same order.
 
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 // Order matters: globals/skin/styles first, Tailwind utilities LAST so
@@ -42,7 +42,10 @@ import {
   pinWebOrganizationCacheIdentity,
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
-import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
+import {
+  assertOrganizationTransitionClear,
+  prepareForOrganizationReload,
+} from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
@@ -86,6 +89,40 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
   }
 }
 
+const FOCUS_TOKEN_REFRESH_INTERVAL_MS = 60_000;
+
+/**
+ * Force a token refresh when the tab comes back into view, at most once a
+ * minute. A switch made outside Cowork writes no transition marker, so this
+ * tab only learns of it from a refreshed token, which onTokens then rejects.
+ */
+function useFocusTokenRefresh() {
+  useEffect(() => {
+    let lastRefreshAt: number | null = null;
+    const refresh = () => {
+      if (document.visibilityState === 'hidden' || !keycloak.authenticated) return;
+      const now = Date.now();
+      if (lastRefreshAt !== null && now - lastRefreshAt < FOCUS_TOKEN_REFRESH_INTERVAL_MS) return;
+      lastRefreshAt = now;
+      try {
+        assertOrganizationTransitionClear();
+      } catch (error) {
+        console.warn('[organization] focus token refresh skipped', error);
+        return;
+      }
+      keycloak.updateToken(-1).catch((error: unknown) => {
+        console.warn('[organization] focus token refresh failed', error);
+      });
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+}
+
 /**
  * Holds the App mount until keycloak.init() resolves, and offers a reload when
  * it rejects. Without LoadingComponent the provider renders App immediately,
@@ -99,6 +136,7 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
  */
 function KeycloakGate() {
   const [initFailed, setInitFailed] = useState(false);
+  useFocusTokenRefresh();
   const loading = initFailed ? (
     <WelcomeNotice
       title="Couldn't sign you in"

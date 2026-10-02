@@ -15,7 +15,7 @@
 // The module runs its work as a top-level side effect, so each case needs a
 // fresh `window.location.hostname` + `vi.resetModules()` before importing it.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { act } from 'react';
 
 const rendered = {
@@ -31,6 +31,7 @@ const rendered = {
 const keycloakState = {
   initialized: true,
   onEvent: null as ((event: string, error?: unknown) => void) | null,
+  onTokens: null as ((tokens: { token?: string }) => void) | null,
 };
 const skinState = { skin: 'normal' };
 
@@ -43,6 +44,7 @@ vi.mock('@react-keycloak/web', () => ({
   }) => {
     rendered.provider = true;
     keycloakState.onEvent = onEvent ?? null;
+    keycloakState.onTokens = onTokens ?? null;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
@@ -65,14 +67,20 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
   requireWebOrganizationCacheIdentity: () => { rendered.identityRequired = true; },
   pinWebOrganizationCacheIdentity: (token?: string) => {
     rendered.identityToken = token ?? null;
-    return 'pinned';
+    return token === OTHER_ORGANIZATION_TOKEN ? 'changed' : 'pinned';
   },
 }));
 
-const transitionState = { reloadBlocked: false };
+const transitionState = vi.hoisted(() => ({
+  reloadBlocked: false,
+  assertClear: { mock: null as null | (() => void) },
+  prepareForOrganizationReload: null as null | ((...args: unknown[]) => void),
+}));
+transitionState.prepareForOrganizationReload = vi.fn();
 
 vi.mock('./cowork/lib/organizationTransition', () => ({
-  prepareForOrganizationReload: vi.fn(),
+  prepareForOrganizationReload: (...args: unknown[]) => transitionState.prepareForOrganizationReload?.(...args),
+  assertOrganizationTransitionClear: () => transitionState.assertClear.mock?.(),
   isOrganizationReloadBlocked: () => transitionState.reloadBlocked,
   subscribeOrganizationReloadBlocked: () => () => {},
 }));
@@ -81,7 +89,28 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // doesn't fully provide, and this test is about the wrapper choice, not the
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
-vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
+const OTHER_ORGANIZATION_TOKEN = 'other-organization-token';
+const keycloakClient = vi.hoisted(() => ({
+  onAuthError: null,
+  authenticated: false,
+  updateToken: (_minValidity: number): Promise<boolean> => Promise.resolve(true),
+}));
+vi.mock('./lib/keycloak', () => ({ keycloak: keycloakClient }));
+
+// Each case imports web-main afresh, which mounts a new root. Unmount the last
+// one first so its effects clean up instead of piling listeners onto window.
+const mountedRoots = vi.hoisted(() => [] as Array<{ unmount: () => void }>);
+vi.mock('react-dom/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-dom/client')>();
+  return {
+    ...actual,
+    createRoot: (...args: Parameters<typeof actual.createRoot>) => {
+      const created = actual.createRoot(...args);
+      mountedRoots.push(created);
+      return created;
+    },
+  };
+});
 vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
@@ -106,6 +135,10 @@ async function renderOnHost(hostname: string, search = '') {
   const root = document.createElement('div');
   root.id = 'root';
   document.body.appendChild(root);
+
+  act(() => {
+    for (const mounted of mountedRoots.splice(0)) mounted.unmount();
+  });
 
   // createRoot().render() is asynchronous in React 19 — without act() the
   // import resolves before the tree has been committed and nothing is recorded.
@@ -324,6 +357,95 @@ describe('web-main reload budget prompt', () => {
     await renderOnHost(host);
     expect(rendered.app).toBe(true);
     expect(document.getElementById('root')?.textContent).toContain('Your organization changed');
+  });
+});
+
+describe('web-main focus token refresh', () => {
+  const realLocation = window.location;
+  let now = 1_000_000;
+  let updateToken: Mock<(minValidity: number) => Promise<boolean>>;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    updateToken = vi.fn((_minValidity: number) => Promise.resolve(true));
+    keycloakClient.authenticated = true;
+    keycloakClient.updateToken = updateToken;
+    transitionState.assertClear.mock = null;
+    transitionState.prepareForOrganizationReload = vi.fn();
+    now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    keycloakClient.authenticated = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  const focus = async () => {
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+  };
+
+  it('forces one refresh on focus and waits a minute before the next', async () => {
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+    expect(updateToken).toHaveBeenCalledWith(-1);
+
+    now += 59_000;
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(1);
+
+    now += 2_000;
+    await focus();
+    expect(updateToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads when the refreshed token names another organization', async () => {
+    updateToken.mockImplementation(() => {
+      keycloakState.onTokens?.({ token: OTHER_ORGANIZATION_TOKEN });
+      return Promise.resolve(true);
+    });
+    await renderOnHost('cowork.mindshub.ai');
+    expect(transitionState.prepareForOrganizationReload).not.toHaveBeenCalled();
+
+    await focus();
+
+    expect(transitionState.prepareForOrganizationReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh while an organization transition holds tokens', async () => {
+    transitionState.assertClear.mock = () => { throw new Error('Organization change is in progress'); };
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+
+    expect(updateToken).not.toHaveBeenCalled();
+  });
+
+  it('survives a failed refresh', async () => {
+    updateToken.mockImplementation(() => Promise.reject(new Error('network')));
+    await renderOnHost('cowork.mindshub.ai');
+
+    await focus();
+
+    expect(updateToken).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith('[organization] focus token refresh failed', expect.any(Error));
+  });
+
+  it('does not refresh on a legacy cw- host, which has no Keycloak login', async () => {
+    await renderOnHost('cw-9a9e789c.4nton.ai');
+
+    await focus();
+
+    expect(updateToken).not.toHaveBeenCalled();
   });
 });
 
