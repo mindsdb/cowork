@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import type { EngineCommand, SkillLibraryItem } from './api';
 import { skillSupersedesHint } from './presentation';
 import { useSkillLibrary } from './useSkillLibrary';
@@ -203,15 +204,16 @@ export function CodeCommandPalette({
       style={availableHeight ? { maxHeight: availableHeight } : undefined}
       onKeyDown={handleKeyDown}
     >
-      <label className="code-command-palette__search">
-        <span aria-hidden="true">{Ico.search(13)}</span>
-        <input
+      <div className="code-command-palette__search">
+        <Input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={onQueryChange}
+          size="sm"
+          leading={Ico.search(13)}
           placeholder="Search skills and commands"
           aria-label="Search skills and commands"
         />
-      </label>
+      </div>
       <div className="code-command-palette__list">
         {skills.length > 0 && (
           <section aria-label="MindsHub skills">

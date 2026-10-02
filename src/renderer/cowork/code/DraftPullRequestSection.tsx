@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import Checkbox from '../components/ui/Checkbox';
+import Input, { Textarea } from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import Select from '../components/ui/Select';
 import { deliveryFixCheckPrompt } from './deliveryAutomation';
@@ -353,7 +354,7 @@ export function DraftPullRequestSection({
             <Select value={connectionName} onValueChange={setConnectionName} options={usableGithubConnections.map((item) => ({ value: item.name, label: item.label || item.name }))} size="sm" ariaLabel="GitHub account" />
           )}
           <Input value={title} onChange={setTitle} placeholder="Pull request title" disabled={busy} />
-          <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Optional context for reviewers…" rows={3} disabled={busy} />
+          <Textarea value={body} onChange={setBody} placeholder="Optional context for reviewers…" rows={3} disabled={busy} />
           {ready.length > 1 && (
             <details className="code-delivery-repositories">
               <summary>Repositories <span>{selectedReady.length} of {ready.length}</span></summary>
@@ -362,8 +363,8 @@ export function DraftPullRequestSection({
                 const override = overrides[item.folder_id] || { title, body };
                 return (
                   <div className="code-delivery-repository" key={item.folder_id}>
-                    <label><input type="checkbox" checked={selected} onChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
-                    {selected && <details><summary>Edit title or context</summary><div><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><textarea value={override.body} onChange={(event) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: event.target.value } }))} rows={2} /></div></details>}
+                    <label><Checkbox size="sm" aria-label={`Include ${item.folder_name}`} checked={selected} onCheckedChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
+                    {selected && <details><summary>Edit title or context</summary><div><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><Textarea value={override.body} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: value } }))} rows={2} /></div></details>}
                   </div>
                 );
               })}</div>

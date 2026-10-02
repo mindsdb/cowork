@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Button from '../components/ui/Button';
+import { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import type { DeliveryRecord, SourceContext } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
@@ -99,9 +100,9 @@ export function SourceUpdateSection({
               )}
               {isActive && activeContext && (
                 <div className="code-source-update__composer">
-                  <textarea
+                  <Textarea
                     value={text}
-                    onChange={(event) => setText(event.target.value)}
+                    onChange={setText}
                     placeholder={`Write an update for ${sourceContextLabel(activeContext)}…`}
                     rows={4}
                     autoFocus

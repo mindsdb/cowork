@@ -47,11 +47,7 @@
 .code-sidebar-sessions__label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .code-sidebar-organize-trigger { margin: -4px -5px -4px 0; text-transform: none; }
 .code-sidebar-organize-menu__heading { color: var(--ink-4); font: 500 11px var(--font-sans); }
-.code-sidebar-session-search { height: 30px; margin: 0 18px 7px; padding: 0 8px; display: flex; flex: none; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; background: color-mix(in srgb, var(--surface-1) 72%, transparent); color: var(--ink-4); }
-.code-sidebar-session-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: var(--ring); }
-.code-sidebar-session-search > span { display: inline-flex; flex: none; }
-.code-sidebar-session-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink-2); font: 10.5px var(--font-sans); }
-.code-sidebar-session-search input::placeholder { color: var(--ink-4); }
+.code-sidebar-session-search { width: auto; flex: none; margin: 0 18px 7px; }
 .code-sidebar-session-search input::-webkit-search-cancel-button { opacity: .55; }
 .code-sidebar-sessions__list { min-height: 0; overflow-y: auto; padding: 0 10px 10px; }
 .code-sidebar-sessions__empty { padding: 10px 8px; color: var(--ink-4); font-size: 11.5px; line-height: 1.5; }
@@ -225,9 +221,7 @@
 .code-work-picker__header strong { color: var(--ink-2); font-size: 11.5px; font-weight: 650; }
 .code-work-picker__header span { color: var(--ink-4); font-size: 9px; }
 .code-work-picker__filters { min-height: 39px; padding: 6px 9px 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.code-work-picker__search { height: 34px; margin: 6px 9px; padding: 0 9px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink-4); }
-.code-work-picker__search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
-.code-work-picker__search input { min-width: 0; flex: 1; border: 0; outline: none; background: transparent; color: var(--ink); font: 10.5px var(--font-sans); }
+.code-work-picker__search { width: auto; margin: 6px 9px; }
 .code-work-picker__results { max-height: 218px; padding: 0 6px 5px; overflow-y: auto; }
 .code-work-picker__results > button { width: 100%; min-height: 44px; padding: 6px 7px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 7px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
 .code-work-picker__results > button:hover,
@@ -240,7 +234,7 @@
 .code-work-picker__message { min-height: 72px; display: grid; place-items: center; color: var(--ink-4); font-size: 10px; text-align: center; }
 .code-work-picker__message.is-error { color: var(--danger); }
 .code-work-picker__link { min-height: 42px; padding: 6px 8px 7px 12px; display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--line); }
-.code-work-picker__link input { min-width: 0; flex: 1; border: 0; outline: none; background: transparent; color: var(--ink); font: 9.5px var(--font-sans); }
+.code-work-picker__link .field-input { min-width: 0; flex: 1; }
 .code-work-picker__empty { min-height: 82px; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink-4); font-size: 10px; }
 .code-add-source { margin: 3px 2px 0; }
 .code-repository-state { margin: 7px 2px 1px; padding-top: 7px; display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 11px; }
@@ -427,10 +421,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 /* One discoverable palette for MindsHub skills and agent-native commands. */
 .code-command-palette { position: absolute; z-index: 24; right: 0; bottom: calc(100% + 7px); left: 0; max-height: min(430px, 56vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--surface-0); box-shadow: var(--sh-3); }
 .code-start-composer > .code-command-palette { top: calc(100% + 8px); bottom: auto; }
-.code-command-palette__search { min-height: 41px; padding: 7px 10px; display: flex; flex: none; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); color: var(--ink-4); }
-.code-command-palette__search > span { display: inline-flex; }
-.code-command-palette__search input { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; color: var(--ink); outline: none; font: 11.5px var(--font-sans); }
-.code-command-palette__search input::placeholder { color: var(--ink-4); }
+.code-command-palette__search { min-height: 41px; padding: 7px 10px; display: flex; flex: none; align-items: center; border-bottom: 1px solid var(--line); }
 .code-command-palette__list { min-height: 0; padding: 5px; overflow-y: auto; }
 .code-command-palette__list section + section { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
 .code-command-palette__section { min-height: 25px; padding: 4px 8px 5px; display: flex; align-items: center; gap: 8px; color: var(--ink-4); }
@@ -479,8 +470,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-terminal .xterm-viewport { background-color: transparent !important; }
 
 .code-controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 12px; }
-.code-controls-field { min-width: 0; display: grid; gap: 6px; }
-.code-controls-field > span { color: var(--ink-3); font-size: 10.5px; font-weight: 620; }
 .code-controls-toggle { grid-column: 1 / -1; min-height: 48px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); }
 .code-controls-toggle > div { min-width: 0; display: grid; gap: 3px; }
 .code-controls-toggle strong { color: var(--ink-2); font-size: 11.5px; font-weight: 620; }
@@ -494,8 +483,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-controls-folders__list > div { min-width: 0; min-height: 30px; padding: 3px 3px 3px 8px; display: flex; align-items: center; gap: 6px; border-radius: var(--r); background: var(--surface-2); }
 .code-controls-folders__list span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: 9.5px var(--font-mono); }
 .code-controls-folders__error,
-.code-controls-error,
-.code-rename-error { display: block; margin-top: 7px; color: var(--danger); font-size: 10px; }
+.code-controls-error { display: block; margin-top: 7px; color: var(--danger); font-size: 10px; }
 .code-controls-windows { grid-column: 1 / -1; min-height: 44px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); }
 .code-controls-windows > div { display: grid; gap: 3px; }
 .code-controls-windows strong { color: var(--ink-2); font-size: 11.5px; font-weight: 620; }
@@ -521,8 +509,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-extension-config strong { color: var(--ink-2); font-size: 11px; }
 .code-extension-config small { color: var(--ink-4); font-size: 9.5px; line-height: 1.4; }
 .code-extension-config code { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; user-select: text; }
-.code-rename-field { display: grid; gap: 6px; }
-.code-rename-field > span { color: var(--ink-3); font-size: 10.5px; font-weight: 620; }
 
 /* Code collection pages (Projects, Connectors, Skills, Tasks) share the app's
    collection geometry: <PageHeader> owns the title, <FilterRow> the search
@@ -710,7 +696,6 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-playbook-items[open] > summary i { transform: rotate(180deg); }
 .code-playbook-items > div { display: grid; }
 .code-playbook-items label { min-height: 44px; padding: 6px 2px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); cursor: pointer; }
-.code-playbook-items input { accent-color: var(--accent); }
 .code-playbook-items label > span { min-width: 0; display: grid; gap: 1px; }
 .code-playbook-items strong { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
 .code-playbook-items small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
@@ -833,10 +818,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 @media (max-width: 720px) { .code-git-identity__form { grid-template-columns: 1fr; } }
 .code-delivery-resolve > :first-child { min-width: 0; flex: 1; }
 .code-delivery-compose { padding-top: 3px; display: grid; gap: 7px; border-top: 1px solid var(--line); }
-.code-delivery-compose > textarea,
-.code-delivery-repository textarea { width: 100%; padding: 8px; resize: vertical; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink); font: 10.5px/1.45 var(--font-sans); outline: none; }
-.code-delivery-compose > textarea:focus,
-.code-delivery-repository textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .code-delivery-compose > .btn { justify-self: end; }
 .code-delivery-repositories { border-top: 1px solid var(--line); }
 .code-delivery-repositories > summary { min-height: 34px; display: flex; align-items: center; justify-content: space-between; color: var(--ink-3); cursor: pointer; list-style: none; font-size: 10px; }
@@ -844,7 +825,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-repositories > summary span { color: var(--ink-4); font: 9px var(--font-mono); }
 .code-delivery-repository { padding: 7px 1px; border-top: 1px solid var(--line); }
 .code-delivery-repository > label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.code-delivery-repository input { accent-color: var(--accent); }
 .code-delivery-repository label > span { min-width: 0; flex: 1; display: flex; justify-content: space-between; gap: 8px; }
 .code-delivery-repository strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .code-delivery-repository small { color: var(--ink-4); font-size: 9px; }
@@ -903,7 +883,8 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-source-update__receipt i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .code-source-update__receipt small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
 .code-source-update__composer { margin-top: 7px; padding: 8px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
-.code-source-update__composer textarea { width: 100%; padding: 2px; resize: vertical; border: 0; background: transparent; color: var(--ink); font: 10.5px/1.45 var(--font-sans); outline: none; }
+/* The composer box carries the chrome; its Textarea sits flush inside it, like the Code composer's. */
+.code-source-update__composer .field-textarea { min-height: 0; padding: 2px; border: 0; background: transparent; box-shadow: none; font-size: 10.5px; line-height: 1.45; }
 .code-source-update__composer footer { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .code-source-update__composer footer > div { display: flex; gap: 5px; }
 .code-git-advanced { border-top: 1px solid var(--line); }
