@@ -227,8 +227,20 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
  * Why the follow-up composer cannot send right now, or null when it can.
  * `canSwitch` is true when picking a different target would let the message
  * go out, so the caller keeps the target picker usable in that case.
+ * `starting`: 'loading', 'loadFailed', 'sending' or 'firstFailed' while the
+ * comparison is not yet past its first prompt; null once it is.
  */
-export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { outOfCredits = [] } = {}) {
+export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { outOfCredits = [], starting = null } = {}) {
+  // A follow-up must come after the task both sides were given: until both
+  // have loaded and the first prompt has gone out to both, nothing else goes.
+  if (starting === 'loadFailed') {
+    return { message: "A side couldn't load. Retry it above before following up.", canSwitch: false };
+  }
+  if (starting === 'loading') return { message: 'You can follow up once both models have loaded.', canSwitch: false };
+  if (starting === 'sending') return { message: 'Sending the task to both models…', canSwitch: false };
+  if (starting === 'firstFailed') {
+    return { message: "The task hasn't reached either model yet. Try sending it again above.", canSwitch: false };
+  }
   // Both sides spend from one wallet, so once one side has stopped for want of
   // credits any follow-up would stop too. Blocks until the account can pay.
   if (outOfCredits.length > 0) {

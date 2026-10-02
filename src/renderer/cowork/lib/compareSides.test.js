@@ -175,6 +175,15 @@ describe('composerBlock', () => {
     expect(composerBlock('a', { a: free, b: busy })).toBeNull();
   });
 
+  it('takes nothing before both sides have loaded and the first prompt is out', () => {
+    for (const starting of ['loading', 'loadFailed', 'sending', 'firstFailed']) {
+      const block = composerBlock('both', { a: free, b: free }, undefined, { starting });
+      expect(block?.canSwitch, starting).toBe(false);
+      expect(composerBlock('a', { a: free, b: free }, undefined, { starting }), starting).not.toBeNull();
+    }
+    expect(composerBlock('both', { a: free, b: free }, undefined, { starting: null })).toBeNull();
+  });
+
   it('closes the composer while both models work', () => {
     expect(composerBlock('both', { a: busy, b: busy })).toEqual({
       message: 'You can follow up when both models finish.', canSwitch: false,
