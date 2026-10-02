@@ -482,6 +482,22 @@ describe('CompareView', () => {
     expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
   });
 
+  it('still takes a follow-up for the other side when a continued side cannot load', async () => {
+    const cmp = comparison({
+      sides: comparison().sides.map((side) => (side.label === 'a'
+        ? { ...side, continuedAt: '2026-09-30T10:00:00Z', continuedTurnCount: 1, continuedProjectId: 'p-real' }
+        : side)),
+    });
+    mockHistory([cmp]);
+    api.fetchComparison.mockResolvedValue(cmp);
+    api.fetchSession.mockImplementation(async (id) => (id === 'conv-a' ? null : session(id, finishedTurn('p'))));
+    render(<CompareView models={models} projects={projects} />);
+    fireEvent.click(await screen.findByText(cmp.title));
+    await waitFor(() => expect(api.fetchSession).toHaveBeenCalledTimes(2));
+
+    expect(await screen.findByText('Kimi was continued as a task. Send to Qwen only.')).toBeTruthy();
+  });
+
   it('takes no follow-up until the task has gone out to both sides, so it cannot overtake it', async () => {
     mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
