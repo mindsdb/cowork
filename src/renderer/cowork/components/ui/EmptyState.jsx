@@ -10,9 +10,8 @@
 //   <EmptyState bordered icon={…} title="…" description="…" />
 //
 // `size="sm"` is the dense variant for side panels and tool surfaces (Code
-// mode's Files, Preview and Review panels): a small muted icon, a 12px
-// heading and an 11px description, with no min-height. The caller owns the
-// outer padding through `style`.
+// mode's Files, Preview and Review panels): the same layout with a muted
+// icon, a 12px heading, an 11px description and no min-height.
 //
 //   <EmptyState size="sm" icon={Ico.search(18)} title="No matches"
 //     description="Try a filename, symbol, or phrase from the code." />
@@ -20,6 +19,25 @@
 import { Card } from './Card.tsx';
 
 const FONT_BODY = 'var(--font-body)';
+
+// Per-size values for the one layout below. `md` is the original look;
+// `sm` tightens the spacing, drops the min-height and steps the type down.
+// The icon/action gaps add to the column gap.
+const SIZES = {
+  md: {
+    gap: 10, minHeight: 360, padding: '48px 24px', iconGap: undefined, actionGap: 6,
+    titleClassName: 's-h3',
+    title: { color: 'var(--ink)' },
+    description: { fontSize: 13.5, color: 'var(--ink-3)', maxWidth: '44ch' },
+  },
+  sm: {
+    gap: 5, minHeight: undefined, padding: '32px 24px', iconGap: 5, actionGap: 5,
+    titleClassName: undefined,
+    title: { color: 'var(--ink-3)', fontSize: 12, fontWeight: 600 },
+    description: { fontSize: 11, color: 'var(--ink-4)', maxWidth: 240 },
+    icon: { color: 'var(--ink-4)' },
+  },
+};
 
 export function EmptyState({
   icon,
@@ -32,63 +50,28 @@ export function EmptyState({
   className,
   children,
 }) {
-  if (size === 'sm') {
-    return (
-      <div
-        className={className}
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          textAlign: 'center', color: 'var(--ink-4)', fontFamily: FONT_BODY,
-          padding: '32px 24px', ...style,
-        }}
-      >
-        {icon && (
-          <span style={{ display: 'inline-flex', marginBottom: 10 }}>
-            {icon}
-          </span>
-        )}
-        {title && (
-          <div style={{ color: 'var(--ink-3)', fontSize: 12, fontWeight: 600 }}>
-            {title}
-          </div>
-        )}
-        {description && (
-          <div style={{ maxWidth: 240, marginTop: 5, fontSize: 11, lineHeight: 1.5 }}>
-            {description}
-          </div>
-        )}
-        {action && (
-          <div style={{ marginTop: 10 }}>
-            {action}
-          </div>
-        )}
-        {children}
-      </div>
-    );
-  }
-
+  const s = SIZES[size] || SIZES.md;
   const content = (
     <>
       {icon && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: s.iconGap, ...s.icon }}>
           {icon}
         </span>
       )}
       {title && (
-        <div className="s-h3" style={{ color: 'var(--ink)' }}>
+        <div className={s.titleClassName} style={s.title}>
           {title}
         </div>
       )}
       {description && (
         <div style={{
-          fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)',
-          maxWidth: '44ch', textAlign: 'center', lineHeight: 1.5,
+          fontFamily: FONT_BODY, textAlign: 'center', lineHeight: 1.5, ...s.description,
         }}>
           {description}
         </div>
       )}
       {action && (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: s.actionGap }}>
           {action}
         </div>
       )}
@@ -98,7 +81,7 @@ export function EmptyState({
 
   const centering = {
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    gap: 10, textAlign: 'center', minHeight: 360,
+    gap: s.gap, textAlign: 'center', minHeight: s.minHeight,
   };
 
   if (bordered) {
@@ -107,7 +90,7 @@ export function EmptyState({
         variant="dashed"
         flat
         className={className}
-        style={{ ...centering, padding: '48px 24px', ...style }}
+        style={{ ...centering, padding: s.padding, ...style }}
       >
         {content}
       </Card>
@@ -115,7 +98,7 @@ export function EmptyState({
   }
 
   return (
-    <div className={className} style={{ ...centering, padding: '48px 24px', ...style }}>
+    <div className={className} style={{ ...centering, padding: s.padding, ...style }}>
       {content}
     </div>
   );
