@@ -60,9 +60,9 @@ export function RecoveryModal({
             <Radio
               key={option.computer.id}
               value={option.computer.id}
+              variant="card"
               size="sm"
               indicator="end"
-              className="code-recovery-option"
             >
               <span className="code-recovery-option__icon"><Laptop size={17} strokeWidth={1.6} /></span>
               <span className="code-recovery-option__copy">

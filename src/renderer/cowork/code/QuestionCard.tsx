@@ -29,7 +29,7 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       {!question.isSecret && !!question.options?.length && <RadioGroup aria-labelledby={`${pending.id}-${question.id}-legend`} disabled={busy}
         value={question.options.some(option => option.label === answers[question.id]) ? answers[question.id] : ''}
         onValueChange={label => setAnswers(current => ({ ...current, [question.id]: label }))}>
-        {question.options.map((option, index) => <Radio value={option.label} size="sm" className="code-question__option" key={`${option.label}-${index}`}>
+        {question.options.map((option, index) => <Radio value={option.label} variant="card" size="sm" className="code-question__option" key={`${option.label}-${index}`}>
           <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
         </Radio>)}
       </RadioGroup>}

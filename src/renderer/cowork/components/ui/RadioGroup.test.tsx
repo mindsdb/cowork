@@ -65,4 +65,23 @@ describe('RadioGroup', () => {
     render(<Harness initial="" />);
     for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked();
   });
+
+  it('gives card rows the shared border and marks the selected one', () => {
+    render(
+      <RadioGroup aria-label="Plans" value="b">
+        <Radio value="a" variant="card"><span>Alpha</span></Radio>
+        <Radio value="b" variant="card"><span>Bravo</span></Radio>
+      </RadioGroup>,
+    );
+    const alpha = screen.getByRole('radio', { name: 'Alpha' });
+    const bravo = screen.getByRole('radio', { name: 'Bravo' });
+    expect(alpha).toHaveClass('border-line', 'rounded-card-row');
+    expect(bravo).toHaveAttribute('data-checked');
+    expect(alpha).not.toHaveAttribute('data-checked');
+  });
+
+  it('leaves plain rows without card chrome', () => {
+    render(<Harness />);
+    expect(screen.getByRole('radio', { name: 'Alpha' })).not.toHaveClass('border-line');
+  });
 });

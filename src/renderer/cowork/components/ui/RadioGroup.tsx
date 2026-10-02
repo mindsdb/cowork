@@ -15,8 +15,14 @@
 //
 // A Radio with children is the whole clickable row: the indicator sits at
 // its start (or `indicator="end"`) and the children are its accessible name.
-// The row carries no layout of its own — callers pass a layout class — but
-// exposes `data-checked` / `data-disabled` for selected-row styling.
+// The plain row carries no layout of its own. `variant="card"` is the
+// bordered option row used for choices with a title and description: the
+// primitive owns its border, padding, hover and the one selected style, so
+// callers only lay out what goes inside.
+//
+//   <Radio value="include" variant="card" size="sm">
+//     <span><strong>Include my local changes</strong><small>…</small></span>
+//   </Radio>
 // Base UI radios are spans, so a surrounding `<fieldset disabled>` does not
 // reach them: pass `disabled` to the group or the radio instead.
 
@@ -68,7 +74,22 @@ export function RadioGroup({ onValueChange, className, children, ...rest }: Radi
   );
 }
 
-export interface RadioProps extends VariantProps<typeof indicatorVariants> {
+const rowVariants = cva('group cursor-pointer outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50', {
+  variants: {
+    variant: {
+      plain: '',
+      card: cn(
+        // Same preflight caveat as the indicator: `border-solid` is explicit.
+        'flex w-full items-start gap-2.5 rounded-card-row border border-solid border-line bg-transparent p-3 text-left text-ink',
+        'transition-colors duration-150 [&:not([data-checked])]:hover:bg-surface-2',
+        'data-[checked]:border-accent data-[checked]:bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]',
+      ),
+    },
+  },
+  defaultVariants: { variant: 'plain' },
+});
+
+export interface RadioProps extends VariantProps<typeof indicatorVariants>, VariantProps<typeof rowVariants> {
   value: string;
   disabled?: boolean;
   // Row content; omit for a bare indicator.
@@ -78,14 +99,14 @@ export interface RadioProps extends VariantProps<typeof indicatorVariants> {
   'aria-label'?: string;
 }
 
-export function Radio({ value, disabled, size, indicator = 'start', children, className, ...rest }: RadioProps) {
+export function Radio({ value, disabled, size, variant, indicator = 'start', children, className, ...rest }: RadioProps) {
   const dot = (
     <span
       aria-hidden="true"
       className={cn(
         indicatorVariants({ size }),
-        // Nudge a leading dot onto the first text line of a multi-line row.
-        children != null && indicator === 'start' && 'mt-0.5',
+        // Nudge the dot onto the first text line of a multi-line row.
+        children != null && (indicator === 'start' || variant === 'card') && 'mt-0.5',
         'border-[var(--border-strong)] bg-[var(--surface)]',
         'group-data-[checked]:border-[var(--primary-700)] group-data-[checked]:bg-[var(--primary-700)]',
       )}
@@ -98,9 +119,8 @@ export function Radio({ value, disabled, size, indicator = 'start', children, cl
       value={value}
       disabled={disabled}
       className={cn(
-        'group cursor-pointer outline-none',
+        rowVariants({ variant }),
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]',
-        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
         children == null && 'inline-flex rounded-full',
         className,
       )}

@@ -261,13 +261,13 @@ export function TaskRepositoryDrawer({
                   onValueChange={(next) => setDraft({ ...draft, include_local_changes: next === 'include' })}
                   disabled={checkingBranches}
                 >
-                  <Radio value="committed" size="sm" className="code-repository-policy__option">
+                  <Radio value="committed" variant="card" size="sm">
                     <span>
                       <strong>Start from committed code</strong>
                       <small>Leave local changes on this computer.</small>
                     </span>
                   </Radio>
-                  <Radio value="include" size="sm" className="code-repository-policy__option">
+                  <Radio value="include" variant="card" size="sm">
                     <span>
                       <strong>Include my local changes</strong>
                       <small>Copy them into this task. Keep originals.</small>

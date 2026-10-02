@@ -919,17 +919,8 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 /* Recovery is a choice between environments, not a generic confirmation.
    Keep the machine identity, consequence, and selection in one scan line. */
 .code-recovery-options { display: grid; gap: 8px; }
-.code-recovery-option {
-  width: 100%; display: grid; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 11px;
-  align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--bg); color: var(--ink); text-align: left;
-  transition: border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
-}
-.code-recovery-option:hover { border-color: var(--line-strong); background: var(--surface-2); }
-.code-recovery-option[data-checked] { border-color: color-mix(in srgb, var(--accent) 66%, var(--line)); background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent); }
-.code-recovery-option__icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: var(--bg-2); color: var(--ink-2); }
-.code-recovery-option[data-checked] .code-recovery-option__icon { background: color-mix(in srgb, var(--accent) 14%, var(--bg-2)); color: var(--accent); }
-.code-recovery-option__copy { min-width: 0; display: grid; gap: 3px; }
+.code-recovery-option__icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 9px; background: var(--bg-2); color: var(--ink-2); }
+.code-recovery-option__copy { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .code-recovery-option__title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .code-recovery-option__title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
 .code-recovery-option__recommended { padding: 2px 6px; border-radius: 999px; background: var(--bg-2); color: var(--ink-2); font-size: 10px; font-weight: 600; }
