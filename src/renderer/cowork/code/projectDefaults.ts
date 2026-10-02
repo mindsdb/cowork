@@ -32,21 +32,13 @@ export function parsePortNames(text: string): string[] {
 }
 
 
-export function describeTaskDefaults({
-  agent,
-  model,
-  permission,
-  variableCount,
-  portNames,
-}: {
-  agent: string;
-  model: string;
-  permission: string;
-  variableCount: number;
-  portNames: string[];
-}): string {
-  const parts = [agent, model, permission];
+export function describeTaskDefaults({ agent, model, permission }: { agent: string; model: string; permission: string }): string {
+  return [agent, model, permission].filter(Boolean).join(' · ');
+}
+
+export function describeEnvironment({ variableCount, portNames }: { variableCount: number; portNames: string[] }): string {
+  const parts: string[] = [];
   if (variableCount) parts.push(`${variableCount} variable${variableCount === 1 ? '' : 's'}`);
   if (portNames.length) parts.push(portNames.join(', '));
-  return parts.filter(Boolean).join(' · ');
+  return parts.join(' · ') || 'Nothing set';
 }

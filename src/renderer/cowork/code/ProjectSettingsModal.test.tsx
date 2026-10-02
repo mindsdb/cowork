@@ -69,9 +69,9 @@ const project: CodeProject = {
   updated_at: '2026-08-23T09:00:00Z',
 };
 
-// Skills and task defaults live under the collapsed Advanced section.
-async function openAdvanced(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /^Advanced/ }));
+// Skills, task defaults and environment each sit in their own collapsed group.
+async function openGroup(user: ReturnType<typeof userEvent.setup>, name: 'Skills' | 'Team Setup' | 'Task defaults' | 'Environment') {
+  await user.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
 }
 
 describe('ProjectSettingsModal', () => {
@@ -170,7 +170,7 @@ describe('ProjectSettingsModal', () => {
         catalog={source === 'shared' ? catalog : undefined} onClose={vi.fn()} onSave={onSave} />;
     }
     render(<Editor />);
-    await openAdvanced(user);
+    await openGroup(user, 'Task defaults');
     await user.click(screen.getByRole('combobox', { name: 'Default coding model' }));
     expect(screen.getByRole('option', { name: /fable/ })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -197,10 +197,10 @@ describe('ProjectSettingsModal', () => {
     expect(screen.getByRole('textbox', { name: 'Project name' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Choose a folder/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Connectors' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Advanced/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Skills|Task defaults|Environment)/ })).toBeNull();
   });
 
-  it('offers Connectors in Project settings and keeps skills under Advanced', async () => {
+  it('offers Connectors in Project settings and keeps skills in their own group', async () => {
     const user = userEvent.setup();
     const onOpenConnectors = vi.fn();
     render(
@@ -219,7 +219,7 @@ describe('ProjectSettingsModal', () => {
     await user.click(screen.getByRole('button', { name: 'Open Connectors' }));
     expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(screen.queryByText('Choose skills')).toBeNull();
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     expect(await screen.findByText('1 available')).toBeInTheDocument();
     expect(screen.getByText('Choose skills')).toBeInTheDocument();
   });
@@ -253,7 +253,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('button', { name: 'Open Skills' }));
     expect(onOpenSkills).toHaveBeenCalledOnce();
@@ -282,7 +282,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('1 skill included'));
     expect(screen.getByText('Thermo-Nuclear Code Quality Review')).toBeInTheDocument();
     expect(screen.getByText('MindsHub maintained')).toBeInTheDocument();
@@ -308,9 +308,9 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    // The collapsed Advanced row still says what the project carries.
-    expect(screen.getByRole('button', { name: /^Advanced/ })).toHaveTextContent('2 skills added');
-    await openAdvanced(user);
+    // The collapsed Skills group still says what the project carries.
+    expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('2 skills added');
+    await openGroup(user, 'Skills');
     await user.click(screen.getByText('2 skills added', { selector: 'strong' }));
     expect(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ })).toBeChecked();
   });
@@ -329,7 +329,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -356,7 +356,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     await user.click(screen.getByText('1 skill added', { selector: 'strong' }));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -379,7 +379,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Skills');
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -456,7 +456,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Task defaults');
     await user.click(await screen.findByRole('combobox', { name: 'Default coding model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Fable 5' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
@@ -531,7 +531,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await openAdvanced(user);
+    await openGroup(user, 'Task defaults');
     expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
@@ -567,7 +567,7 @@ describe('ProjectSettingsModal', () => {
 
     rerender(<ProjectSettingsModal {...props} open />);
 
-    await openAdvanced(user);
+    await openGroup(user, 'Task defaults');
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
@@ -588,7 +588,7 @@ describe('ProjectSettingsModal', () => {
     const view = render(<ProjectSettingsModal {...props} open project={withPlaybook('project-a')} />);
 
     view.rerender(<ProjectSettingsModal {...props} open project={withPlaybook('project-b')} />);
-    await openAdvanced(userEvent.setup());
+    await openGroup(userEvent.setup(), 'Team Setup');
     expect(await screen.findByText('bbbbbbbb')).toBeInTheDocument();
     await act(async () => { await late; });
 
@@ -597,7 +597,7 @@ describe('ProjectSettingsModal', () => {
   });
 
   async function openTaskDefaults(user: ReturnType<typeof userEvent.setup>) {
-    await openAdvanced(user);
+    await openGroup(user, 'Task defaults');
   }
 
   it('saves a default reasoning effort for the project', async () => {
@@ -652,7 +652,7 @@ describe('ProjectSettingsModal', () => {
     expect(screen.queryByRole('combobox', { name: 'Default reasoning effort' })).toBeNull();
   });
 
-  it('summarises the task defaults while Advanced is collapsed and reveals the fields when opened', async () => {
+  it('summarises task defaults and environment in their collapsed groups and reveals the fields when opened', async () => {
     const user = userEvent.setup();
     render(
       <ProjectSettingsModal
@@ -670,11 +670,12 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    // The Advanced row tells the reader the current defaults without opening anything.
-    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first · 2 variables · PORT, API_PORT')).toBeInTheDocument();
+    // Each group row tells the reader what it holds without opening anything.
+    expect(await screen.findByText('Codex · GPT 5.6 Sol · Ask first')).toBeInTheDocument();
+    expect(screen.getByText('2 variables · PORT, API_PORT')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Default coding model' })).toBeNull();
 
-    const toggle = screen.getByRole('button', { name: /^Advanced/ });
+    const toggle = screen.getByRole('button', { name: /^Task defaults/ });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await user.click(toggle);
     expect(screen.getByRole('combobox', { name: 'Default coding model' })).toBeInTheDocument();
