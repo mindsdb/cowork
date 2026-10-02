@@ -50,8 +50,11 @@ vi.mock('@react-keycloak/web', () => ({
   },
 }));
 
+const appState = { throws: false };
+
 vi.mock('./App', () => ({
   default: () => {
+    if (appState.throws) throw new Error('render crash');
     rendered.app = true;
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
     return null;
@@ -260,6 +263,35 @@ describe('web-main Keycloak init failure', () => {
 
     expect(rootText()).toContain('Welcome to MindsHub Cowork');
     expect(rootText()).not.toContain("Couldn't sign you in");
+  });
+});
+
+describe('web-main render error', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    keycloakState.initialized = true;
+    appState.throws = true;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    appState.throws = false;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['the canonical host', 'cowork.mindshub.ai'],
+    ['a legacy cw- host', 'cw-9a9e789c.4nton.ai'],
+  ])('shows a reload notice, not an empty root, on %s', async (_label, host) => {
+    await renderOnHost(host);
+    expect(document.getElementById('root')?.textContent).toContain('Something went wrong');
   });
 });
 
