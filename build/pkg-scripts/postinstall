@@ -23,11 +23,6 @@ log() {
   echo "[cowork-postinstall] $*" >&2
 }
 
-if [ ! -f "$SRC_FILE" ]; then
-  log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
-  exit 0
-fi
-
 # Resolves a user's home directory via dscl rather than `eval echo ~user`,
 # which would otherwise inject an unsanitized value into the shell.
 home_dir_for() {
@@ -67,18 +62,61 @@ stage_shared_fallback() {
     && chmod 640 "$dest_file"
 }
 
+# Only admins get the bundle. A standard user can't write /Applications, so
+# Squirrel would still prompt them, and a user-owned bundle would let a non-admin
+# modify app code that every account on the Mac runs.
+is_admin_user() {
+  dseditgroup -o checkmember -m "$1" admin >/dev/null 2>&1
+}
+
+# A pkg installs the app root-owned, so every auto-update asks for a password.
+# Giving it to the console user, as a DMG install would, lets Squirrel.Mac swap
+# it silently. Ownership doesn't affect the signature or notarization.
+chown_app_bundle() {
+  local user="$1"
+  local name_file="$SCRIPT_DIR/installed-app-name"
+  if [ ! -f "$name_file" ]; then
+    log "no installed-app-name packaged — leaving app bundle ownership unchanged"
+    return 1
+  fi
+  local app_name
+  app_name="$(cat "$name_file")"
+  # A bare name only, so the recursive chown can't leave /Applications.
+  case "$app_name" in
+    "" | */* | ..*)
+      log "unexpected installed-app-name '$app_name' — skipping bundle chown"
+      return 1
+      ;;
+  esac
+  local app_path="/Applications/$app_name"
+  if [ ! -d "$app_path" ]; then
+    log "installed bundle not found at $app_path — skipping bundle chown"
+    return 1
+  fi
+  chown -R "$user:staff" "$app_path"
+}
+
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 CONSOLE_HOME=""
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
   CONSOLE_HOME="$(home_dir_for "$CONSOLE_USER")"
 fi
 
-if [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
+# Unsigned builds ship no credentials; skip staging but still hand over the app.
+if [ ! -f "$SRC_FILE" ]; then
+  log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
+elif [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
   log "staged credentials for console user $CONSOLE_USER"
 elif stage_shared_fallback; then
   log "no usable console user session — staged credentials at the shared fallback location"
 else
   log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
+fi
+
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && is_admin_user "$CONSOLE_USER"; then
+  if chown_app_bundle "$CONSOLE_USER"; then
+    log "handed the app bundle to admin console user $CONSOLE_USER for prompt-free auto-update"
+  fi
 fi
 
 exit 0
