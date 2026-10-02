@@ -136,7 +136,7 @@ function SkillProjectsModal({
                 if (checked) next.add(project.id); else next.delete(project.id);
                 return next;
               })} />
-              <span><strong>{project.name}</strong><small>{project.folders.length} folder{project.folders.length === 1 ? '' : 's'}</small></span>
+              <span className="code-skill-project-list__copy"><strong>{project.name}</strong><small>{project.folders.length} folder{project.folders.length === 1 ? '' : 's'}</small></span>
             </label>
           ))}
           {!projects.length && <div className="code-skill-project-list__empty">Create a Code Project before assigning team skills.</div>}

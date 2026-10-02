@@ -696,7 +696,7 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-playbook-items[open] > summary i { transform: rotate(180deg); }
 .code-playbook-items > div { display: grid; }
 .code-playbook-items label { min-height: 44px; padding: 6px 2px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); cursor: pointer; }
-.code-playbook-items label > span { min-width: 0; display: grid; gap: 1px; }
+.code-playbook-items__copy { min-width: 0; display: grid; gap: 1px; }
 .code-playbook-items strong { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
 .code-playbook-items small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .code-team-setup__details { margin-top: 6px; border-top: 1px solid var(--line); }
@@ -825,7 +825,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-repositories > summary span { color: var(--ink-4); font: 9px var(--font-mono); }
 .code-delivery-repository { padding: 7px 1px; border-top: 1px solid var(--line); }
 .code-delivery-repository > label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.code-delivery-repository label > span { min-width: 0; flex: 1; display: flex; justify-content: space-between; gap: 8px; }
+.code-delivery-repository__copy { min-width: 0; flex: 1; display: flex; justify-content: space-between; gap: 8px; }
 .code-delivery-repository strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .code-delivery-repository small { color: var(--ink-4); font-size: 9px; }
 .code-delivery-repository details { margin: 5px 0 0 22px; }

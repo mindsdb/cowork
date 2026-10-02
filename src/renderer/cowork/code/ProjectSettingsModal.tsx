@@ -448,7 +448,7 @@ export function ProjectSettingsModal({
                               catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
                               finally { setPlaybookBusy(false); }
                             }} />
-                            <span><strong>{item.name}</strong><small>{item.kind}</small></span>
+                            <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
                           </label>
                         ))}
                       </div>

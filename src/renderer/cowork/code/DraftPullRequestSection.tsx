@@ -363,7 +363,7 @@ export function DraftPullRequestSection({
                 const override = overrides[item.folder_id] || { title, body };
                 return (
                   <div className="code-delivery-repository" key={item.folder_id}>
-                    <label><Checkbox size="sm" aria-label={`Include ${item.folder_name}`} checked={selected} onCheckedChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
+                    <label><Checkbox size="sm" aria-label={`Include ${item.folder_name}`} checked={selected} onCheckedChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span className="code-delivery-repository__copy"><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
                     {selected && <details><summary>Edit title or context</summary><div><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><Textarea value={override.body} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: value } }))} rows={2} /></div></details>}
                   </div>
                 );

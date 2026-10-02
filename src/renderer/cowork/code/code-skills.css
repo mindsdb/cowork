@@ -40,7 +40,7 @@
 .code-skill-project-list { display: grid; }
 .code-skill-project-list label { min-height: 52px; padding: 8px 16px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .code-skill-project-list label:hover { background: var(--surface-1); }
-.code-skill-project-list label > span { min-width: 0; display: grid; gap: 2px; }
+.code-skill-project-list__copy { min-width: 0; display: grid; gap: 2px; }
 .code-skill-project-list strong { color: var(--ink-2); font-size: 11px; font-weight: 600; }
 .code-skill-project-list small { color: var(--ink-4); font-size: 9px; }
 .code-skill-project-list__empty { min-height: 120px; padding: 24px; display: flex; align-items: center; justify-content: center; color: var(--ink-4); text-align: center; font-size: 10.5px; }
