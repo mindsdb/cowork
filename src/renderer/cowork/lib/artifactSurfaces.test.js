@@ -47,7 +47,7 @@ describe.each(SURFACES)('%s', (_name, rel) => {
 const DELETE_SURFACES = [
   ['artifacts panel', 'cowork/views/ArtifactsView.jsx'],
   ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
-  ['artifact viewer', 'cowork/components/artifact/ArtifactViewer.jsx'],
+  ['artifact viewer', 'cowork/components/artifact/useArtifactViewerActions.js'],
 ];
 
 describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
