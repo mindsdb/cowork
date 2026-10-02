@@ -837,7 +837,8 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-delivery-repository label > span { min-width: 0; flex: 1; display: flex; justify-content: space-between; gap: 8px; }
 .code-delivery-repository strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .code-delivery-repository small { color: var(--ink-4); font-size: 9px; }
-.code-delivery-repository__override { margin: 5px 0 0 22px; }
+/* Indent with padding: the Collapsible root is full width, so a left margin would push it past the row. */
+.code-delivery-repository__override { margin-top: 5px; padding-left: 22px; }
 .code-delivery-repository__override .code-delivery-repository__override-trigger { padding-block: 0; font-size: 9px; }
 .code-delivery-repository__override .code-delivery-repository__override-panel { padding-top: 6px; display: grid; gap: 6px; }
 .code-pr-card { padding: 9px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
