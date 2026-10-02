@@ -115,7 +115,7 @@ export function ExtensionsModal({
           <div className="code-extension-empty">No {label.toLowerCase()} are active for this task.</div>
         )}
         {inventory.errors.length > 0 && (
-          <Collapsible className="code-extension-errors" triggerClassName="code-extension-errors__trigger" title="Some extension sources could not be inspected">
+          <Collapsible variant="compact" className="code-extension-errors" title="Some extension sources could not be inspected">
             <pre>{inventory.errors.join('\n')}</pre>
           </Collapsible>
         )}

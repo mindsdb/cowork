@@ -102,7 +102,7 @@ function PullRequestDetails({
         {timestamp(status?.updated_at) && <span>Updated {timestamp(status?.updated_at)}</span>}
       </div>
       {!!status?.checks?.length && (
-        <Collapsible className="code-pr-details" triggerClassName="code-pr-details__trigger" panelClassName="code-pr-details__list" title={<span className="code-disclosure-title"><span>Checks</span><small>{status.checks.length}</small></span>}>
+        <Collapsible variant="compact" className="code-pr-details" panelClassName="code-pr-details__list" title="Checks" meta={status.checks.length}>
           {status.checks.map((check) => (
             <article className="code-pr-detail-item" key={`${check.id || check.name}:${check.url}`} data-state={check.state}>
               <div>
@@ -124,7 +124,7 @@ function PullRequestDetails({
         </Collapsible>
       )}
       {activeFeedback.length > 0 && (
-        <Collapsible className="code-pr-details" triggerClassName="code-pr-details__trigger" panelClassName="code-pr-details__list" title={<span className="code-disclosure-title"><span>Review feedback</span><small>{activeFeedback.length}</small></span>}>
+        <Collapsible variant="compact" className="code-pr-details" panelClassName="code-pr-details__list" title="Review feedback" meta={activeFeedback.length}>
           {activeFeedback.map((feedback) => (
             <article className="code-pr-detail-item" key={`${feedback.thread_id || feedback.id}:${feedback.url}`}>
               <div>
@@ -355,14 +355,14 @@ export function DraftPullRequestSection({
           <Input value={title} onChange={setTitle} placeholder="Pull request title" disabled={busy} />
           <Textarea value={body} onChange={setBody} placeholder="Optional context for reviewers…" rows={3} disabled={busy} />
           {ready.length > 1 && (
-            <Collapsible className="code-delivery-repositories" triggerClassName="code-delivery-repositories__trigger" title={<span className="code-disclosure-title"><span>Repositories</span><small>{selectedReady.length} of {ready.length}</small></span>}>
+            <Collapsible variant="compact" className="code-delivery-repositories" title="Repositories" meta={`${selectedReady.length} of ${ready.length}`}>
               {ready.map((item) => {
                 const selected = selectedFolders.includes(item.folder_id);
                 const override = overrides[item.folder_id] || { title, body };
                 return (
                   <div className="code-delivery-repository" key={item.folder_id}>
                     <label><Checkbox size="sm" aria-label={`Include ${item.folder_name}`} checked={selected} onCheckedChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span className="code-delivery-repository__copy"><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
-                    {selected && <Collapsible className="code-delivery-repository__override" triggerClassName="code-delivery-repository__override-trigger" panelClassName="code-delivery-repository__override-panel" title="Edit title or context"><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><Textarea value={override.body} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: value } }))} rows={2} /></Collapsible>}
+                    {selected && <Collapsible variant="compact" className="code-delivery-repository__override" panelClassName="code-delivery-repository__override-panel" title="Edit title or context"><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><Textarea value={override.body} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: value } }))} rows={2} /></Collapsible>}
                   </div>
                 );
               })}

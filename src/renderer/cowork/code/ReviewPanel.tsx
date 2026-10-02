@@ -325,7 +325,7 @@ export function ReviewPanel({
                   </Tooltip>
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
-                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" triggerClassName="code-git-advanced__trigger" panelClassName="code-git-advanced__body" title="Git options">
+                {!session.project_id && gitWorkspaces.length > 0 && <Collapsible className="code-git-advanced" panelClassName="code-git-advanced__body" title="Git options">
                   <div className="code-git-action">
                     <div className="code-field-label">Create a branch in the task worktree</div>
                     <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>

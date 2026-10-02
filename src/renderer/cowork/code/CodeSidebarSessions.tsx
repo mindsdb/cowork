@@ -280,10 +280,12 @@ export function CodeSidebarSessions({
           <Collapsible
             open={archivedOpen}
             onOpenChange={setArchivedOpen}
+            variant="compact"
             className="code-sidebar-archived"
-            triggerClassName="code-sidebar-archived__trigger"
+            triggerClassName="px-2"
             panelClassName="code-sidebar-archived__panel"
-            title={<span className="code-disclosure-title"><span>Archived</span><small>{archived.length}</small></span>}
+            title="Archived"
+            meta={archived.length}
           >
             {archived.map(sessionRow)}
           </Collapsible>
