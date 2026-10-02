@@ -37,3 +37,30 @@ export function WelcomeLoading({ status }: { status?: string | null }) {
     </div>
   );
 }
+
+/**
+ * The welcome orb with a title, a message and one action, for a failure the
+ * user can recover from. Renders only; the caller owns what the action does.
+ */
+export function WelcomeNotice({ title, message, actionLabel, onAction }: {
+  title: string;
+  message: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div
+      className="arc-root welcome-loading"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 18, padding: 24, textAlign: 'center' }}
+    >
+      <OrbitMorph state="thinking" size={72} />
+      <div className="arc-welcome-title">{title}</div>
+      <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
+        {message}
+      </div>
+      <button className="arc-btn" onClick={onAction}>
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
