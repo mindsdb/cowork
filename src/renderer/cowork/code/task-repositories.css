@@ -63,8 +63,7 @@
   min-width: 0;
   cursor: pointer;
 }
-.code-repository-row input,
-.code-repository-policy input {
+.code-repository-row input {
   accent-color: var(--accent);
   flex-shrink: 0;
   width: 15px;
@@ -203,21 +202,21 @@
   color: var(--ink-3);
   margin-bottom: 8px;
 }
-.code-repository-policy label {
+.code-repository-policy__options {
+  display: grid;
+  gap: 6px;
+}
+.code-repository-policy__option {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 14px;
-  cursor: pointer;
 }
-.code-repository-policy label.is-selected {
+.code-repository-policy__option[data-checked] {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   background: color-mix(in srgb, var(--accent) 9%, transparent);
-}
-.code-repository-policy input {
-  margin-top: 2px;
 }
 .code-repository-policy strong {
   font-size: 13px;

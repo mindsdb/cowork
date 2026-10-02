@@ -20,6 +20,8 @@ theming, and behaviour get fixed in one place instead of per call-site.
 
 - `<Button variant="primary|subtle|tinted|solid|danger" size icon block>` — forwards its ref,
   so it can also back a `<Menu trigger={<Button/>}>` or render polymorphically via `render`.
+- `<RadioGroup>` + `<Radio>` — one choice from a short list; a `<Radio>` with children is the whole
+  clickable row (indicator + content). Use it instead of native `<input type="radio">` rows.
 - `<Input>` / `<Textarea>`, `<Modal>` (+ `ModalHeader/Body/Footer`), `<Menu>` — see each
   file's header comment for the full prop list and usage examples.
 
