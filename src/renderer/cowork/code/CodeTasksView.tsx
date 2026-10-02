@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, useCollectionShortcut } from '../components/collection';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import { projectResources, type CodeProject, type CodingSession } from './api';
@@ -119,7 +120,7 @@ export function CodeTasksView({
         counts={!loading && !error ? `${filtered.length} ${filtered.length === 1 ? 'task' : 'tasks'} · Most recently updated first` : undefined}
       />
       <div className="code-tasks-view__body" aria-busy={loading}>
-        {error && <div className="code-tasks-view__notice" role="alert"><p>{error}</p><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div>}
+        {error && <Alert variant="danger">{error}<div className="code-tasks-view__retry"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
         {loading && !sessions.length ? <p className="code-tasks-view__notice" role="status">Loading tasks…</p> : (
           filtered.length ? <table className="code-tasks-table" aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
             <thead><tr><th scope="col">Task</th><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Updated</th></tr></thead>

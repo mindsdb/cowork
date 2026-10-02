@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ModelSelect from '../components/ModelSelect';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Select from '../components/ui/Select';
 import Switch from '../components/ui/Switch';
+import Tooltip from '../components/ui/Tooltip';
 import {
   buildModelPickerOptions,
   withModelPickerFallback,
@@ -236,20 +238,22 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <div className="code-controls-error" role="alert">{submitError}</div>}
+          {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        {/* `.btn:disabled` sets pointer-events: none, so a title on the button
+        {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
-        <span className="inline-flex" title={applyBlockedReason}>
-          <Button
-            variant="primary"
-            disabled={busy || !draft.model || !!applyBlockedReason}
-            onClick={() => void apply()}
-          >Apply</Button>
-        </span>
+        <Tooltip content={applyBlockedReason}>
+          <span className="inline-flex">
+            <Button
+              variant="primary"
+              disabled={busy || !draft.model || !!applyBlockedReason}
+              onClick={() => void apply()}
+            >Apply</Button>
+          </span>
+        </Tooltip>
       </ModalFooter>
     </Modal>
   );

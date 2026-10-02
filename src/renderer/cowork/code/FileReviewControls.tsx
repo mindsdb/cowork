@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Kbd from '../components/ui/Kbd';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { DiffFile } from './api';
 
@@ -74,7 +75,7 @@ export function FileReviewControls({
             }}
           />
           <div>
-            <span>Ctrl/⌘ ↵ to send</span>
+            <span><Kbd>Ctrl/⌘</Kbd> <Kbd>↵</Kbd> to send</span>
             <Button size="xs" variant="subtle" disabled={localBusy} onClick={() => setCommenting(false)}>Cancel</Button>
             <Button size="xs" variant="tinted" disabled={!note.trim() || localBusy} onClick={() => void sendNote()}>Send to Codex</Button>
           </div>
