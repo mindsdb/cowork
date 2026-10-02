@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Collapsible } from '../components/ui/Collapsible';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import Select from '../components/ui/Select';
@@ -100,9 +101,8 @@ function PullRequestDetails({
         {timestamp(status?.updated_at) && <span>Updated {timestamp(status?.updated_at)}</span>}
       </div>
       {!!status?.checks?.length && (
-        <details className="code-pr-details">
-          <summary>Checks <span>{status.checks.length}</span></summary>
-          <div>{status.checks.map((check) => (
+        <Collapsible variant="compact" className="code-pr-details" panelClassName="code-pr-details__list" title="Checks" meta={status.checks.length}>
+          {status.checks.map((check) => (
             <article className="code-pr-detail-item" key={`${check.id || check.name}:${check.url}`} data-state={check.state}>
               <div>
                 <SafeCodeExternalLink value={check.url}>{check.name}</SafeCodeExternalLink>
@@ -119,13 +119,12 @@ function PullRequestDetails({
               )}
               {check.state === 'failing' && <footer><Button size="xs" variant="subtle" disabled={busy} onClick={() => void onAgentAction(deliveryFixCheckPrompt(item, check))}>Fix with agent</Button></footer>}
             </article>
-          ))}</div>
-        </details>
+          ))}
+        </Collapsible>
       )}
       {activeFeedback.length > 0 && (
-        <details className="code-pr-details">
-          <summary>Review feedback <span>{activeFeedback.length}</span></summary>
-          <div>{activeFeedback.map((feedback) => (
+        <Collapsible variant="compact" className="code-pr-details" panelClassName="code-pr-details__list" title="Review feedback" meta={activeFeedback.length}>
+          {activeFeedback.map((feedback) => (
             <article className="code-pr-detail-item" key={`${feedback.thread_id || feedback.id}:${feedback.url}`}>
               <div>
                 <SafeCodeExternalLink value={feedback.url}>{feedback.author || 'Reviewer'}</SafeCodeExternalLink>
@@ -137,8 +136,8 @@ function PullRequestDetails({
                 {feedback.thread_id && <Button size="xs" variant="subtle" disabled={busy} onClick={() => onAction(item, 'resolve_thread', feedback.thread_id)}>Resolve</Button>}
               </footer>
             </article>
-          ))}</div>
-        </details>
+          ))}
+        </Collapsible>
       )}
       {(item.status_error || status?.detail) && <div className="code-pr-card__notice">{item.status_error || status?.detail}</div>}
       <footer>
@@ -355,19 +354,18 @@ export function DraftPullRequestSection({
           <Input value={title} onChange={setTitle} placeholder="Pull request title" disabled={busy} />
           <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Optional context for reviewers…" rows={3} disabled={busy} />
           {ready.length > 1 && (
-            <details className="code-delivery-repositories">
-              <summary>Repositories <span>{selectedReady.length} of {ready.length}</span></summary>
-              <div>{ready.map((item) => {
+            <Collapsible variant="compact" className="code-delivery-repositories" title="Repositories" meta={`${selectedReady.length} of ${ready.length}`}>
+              {ready.map((item) => {
                 const selected = selectedFolders.includes(item.folder_id);
                 const override = overrides[item.folder_id] || { title, body };
                 return (
                   <div className="code-delivery-repository" key={item.folder_id}>
                     <label><input type="checkbox" checked={selected} onChange={() => setSelectedFolders((current) => selected ? current.filter((id) => id !== item.folder_id) : [...current, item.folder_id])} /><span><strong>{item.folder_name}</strong><small>into {item.base_branch}</small></span></label>
-                    {selected && <details><summary>Edit title or context</summary><div><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><textarea value={override.body} onChange={(event) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: event.target.value } }))} rows={2} /></div></details>}
+                    {selected && <Collapsible variant="compact" className="code-delivery-repository__override" panelClassName="code-delivery-repository__override-panel" title="Edit title or context"><Input value={override.title} onChange={(value) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, title: value } }))} /><textarea value={override.body} onChange={(event) => setOverrides((current) => ({ ...current, [item.folder_id]: { ...override, body: event.target.value } }))} rows={2} /></Collapsible>}
                   </div>
                 );
-              })}</div>
-            </details>
+              })}
+            </Collapsible>
           )}
           <Button size="sm" variant="primary" disabled={busy || !title.trim() || !connectionName || selectedReady.length === 0} onClick={() => setConfirmOpen(true)}>
             Create {selectedReady.length} draft pull request{selectedReady.length === 1 ? '' : 's'}
