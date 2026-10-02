@@ -61,4 +61,27 @@ describe('Task decisions', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Review the updated plan before building.');
     expect(screen.getByRole('button', { name: 'Build from plan' })).toBeEnabled();
   });
+
+  it('builds on Enter from the plan tray, but not while a revision is being written', async () => {
+    const build = vi.fn(async () => {});
+    render(<PlanDecision busy={false} onBuild={build} onRevise={vi.fn()} />);
+    const tray = screen.getByRole('region', { name: 'Review plan' });
+    fireEvent.click(screen.getByRole('button', { name: 'Revise plan' }));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    fireEvent.keyDown(tray, { key: 'Enter' });
+    expect(build).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel revision' }));
+    fireEvent.keyDown(tray, { key: 'Enter' });
+    await waitFor(() => expect(build).toHaveBeenCalledOnce());
+  });
+
+  it('sends a written answer with Enter', async () => {
+    const answer = vi.fn(async () => {});
+    render(<QuestionCard pending={pending} busy={false} onAnswer={answer} />);
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: 'A compact timer' } });
+    fireEvent.submit(field.closest('form')!);
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ layout: ['A compact timer'] }));
+  });
 });

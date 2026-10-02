@@ -73,6 +73,23 @@ describe('useProjectActions', () => {
     expect(codingApi.projectActions).toHaveBeenCalledTimes(2);
   });
 
+  it('refresh re-reads the catalogue and rejects when that read fails', async () => {
+    vi.mocked(codingApi.projectActions).mockResolvedValueOnce({ items: [], preview_url: null });
+    const { result } = renderHook(() => useProjectActions('task-1'));
+    await waitFor(() => expect(codingApi.projectActions).toHaveBeenCalledTimes(1));
+
+    const serve = { id: 'serve', resource_id: 'web', resource_name: 'Web', label: 'Dev server' };
+    vi.mocked(codingApi.projectActions).mockResolvedValueOnce({ items: [serve], preview_url: null });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.actions).toEqual([serve]);
+
+    // Adoption succeeded server-side but the re-read failed: the caller must
+    // hear about it rather than announce actions the list does not show.
+    vi.mocked(codingApi.projectActions).mockRejectedValueOnce(new Error('offline'));
+    await expect(act(async () => { await result.current.refresh(); })).rejects.toThrow('offline');
+    expect(result.current.actions).toEqual([serve]);
+  });
+
   it('does not apply an action result after the user switches tasks', async () => {
     const action = { id: 'serve', resource_id: 'web', resource_name: 'Web', label: 'Dev server' };
     let resolveRun!: (value: { terminal_id: string; label: string; preview_url: string }) => void;

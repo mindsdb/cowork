@@ -9,7 +9,9 @@ import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { trackBillingOpened } from '../lib/analytics';
+import { trackBillingOpened, setEntryAttribution, trackComposerReady } from '../lib/analytics';
+import { takeConsoleHandoff, sampleId, isUntouchedSample } from '../lib/consoleHandoff';
+import { getDraft } from '../lib/draftStore';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //
@@ -236,6 +238,10 @@ export default function HomeView({
   // Fills the composer without sending — task-mode sample prompts (ENG-1594)
   // and any other surface that pre-drafts text route through this.
   onPrefill,
+  // Drops the parent's prefill once Home is left. The composer has already
+  // copied it into the draft, which keeps the user's edits; replaying it on
+  // the way back would overwrite them.
+  onPrefillConsumed,
   codingModeEnabled = false,
   codingModelDefault,
   harnessClaudeCodeEnabled,
@@ -246,6 +252,13 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
+  // Shown under the composer while a sample from a console link is in it.
+  // Leaving that mode (send, or removing the chip) retires it for good, so it
+  // cannot reappear over a different mode picked afterwards.
+  const [handoffHint, setHandoffHint] = useState(false);
+  useEffect(() => {
+    if (!taskMode) setHandoffHint(false);
+  }, [taskMode]);
 
   // Task modes (slides/website/app-style prompt scaffolding) don't apply to
   // a Claude Code task — clear any mode left selected from before Coding
@@ -362,6 +375,53 @@ export default function HomeView({
 
   // Composer fades in during 'settling' and stays for 'idle'.
   const showInteractiveSurface = phase === 'settling' || phase === 'idle';
+
+  // A console link that opened Home is applied once, when the composer is
+  // actually usable, so `composer_ready` means the user can type and send.
+  // The sample is placed exactly as a sample click would place it, and never
+  // sent. An unsent draft wins over the sample when it is the user's own text;
+  // one that is still an earlier sample, untouched, is not, and is replaced.
+  const composerUsable = showInteractiveSurface && !blocked;
+
+  // Drop the parent's prefill on the way out, but only once the composer has
+  // been on screen to take it. Behind the connect-a-provider panel there is
+  // no composer, so a prefill sent then is still waiting and must survive a
+  // trip to Settings.
+  const composerShownRef = useRef(false);
+  if (composerUsable) composerShownRef.current = true;
+  useEffect(
+    () => () => {
+      if (composerShownRef.current) onPrefillConsumed?.();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const handoffTakenRef = useRef(false);
+  useEffect(() => {
+    if (!composerUsable || handoffTakenRef.current) return;
+    handoffTakenRef.current = true;
+    const handoff = takeConsoleHandoff();
+    if (!handoff) return;
+    const { sample } = handoff;
+    const draft = getDraft('new');
+    const draftIsUsers = Boolean(draft) && !isUntouchedSample(draft);
+    const prefilled = Boolean(sample && onPrefill && !codingModeEnabled && !draftIsUsers);
+    if (prefilled) {
+      setTaskMode(handoff.mode);
+      onPrefill(sample.prompt);
+      setHandoffHint(true);
+    } else if (!sample && onPrefill && draft && !draftIsUsers) {
+      // "Start a task" promises an empty composer. A sample left there from an
+      // earlier visit is not the user's text, so it goes; their own draft stays.
+      onPrefill('');
+    }
+    const exampleId = sample ? sampleId(sample.label) : null;
+    // The task is credited to the example only if the example was placed; a
+    // kept draft of the user's own is not the example's doing.
+    setEntryAttribution(handoff.entrySource, prefilled ? exampleId : null);
+    trackComposerReady(handoff.entrySource, exampleId, prefilled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerUsable]);
 
   return (
     <div
@@ -539,6 +599,11 @@ export default function HomeView({
               overflows downward; the scroll container still reaches it
               because descendant overflow extends the scrollable area. */}
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
+            {handoffHint && taskMode && (
+              <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
+                Edit this prompt, then send when you're ready.
+              </p>
+            )}
             {/* Samples only render when onPrefill exists — a sample click's
                 whole job is prefilling the composer, so without the callback
                 it would be a silent dead click (same gate the old

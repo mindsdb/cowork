@@ -131,6 +131,8 @@ body, body[data-theme="light"] {
      the old --surface-3 (darker than the track here) sank into it. */
   --toggle-selected-bg:     var(--surface);
   --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+  /* Transcript cards (user message, turn changes): white just above the page. */
+  --surface-raised:         var(--surface);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
      --surface-3): keeps the rail clean and lets the accent-bg active
      tint read as real teal instead of dirtied grey. The macOS inactive
@@ -143,6 +145,11 @@ body, body[data-theme="light"] {
   --ink-3:        #6B6F73;   /* labels / secondary */
   --ink-4:        #9B9FA3;   /* placeholders / tertiary */
   --ink-5:        #C8CACC;   /* disabled */
+
+  /* Ghost-control fills: a translucent ink wash, so hover reads on any
+     ground. Dark runs a notch stronger (see the dark block). */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 7%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 11%, transparent);
 
   --accent:       #1F9CB0;
   --accent-2:     #115562;
@@ -261,6 +268,8 @@ body[data-theme="dark"] {
      *lighter* than the --surface-2 track, so the active pill lifts. */
   --toggle-selected-bg:     var(--surface-3);
   --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
+  /* --surface sits almost on the dark page, so transcript cards step up one. */
+  --surface-raised:         var(--surface-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
      small enough that the panel still reads as part of the same
      dark family as the rest of the app. The ::before halo at the
@@ -274,6 +283,10 @@ body[data-theme="dark"] {
   --ink-3:        #8A97AE;
   --ink-4:        #5C6B85;
   --ink-5:        #3A465E;
+
+  /* Ghost fills need a touch more ink to register on the dark surfaces. */
+  --ghost-hover:  color-mix(in srgb, var(--ink) 8%, transparent);
+  --ghost-press:  color-mix(in srgb, var(--ink) 12%, transparent);
 
   --accent:       rgb(34, 211, 238);
   --accent-2:     rgb(8, 178, 207);
@@ -974,7 +987,9 @@ body[data-theme="light"] .overlay-inline-code {
   transition: background .12s, border-color .12s, color .12s;
 }
 button.meta-pill { cursor: pointer; }
-button.meta-pill:hover { background: var(--surface-0); border-color: var(--border-01); color: var(--text-strong); }
+/* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
+button.meta-pill:hover { background: var(--ghost-hover); color: var(--text-strong); }
+button.meta-pill:active { background: var(--ghost-press); }
 /* Send button — single shared treatment across the home composer
    ("create new task") and the in-task chat composer. The legacy
    --primary-700 token didn't have a dark-mode partner and read as
@@ -2022,19 +2037,25 @@ body[data-theme="dark"] .btn.primary:focus-visible {
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant (Cancel, dismiss,
-   quiet toolbar actions). */
+/* Subtle — the ghost button. Quietest variant (Cancel, dismiss, quiet
+   toolbar actions). Borderless in every state: hover and press only lift
+   the fill and ink, never draw a ring (the base .btn hover/active rings are
+   cancelled here). Focus-visible keeps the base ring for keyboard users. */
 .btn.subtle {
   --fg:   var(--ink-3);
   --glow: rgba(199, 210, 229, 0.18);
-  /* Flat at rest — genuinely borderless, no resting shadow. */
   box-shadow: none;
   border: 1px solid transparent;
 }
 .btn.subtle:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
+  background: var(--ghost-hover);
+  box-shadow: none;
+  text-shadow: none;
+}
+.btn.subtle:active {
+  background: var(--ghost-press);
+  box-shadow: none;
 }
 
 /* Tinted — branded secondary: a faint accent wash with a soft accent
@@ -2119,6 +2140,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 }
 
 /* Sizes */
+.btn.xxs { height: 22px; padding: 0 6px;  font-size: 10.5px; border-radius: var(--r-sm); gap: 3px; }
 .btn.xs { height: 24px; padding: 0 8px;  font-size: 12px;   border-radius: var(--r-sm); gap: 4px; }
 .btn.sm { height: 28px; padding: 0 10px; font-size: var(--text-sm); gap: 5px; }
 .btn.lg { height: 36px; padding: 0 16px; font-size: var(--text-base); }
@@ -2128,6 +2150,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 .btn.icon { width: 32px; padding: 0; }
 .btn.icon.sm { width: 28px; }
 .btn.icon.xs { width: 24px; }
+.btn.icon.xxs { width: 22px; }
 .btn.icon.lg { width: 36px; }
 
 /* Block */
@@ -2652,11 +2675,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* Section labels */
 .app-sidebar .section-label {
+  /* Group headers (Pinned, Recent tasks, Agent, Code tasks) are a quiet label
+     on the text scale, not a spaced-caps overline. */
   font-family: var(--font-sans);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-4);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
   font-weight: 600;
   /* Tighter top gap so each group reads as attached to its heading, and a
      10px left edge lined up with the nav-list gutter for structure. */
@@ -4239,21 +4264,18 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 
 .user-turn-bubble {
-  /* Quiet filled block, not an SMS bubble: a borderless --surface-3 fill,
-     no shadow. The transcript sits on a flat --bg (there is no dot field),
-     so — like Claude — the fill alone carries the shape and no hairline is
-     needed. (The old --surface-2 fill was only ~2% off the page in light
-     mode and needed a border to read, which is why one used to be here.)
-     Quieter than the answer by design: --ink-2 text + a tighter 1.5 leading
-     mark the prompt as an echo so the answer stays the primary read.
-     ENG-787 de-bubble, ENG-641 refine. */
-  background: var(--surface-3);
+  /* Same raised surface as the Code Mode turn-changes card: --surface-raised
+     plus a --line hairline. A --surface-3 fill sat darker than the light-mode
+     page and read as recessed next to the transcript's white cards.
+     Full --ink, so the prompt reads as clearly as the answer. */
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: 14.5px; /* match the answer body (text-body token) — both are prose */
+  font-size: 14px; /* match the answer body (text-body token) — both are prose */
   line-height: 1.5;
-  color: var(--ink-2);
+  color: var(--ink);
   box-shadow: none;
   user-select: text;
   /* The bubble is a flex item in a column flex (.user-turn-inner). Without
@@ -4442,34 +4464,31 @@ body[data-theme="dark"] .phase-check-done {
 }
 .answer-turn:hover .turn-meta,
 .answer-turn:focus-within .turn-meta { opacity: 1; }
-/* Answer body rhythm (ENG-787 move 02): a touch more line-height than the
-   user bubble's 1.5 so the answer reads as the roomier, primary long-form
-   content. 1.62 lands between the old 1.7 (too relaxed) and the 1.55 body
-   token — generous but composed, in the Claude register. Scoped to answer
-   turns so user bubbles, memory previews, and other markdown surfaces are
-   unaffected. */
-/* Chat body ink: nudged ~30% darker than the --ink-2 body token for a
-   crisper, more committed read — but kept a soft near-black, not the full
-   --ink, which would read heavy/harsh over long *sans* paragraphs (the trick
-   a serif like Claude's would hide). ~10:1 contrast leaves plenty of headroom.
-   color-mix against the tokens so dark mode moves the text brighter (= more
-   contrast) automatically. Scoped to chat prose so the global --ink-2 token
-   used elsewhere is untouched. */
+/* Answer body ink: 70% of the way from the --ink-2 body token to --ink, the
+   near-black both Claude and Codex set their answers in. The old 30% mix
+   read grey and loose next to them. color-mix against the tokens so dark
+   mode moves the text brighter automatically. Leading comes from the
+   text-body token (14px/1.5). Scoped to answer turns so user bubbles,
+   memory previews, and other markdown surfaces keep --ink-2. Code Mode
+   mirrors this on .code-agent-message. */
 .answer-turn .markdown-content p,
 .answer-turn .markdown-content li {
-  line-height: 1.62;
-  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
+  color: color-mix(in srgb, var(--ink) 70%, var(--ink-2));
 }
-/* User bubble body: a hair denser than the answer — tighter 1.5 leading plus
-   a touch of negative tracking mark the prompt as a compact echo while the
-   answer stays the roomier primary read. Set at the p/li level (not on
+/* A heading groups with what follows it, not with what precedes it: 20px
+   above against the 12px block gap. Outranks MarkdownContent's space-y. */
+.answer-turn .markdown-content > :is(h1, h2, h3):not([hidden]):not(:first-child) {
+  margin-top: var(--space-5);
+}
+/* User bubble body: a touch of negative tracking marks the prompt as a
+   compact echo. Set at the p/li level (not on
    .user-turn-bubble) because the markdown `text-body` utility on <p>/<li>
-   carries its own 14.5px/1.55 that otherwise wins over the bubble's base. */
+   carries its own 14px/1.5 that otherwise wins over the bubble's base. */
 .user-turn .markdown-content p,
 .user-turn .markdown-content li {
   line-height: 1.5;
   letter-spacing: -0.012em;
-  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
+  color: var(--ink);
 }
 /* The in-flight status label next to the orb — soft left-to-right sheen,
    the same "alive" read as Claude's thinking label. Numbers inside tick
@@ -4544,10 +4563,10 @@ body[data-theme="dark"] .phase-check-done {
 }
 
 /* Heading scale inside user-message bubbles — MarkdownContent's defaults
-   (h1: 20px, h2: 17px) overpower the 14.5px bubble body when someone
+   (h1: 22px, h2: 17px) overpower the 14px bubble body when someone
    sends `# Title`. Clamp them to body-adjacent sizes so the bubble keeps
    a chat-message feel rather than a document banner. h3 is already
-   uppercase/small in MarkdownContent, no adjustment needed. */
+   15px in MarkdownContent, no adjustment needed. */
 .user-turn .markdown-content h1 {
   font-size: 16px;
   margin-top: 0;
@@ -4566,7 +4585,10 @@ body[data-theme="dark"] .phase-check-done {
 .anton-inline-code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  line-height: inherit;
+  /* 1, not inherit: the smaller mono face at the body's leading pushed each
+     line holding a chip ~1px taller than plain lines. The chip's fill
+     follows the font box, not line-height, so it looks the same. */
+  line-height: 1;
   color: rgb(232, 132, 110);
   /* Neutral chip (a faint --ink tint), not a coral-tinted box with a coral
      border — so only the TEXT carries the warm colour, à la Claude. Reads

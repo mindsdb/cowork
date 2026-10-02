@@ -108,9 +108,9 @@ export default {
         'border-02':    'var(--line-2)',
       },
       fontFamily: {
-        body:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
-        mono:    ['"JetBrains Mono"', 'monospace'],
+        body:    ['var(--font-body)'],
+        display: ['var(--font-display)'],
+        mono:    ['var(--font-mono)'],
       },
       fontSize: {
         // Design-system type scale (from globals.css tokens)
@@ -126,7 +126,7 @@ export default {
         // mdb-ai uses text-detail, text-body, text-small. Map to px sizes
         // close to ours so the ports don't look out of place.
         detail: ['11px',   { lineHeight: '1.4' }],
-        body:   ['14.5px', { lineHeight: '1.55' }],
+        body:   ['14px',   { lineHeight: '1.5' }],
         small:  ['12.5px', { lineHeight: '1.4' }],
       },
       spacing: {

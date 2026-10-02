@@ -16,8 +16,8 @@ const MAX_MESSAGE_LENGTH = 300;
 
 /**
  * One report from the preview frame. Every report becomes this shape, so the
- * banner, the dedup key and the payload sent to the agent all read one record
- * type. The server reads only message, file and line.
+ * header's error list, the dedup key and the payload sent to the agent all
+ * read one record type. The server reads only message, file and line.
  *
  * @typedef {object} PreviewDiagnostic
  * @property {'error' | 'resource' | 'csp'} type  The shim's report type.
@@ -152,8 +152,8 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
   //
   // `enabled` is in here too because the viewer stays mounted when it closes
   // (ArtifactViewer.jsx:594-608 returns null but keeps its hooks). Without it,
-  // reopening the same artifact would flash the previous session's banner
-  // until the mount effect swapped the preview URL.
+  // reopening the same artifact would flash the previous session's error
+  // button until the mount effect swapped the preview URL.
   useEffect(() => {
     // Same bail-out as the document-start handler: `enabled` and `resetKey`
     // both flip twice per preview mount, and a fresh `[]` each time would
@@ -172,9 +172,9 @@ export function usePreviewDiagnostics(iframeRef, { enabled = true, resetKey = ''
     // instead of only ever surviving one render. It does NOT survive a save:
     // the mount effect resets previewUrl/previewDoc to '' on every run and a
     // save bumps the cache-busting nonce, so `resetKey` changes, the effect
-    // above clears `dismissedSignature`, and the banner comes back even for
-    // an unchanged failure. That's intended here — the content did change (a
-    // new revision was written), so treating it as worth re-flagging is the
+    // above clears `dismissedSignature`, and the error button comes back even
+    // for an unchanged failure. That's intended here — the content did change
+    // (a new revision was written), so treating it as worth re-flagging is the
     // safer default even when the same bug happens to still be present.
     dismissed: errors.length > 0 && current === dismissedSignature,
     dismiss,

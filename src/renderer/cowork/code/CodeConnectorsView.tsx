@@ -12,6 +12,7 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { DataVaultForm } from '../components/datavault/DataVaultForm';
 import Ico from '../components/Icons';
+import { PageHeader } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
@@ -258,12 +259,10 @@ export function CodeConnectorsView({
 
   return (
     <main className="code-connectors-view">
-      <header className="code-projects-view__header">
-        <div>
-          <h1>Connectors</h1>
-          <p>Connect developer tools once, then add them to any Code Project.</p>
-        </div>
-      </header>
+      <PageHeader
+        title="Connectors"
+        subtitle="Connect developer tools once, then add them to any Code Project."
+      />
 
       {(returnProjectName || onBack) && (
         <div className="code-connector-return" role="status">

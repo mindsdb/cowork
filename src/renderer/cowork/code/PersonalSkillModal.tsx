@@ -117,7 +117,6 @@ export function PersonalSkillModal({ skillId, onClose, onSaved }: {
                   {upload && <div className="code-personal-skill__preview"><strong>{upload.name}</strong><pre>{upload.content}</pre></div>}
                 </TabPanel>
               </Tabs>}
-              <p className="code-personal-skill__note">Existing tasks keep the version they started with.</p>
               {error && !confirmation && <Alert variant="danger">{error}</Alert>}
             </fieldset>}
       </ModalBody>
