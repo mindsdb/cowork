@@ -3,38 +3,26 @@
 //   [search] [sort] ……spacer…… [right] [view]
 //   [counts]
 //
-// Each slot accepts a ReactNode so views can drop in customised
-// pieces without re-implementing the spacing rhythm. The kit's
-// own `<SearchInput>`, `<SortPill>` plug in directly, but a 
-// view can pass any node it wants.
+// Each slot accepts a ReactNode. The rule for what goes in them:
+// search = <SearchInput>, sort and filters = <SortPill> / <Select
+// variant="pill">, view = <ToggleGroup>.
 //
 // `counts` is also a ReactNode (not a string) so views can mix
 // values + accents however they like — e.g. Projects highlights
-// the pinned count with `var(--accent)`, Artifacts highlights
-// the published count, Scheduled would highlight catch-up.
-
-const FONT_MONO = 'var(--font-mono)';
+// the pinned count with `var(--accent)`.
 
 export function FilterRow({ search, sort, view, counts, right }) {
   return (
-    <div style={{
-      padding: '0 32px',
-      display: 'flex', flexDirection: 'column', gap: 6,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      }}>
+    <div className="flex flex-col gap-1.5 px-8">
+      <div className="flex flex-wrap items-center gap-2.5">
         {search}
         {sort}
-        <span style={{ flex: 1 }} />
+        <span className="flex-1" />
         {right}
         {view}
       </div>
       {counts && (
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
+        <div className="font-mono text-[11px] tracking-[0.04em] text-ink-4">
           {counts}
         </div>
       )}
