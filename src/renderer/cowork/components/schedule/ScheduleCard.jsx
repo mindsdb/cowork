@@ -76,7 +76,7 @@ export default function ScheduleCard({
             disabled={busy}
             align="end"
             icon={Ico.moreVert(16)}
-            triggerClassName="h-7 w-7 justify-center rounded-md text-ink-4 hover:text-ink hover:bg-surface-2"
+            size="sm"
           />
         </div>
       </div>
