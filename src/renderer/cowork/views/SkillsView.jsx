@@ -260,7 +260,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
-            className="h-[160px] rounded-card flex flex-col items-center justify-center gap-3 py-6 [transition:border-color_.15s_ease,background_.15s_ease]"
+            className="h-[160px] rounded-card flex flex-col items-center justify-center gap-3 py-6 [transition:border-color_var(--dur-hover)_ease,background_var(--dur-hover)_ease]"
             style={{
               border: `1px dashed ${dragging ? 'var(--accent)' : file ? 'var(--accent)' : 'var(--line-2)'}`,
               background: dragging ? 'var(--accent-bg)' : file ? 'var(--accent-bg)' : 'var(--surface-2)',

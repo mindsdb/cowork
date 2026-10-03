@@ -178,7 +178,7 @@ export function ProjectCard({
         // so moving it to a utility would silently swap the transition.
         cursor: editing || deleting ? 'default' : undefined,
         opacity: deleting ? 0.6 : undefined,
-        transition: 'opacity .12s ease',
+        transition: 'opacity var(--dur-hover) ease',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -223,7 +223,7 @@ export function ProjectCard({
             onBlur={() => setActionsFocused(false)}
             aria-label={pinned ? 'Unpin project' : 'Pin project'}
             aria-pressed={pinned}
-            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
+            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 place-items-center cursor-pointer shrink-0 [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] font-[inherit]"
             style={{
               color: pinned ? 'var(--accent)' : 'var(--ink-4)',
               opacity: pinned || showHoverActions ? 1 : 0,
@@ -251,7 +251,7 @@ export function ProjectCard({
             onFocus={() => setActionsFocused(true)}
             onBlur={() => setActionsFocused(false)}
             aria-label="Project menu"
-            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
+            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer shrink-0 [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease,background_var(--dur-hover)_ease] font-[inherit]"
             style={{
               opacity: showHoverActions ? 1 : 0,
               display: isReserved || deleting ? 'none' : 'inline-grid',

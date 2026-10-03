@@ -16,13 +16,31 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
 
+const FALLBACK_DELAY_MS = 0;
+let cachedDelay: number | undefined;
+
+// The open delay lives in the `--tooltip-delay` motion token (globals.css),
+// so a stylesheet overriding the motion tokens retimes tooltips too. Read
+// once, on the first tooltip render.
+function tooltipDelay(): number {
+  if (cachedDelay !== undefined) return cachedDelay;
+  const raw = typeof document === 'undefined' ? ''
+    : getComputedStyle(document.documentElement).getPropertyValue('--tooltip-delay').trim();
+  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : parseFloat(raw);
+  cachedDelay = Number.isFinite(ms) ? ms : FALLBACK_DELAY_MS;
+  return cachedDelay;
+}
+
+// Mount once near the root: after the first tooltip shows, the next one
+// opens instantly while the group is warm.
+export const TooltipProvider = BaseTooltip.Provider;
+
 export interface TooltipProps {
   content: ReactNode;
   children: ReactElement;
   side?: 'top' | 'bottom' | 'left' | 'right';
   sideOffset?: number;
-  // Tooltips that hint a frequently-used control should appear fast;
-  // the Base UI default (600ms) feels sluggish for top-bar icons.
+  // Overrides `--tooltip-delay` for this one tooltip.
   delay?: number;
   className?: string;
 }
@@ -32,7 +50,7 @@ export function Tooltip({
   children,
   side = 'bottom',
   sideOffset = 8,
-  delay = 250,
+  delay,
   className,
 }: TooltipProps) {
   // No content → render the trigger bare so callers can pass a
@@ -40,7 +58,7 @@ export function Tooltip({
   if (content == null || content === '') return children;
   return (
     <BaseTooltip.Root>
-      <BaseTooltip.Trigger delay={delay} render={children} />
+      <BaseTooltip.Trigger delay={delay ?? tooltipDelay()} render={children} />
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
           <BaseTooltip.Popup

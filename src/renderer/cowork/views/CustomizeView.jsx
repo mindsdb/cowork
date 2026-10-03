@@ -66,7 +66,7 @@ function NewConnectionCard({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_.15s_ease,color_.15s_ease] hover:border-accent hover:text-accent"
+      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_var(--dur-hover)_ease,color_var(--dur-hover)_ease] hover:border-accent hover:text-accent"
     >
       <span className="inline-flex">{Ico.plus(16)}</span>
       <span className="font-[family-name:var(--font-body)] text-[13px] font-medium">

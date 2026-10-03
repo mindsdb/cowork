@@ -132,7 +132,7 @@ function TaskRow({
                   color: 'var(--ink-2)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
+                  transition: 'color var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => {
                   e.currentTarget.style.color = 'var(--accent)';
@@ -155,7 +155,7 @@ function TaskRow({
       {/* Hover-revealed trash. Fixed slot width keeps the Updated
           column stable; opacity + pointer-events flip on hover so
           the icon never participates in click bubbling at rest. */}
-      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
+      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_var(--dur-hover)_ease]" style={{
         opacity: hover ? 1 : 0,
         pointerEvents: hover ? 'auto' : 'none',
       }}>
@@ -253,7 +253,7 @@ function ScheduleGroupRow({
                   color: 'var(--ink-2)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
+                  transition: 'color var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => {
                   e.currentTarget.style.color = 'var(--accent)';
@@ -276,7 +276,7 @@ function ScheduleGroupRow({
           jump straight to the most recent run instead of going
           through schedule detail. The card click itself routes to
           the schedule view (where per-run history lives). */}
-      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_140ms_ease]" style={{
+      <div onClick={stop} onMouseDown={stop} className="flex justify-end [transition:opacity_var(--dur-hover)_ease]" style={{
         opacity: hover ? 1 : 0,
         pointerEvents: hover ? 'auto' : 'none',
       }}>
