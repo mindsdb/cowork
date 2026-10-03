@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Collapsible } from '../components/ui/Collapsible';
 import Menu from '../components/ui/Menu';
+import Tooltip from '../components/ui/Tooltip';
 import type { CodingSession } from './api';
 import { codingSessionStatus, relativeTime, repositoryLabel } from './presentation';
 import { useTaskSeen } from './taskSeen';
@@ -184,19 +185,20 @@ export function CodeSidebarSessions({
             {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
           </span>
         </button>
-        <Button
-          icon
-          size="xxs"
-          variant="subtle"
-          className="code-sidebar-session__pin"
-          disabled={pinBusy.has(session.id)}
-          onClick={() => void togglePinned(session)}
-          aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${session.title || 'untitled coding task'}`}
-          aria-pressed={isPinned}
-          title={isPinned ? 'Unpin task' : 'Pin task'}
-        >
-          {Ico.pin(12)}
-        </Button>
+        <Tooltip content={isPinned ? 'Unpin task' : 'Pin task'}>
+          <Button
+            icon
+            size="xxs"
+            variant="subtle"
+            className="code-sidebar-session__pin"
+            disabled={pinBusy.has(session.id)}
+            onClick={() => void togglePinned(session)}
+            aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${session.title || 'untitled coding task'}`}
+            aria-pressed={isPinned}
+          >
+            {Ico.pin(12)}
+          </Button>
+        </Tooltip>
       </div>
     );
   };

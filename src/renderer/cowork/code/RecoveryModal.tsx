@@ -1,6 +1,7 @@
 import { Laptop, RotateCcw } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
+import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import { RadioGroup, Radio } from '../components/ui/RadioGroup';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -68,7 +69,7 @@ export function RecoveryModal({
               <span className="code-recovery-option__copy">
                 <span className="code-recovery-option__title">
                   <strong>{option.computer.name}</strong>
-                  {option.recommended && <span className="code-recovery-option__recommended">Recommended</span>}
+                  {option.recommended && <Badge variant="muted" size="sm">Recommended</Badge>}
                 </span>
                 <span className="code-recovery-option__meta">
                   {platformName(option.computer.capabilities.platform)}
