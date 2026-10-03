@@ -36,7 +36,7 @@ const setViewportWidth = (width) => {
 };
 
 // The collection kit's HoverActions cluster around an item's controls.
-const actionCluster = (el) => el.closest('.z-10');
+const actionCluster = (el) => el.closest('[data-item-actions]');
 
 const lockedProject = {
   id: 'project-1',
