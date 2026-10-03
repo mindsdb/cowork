@@ -125,9 +125,10 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
         {description && <div className="truncate font-body text-xs text-ink-3">{description}</div>}
         {children}
       </div>
-      {/* Phone width: meta drops under the title instead of squeezing it. */}
+      {/* Phone width: meta drops under the title instead of squeezing it, and
+          wraps rather than widening the page. Desktop never wraps (shrink-0). */}
       {meta && (
-        <div className={cn('flex shrink-0 items-center gap-3 font-body text-xs text-ink-4 max-sm:basis-full', leading && 'max-sm:pl-9')}>
+        <div className={cn('flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-4 max-sm:basis-full', leading && 'max-sm:pl-9')}>
           {meta}
         </div>
       )}
