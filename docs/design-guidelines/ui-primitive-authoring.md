@@ -61,3 +61,4 @@ note in `Badge.tsx` for the full explanation.
 | Modal, EmptyState | ⬜ | partial | ⬜ | remaining (Modal = the ENG-1014 shell work; EmptyState's debt is ENG-1017 inline styles) |
 | Alert | ✅ | ✅ | ✅ | new (ENG-1146) — cva variants danger/warning/info/success, icon + title slots |
 | Field | n/a | ✅ | ✅ | new (ENG-1147) — clones the control to wire id / aria-describedby / aria-invalid |
+| Command | n/a | ✅ | ✅ | new — Base UI Autocomplete (`inline`, always open) for palettes inside `Modal` |
