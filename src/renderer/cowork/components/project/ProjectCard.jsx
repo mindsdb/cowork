@@ -235,7 +235,8 @@ function useProjectSlots({
     title,
     actions: actions || undefined,
     // A pinned project keeps its accent pin (and the kebab beside it) in view.
-    revealActions: alwaysShowActions || isMenuOpen || pinned,
+    // Rename keeps them in flow too, so they never cover the name field.
+    revealActions: alwaysShowActions || isMenuOpen || pinned || editing,
     selected: isSelected || editing,
     busy: deleting,
     onActivate: editing ? undefined : () => onOpen?.(project),
