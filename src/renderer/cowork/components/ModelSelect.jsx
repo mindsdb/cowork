@@ -165,7 +165,7 @@ function creditsAction() {
         className={cn(
           'shrink-0 rounded-full border border-solid border-accent bg-transparent',
           'px-[7px] py-[1px] text-[10.5px] leading-[15px] text-accent',
-          'cursor-pointer [transition:background-color_.12s_ease]',
+          'cursor-pointer [transition:background-color_var(--dur-hover)_ease]',
           'hover:bg-surface-2',
         )}
         onClick={(e) => {
@@ -224,7 +224,7 @@ function AnimatedWidthText({ text, fadeOnChange = false }) {
     // measured.
     el.style.boxSizing = 'border-box';
     el.style.width = `${prev}px`;
-    el.style.transition = 'width 160ms ease';
+    el.style.transition = 'width var(--dur-layout) ease';
     const finish = () => {
       el.style.width = '';
       el.style.transition = '';

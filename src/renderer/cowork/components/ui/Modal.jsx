@@ -40,8 +40,8 @@ import Ico from '../Icons';
 // `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
 // utilities) so the easing keyword is the literal CSS `ease-out`, not
 // Tailwind's differently-curved `ease-out` utility value.
-const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
-const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_BACKDROP = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_POPUP     = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
 const FONT_BODY    = 'var(--font-body)';
 
@@ -249,7 +249,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             width: 28, height: 28, borderRadius: 6,
             display: 'inline-grid', placeItems: 'center',
             flexShrink: 0,
-            transition: 'color 120ms ease, background 120ms ease',
+            transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease',
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.color = 'var(--ink)';

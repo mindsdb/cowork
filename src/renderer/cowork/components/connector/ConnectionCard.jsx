@@ -44,7 +44,7 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
   return (
     <article className={cn(
       'relative flex min-h-[120px] flex-col gap-2.5 rounded-[10px] px-4 py-3.5',
-      '[transition:background_.15s_ease,border-color_.15s_ease]',
+      '[transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]',
       needsReconnect
         ? 'border border-solid border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]'
         : 'border border-solid border-line bg-surface hover:border-line-2 hover:bg-surface-2',

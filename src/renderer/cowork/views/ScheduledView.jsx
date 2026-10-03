@@ -427,7 +427,7 @@ function ScheduleListRow({
                   color: 'var(--ink-2)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   maxWidth: '100%', display: 'inline-block',
-                  transition: 'color 120ms ease',
+                  transition: 'color var(--dur-hover) ease',
                 }}
                 onMouseOver={(e) => {
                   e.currentTarget.style.color = 'var(--accent)';
@@ -453,7 +453,7 @@ function ScheduleListRow({
           display: 'inline-flex', alignItems: 'center', gap: 6,
           justifyContent: 'flex-end',
           opacity: (hover || menuOpen) ? 1 : 0,
-          transition: 'opacity 140ms ease',
+          transition: 'opacity var(--dur-hover) ease',
           pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
         }}
       >

@@ -6,7 +6,7 @@ import CoworkApp from './CoworkApp';
 import AccountOwnershipModal from './cowork/components/AccountOwnershipModal';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
-import { Tooltip } from './cowork/components/ui/Tooltip';
+import { Tooltip, TooltipProvider } from './cowork/components/ui/Tooltip';
 import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
@@ -321,7 +321,7 @@ export default function App() {
   const isArcadePage = page !== 'terminal';
 
   return (
-    <>
+    <TooltipProvider>
       {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
 
@@ -386,6 +386,6 @@ export default function App() {
           </button>
         </Tooltip>
       )}
-    </>
+    </TooltipProvider>
   );
 }

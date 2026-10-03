@@ -68,7 +68,7 @@ export const triggerVariants = cva(
     // beveled/uneven instead of a clean line.
     'font-body bg-surface border border-solid border-line rounded-[var(--r)] text-ink',
     'cursor-pointer outline-none box-border',
-    '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
+    '[transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]',
     'hover:border-line-2',
     'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',

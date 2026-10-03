@@ -94,7 +94,7 @@ export function CommentsPanel({
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-3 py-2
         font-[family-name:var(--font-body)] motion-reduce:!animate-none"
-      style={{ animation: 'cw-comments-panel-in .3s cubic-bezier(.16,1,.3,1)' }}
+      style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">

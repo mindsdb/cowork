@@ -202,6 +202,22 @@ body, body[data-theme="light"] {
   --sh-modal:     0 1px 0 rgba(15,16,17,0.04), 0 24px 60px rgba(15,16,17,0.18);
   --ring:         0 0 0 1px rgba(31,156,176,0.22);
 
+  /* Motion — every transition/animation duration in the app reads one of
+     these, so a stylesheet overriding them retimes everything, and the
+     reduced-motion block below zeroes them. Ambient loops (spinners,
+     pulses, shimmers) keep their own cadence. */
+  --dur-press:       40ms;    /* button :active nudge */
+  --dur-hover:       80ms;    /* color / background / border / shadow / small reveal */
+  --dur-popover-in:  100ms;   /* menu, select, combobox open */
+  --dur-popover-out: 60ms;    /* popover close, toast exit */
+  --dur-modal:       120ms;   /* modal open (close is instant) */
+  --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
+  --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
+  --tooltip-delay:   200ms;   /* first tooltip; later ones in the group open instantly */
+  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in:         cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
+
   /* Legacy/cowork token aliases — keep existing components working */
   --surface-0:      var(--surface);
   --surface-01:     var(--surface-2);
@@ -247,6 +263,20 @@ body, body[data-theme="light"] {
   --stone-200: var(--surface-3);
   --stone-300: var(--line-2);
   --stone-400: var(--ink-4);
+}
+
+/* Reduced motion (WCAG 2.3.3) — one switch: every token-driven transition
+   and entrance becomes instant. Ambient loops are halted separately below. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 0ms;
+    --dur-hover: 0ms;
+    --dur-popover-in: 0ms;
+    --dur-popover-out: 0ms;
+    --dur-modal: 0ms;
+    --dur-layout: 0ms;
+    --dur-stagger: 0ms;
+  }
 }
 
 /* ─── Dark mode ──────────────────────────────────────────────────────────
@@ -402,9 +432,9 @@ textarea,
 .btn,
 .meta-pill,
 .artifact-card {
-  transition: background 0.15s ease, color 0.15s ease,
-              border-color 0.15s ease, box-shadow 0.15s ease,
-              opacity 0.15s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease,
+              border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
+              opacity var(--dur-hover) ease;
 }
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
@@ -621,7 +651,7 @@ a[href],
   to   { opacity: 1; }
 }
 .stream-word {
-  animation: stream-word-fade 0.18s ease-out both;
+  animation: stream-word-fade var(--dur-layout) ease-out both;
 }
 
 /* Block-level (code, tables, blockquotes, hrs): fade in on first appearance;
@@ -631,21 +661,17 @@ a[href],
   to   { opacity: 1; }
 }
 .markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
-  animation: stream-block-fade 0.24s ease-out both;
+  animation: stream-block-fade var(--dur-layout) ease-out both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stream-word { animation: none !important; }
-  .markdown-content.is-streaming > * { animation: none !important; }
-}
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 
 /* WCAG 2.3.3 Animation from Interactions — users with vestibular
    sensitivity get every infinite/looping animation halted (state still
    reaches its end value so the UI stays informative). One-shot
-   transitions/entrance animations are left untouched so the UI doesn't
-   feel broken. */
+   transitions and entrances are already instant via the zeroed motion
+   tokens at the top of this file. */
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
   .proj-shimmer,
@@ -682,7 +708,7 @@ a[href],
   display: flex; align-items: center; gap: 10px;
   height: 28px; padding: 0 10px; border-radius: var(--r);
   font-size: 13px; color: var(--frost-800);
-  transition: background .12s;
+  transition: background var(--dur-hover);
   border: 0; background: transparent;
   width: 100%; text-align: left;
 }
@@ -695,7 +721,7 @@ a[href],
   display: flex; align-items: center; gap: 8px;
   height: 26px; padding: 0 10px; border-radius: var(--r);
   font-size: var(--text-sm); color: var(--frost-700);
-  transition: background .12s;
+  transition: background var(--dur-hover);
   width: 100%; white-space: nowrap; overflow: hidden;
   border: 0; background: transparent;
   text-align: left;
@@ -713,7 +739,7 @@ a[href],
   width: 28px; height: 26px; border-radius: var(--r);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: var(--frost-700);
-  transition: background .12s, color .12s;
+  transition: background var(--dur-hover), color var(--dur-hover);
   cursor: pointer;
 }
 /* Make the SVG icon a passthrough for pointer events — events fire on the
@@ -726,7 +752,7 @@ a[href],
 
 /* Lightweight hover utilities for inline-styled buttons that only need
    a tinted background on hover without a full component class. */
-.hover-tint { transition: background .12s, color .12s; }
+.hover-tint { transition: background var(--dur-hover), color var(--dur-hover); }
 .hover-tint:hover { background: color-mix(in srgb, var(--ink) 5%, transparent) !important; }
 .hover-tint-text:hover { color: var(--ink) !important; }
 
@@ -747,7 +773,7 @@ a[href],
      shadow instead of a bespoke double-drop. */
   border-radius: var(--r-xl);
   box-shadow: var(--sh-1);
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
 }
 .composer-wrap.focused {
   /* Quiet focus: the border simply shifts to the accent — no 3px teal
@@ -897,17 +923,6 @@ a[href],
 }
 .composer-textarea-overlay::-webkit-scrollbar { display: none; }
 
-/* WCAG 2.3.3 Animation from Interactions — users who prefer reduced
-   motion shouldn't see the Copy button hover/focus colour ease or the
-   composer focus-ring transition. Static state changes still apply;
-   only the transition timing is removed. */
-@media (prefers-reduced-motion: reduce) {
-  .anton-code-block-copy,
-  .composer-wrap,
-  .composer-textarea-overlay {
-    transition: none !important;
-  }
-}
 
 body[data-theme="light"] .overlay-fence-marker {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -959,7 +974,7 @@ body[data-theme="light"] .overlay-inline-code {
   width: 32px; height: 32px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent;
-  color: var(--frost-700); transition: background .12s, color .12s;
+  color: var(--frost-700); transition: background var(--dur-hover), color var(--dur-hover);
   cursor: pointer;
 }
 .composer-icon:hover { background: var(--stone-100); color: var(--text-strong); }
@@ -984,7 +999,7 @@ body[data-theme="light"] .overlay-inline-code {
   border: 1px solid transparent; background: transparent;
   color: var(--frost-700);
   font-family: var(--font-sans); font-size: 13px;
-  transition: background .12s, border-color .12s, color .12s;
+  transition: background var(--dur-hover), border-color var(--dur-hover), color var(--dur-hover);
 }
 button.meta-pill { cursor: pointer; }
 /* Ghost hover: fill + ink only, no border (matches .btn.subtle). */
@@ -1000,7 +1015,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   width: 30px; height: 30px; border-radius: var(--r-8);
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: var(--accent); color: #fff;
-  transition: background .15s, transform .1s;
+  transition: background var(--dur-hover), transform var(--dur-hover);
   box-shadow: none;
 }
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
@@ -1022,17 +1037,17 @@ button.meta-pill:active { background: var(--ghost-press); }
   border: 1px solid var(--border-01); border-radius: var(--r-lg);
   box-shadow: var(--sh-popup);
   padding: 6px; min-width: 200px; z-index: 50;
-  animation: fadein-up .14s ease-out;
+  animation: fadein-up var(--dur-popover-in) ease-out;
 }
 .menu.menu--drop-down {
-  animation: fadein-down .14s ease-out;
+  animation: fadein-down var(--dur-popover-in) ease-out;
 }
 
 /* Connectors row inside the attach (+) menu — smooth expand/collapse */
 .menu-connectors-accordion {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: grid-template-rows var(--dur-layout) var(--ease-in-out);
 }
 .menu-connectors-accordion.is-open {
   grid-template-rows: 1fr;
@@ -1047,11 +1062,6 @@ button.meta-pill:active { background: var(--ghost-press); }
   border-top: 1px solid var(--border-0);
   margin-top: 4px;
   padding-top: 4px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .menu-connectors-accordion {
-    transition: none;
-  }
 }
 
 /* ─── Customize ───────────────────────────────────────────────────────────── */
@@ -1215,7 +1225,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   border-radius: var(--r-12);
   background: var(--surface);
   text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: border-color var(--dur-hover), box-shadow var(--dur-hover), background var(--dur-hover);
 }
 
 .customize-home-card:hover {
@@ -1767,7 +1777,7 @@ button.meta-pill:active { background: var(--ghost-press); }
 .task-row {
   display: flex; align-items: flex-start; gap: 12px;
   padding: 12px 14px; border-radius: var(--r-lg);
-  cursor: pointer; transition: background .12s;
+  cursor: pointer; transition: background var(--dur-hover);
 }
 .task-row:hover { background: var(--stone-100); }
 
@@ -1799,7 +1809,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   background: var(--stone-50);
 }
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
-.bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
+.bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width var(--dur-layout) ease; }
 
 /* ─── Page header ──────────────────────────────────────────────────────────
    Page headers now render via components/collection/PageHeader (title + trail
@@ -1825,7 +1835,7 @@ button.meta-pill:active { background: var(--ghost-press); }
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-hover);
   z-index: 200;
   font-family: var(--font-sans);
   font-weight: 400;
@@ -1866,11 +1876,11 @@ button.meta-pill:active { background: var(--ghost-press); }
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease,
-    border-color .12s ease,
-    box-shadow .12s ease,
-    transform .04s ease,
-    color .12s ease;
+    background-color var(--dur-hover) ease,
+    border-color var(--dur-hover) ease,
+    box-shadow var(--dur-hover) ease,
+    transform var(--dur-press) ease,
+    color var(--dur-hover) ease;
 }
 .btn:hover {
   background: var(--bg-h);
@@ -1962,8 +1972,8 @@ body[data-theme="dark"] .btn.default:active {
   cursor: pointer;
   user-select: none;
   transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, transform .04s ease, color .12s ease;
+    background-color var(--dur-hover) ease, border-color var(--dur-hover) ease,
+    box-shadow var(--dur-hover) ease, transform var(--dur-press) ease, color var(--dur-hover) ease;
 }
 .btn.primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
@@ -2209,7 +2219,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   letter-spacing: 0;
   padding: 8px 12px;
   outline: 0;
-  transition: border-color .12s ease, box-shadow .15s ease, background .12s ease;
+  transition: border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease, background var(--dur-hover) ease;
 }
 .field-input  { height: 34px; }
 .field-textarea { min-height: 84px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
@@ -2334,8 +2344,8 @@ body {
   --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
   --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
   --card-lift:          -1px;
-  --card-transition:    border-color .15s ease, box-shadow .15s ease,
-                        transform .15s ease, background-color .15s ease;
+  --card-transition:    border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease,
+                        transform var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
 
 .card {
@@ -2396,7 +2406,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   color: inherit;
   font: inherit;
   text-align: left;
-  transition: background-color .12s ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .card-row:hover         { background: var(--surface-2); }
 .card-row.selected      { background: var(--surface-3); }
@@ -2520,20 +2530,20 @@ body[data-theme="dark"] .onboarding-card {
 /* Collapsible sidebar tracker header — hover affordance in CSS (not React
    state) so it can't get stuck and costs no re-render. Base lives here too
    so the button's inline styles don't out-specify the :hover rule. */
-.onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
+.onboarding-collapse-toggle { background: transparent; transition: background var(--dur-hover) ease; }
 .onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
 /* Checklist step rows. Ink-tinted hover works on any card background
    (darkens in light mode, lightens in dark). Done rows collapse their
    description and reveal it again on hover via the 0fr→1fr grid idiom. */
-.onboarding-step-row { background: transparent; transition: background 140ms ease; }
+.onboarding-step-row { background: transparent; transition: background var(--dur-hover) ease; }
 .onboarding-step-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .onboarding-step-desc {
   display: grid;
   min-height: 0;
   grid-template-rows: 1fr;
   opacity: 1;
-  transition: grid-template-rows 200ms ease, opacity 200ms ease;
+  transition: grid-template-rows var(--dur-layout) ease, opacity var(--dur-layout) ease;
 }
 .onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
 .onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
@@ -2657,7 +2667,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   width: 100%;
   text-align: left;
   /* Snappy hover — the rail should react to the cursor immediately. */
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .app-sidebar .nav-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -2699,9 +2709,9 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .recents-heading .recents-viewall {
   color: var(--ink-3);
   transition:
-    opacity 160ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 140ms ease;
+    opacity var(--dur-hover) var(--ease-out),
+    transform var(--dur-layout) var(--ease-out),
+    color var(--dur-hover) ease;
 }
 .recents-heading .recents-viewall:hover {
   color: var(--accent);
@@ -2722,7 +2732,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background .1s ease, color .1s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .app-sidebar .recent-item:hover {
@@ -2773,7 +2783,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 }
 /* Clickable variant — hovers brighten the surface a touch so the user
    senses the affordance without the pill changing shape. */
-.backend-status-control.is-clickable { cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
+.backend-status-control.is-clickable { cursor: pointer; transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease; }
 .backend-status-control.is-clickable:hover {
   background: var(--surface-3);
   border-color: var(--line-2);
@@ -2863,7 +2873,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   font-family: var(--font-body);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
   text-align: left;
 }
 .anton-sidebar__footer-settings:hover {
@@ -2886,7 +2896,7 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   border-radius: var(--r);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background .12s, color .12s, box-shadow .15s;
+  transition: background var(--dur-hover), color var(--dur-hover), box-shadow var(--dur-hover);
 }
 .chrome-btn--small:hover {
   color: var(--ink);
@@ -2945,7 +2955,7 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--ink-2);
   cursor: pointer;
   box-shadow: var(--sh-1);
-  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+  transition: background var(--dur-hover), color var(--dur-hover), transform var(--dur-hover), box-shadow var(--dur-hover);
 }
 .floating-toggle:hover {
   color: var(--ink);
@@ -2969,7 +2979,7 @@ body[data-theme="dark"] .floating-toggle:hover {
   border: 0;
   color: var(--ink-4);
   cursor: pointer;
-  transition: color .15s, opacity .15s;
+  transition: color var(--dur-hover), opacity var(--dur-hover);
 }
 .coding-mode-toggle:hover {
   color: var(--ink-2);
@@ -3005,13 +3015,13 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .toggle {
   width: 38px; height: 22px; border-radius: var(--r-12);
   background: var(--stone-300); border: 0; padding: 2px;
-  position: relative; transition: background .15s;
+  position: relative; transition: background var(--dur-hover);
 }
 .toggle.on { background: var(--primary-700); }
 .toggle-thumb {
   position: absolute; top: 2px; left: 2px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; transition: left .15s;
+  background: #fff; transition: left var(--dur-hover);
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 .toggle.on .toggle-thumb { left: 18px; }
@@ -3454,7 +3464,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   color: var(--text-default);
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
 
@@ -3473,7 +3483,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   gap: 5px;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell__hamburger:active { background: var(--surface-2); }
 .mshell__hamburger span {
@@ -3484,9 +3494,9 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   border-radius: var(--r-2);
   transform-origin: center;
   transition:
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease,
-    width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform var(--dur-layout) var(--ease-out),
+    opacity var(--dur-layout) ease,
+    width var(--dur-layout) var(--ease-out);
 }
 .mshell__hamburger.is-open span:nth-child(1) {
   transform: translateY(6.5px) rotate(45deg);
@@ -3521,7 +3531,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   opacity: 0;
   pointer-events: none;
   z-index: 50;
-  transition: opacity 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: opacity var(--dur-layout) var(--ease-out);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -3537,7 +3547,7 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   border-right: 1px solid var(--border-subtle);
   box-shadow: 4px 0 28px rgba(0, 0, 0, 0.22);
   transform: translateX(-105%);
-  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-layout) var(--ease-out);
   z-index: 51;
   display: flex;
   flex-direction: column;
@@ -3617,7 +3627,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   cursor: pointer;
   font: inherit;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
   min-height: 48px;
 }
 .mshell-row:active { background: var(--surface-2); }
@@ -3669,7 +3679,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-strong);
   -webkit-tap-highlight-color: transparent;
   border-radius: var(--r-12);
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .mshell-accordion__head:active { background: var(--surface-2); }
 .mshell-accordion__label {
@@ -3695,13 +3705,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   display: inline-flex;
   color: var(--text-muted);
   transform: rotate(0deg);
-  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-layout) var(--ease-out);
 }
 .mshell-accordion__chev.is-open { transform: rotate(90deg); }
 .mshell-accordion__body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-rows var(--dur-layout) var(--ease-out);
 }
 .mshell-accordion__body.is-open { grid-template-rows: 1fr; }
 .mshell-accordion__inner {
@@ -3752,7 +3762,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-strong);
   border-radius: var(--r-12);
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 .settings-mobile__back:active { background: var(--surface-2); }
 .settings-mobile__title {
@@ -3802,7 +3812,7 @@ body[data-theme="dark"] .mshell__drawer-title {
     0 6px 18px rgba(0, 0, 0, 0.22),
     0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
   -webkit-tap-highlight-color: transparent;
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
+  transition: transform var(--dur-layout) var(--ease-out), background-color var(--dur-hover) ease;
   z-index: 5;
 }
 .mshell__fab:active {
@@ -3826,7 +3836,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   z-index: 4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 200ms ease;
+  transition: opacity var(--dur-layout) ease;
 }
 .mshell__fab-scrim.is-open { opacity: 1; pointer-events: auto; }
 
@@ -3854,8 +3864,8 @@ body[data-theme="dark"] .mshell__drawer-title {
   transform: translateY(8px) scale(0.96);
   transform-origin: 100% 100%;
   transition:
-    opacity 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--dur-layout) var(--ease-out),
+    transform var(--dur-layout) var(--ease-out);
 }
 .mshell__fab-menu.is-open {
   opacity: 1;
@@ -3875,7 +3885,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--text-default);
   text-align: left;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color var(--dur-hover) ease;
   min-height: 44px;
 }
 .mshell__fab-menu-item:active { background: var(--surface-2); }
@@ -4320,7 +4330,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-weight: 500;
   color: var(--ink-3);
   cursor: pointer;
-  transition: color 120ms ease;
+  transition: color var(--dur-hover) ease;
 }
 .user-turn-more:hover { color: var(--ink); }
 
@@ -4386,7 +4396,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
 }
 .chat-card-btn:hover:not(:disabled) { background: var(--surface-2); }
 .chat-card-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -4432,7 +4442,7 @@ body[data-theme="dark"] .phase-check-done {
   margin-top: 4px;
   color: var(--ink-4);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--dur-hover) ease;
 }
 .turn-actions.is-last { opacity: 1; }
 .user-turn:hover .turn-actions,
@@ -4459,7 +4469,7 @@ body[data-theme="dark"] .phase-check-done {
   white-space: nowrap;
   color: var(--ink-4);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--dur-hover) ease;
   user-select: none;
 }
 .answer-turn:hover .turn-meta,
@@ -4523,7 +4533,7 @@ body[data-theme="dark"] .phase-check-done {
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .turn-action-btn:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -4661,7 +4671,7 @@ body[data-theme="light"] .anton-inline-code {
   font-size: var(--text-xs);
   color: var(--ink-3);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover);
 }
 .anton-code-block-copy:hover {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -4834,7 +4844,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   appearance: none; border: 0; background: transparent; cursor: pointer;
   color: var(--ink-3, #6b6b6b); font: inherit; font-size: 12px; font-weight: 500;
   text-transform: capitalize; padding: 4px 14px; border-radius: var(--r-8);
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 .channels-agent-tab:hover:not(.is-active):not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
 .channels-agent-tab.is-active { background: var(--accent, #1a1916); color: var(--accent-fg, #fff); }
@@ -4844,7 +4854,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-fields { display: flex; flex-direction: column; gap: 10px; }
 
 
-.channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color .12s ease, box-shadow .15s ease; }
+.channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease; }
 .channels-input:hover { border-color: var(--line-2); }
 .channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .channels-input:focus-visible { outline: 0; box-shadow: 0 0 0 1px var(--accent); }
