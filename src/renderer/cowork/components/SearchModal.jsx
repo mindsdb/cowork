@@ -31,12 +31,16 @@ function groupByType(results) {
   return [...groups.values()];
 }
 
-export default function SearchModal({ open, onClose, onSearch, onSelect }) {
+export default function SearchModal({ open, onClose, onSearch, onSelect, recents }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const groups = useMemo(() => groupByType(results), [results]);
+  // Before anything is typed, recent tasks and projects are the starting list.
+  const showRecents = !query.trim() && recents?.length > 0;
+  const groups = useMemo(() => (showRecents
+    ? groupByType(recents).map((g) => ({ ...g, label: g.key === 'task' ? 'Recent tasks' : g.label }))
+    : groupByType(results)), [showRecents, recents, results]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,7 +105,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect }) {
         {busy && <CommandStatus>Searching...</CommandStatus>}
         {error && <div className="dialog-error">{error}</div>}
         {!busy && query.trim() && results.length === 0 && !error && <CommandStatus>No MindsHub Cowork results found.</CommandStatus>}
-        {!query.trim() && <CommandStatus>Tasks, projects, artifacts, attachments, schedules, and pins are searchable.</CommandStatus>}
+        {!query.trim() && !showRecents && <CommandStatus>Tasks, projects, artifacts, attachments, schedules, and pins are searchable.</CommandStatus>}
         <CommandFooter>
           <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> to navigate</span>
           <span><Kbd>↵</Kbd> to open</span>
