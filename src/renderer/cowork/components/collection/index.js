@@ -1,5 +1,6 @@
 // Collection kit — shared primitives for list/grid pages
 // (Projects, Live Artifacts, Connect Apps and Data, Scheduled tasks).
+// See README.md for which piece goes where.
 //
 // Composition rather than a single shell — each view stays in control
 // of its own body, empty-state, and detail mode while sharing the
@@ -14,3 +15,7 @@ export { SearchInput }          from './SearchInput';
 export { SortPill }             from './SortPill';
 export { HoverMenu }            from './HoverMenu';
 export { useCollectionShortcut } from './useCollectionShortcut';
+export { CardGrid, ItemCard }   from './ItemCard';
+export { ListGroup, ListItem, NewRow, ListNotice } from './ListGroup';
+export { HoverActions, REVEAL_ON_HOVER, ITEM_MENU_TRIGGER } from './itemParts';
+export { StatusDot }            from './StatusDot';
