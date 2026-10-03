@@ -1,11 +1,18 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { submitAnswer } from '../api';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
+import ChatCardShell from './ChatCardShell';
+import { cn } from '../lib/cn';
 
-// Unselected option and Send. Hover is `enabled:` only and the cursor resets
-// when disabled: `hover:` also matches a disabled button, and globals.css
-// gives every button a pointer, so a settled card still looked live.
-const QUIET_BUTTON = 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2 disabled:opacity-60';
+// An option button. Hover is `enabled:` only and the cursor resets when
+// disabled: `hover:` also matches a disabled button, and globals.css gives
+// every button a pointer, so a settled card still looked live. Explicit bg-*
+// on both branches: preflight is off, so a button with no background falls
+// through to native chrome. Only unselected options dim: the chosen one is
+// the answer.
+const OPTION = 'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default';
+const OPTION_IDLE = 'border-transparent bg-surface text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
+const OPTION_SELECTED = 'border-accent bg-accent-bg text-ink font-medium';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -100,13 +107,53 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   // to serve.
   const answerText = answer?.text || chosenLabels.join(', ');
 
+  // Single-select submits on the option click, so it has no primary; a
+  // multi-select stages picks until Send. The hint says what the composer
+  // enforces: a select-only question refuses typed text (it would be rejected
+  // as an answer, and it cannot be sent as a message without deadlocking the
+  // blocked turn), so the user learns it before hitting it.
+  const actions = settled ? null : {
+    leading: (
+      <span className="font-body text-xs leading-snug text-ink-4">
+        {q.allow_custom
+          ? '…or type your own answer below.'
+          : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
+      </span>
+    ),
+    secondary: { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    primary: isMany
+      ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
+      : null,
+  };
+
   return (
-    <div className="rounded-lg border border-line bg-surface-2 p-3">
+    // No kind row: the turn's "Question for you" step already names the card.
+    <ChatCardShell
+      tone="question"
+      kind={false}
+      actions={actions}
+      footer={settled ? (
+        <>
+          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
+          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
+          {/* Body text, not a status caption: a composer-typed answer is not
+              echoed as a user message anywhere else. The bold prefix (styled
+              like markdown bold) sets it apart from the prompt, which uses the
+              same prose style. */}
+          {answerText ? (
+            <MarkdownPlainText>
+              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+            </MarkdownPlainText>
+          ) : null}
+          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
+        </>
+      ) : null}
+    >
       {/* Only paragraphs reset their outer margins in the markdown sizes;
           drop them for a leading heading or trailing list in the card. */}
       <div
         id={promptId}
-        className="mb-2 [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
+        className="mb-2 text-ink [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
       >
         {promptBody}
       </div>
@@ -142,84 +189,17 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               data-chosen={isSelected ? 'true' : 'false'}
               aria-pressed={isSelected}
               onClick={() => onOption(option.value)}
-              // Explicit bg-* on every branch: Tailwind preflight is off in
-              // this app (globals.css already owns the reset), so a button
-              // with no background falls through to the browser's native
-              // button chrome instead of the app's surface tokens — that's
-              // what read as "grey, low-contrast" before this class was added.
-              // Only unselected options dim: the chosen one is the answer.
-              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:cursor-default ${
-                isSelected ? 'border-accent bg-accent-bg text-ink font-medium' : QUIET_BUTTON
-              }`}
+              className={cn(OPTION, isSelected ? OPTION_SELECTED : OPTION_IDLE)}
             >
               <span>{option.label || option.value}</span>
               {option.detail ? (
-                <span className="text-[11px] text-ink-4">{option.detail}</span>
+                <span className="text-xs text-ink-4">{option.detail}</span>
               ) : null}
             </button>
           );
         })}
       </div>
 
-      {isMany && !settled ? (
-        <button
-          type="button"
-          disabled={picked.length === 0 || busy}
-          onClick={() => send({ values: picked })}
-          className={`mt-2 rounded-md border px-2.5 py-1 text-[12px] transition-colors disabled:cursor-default ${QUIET_BUTTON}`}
-        >
-          Send
-        </button>
-      ) : null}
-
-      {!settled ? (
-        <div className="mt-2 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => send({ skipped: true })}
-            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:opacity-60 disabled:cursor-default"
-          >
-            Skip
-          </button>
-          {q.allow_custom ? (
-            <span className="text-[11px] text-ink-4">
-              …or type your own answer below.
-            </span>
-          ) : (
-            // Select-only: the composer refuses to send typed text while this
-            // question is up (it would be rejected as an answer, and it cannot
-            // be sent as a message without deadlocking the blocked turn). Say so
-            // here, so the user learns it before hitting it.
-            <span className="text-[11px] text-ink-4">
-              Pick an option above — a typed reply won&apos;t be accepted. Skip to type
-              something else.
-            </span>
-          )}
-        </div>
-      ) : null}
-
-      {answer?.status === 'cancelled' ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">Skipped.</div>
-      ) : null}
-      {answer?.status === 'timeout' ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">No answer — timed out.</div>
-      ) : null}
-      {/* Body text, not a status caption: a composer-typed answer is not echoed
-          as a user message anywhere else. The bold prefix (styled like markdown
-          bold) sets it apart from the prompt, which uses the same prose style. */}
-      {answerText ? (
-        <div className="mt-2">
-          <MarkdownPlainText>
-            <strong className="font-semibold text-ink">Answered:</strong> {answerText}
-          </MarkdownPlainText>
-        </div>
-      ) : null}
-      {expired || gone ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">
-          This question is no longer active.
-        </div>
-      ) : null}
-    </div>
+    </ChatCardShell>
   );
 }

@@ -157,7 +157,7 @@ describe('AskUserCard', () => {
     expect(shown.querySelector('strong')).toHaveTextContent('Answered:');
   });
 
-  it('shows no hover effect or pointer cursor on disabled options and Send', () => {
+  it('shows no hover effect or pointer cursor on disabled options, and holds Send until a pick', () => {
     const { unmount } = renderCard({ answer: { status: 'answered', values: [], text: 'other' } });
     for (const name of [/postgres/i, /mysql/i]) {
       const option = screen.getByRole('button', { name });
@@ -169,7 +169,9 @@ describe('AskUserCard', () => {
     renderCard({ select: 'many' });
     const send = screen.getByRole('button', { name: /^send$/i });
     expect(send).toBeDisabled();
-    expectInertWhenDisabled(send);
+    // Send is the card's one primary action: a pick enables it.
+    fireEvent.click(screen.getByRole('button', { name: /postgres/i }));
+    expect(send).toBeEnabled();
   });
 
   it('says so when the question was skipped', () => {
@@ -210,8 +212,8 @@ describe('AskUserCard', () => {
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
     const skip = screen.getByRole('button', { name: /skip/i });
     expect(skip).toBeDisabled();
-    // ...and looks it: Skip dims like the options.
-    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
+    // ...and so is every other button on the card.
+    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled();
     await act(async () => { release({ accepted: true }); });
   });
 
