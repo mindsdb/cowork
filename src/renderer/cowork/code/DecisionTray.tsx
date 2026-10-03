@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { ActionBar, type ActionBarProps } from '../components/ui/ActionBar';
 import './task-control.css';
 
@@ -20,7 +20,7 @@ function isEditable(element: Element | null): boolean {
  * rather than sending the draft, unless the user is typing somewhere; taking
  * focus mid-sentence would turn their next Enter into a decision.
  */
-export function DecisionTray({ label, kind, icon, aside, actions, children, onKeyDown }: {
+export function DecisionTray({ label, kind, icon, aside, actions, children, onKeyDown, onSubmit }: {
   label: string;
   kind?: string;
   icon?: ReactNode;
@@ -34,11 +34,17 @@ export function DecisionTray({ label, kind, icon, aside, actions, children, onKe
    */
   actions?: ActionBarProps;
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+  /**
+   * Makes the body and actions one form, so a `type: 'submit'` action and
+   * Enter in a field both submit it.
+   */
+  onSubmit?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!isEditable(document.activeElement)) ref.current?.focus({ preventScroll: true });
   }, []);
+  const bar = actions && <ActionBar menuSide="top" {...actions} className="code-decision-tray__actions" />;
   return (
     <section
       ref={ref}
@@ -51,8 +57,9 @@ export function DecisionTray({ label, kind, icon, aside, actions, children, onKe
       }}
     >
       {kind && <div className="code-decision-tray__kind">{icon}<span>{kind}</span>{aside}</div>}
-      {children}
-      {actions && <ActionBar menuSide="top" {...actions} className="code-decision-tray__actions" />}
+      {onSubmit
+        ? <form className="code-decision-tray__form" onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit(); }}>{children}{bar}</form>
+        : <>{children}{bar}</>}
     </section>
   );
 }
