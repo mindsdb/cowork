@@ -23,6 +23,7 @@ declare const Ico: {
   externalLink: IconRenderer;
   folder: IconRenderer;
   globe: IconRenderer;
+  grid: IconRenderer;
   image: IconRenderer;
   key: IconRenderer;
   lock: IconRenderer;

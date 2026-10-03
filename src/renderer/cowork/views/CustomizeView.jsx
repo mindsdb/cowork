@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Alert, Button, EmptyState, Select } from '../components/ui';
+import { Alert, Button, Select } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
@@ -18,6 +18,8 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
+  CollectionState,
+  NewTile,
   useCollectionShortcut,
 } from '../components/collection';
 import { cn } from '../lib/cn';
@@ -52,31 +54,6 @@ function ConnectionsCounts({ search, total, filtered }) {
     : `${total} ${total === 1 ? 'connection' : 'connections'}`;
   return <>{countText}</>;
 }
-
-// ─── Connection card ─────────────────────────────────────────────────────
-
-// Trailing dashed card that lives at the end of the connections
-// grid, mirroring the "+ New project" tile in ProjectsView. Click
-// dispatches to the parent's handleConnectNew (same path the page
-// header's "+ Connect" button takes — opens the connector picker).
-// Only rendered when there's at least one existing connection — the
-// EmptyState already covers the zero-connection case.
-function NewConnectionCard({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_.15s_ease,color_.15s_ease] hover:border-accent hover:text-accent"
-    >
-      <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium">
-        New connection
-      </span>
-    </button>
-  );
-}
-
-// ─── Empty state ─────────────────────────────────────────────────────────
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
@@ -646,15 +623,19 @@ export default function CustomizeView({
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-4">{Ico.link(32)}</span>}
-          title="No apps connected yet"
-          description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
-          action={<ConnectButton onClick={handleConnectNew} large />}
-          style={{ flex: 1 }}
-        />
-      ) : (
+      <CollectionState
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        empty={{
+          icon: <span className="inline-flex text-ink-4">{Ico.link(32)}</span>,
+          title: 'No apps connected yet',
+          description: `Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`,
+          action: <ConnectButton onClick={handleConnectNew} large />,
+          style: { flex: 1 },
+        }}
+      >
         <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
           {visible.map((c) => (
             <ConnectionCard
@@ -664,13 +645,11 @@ export default function CustomizeView({
               onModify={setSelectedConn}
             />
           ))}
-          {/* Trailing dashed "New connection" card — appears only
-              when there's at least one existing connection (the
-              EmptyState handles the zero-connection case with its
-              own larger CTA). Mirrors the Projects pattern. */}
-          <NewConnectionCard onClick={handleConnectNew} />
+          {/* Trailing dashed tile — same connect flow as the header's
+              "+ Connect". The empty state carries its own CTA. */}
+          <NewTile label="New connection" onClick={handleConnectNew} />
         </div>
-      )}
+      </CollectionState>
 
       {selectedConn && (
         <ConnectionDetailPanel

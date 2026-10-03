@@ -24,3 +24,7 @@ export function SearchInput(props: {
 }): ReactNode;
 
 export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | null>, enabled?: boolean): void;
+
+export { CollectionState } from './CollectionState';
+export { ViewToggle, useCollectionView } from './ViewToggle';
+export { NewTile } from './NewTile';
