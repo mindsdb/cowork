@@ -10,7 +10,8 @@ import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
 
 import ScheduledView from './ScheduledView';
 
-const VIEW_KEY = 'anton:scheduled-view';
+const VIEW_KEY = 'anton:scheduled-view-v2';
+const LEGACY_VIEW_KEY = 'anton:scheduled-view';
 const PROJECTS = [{ id: 'proj-metrics', name: 'metrics', display_name: 'Metrics', path: '/work/metrics' }];
 const SCHEDULED = [
   {
@@ -97,20 +98,31 @@ describe('ScheduledView — toolbar', () => {
     expect(orderOf(TITLES)).toEqual(['Weekly metrics']);
   });
 
-  it('defaults to grid, switches to list, and remembers the choice', async () => {
+  // Rows and cards name their run action differently ("Run" vs "Run now"),
+  // which tells the two layouts apart without reaching for classes.
+  it('defaults to rows, switches to cards, and remembers the choice', async () => {
     const { user, unmount } = setup();
-    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.queryByText('Cadence')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'List' }));
     expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Cadence')).toBeInTheDocument();
-    expect(localStorage.getItem(VIEW_KEY)).toBe('list');
+    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
+    expect(localStorage.getItem(VIEW_KEY)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Grid' }));
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(3);
+    expect(localStorage.getItem(VIEW_KEY)).toBe('grid');
 
     unmount();
     setup();
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(3);
+  });
+
+  // Staging wrote the old key on every mount, so its 'grid' is not a choice.
+  it('opens on rows even when the legacy key holds grid', () => {
+    localStorage.setItem(LEGACY_VIEW_KEY, 'grid');
+    setup();
     expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Cadence')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
   });
 });
 
@@ -207,13 +219,13 @@ describe('ScheduledView — phone width and no-match', () => {
   const width = window.innerWidth;
   afterEach(() => { window.innerWidth = width; });
 
-  it('forces the grid and hides the toggle on phones, keeping the stored choice', () => {
-    localStorage.setItem(VIEW_KEY, 'list');
+  it('gives phones rows and hides the toggle, keeping the stored choice', () => {
+    localStorage.setItem(VIEW_KEY, 'grid');
     window.innerWidth = 390;
     setup();
-    expect(screen.queryByRole('button', { name: 'List' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Cadence')).not.toBeInTheDocument();
-    expect(localStorage.getItem(VIEW_KEY)).toBe('list');
+    expect(screen.queryByRole('button', { name: 'Grid' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
+    expect(localStorage.getItem(VIEW_KEY)).toBe('grid');
   });
 
   it('says nothing matches the search and clears it on request', async () => {
