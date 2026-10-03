@@ -15,7 +15,7 @@ import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode } from 'react'
 import { cva } from 'class-variance-authority';
 import Ico from '../Icons';
 import { cn } from '../../lib/cn';
-import { HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
+import { ACTIONS_IN_FLOW_ON_TOUCH, HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
 import type { ItemElement, ItemSlots } from './itemParts';
 
 export type ListDensity = 'comfortable' | 'compact';
@@ -88,11 +88,14 @@ export interface ListItemProps extends ItemSlots, Omit<HTMLAttributes<HTMLElemen
   as?: ItemElement;
   /** Overrides the group's density. */
   density?: ListDensity;
+  /** Keep the hidden actions' width in flow instead of overlaying the meta,
+   *  for meta that holds its own control (a project link) the overlay would cover. */
+  reserveActions?: boolean;
 }
 
 export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem({
   as: As = 'div', density, leading, title, badges, description, meta, actions, revealActions,
-  onActivate, activateLabel, selected = false, busy = false, children, className, ...rest
+  onActivate, activateLabel, selected = false, busy = false, reserveActions = false, children, className, ...rest
 }, ref) {
   const groupDensity = useContext(DensityContext);
   const d = density ?? groupDensity;
@@ -125,18 +128,26 @@ export const ListItem = forwardRef<HTMLElement, ListItemProps>(function ListItem
         {description && <div className="truncate font-body text-xs text-ink-3">{description}</div>}
         {children}
       </div>
-      {/* Phone width: meta drops under the title instead of squeezing it. */}
+      {/* Phone width: meta drops under the title instead of squeezing it,
+          after the actions so they stay beside the title. */}
       {meta && (
-        <div className={cn('flex shrink-0 items-center gap-3 font-body text-xs text-ink-4 max-sm:basis-full', leading && 'max-sm:pl-9')}>
+        <div className={cn('flex shrink-0 items-center gap-3 font-body text-xs text-ink-4 max-sm:order-last max-sm:basis-full', leading && 'max-sm:pl-9')}>
           {meta}
         </div>
       )}
-      {/* Overlays the meta's end on hover (over the row's hover fill) so the
-          meta keeps the right edge at rest. On touch it flows in place. */}
+      {/* Hover-revealed actions overlay the meta's end (over the row's hover
+          fill) so the meta keeps the right edge at rest. Visible actions
+          (revealActions, touch) and reserved ones sit in flow after the meta. */}
       {actions && (
         <HoverActions
           reveal={revealActions}
-          className="absolute inset-y-0 right-0 rounded-[inherit] pr-3 bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8 [@media(hover:none)]:static [@media(hover:none)]:bg-none [@media(hover:none)]:p-0"
+          className={cn(
+            !revealActions && !reserveActions && [
+              'absolute inset-y-0 right-0 rounded-[inherit] bg-[linear-gradient(to_left,var(--surface-2)_75%,transparent)] pl-8',
+              d === 'compact' ? 'pr-3' : 'pr-4',
+              ACTIONS_IN_FLOW_ON_TOUCH,
+            ],
+          )}
         >
           {actions}
         </HoverActions>
