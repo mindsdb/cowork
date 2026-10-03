@@ -20,6 +20,13 @@ theming, and behaviour get fixed in one place instead of per call-site.
 
 - `<Button variant="primary|subtle|tinted|solid|danger" size icon block>` — forwards its ref,
   so it can also back a `<Menu trigger={<Button/>}>` or render polymorphically via `render`.
+- `<ActionBar primary secondary overflow leading size align menuSide>` — the action row of a card,
+  tray or notice. At most one filled primary (rightmost button), one quiet secondary to its left,
+  and the rest in a trailing "More actions" `Menu` (`menuSide="top"` when docked to the composer).
+  Each action is `{ label, onClick, disabled, busy, tone: 'default'|'danger', tooltip, shortcut,
+  icon, expanded }`; `shortcut` sets `aria-keyshortcuts` and a key hint in the tooltip, but the
+  surface still handles the key. After a decision resolves, replace the bar with a status line.
+  `DecisionTray` takes it as its `actions` prop.
 - `<RadioGroup>` + `<Radio>` — one choice from a short list; a `<Radio>` with children is the whole
   clickable row (indicator + content). `variant="card"` is the bordered title-and-description option
   row, with one shared selected style. Use it instead of native `<input type="radio">` rows.

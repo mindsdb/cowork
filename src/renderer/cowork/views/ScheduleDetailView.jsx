@@ -288,7 +288,7 @@ export default function ScheduleDetailView({
                 // so the overflow reads as a real, hittable control — not a
                 // bare kebab — while staying lighter than the primary action.
                 icon={Ico.moreVert(16)}
-                triggerClassName="h-8 w-8 justify-center rounded-lg hover:bg-surface-2"
+                size="md"
                 items={[
                   { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => setEditOpen(true) },
                   { separator: true },
