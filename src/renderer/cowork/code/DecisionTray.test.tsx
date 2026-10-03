@@ -57,3 +57,30 @@ describe('DecisionTray actions slot', () => {
     expect(always).toHaveBeenCalledOnce();
   });
 });
+
+
+describe('DecisionTray form', () => {
+  it('wraps the body and actions in one form, so a submit action and Enter in a field both submit it', async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn();
+    render(
+      <DecisionTray label="Agent questions" onSubmit={submit} actions={{ primary: { label: 'Continue', type: 'submit' } }}>
+        <input aria-label="Answer" />
+      </DecisionTray>,
+    );
+    const form = screen.getByRole('textbox', { name: 'Answer' }).closest('form');
+    expect(form?.parentElement).toBe(screen.getByRole('region', { name: 'Agent questions' }));
+    expect(form?.lastElementChild).toHaveClass('code-decision-tray__actions');
+    expect(screen.getByRole('button', { name: 'Continue' }).closest('form')).toBe(form);
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(screen.getByRole('textbox', { name: 'Answer' }), 'yes{Enter}');
+    expect(submit).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds no form without onSubmit, so its buttons never submit an outer one', () => {
+    const { container } = render(<DecisionTray label="Review plan" actions={{ primary: { label: 'Build' } }} />);
+    expect(container.querySelector('form')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute('type', 'button');
+  });
+});
