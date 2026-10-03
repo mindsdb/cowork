@@ -1,7 +1,12 @@
+// One saved connection as a collection row: logo, provider, account, status,
+// and a labelled Disconnect that stays visible (it is the only action besides
+// opening, and it confirms first). The row is an <article>; opening is the
+// title button stretched over it, so Disconnect sits beside it, not inside it.
+
 import { useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { Button } from '../ui';
-import { cn } from '../../lib/cn';
+import { HoverActions, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, humanLabel } from '../../lib/connectionIdentity';
 
 function ConnectionLogo({ engine, label }) {
@@ -41,45 +46,34 @@ export default function ConnectionCard({ connection, onDelete, onModify }) {
     }
   };
 
+  const canOpen = typeof onModify === 'function';
   return (
-    <article className={cn(
-      'relative flex min-h-[120px] flex-col gap-2.5 rounded-[10px] px-4 py-3.5',
-      '[transition:background_.15s_ease,border-color_.15s_ease]',
-      needsReconnect
-        ? 'border border-solid border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]'
-        : 'border border-solid border-line bg-surface hover:border-line-2 hover:bg-surface-2',
-    )}>
-      {typeof onModify === 'function' && (
-        <button
-          type="button"
-          aria-label={`${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}`}
-          title={`${title} — ${subtitle}`}
-          disabled={busy}
-          onClick={() => onModify(connection)}
-          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait"
-        />
+    <ListItem
+      as="article"
+      leading={<ConnectionLogo engine={engine} label={title} />}
+      title={title}
+      description={subtitle}
+      onActivate={canOpen ? () => onModify(connection) : undefined}
+      activateLabel={canOpen ? `${needsReconnect ? 'Reconnect' : 'Manage'} ${title}: ${subtitle}` : undefined}
+      busy={busy}
+      className={needsReconnect ? 'bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]' : undefined}
+      meta={(
+        <>
+          {needsReconnect ? (
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-warning">
+              <TriangleAlert size={12} className="shrink-0" aria-hidden="true" />
+              {statusLabel}
+            </span>
+          ) : (
+            <StatusDot tone={connected ? 'success' : 'muted'}>{statusLabel}</StatusDot>
+          )}
+          <HoverActions reveal>
+            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+              {busy ? 'Removing…' : 'Disconnect'}
+            </Button>
+          </HoverActions>
+        </>
       )}
-      <div className="flex min-w-0 items-center gap-2.5">
-        <ConnectionLogo engine={engine} label={title} />
-        <span className="min-w-0 flex-1 truncate font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-normal text-ink">
-          {title}
-        </span>
-      </div>
-      <span className="truncate text-sm text-ink-3">{subtitle}</span>
-      <div className="flex-1" />
-      <div className="flex items-center gap-2.5 border-x-0 border-b-0 border-t border-solid border-line pt-2.5">
-        <span className={cn('flex min-w-0 flex-1 items-center gap-2 text-xs', needsReconnect ? 'text-warning' : 'text-ink-3')}>
-          {needsReconnect
-            ? <TriangleAlert size={12} className="shrink-0" aria-hidden="true" />
-            : <span aria-hidden="true" className={cn('h-1.5 w-1.5 shrink-0 rounded-full', connected ? 'bg-[var(--success)]' : 'bg-ink-4')} />}
-          <span className="truncate">{statusLabel}</span>
-        </span>
-        {/* z-20: must stay above the overlay button's z-10, or the whole-card
-            click target swallows this click and Disconnect becomes unreachable. */}
-        <Button variant="subtle" size="sm" className="relative z-20" onClick={handleRemove} disabled={busy}>
-          {busy ? 'Removing…' : 'Disconnect'}
-        </Button>
-      </div>
-    </article>
+    />
   );
 }

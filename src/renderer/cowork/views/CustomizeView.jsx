@@ -1,6 +1,6 @@
 // Connect Apps and Data — the page that lists everything the user has
-// hooked Anton up with. Mirrors the Projects page layout (header +
-// filter row + grid of cards + empty state). The "+ Connect" CTA
+// hooked Anton up with: header + filter row + rows + empty state. Rows,
+// not cards: a connection is an account you check and manage. The "+ Connect" CTA
 // routes to the existing connect-data workflow at route='connect'.
 //
 // Replaces the previous directory-of-planned-connectors page; only
@@ -19,7 +19,8 @@ import {
   SearchInput,
   SortPill,
   CollectionState,
-  NewTile,
+  ListGroup,
+  NewRow,
   useCollectionShortcut,
 } from '../components/collection';
 import { cn } from '../lib/cn';
@@ -636,7 +637,7 @@ export default function CustomizeView({
           style: { flex: 1 },
         }}
       >
-        <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
+        <ListGroup className="mx-8 mt-5 mb-14">
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}
@@ -645,10 +646,10 @@ export default function CustomizeView({
               onModify={setSelectedConn}
             />
           ))}
-          {/* Trailing dashed tile — same connect flow as the header's
-              "+ Connect". The empty state carries its own CTA. */}
-          <NewTile label="New connection" onClick={handleConnectNew} />
-        </div>
+          {/* Trailing row — same connect flow as the header's "+ Connect".
+              The empty state carries its own CTA. */}
+          <NewRow label="New connection" onClick={handleConnectNew} />
+        </ListGroup>
       </CollectionState>
 
       {selectedConn && (
