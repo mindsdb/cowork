@@ -332,24 +332,28 @@ export function CodeConnectorsView({
                     leading={<StatusDot tone={needsReconnect ? 'warning' : 'success'} />}
                     title={label}
                     description={usageLabel(projectUsage(projects, provider.id, connection.name))}
-                    meta={needsReconnect ? <>
-                      <StatusDot tone="warning">Reconnect needed</StatusDot>
-                      <Button
-                        variant="subtle"
-                        size="sm"
+                    // The '…' stays in the meta's flow (not ListItem's hover
+                    // overlay) so it never covers the visible Reconnect button.
+                    meta={<>
+                      {needsReconnect ? <>
+                        <StatusDot tone="warning">Reconnect needed</StatusDot>
+                        <Button
+                          variant="subtle"
+                          size="sm"
+                          disabled={providerBusy}
+                          onClick={() => void connect(provider.id, connection.name)}
+                        >
+                          {busyKey === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
+                        </Button>
+                      </> : <StatusDot tone="success">Connected</StatusDot>}
+                      <OverflowMenu
+                        label={`More actions for ${label}`}
+                        icon={Ico.more(14)}
                         disabled={providerBusy}
-                        onClick={() => void connect(provider.id, connection.name)}
-                      >
-                        {busyKey === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
-                      </Button>
-                    </> : <StatusDot tone="success">Connected</StatusDot>}
-                    actions={<OverflowMenu
-                      label={`More actions for ${label}`}
-                      icon={Ico.more(14)}
-                      disabled={providerBusy}
-                      triggerClassName={ITEM_MENU_TRIGGER}
-                      items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(13), danger: true, onClick: () => setDisconnecting(connection) }]}
-                    />}
+                        triggerClassName={ITEM_MENU_TRIGGER}
+                        items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(13), danger: true, onClick: () => setDisconnecting(connection) }]}
+                      />
+                    </>}
                   />
                 );
               })}
