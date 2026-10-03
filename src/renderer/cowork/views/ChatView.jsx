@@ -8,15 +8,16 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
+import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -32,7 +33,7 @@ import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -76,9 +77,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO    = "var(--font-mono)";
-const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
@@ -633,20 +632,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
-  // Close the export menu on any outside click. Clicks on the menu/toggle
-  // stopPropagation, so this only fires for clicks elsewhere.
-  useEffect(() => {
-    if (!exportOpen) return undefined;
-    const close = () => setExportOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -717,36 +706,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const noDestinationReason = orgMode && !openTarget
     ? 'This artifact cannot be previewed and has no shared link yet.'
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
-  const canExport = false;
-  const handleExport = async (fmt) => {
-    setExportOpen(false);
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    setExporting(true);
-    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
-    try {
-      const res = await exportArtifact(path, fmt);
-      showStatus('ok', `Exported ${res.filename}`);
-      // Desktop: open the result in the OS. Web: it's saved in the artifact
-      // folder and shows in the Artifacts panel.
-      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-export] failed', e);
-      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
-      revalidateAfterFailure();
-    }
-    finally {
-      setExporting(false);
-    }
-  };
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
@@ -890,6 +849,22 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * the shared page and a second button would point at the same place.
    */
   const showSharedLink = orgMode && published && openTarget === 'preview';
+  /*
+   * Org mode: every artifact with a primary file can be saved through its
+   * draft URL, previewable ones included, unless Download already IS the
+   * primary action (ENG-2044). The shared link, when there is one, is the
+   * visible secondary and Download moves behind "…"; otherwise Download is
+   * the secondary.
+   */
+  const sharedLinkAction = !deleted && showSharedLink
+    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    : null;
+  const downloadAction = !deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download'
+    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    : null;
+  // A disabled button takes no hover, so its reason is said beside it.
+  const primaryDisabled = !orgMode && !canAct;
+  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -909,7 +884,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     <Card
       as="div"
       interactive={canActivate}
-      padding="cozy"
+      flat
+      padding="snug"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
@@ -917,131 +893,64 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       className="chat-artifact-card"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
-        style={{ opacity: deleted ? 0.7 : 1 }}
+        className={cn(
+          'grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 text-ink-3',
+          deleted && 'opacity-70',
+        )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
         ) : (
-          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+          isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {/* The title is a keyboard stop of its own: it opens what the card
+            opens, and carries the reason in `title` when there is nowhere to
+            go. Preflight is off, so the native button chrome is reset here. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
-           */
-          style={{
-            all: 'unset',
-            cursor: canActivate ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
-            opacity: canActivate ? 1 : 0.7,
-          }}
-          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
-          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-sm font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
-          {artifact.kind || 'live artifact'}
+        {/* One meta line, kind · path, so the row stays two lines tall. */}
+        <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
+          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
+          {previewText && (
+            <>
+              <span aria-hidden="true" className="text-ink-4">·</span>
+              <span title={previewText} className="min-w-0 truncate text-ink-4">{previewText}</span>
+            </>
+          )}
         </span>
-        {previewText && (
-          <span
-            title={previewText}
-            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            {previewText}
-          </span>
-        )}
       </div>
-      <div className="chat-artifact-card__actions">
-        {canExport && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content="Export to another format">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <SmallBtn
-                disabled={!canAct || exporting}
-                onClick={() => setExportOpen((v) => !v)}
-                title={(!canAct || exporting) ? 'Export to another format' : undefined}
-              >
-                Export ▾
-              </SmallBtn>
-            </Tooltip>
-            {exportOpen && (
-              <div
-                role="menu"
-                // No border — floats on --sh-popup alone (ENG-790).
-                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
-              >
-                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    role="menuitem"
-                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
-                    style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
-                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >{label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {!deleted && showSharedLink && (
-          <Tooltip content="Open the shared artifact in a new tab">
-            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
-        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
-          <Tooltip content="Save this artifact's file">
-            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && primaryAction && (
-          <Tooltip content={primaryAction.tooltip}>
-            <SmallBtn
-              primary
-              disabled={!orgMode && !canAct}
-              onClick={primaryAction.onClick}
-              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
-            >
-              {primaryAction.label}
-            </SmallBtn>
-          </Tooltip>
-        )}
+      {/* The card is role="button" with a whole-surface click and Enter/Space
+          handler. Actions, and the overflow menu whose events React bubbles
+          through its portal, must not also open the preview. */}
+      <div
+        className="chat-artifact-card__actions"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <ActionBar
+          size="sm"
+          className="flex-wrap"
+          leading={!deleted && primaryAction && primaryReason
+            ? <span className="font-body text-xs text-ink-4">{primaryReason}</span>
+            : null}
+          secondary={sharedLinkAction || downloadAction}
+          primary={!deleted && primaryAction
+            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+            : null}
+          overflow={[sharedLinkAction && downloadAction]}
+        />
       </div>
       {status && (
         <span
-          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          className={cn('chat-artifact-card__status font-body text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
@@ -1050,24 +959,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     </>
   );
 }
-
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
-const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
-      title={title}
-      disabled={disabled}
-      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
-      {...rest}
-    >{children}</button>
-  );
-});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
