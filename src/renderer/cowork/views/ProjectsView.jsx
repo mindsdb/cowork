@@ -16,22 +16,24 @@ import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import {
   PageHeader,
   FilterRow,
   SearchInput,
   SortPill,
+  ViewToggle,
+  CollectionState,
+  NewTile,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Button, Menu, EmptyState, Tooltip } from '../components/ui';
+import { Button, Menu, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { belongsToProject } from '../lib/artifactProject';
@@ -252,111 +254,6 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
   );
 }
 
-// ─── Trailing "+ New project" card ───────────────────────────────────────
-
-// "+ New project" tile — clicking flips the card into an inline edit
-// mode with a focused input. Enter creates, Escape (or empty + blur)
-// cancels back to the dashed prompt. Same pattern as the rename
-// affordance on the regular cards. Replaces the previous
-// `window.prompt` flow which Electron renderers can silently disable.
-function NewProjectCard({ onCreate, creating, onCreatingChange }) {
-  const [hover, setHover] = useState(false);
-  // Parent-driven editing state so the page header / empty-state CTA
-  // can flip the card open without it having to be clicked first.
-  const editing = !!creating;
-  const setEditing = (v) => onCreatingChange?.(v);
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (!editing) return;
-    const id = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [editing]);
-
-  const submit = async () => {
-    const next = (inputRef.current?.value || '').trim();
-    if (!next) {
-      setEditing(false);
-      return;
-    }
-    setBusy(true);
-    try {
-      await onCreate?.(next);
-      setEditing(false);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[projects] create failed', e);
-      alert(`Could not create project: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const cancel = () => {
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <div
-        className="min-h-[120px] rounded-card py-[14px] px-4 bg-surface border border-solid border-accent flex flex-col gap-[10px] justify-center font-body"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2">
-          <span className="inline-flex shrink-0 text-ink-3">
-            {Ico.folder(14)}
-          </span>
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Project name"
-            disabled={busy}
-            spellCheck={false}
-            autoCapitalize="none"
-            autoCorrect="off"
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                submit();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancel();
-              }
-            }}
-            onBlur={() => {
-              // Blur commits if there's a value, otherwise cancels.
-              const val = (inputRef.current?.value || '').trim();
-              if (val) submit();
-              else cancel();
-            }}
-            className="flex-1 min-w-0 font-display text-[16px] font-semibold tracking-normal text-ink bg-surface-2 border border-solid border-line rounded-md py-1 px-2 outline-none"
-          />
-        </div>
-        <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em]">
-          {busy ? 'Creating…' : '↵ create · esc cancel'}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className={`min-h-[120px] rounded-card py-[14px] px-4 bg-transparent border border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] ${hover ? 'border-accent text-accent' : 'border-line-2 text-ink-3'}`}
-    >
-      <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-body text-[13px] font-medium">New project</span>
-    </button>
-  );
-}
-
 // ─── List view ───────────────────────────────────────────────────────────
 
 // Adds an "Active" column between Tasks and Memories — the count of
@@ -553,26 +450,6 @@ function ListRow({
           {Ico.moreVert(15)}
         </button>
       </div>
-    </div>
-  );
-}
-
-// ─── Empty / loading ─────────────────────────────────────────────────────
-
-function SkeletonCard() {
-  return (
-    <div className="min-h-[120px] rounded-card py-[14px] px-4 border border-solid border-line bg-surface flex flex-col gap-[10px]">
-      {/* background stays inline: the `background` shorthand resets
-          background-image to `none`, which is what keeps .proj-shimmer's
-          gradient suppressed today (cascade-forced by legacy class
-          proj-shimmer) — a bg-* utility only sets background-color and
-          would newly reveal the shimmer animation. */}
-      <div style={{ background: 'var(--surface-2)' }} className="h-3.5 w-3/5 rounded proj-shimmer" />
-      <div className="flex-1 flex flex-col gap-1.5">
-        <div style={{ background: 'var(--surface-2)' }} className="h-[11px] w-[90%] rounded proj-shimmer" />
-        <div style={{ background: 'var(--surface-2)' }} className="h-[11px] w-[70%] rounded proj-shimmer" />
-      </div>
-      <div style={{ background: 'var(--surface-2)' }} className="h-3 w-1/2 rounded proj-shimmer" />
     </div>
   );
 }
@@ -909,14 +786,8 @@ export default function ProjectsView({
   harnessClaudeCodeEnabled,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
-  const { isMobile } = useBreakpoint();
-  const [view, setView] = useState(() =>
-    localStorage.getItem('anton:projects-view') === 'list' ? 'list' : 'grid'
-  );
-  // List rows use a 5-column grid that breaks at phone widths. Force
-  // grid mode on mobile so the toggle isn't needed; the user's
-  // persisted desktop preference is preserved when they go back wide.
-  const effectiveView = isMobile ? 'grid' : view;
+  // Phones always get the grid (list rows are 5 columns); see ViewToggle.
+  const { view, setView, effectiveView, isMobile } = useCollectionView('anton:projects-view');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [menuFor, setMenuFor] = useState(null); // { project, rect }
@@ -959,9 +830,6 @@ export default function ProjectsView({
       };
     });
   }, [projects]);
-
-  // Persist view preference.
-  useEffect(() => { localStorage.setItem('anton:projects-view', view); }, [view]);
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
@@ -1164,7 +1032,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
+        view={<ViewToggle value={view} onValueChange={setView} />}
         counts={
           <ProjectsCounts
             search={search}
@@ -1175,78 +1043,70 @@ export default function ProjectsView({
         }
       />
 
-      {loading ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-      ) : projects.length === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-4">{Ico.folder(32)}</span>}
-          title="No projects yet"
-          description="Create your first project to start grouping conversations and outputs."
-          action={<NewProjectButton onClick={handleNewProject} />}
-          // EmptyState only accepts a `style` prop (no className) — kept
-          // inline; out of scope to modify EmptyState.jsx for this ticket.
-          style={{ flex: 1 }}
-        />
-      ) : effectiveView === 'grid' ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
-          {visibleProjects.map((p) => (
-            <ProjectCard
-              key={p.name || p.path}
-              project={p}
-              isSelected={selectedProject?.name === p.name}
-              tasks={tasks}
-              scheduled={scheduled}
-              pinned={pinned.has(p.name)}
-              editing={editingProjectName === p.name}
-              deleting={isDeleting(p)}
-              onOpen={handleOpen}
-              onTogglePin={(proj, next) => togglePin(proj.name, next)}
-              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-              isMenuOpen={menuFor?.project?.name === p.name}
-              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-              onRenameCancel={handleRenameCancel}
-              alwaysShowActions={isMobile}
-            />
-          ))}
-          {/* Trailing dashed "+ New project" card — clicking just
-              opens the modal (no inline-edit mode any more). The
-              modal handles name + instructions + file uploads in a
-              single confirmable surface. */}
-          <button
-            type="button"
-            onClick={handleNewProject}
-            className="proj-new-tile min-h-[120px] rounded-card py-[14px] px-4 bg-transparent border border-dashed border-line-2 hover:border-accent text-ink-3 hover:text-accent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] [font:inherit]"
-          >
-            <span className="inline-flex">{Ico.plus(16)}</span>
-            <span className="font-body text-[13px] font-medium">
-              New project
-            </span>
-          </button>
-        </div>
-      ) : (
-        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
-          <ListHeader />
-          {visibleProjects.map((p) => (
-            <ListRow
-              key={p.name || p.path}
-              project={p}
-              tasks={tasks}
-              scheduled={scheduled}
-              pinned={pinned.has(p.name)}
-              onOpen={handleOpen}
-              onTogglePin={(proj, next) => togglePin(proj.name, next)}
-              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-              isMenuOpen={menuFor?.project?.name === p.name}
-              editing={editingProjectName === p.name}
-              deleting={isDeleting(p)}
-              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-              onRenameCancel={handleRenameCancel}
-            />
-          ))}
-        </div>
-      )}
+      <CollectionState
+        loading={loading}
+        total={projects.length}
+        shown={visibleProjects.length}
+        query={search}
+        onClear={() => setSearch('')}
+        skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
+        skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        empty={{
+          icon: <span className="inline-flex text-ink-4">{Ico.folder(32)}</span>,
+          title: 'No projects yet',
+          description: 'Create your first project to start grouping conversations and outputs.',
+          action: <NewProjectButton onClick={handleNewProject} />,
+          style: { flex: 1 },
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
+            {visibleProjects.map((p) => (
+              <ProjectCard
+                key={p.name || p.path}
+                project={p}
+                isSelected={selectedProject?.name === p.name}
+                tasks={tasks}
+                scheduled={scheduled}
+                pinned={pinned.has(p.name)}
+                editing={editingProjectName === p.name}
+                deleting={isDeleting(p)}
+                onOpen={handleOpen}
+                onTogglePin={(proj, next) => togglePin(proj.name, next)}
+                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+                isMenuOpen={menuFor?.project?.name === p.name}
+                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+                onRenameCancel={handleRenameCancel}
+                alwaysShowActions={isMobile}
+              />
+            ))}
+            {/* Trailing dashed tile; opens the same NewProjectModal as the
+                header button. Hidden on phones, where the FAB is the create entry. */}
+            <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
+          </div>
+        ) : (
+          <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
+            <ListHeader />
+            {visibleProjects.map((p) => (
+              <ListRow
+                key={p.name || p.path}
+                project={p}
+                tasks={tasks}
+                scheduled={scheduled}
+                pinned={pinned.has(p.name)}
+                onOpen={handleOpen}
+                onTogglePin={(proj, next) => togglePin(proj.name, next)}
+                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+                isMenuOpen={menuFor?.project?.name === p.name}
+                editing={editingProjectName === p.name}
+                deleting={isDeleting(p)}
+                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+                onRenameCancel={handleRenameCancel}
+              />
+            ))}
+          </div>
+        )}
+      </CollectionState>
 
       <ProjectMenu
         open={!!menuFor}

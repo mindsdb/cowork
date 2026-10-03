@@ -3,7 +3,7 @@
 // actions (edit, pause/resume, delete with confirm) and the empty state, so
 // the collection-kit refactor can restyle the page without changing what it
 // does. Queries go by role, label and visible text, never by class.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
@@ -200,6 +200,29 @@ describe.each(['grid', 'list'])('ScheduledView — %s item actions', (mode) => {
     await user.click(screen.getByRole('button', { name: 'Metrics' }));
     expect(props.onOpenProject).toHaveBeenCalledWith(PROJECTS[0]);
     expect(props.onOpenSchedule).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScheduledView — phone width and no-match', () => {
+  const width = window.innerWidth;
+  afterEach(() => { window.innerWidth = width; });
+
+  it('forces the grid and hides the toggle on phones, keeping the stored choice', () => {
+    localStorage.setItem(VIEW_KEY, 'list');
+    window.innerWidth = 390;
+    setup();
+    expect(screen.queryByRole('button', { name: 'List' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Cadence')).not.toBeInTheDocument();
+    expect(localStorage.getItem(VIEW_KEY)).toBe('list');
+  });
+
+  it('says nothing matches the search and clears it on request', async () => {
+    const { user } = setup();
+    await user.type(screen.getByLabelText('Search scheduled tasks'), 'zzz');
+    expect(screen.getByText('No results for “zzz”')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(screen.getByLabelText('Search scheduled tasks')).toHaveValue('');
+    expect(orderOf(TITLES)).toHaveLength(3);
   });
 });
 

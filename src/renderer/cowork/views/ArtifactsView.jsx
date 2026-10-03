@@ -15,7 +15,6 @@ import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
-import { EmptyState } from '../components/ui/EmptyState';
 import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
@@ -49,12 +48,13 @@ import {
   SearchInput,
   SortPill,
   HoverMenu,
+  ViewToggle,
+  CollectionState,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const EMPTY_ARTIFACTS = [];
@@ -684,6 +684,8 @@ export default function ArtifactsView({
   onAddressWithAgent,
   resolveRepairConversation,
   agentLabel = 'the agent',
+  // True until the app's first artifacts fetch settles; shows skeletons.
+  loading = false,
 }) {
   // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
   // this for itself; the grid's is built here, so the gate has to be applied at
@@ -694,14 +696,8 @@ export default function ArtifactsView({
   const [viewerPath, setViewerPath] = useState(null);
   const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
   const openViewer = (artifact) => setViewerPath(artifact?.path || null);
-  const { isMobile } = useBreakpoint();
-  const [view, setView] = useState(() =>
-    localStorage.getItem('anton:artifacts-view') === 'list' ? 'list' : 'grid'
-  );
-  // List rows break at phone widths (5-column grid). Force grid on
-  // mobile so the toggle isn't needed; the user's persisted desktop
-  // preference is left untouched.
-  const effectiveView = isMobile ? 'grid' : view;
+  // Phones always get the grid (list rows are 5 columns); see ViewToggle.
+  const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('published');
   // Per-artifact-path "in flight" set so multiple cards can publish
@@ -731,8 +727,6 @@ export default function ArtifactsView({
   const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
-  // Persist view toggle.
-  useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
@@ -964,65 +958,74 @@ export default function ArtifactsView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
+          view={<ViewToggle value={view} onValueChange={setView} />}
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
-          title="No artifacts yet"
+      <CollectionState
+        loading={loading}
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        skeleton={effectiveView === 'grid' ? 'cards' : 'rows'}
+        skeletonClassName="pt-1.5 px-8 pb-[60px] mt-[18px]"
+        empty={{
+          icon: <span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>,
+          title: 'No artifacts yet',
           // Second line (ENG-2169): the two apps keep separate artifacts, so
           // someone looking for work made in the other one is told where it is.
-          description={(
+          description: (
             <>
               {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
               <span className="block mt-2 text-ink-4">{surfaceCopy(host.isWeb).artifactsNote}</span>
             </>
-          )}
-          style={{ flex: 1 }}
-        />
-      ) : effectiveView === 'grid' ? (
-        <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
-          {/* Grid layout (display + responsive columns + gap) lives in CSS
-              (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-              mobile — pure CSS media queries, no JS resize listener. */}
-          {visible.map((a) => (
-            <ArtifactBubble
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={openViewer}
-              onMenuOpen={(art, rect) => setMenuFor((prev) =>
-                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
-              )}
-              isMenuOpen={menuFor?.artifact?.path === a.path}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
-          <ListHeaderRow />
-          {visible.map((a) => (
-            <ArtifactRow
-              key={a.id || a.path}
-              artifact={a}
-              projects={projects}
-              onOpenViewer={openViewer}
-              onPublish={handlePublish}
-              onUnpublish={handleUnpublish}
-              onUpdate={handleUpdate}
-              onDelete={handleTrash}
-              onOpenProject={onOpenProject}
-              phase={statusByPath[a.path]}
-              onRetry={() => handlePublish(a)}
-            />
-          ))}
-        </div>
-      )}
+          ),
+          style: { flex: 1 },
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
+            {/* Grid layout (display + responsive columns + gap) lives in CSS
+                (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+                mobile — pure CSS media queries, no JS resize listener. */}
+            {visible.map((a) => (
+              <ArtifactBubble
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                  prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+                )}
+                isMenuOpen={menuFor?.artifact?.path === a.path}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
+            <ListHeaderRow />
+            {visible.map((a) => (
+              <ArtifactRow
+                key={a.id || a.path}
+                artifact={a}
+                projects={projects}
+                onOpenViewer={openViewer}
+                onPublish={handlePublish}
+                onUnpublish={handleUnpublish}
+                onUpdate={handleUpdate}
+                onDelete={handleTrash}
+                onOpenProject={onOpenProject}
+                phase={statusByPath[a.path]}
+                onRetry={() => handlePublish(a)}
+              />
+            ))}
+          </div>
+        )}
+      </CollectionState>
 
       <ArtifactViewer
         open={!!viewer}
