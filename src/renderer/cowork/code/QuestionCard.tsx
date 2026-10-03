@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { RadioGroup, Radio } from '../components/ui/RadioGroup';
 import Ico from '../components/Icons';
@@ -23,8 +22,13 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       setError(reason instanceof Error ? reason.message : 'Could not send your answers. Try again.');
     }
   };
-  return <DecisionTray label="Agent questions" kind={pending.questions.length > 1 ? `${pending.questions.length} questions` : 'Question'} icon={Ico.user(12)}>
-    <form className="code-decision-tray__form" onSubmit={event => { event.preventDefault(); void submit(); }}>
+  return <DecisionTray
+    label="Agent questions"
+    kind={pending.questions.length > 1 ? `${pending.questions.length} questions` : 'Question'}
+    icon={Ico.user(12)}
+    onSubmit={() => void submit()}
+    actions={{ primary: { label: busy ? 'Sending…' : 'Continue', type: 'submit', disabled: busy || !complete } }}
+  >
     {pending.questions.map(question => <fieldset key={question.id} disabled={busy} className="code-question">
       <legend id={`${pending.id}-${question.id}-legend`}>{question.question}</legend>
       {!question.isSecret && !!question.options?.length && <RadioGroup aria-labelledby={`${pending.id}-${question.id}-legend`} disabled={busy}
@@ -42,10 +46,5 @@ export function QuestionCard({ pending, busy, onAnswer }: {
       </label>}
     </fieldset>)}
     {error && <p className="code-decision__error" role="alert">{error}</p>}
-    <div className="code-decision-tray__actions">
-      <span className="code-decision-tray__spacer" aria-hidden="true" />
-      <Button type="submit" variant="primary" size="sm" disabled={busy || !complete}>{busy ? 'Sending…' : 'Continue'}</Button>
-    </div>
-    </form>
   </DecisionTray>;
 }

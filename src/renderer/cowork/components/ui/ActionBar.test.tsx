@@ -22,6 +22,13 @@ describe('ActionBar', () => {
     expect(screen.getByText('Runs outside the sandbox')).toBeInTheDocument();
   });
 
+  it('steps a three-answer bar ghost, outlined, filled', () => {
+    render(<ActionBar tertiary={{ label: 'Deny' }} secondary={{ label: 'Always allow' }} primary={{ label: 'Allow once' }} />);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Deny', 'Always allow', 'Allow once']);
+    expect(screen.getByRole('button', { name: 'Deny' })).toHaveClass('subtle');
+    expect(screen.getByRole('button', { name: 'Always allow' })).toHaveClass('default');
+  });
+
   it('paints a danger tone as the destructive variant of each slot', () => {
     render(<ActionBar secondary={{ label: 'Discard', tone: 'danger' }} primary={{ label: 'Delete', tone: 'danger' }} />);
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveClass('danger-solid');
