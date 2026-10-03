@@ -202,22 +202,6 @@ body, body[data-theme="light"] {
   --sh-modal:     0 1px 0 rgba(15,16,17,0.04), 0 24px 60px rgba(15,16,17,0.18);
   --ring:         0 0 0 1px rgba(31,156,176,0.22);
 
-  /* Motion — every transition/animation duration in the app reads one of
-     these, so a stylesheet overriding them retimes everything, and the
-     reduced-motion block below zeroes them. Ambient loops (spinners,
-     pulses, shimmers) keep their own cadence. */
-  --dur-press:       40ms;    /* button :active nudge */
-  --dur-hover:       80ms;    /* color / background / border / shadow / small reveal */
-  --dur-popover-in:  100ms;   /* menu, select, combobox open */
-  --dur-popover-out: 60ms;    /* popover close, toast exit */
-  --dur-modal:       120ms;   /* modal open (close is instant) */
-  --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
-  --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
-  --tooltip-delay:   200ms;   /* first tooltip; later ones in the group open instantly */
-  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in:         cubic-bezier(0.4, 0, 1, 1);
-  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
-
   /* Legacy/cowork token aliases — keep existing components working */
   --surface-0:      var(--surface);
   --surface-01:     var(--surface-2);
@@ -263,6 +247,26 @@ body, body[data-theme="light"] {
   --stone-200: var(--surface-3);
   --stone-300: var(--line-2);
   --stone-400: var(--ink-4);
+}
+
+:root {
+  /* Motion — every transition/animation duration in the app reads one of
+     these, so a stylesheet overriding them retimes everything, and the
+     reduced-motion block below zeroes them. Ambient loops (spinners,
+     pulses, shimmers) keep their own cadence. Keep these on :root, never in
+     the themed body blocks: a body declaration would shadow the :root
+     overrides for every element. */
+  --dur-press:       40ms;    /* button :active nudge */
+  --dur-hover:       80ms;    /* color / background / border / shadow / small reveal */
+  --dur-popover-in:  100ms;   /* menu, select, combobox open */
+  --dur-popover-out: 60ms;    /* popover close, toast exit */
+  --dur-modal:       120ms;   /* modal open (close is instant) */
+  --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
+  --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
+  --tooltip-delay:   200ms;   /* first tooltip; later ones in the group open instantly */
+  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in:         cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Reduced motion (WCAG 2.3.3) — one switch: every token-driven transition

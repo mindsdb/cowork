@@ -113,11 +113,11 @@ const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but tak
 const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 
 // How long the popup lingers after picking a model with NO effort options
-// while the Effort footer is showing: the footer fades out (the 320ms
-// `fade-out` animation, with a small hold at 0), THEN the popup closes.
+// while the Effort footer is showing: the footer fades out (`fade-out`,
+// one --dur-layout = 200ms, plus a small hold at 0), THEN the popup closes.
 // Watching the row leave teaches why it's gone — this model has no effort
 // levels — where an instant close would just look like the footer vanished.
-const FOOTER_EXIT_MS = 400;
+const FOOTER_EXIT_MS = 260;
 
 const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
