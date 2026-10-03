@@ -239,6 +239,54 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
+  it('runs a focused action on Enter without opening the preview', async () => {
+    // The card opens the preview on Enter/Space. A key pressed on one of its
+    // buttons must run that button and nothing else.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'Shared link' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('downloads from the overflow menu by keyboard without opening the preview', async () => {
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'More actions' }).focus();
+    await user.keyboard('{Enter}');
+    const item = await screen.findByRole('menuitem', { name: 'Download' });
+    item.focus();
+    await user.keyboard('{Enter}');
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('lets app shortcuts through while an action has focus', async () => {
+    // Only Enter/Space stop at the action row. Cmd+K, Cmd+N and the rest are
+    // window listeners and must still fire with a card button focused.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    const onKey = vi.fn();
+    window.addEventListener('keydown', onKey);
+    try {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+      screen.getByRole('button', { name: 'Preview' }).focus();
+      await user.keyboard('{Meta>}k{/Meta}');
+
+      expect(onKey).toHaveBeenCalledWith(expect.objectContaining({ key: 'k', metaKey: true }));
+    } finally {
+      window.removeEventListener('keydown', onKey);
+    }
+  });
+
   it('falls back to window.open when the bridge rejects', async () => {
     /*
      * `host.openExternal` is async. A synchronous try around it returns before
