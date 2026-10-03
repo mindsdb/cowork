@@ -1,5 +1,6 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import type { ProjectConnection, WorkItemSummary } from './api';
@@ -94,17 +95,17 @@ export function WorkItemPicker({
               />
             )}
           </div>
-          <label className="code-work-picker__search">
-            <span aria-hidden="true">{Ico.search(14)}</span>
-            <input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={`Search ${developerProviderLabel(provider)}`}
-              aria-label={`Search ${developerProviderLabel(provider)} work`}
-              disabled={busy}
-              autoFocus
-            />
-          </label>
+          <Input
+            value={query}
+            onChange={onQueryChange}
+            size="sm"
+            leading={Ico.search(14)}
+            wrapperClassName="code-work-picker__search"
+            placeholder={`Search ${developerProviderLabel(provider)}`}
+            aria-label={`Search ${developerProviderLabel(provider)} work`}
+            disabled={busy}
+            autoFocus
+          />
 
           <div className="code-work-picker__results" role="listbox" aria-label={`${developerProviderLabel(provider)} work`}>
             {loading && <div className="code-work-picker__message" role="status">Finding work…</div>}
@@ -132,9 +133,10 @@ export function WorkItemPicker({
           </div>
 
           <div className="code-work-picker__link">
-            <input
+            <Input
               value={link}
-              onChange={(event) => onLinkChange(event.target.value)}
+              onChange={onLinkChange}
+              size="sm"
               placeholder="Or paste an issue or pull-request link"
               aria-label="Issue or pull-request link"
               disabled={busy}

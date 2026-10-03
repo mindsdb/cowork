@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Button from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
+import Checkbox from '../components/ui/Checkbox';
 import { Collapsible } from '../components/ui/Collapsible';
 import { Field } from '../components/ui/Field';
 import Input, { Textarea } from '../components/ui/Input';
@@ -438,7 +439,7 @@ export function ProjectSettingsModal({
                       <div>
                         {playbookStatus.items.map((item) => (
                           <label key={item.path}>
-                            <input type="checkbox" checked={item.enabled} disabled={playbookBusy} onChange={async () => {
+                            <Checkbox size="sm" aria-label={item.name} checked={item.enabled} disabled={playbookBusy} onCheckedChange={async () => {
                               const enabled = playbookStatus.items
                                 .filter((candidate) => candidate.path === item.path ? !item.enabled : candidate.enabled)
                                 .map((candidate) => candidate.path);
@@ -447,7 +448,7 @@ export function ProjectSettingsModal({
                               catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
                               finally { setPlaybookBusy(false); }
                             }} />
-                            <span><strong>{item.name}</strong><small>{item.kind}</small></span>
+                            <span className="code-playbook-items__copy"><strong>{item.name}</strong><small>{item.kind}</small></span>
                           </label>
                         ))}
                       </div>

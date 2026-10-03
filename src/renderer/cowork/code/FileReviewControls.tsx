@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Textarea } from '../components/ui/Input';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { DiffFile } from './api';
 
@@ -61,14 +62,14 @@ export function FileReviewControls({
       </div>
       {commenting && (
         <div className="code-file-review__comment">
-          <textarea
+          <Textarea
             value={note}
             rows={3}
             autoFocus
             aria-label={`Review note for ${file.path}`}
             placeholder="What should change in this file?"
-            onChange={(event) => setNote(event.target.value)}
-            onKeyDown={(event) => {
+            onChange={setNote}
+            onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void sendNote();
               if (event.key === 'Escape') setCommenting(false);
             }}
