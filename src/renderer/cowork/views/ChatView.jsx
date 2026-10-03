@@ -28,6 +28,7 @@ import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -1107,42 +1108,19 @@ async function waitForServerReady(timeoutMs = 8000) {
 //
 // ── ActionCard: the shared shell for inline "actionable error" cards ───────
 // One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
+// cards (ENG-650), drawn by ChatCardShell. Callers own copy, button wiring and
+// the `kind` named in the card's top row (Billing, Model, …); the shell owns
+// layout and the action hierarchy (`cardActions`: the button marked `primary`
+// is the filled action, the next is the quiet secondary, any further ones go
+// behind "…").
+// buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
+// the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
-        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
-        <div className="s-h3">
-          {title}
-        </div>
-        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
-          {body}
-        </div>
-        {buttons.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {buttons.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={b.onClick}
-                disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
-                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
-                style={b.style}
-              >{b.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+        {body}
+      </ChatCardShell>
     </AnswerTurn>
   );
 }
@@ -1188,6 +1166,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
+      kind="Billing"
       title="Task stopped"
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={[
@@ -1285,6 +1264,7 @@ export function BalanceEmptyCard({
       agentLabel={agentLabel}
       // A billing failure ends the turn; there is no resume,
       // so this is "stopped", never "paused".
+      kind="Billing"
       title="Task stopped"
       body={body}
       buttons={buttons}
@@ -1313,6 +1293,7 @@ export function FreeServingPausedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free MindsHub Air is paused"
       body={freeServingPausedCopy(resetAt)}
       buttons={[
@@ -1338,6 +1319,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
     <ActionCard
       deleting={deleting}
       time={time}
+      kind="Connection"
       title="Connect a provider to start chatting"
       body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
       buttons={[
@@ -1380,6 +1362,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Usage"
         title="Free Air allowance running low"
         body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
         buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1391,6 +1374,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Billing"
         title="Auto top up failed"
         body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
         buttons={[
@@ -1404,6 +1388,7 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
     <ActionCard
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free Air allowance used up"
       body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
       buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
@@ -1471,6 +1456,7 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Rate limit"
       title="Too many requests too quickly"
       body={body}
       buttons={buttons}
@@ -1550,6 +1536,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Connection"
       title={title}
       body={body}
       buttons={done ? [] : [
@@ -1557,8 +1544,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
           primary: true,
-          disabled: busy,
-          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+          busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
@@ -1616,6 +1602,7 @@ export function ModelUnavailableCard({
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
+        kind="Model"
         title={`${label} is restricted`}
         body="An admin in your organization restricted this model. Choose another model in Settings."
         buttons={[
@@ -1647,6 +1634,7 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Model"
       title={title}
       body={denied
         ? "You don't have enough credits for this model. Top up your balance to use it."
@@ -1699,6 +1687,7 @@ function ProviderOverloadedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Provider"
       title={`${who} is having a temporary issue`}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
@@ -2581,6 +2570,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
                       body={badModel
                         ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
@@ -2608,6 +2598,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image couldn't be read"
                       body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
                     />
@@ -2629,6 +2620,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
                       buttons={retryText
@@ -2660,6 +2652,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image is too large"
                       body={m.content}
                     />
@@ -2676,6 +2669,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Billing"
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                       buttons={retryText
@@ -2700,6 +2694,7 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
                       buttons={retryText
