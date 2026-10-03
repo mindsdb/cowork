@@ -3,8 +3,9 @@
 // rendering with type badges, selecting a result, the hint / searching / no
 // result / error states, and the ways to close it, so the move onto Dialog +
 // Autocomplete keeps what it does. Queries go by role, label and visible text.
+import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import SearchModal from './SearchModal';
@@ -55,20 +56,20 @@ describe('SearchModal', () => {
     expect(props.onSearch).not.toHaveBeenCalled();
   });
 
-  it('lists results with title, subtitle and type badge', async () => {
+  it('lists results with title and subtitle under a heading for their type', async () => {
     const { user } = setup();
     await user.type(input(), 'report');
-    const task = await screen.findByRole('button', { name: /Quarterly report/ });
+    const task = await screen.findByRole('option', { name: /Quarterly report/ });
     expect(task).toHaveTextContent('Metrics project');
-    expect(task).toHaveTextContent('task');
-    expect(screen.getByRole('button', { name: /Reporting/ })).toHaveTextContent('project');
-    expect(screen.getByRole('button', { name: /Report deck/ })).toHaveTextContent('artifact');
+    expect(within(screen.getByRole('group', { name: 'Tasks' })).getByRole('option', { name: /Quarterly report/ })).toBe(task);
+    expect(within(screen.getByRole('group', { name: 'Projects' })).getByRole('option', { name: /Reporting/ })).toHaveTextContent('3 tasks');
+    expect(within(screen.getByRole('group', { name: 'Artifacts' })).getByRole('option', { name: /Report deck/ })).toHaveTextContent('deck.pptx');
   });
 
   it('selects a result and closes', async () => {
     const { user, props } = setup();
     await user.type(input(), 'report');
-    await user.click(await screen.findByRole('button', { name: /Reporting/ }));
+    await user.click(await screen.findByRole('option', { name: /Reporting/ }));
     expect(props.onSelect).toHaveBeenCalledWith(RESULTS[1]);
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
@@ -107,5 +108,98 @@ describe('SearchModal', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('is a labelled dialog', () => {
+    setup();
+    expect(screen.getByRole('dialog', { name: 'Search' })).toContainElement(input());
+  });
+
+  it('groups by type in order of first appearance, keeping server order inside a group', async () => {
+    const mixed = [
+      { type: 'project', id: 'p1', title: 'Alpha project' },
+      { type: 'task', id: 't1', title: 'First task' },
+      { type: 'project', id: 'p2', title: 'Beta project' },
+      { type: 'task', id: 't2', title: 'Second task' },
+    ];
+    const { user } = setup({ onSearch: vi.fn().mockResolvedValue({ results: mixed }) });
+    await user.type(input(), 'a');
+    await screen.findByRole('option', { name: /Alpha project/ });
+    expect(screen.getAllByRole('group').map((g) => within(g).getAllByRole('option').map((o) => o.textContent)))
+      .toEqual([['Alpha project', 'Beta project'], ['First task', 'Second task']]);
+    expect(screen.getByRole('group', { name: 'Projects' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Tasks' })).toBeInTheDocument();
+  });
+
+  it('highlights the first result and moves with the arrow keys, wrapping at both ends', async () => {
+    const { user } = setup();
+    await user.type(input(), 'report');
+    const [task, project, artifact] = await Promise.all([
+      screen.findByRole('option', { name: /Quarterly report/ }),
+      screen.findByRole('option', { name: /Reporting/ }),
+      screen.findByRole('option', { name: /Report deck/ }),
+    ]);
+    await waitFor(() => expect(task).toHaveAttribute('data-highlighted'));
+    await user.keyboard('{ArrowDown}');
+    expect(project).toHaveAttribute('data-highlighted');
+    await user.keyboard('{ArrowDown}');
+    expect(artifact).toHaveAttribute('data-highlighted');
+    await user.keyboard('{ArrowDown}');
+    expect(task).toHaveAttribute('data-highlighted');
+    await user.keyboard('{ArrowUp}');
+    expect(artifact).toHaveAttribute('data-highlighted');
+    expect(input()).toHaveFocus();
+  });
+
+  it('opens the highlighted result on Enter', async () => {
+    const { user, props } = setup();
+    await user.type(input(), 'report');
+    await screen.findByRole('option', { name: /Reporting/ });
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+    expect(props.onSelect).toHaveBeenCalledWith(RESULTS[1]);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('highlights a result on hover', async () => {
+    const { user } = setup();
+    await user.type(input(), 'report');
+    const deck = await screen.findByRole('option', { name: /Report deck/ });
+    fireEvent.mouseMove(deck, { movementX: 2, movementY: 2 });
+    expect(deck).toHaveAttribute('data-highlighted');
+  });
+
+  it('closes on a press outside the dialog', async () => {
+    const { user, props } = setup();
+    await waitFor(() => expect(input()).toHaveFocus());
+    await user.click(document.body);
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(1));
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('shows the keyboard hints', () => {
+    setup();
+    expect(screen.getByText(/to navigate/)).toBeInTheDocument();
+    expect(screen.getByText(/to open/)).toBeInTheDocument();
+    expect(screen.getByText(/to close/)).toBeInTheDocument();
+  });
+
+  it('returns focus to the opener when it closes', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>Open search</button>
+          <SearchModal open={open} onClose={() => setOpen(false)} onSearch={vi.fn()} onSelect={vi.fn()} />
+        </>
+      );
+    }
+    render(<Harness />);
+    const user = userEvent.setup();
+    const opener = screen.getByRole('button', { name: 'Open search' });
+    await user.click(opener);
+    await waitFor(() => expect(input()).toHaveFocus());
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 });

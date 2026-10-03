@@ -31,6 +31,8 @@ theming, and behaviour get fixed in one place instead of per call-site.
 - `<RadioGroup>` + `<Radio>` — one choice from a short list; a `<Radio>` with children is the whole
   clickable row (indicator + content). `variant="card"` is the bordered title-and-description option
   row, with one shared selected style. Use it instead of native `<input type="radio">` rows.
+- `<Command>` (+ `CommandInput/List/Group/Item/Status/Footer`) — command-palette list on Base UI Autocomplete,
+  rendered inside a `<Modal placement="top" layer="palette">`. Cmd+K search (`SearchModal`) is the first consumer.
 - `<Input>` / `<Textarea>`, `<Modal>` (+ `ModalHeader/Body/Footer`), `<Menu>` — see each
   file's header comment for the full prop list and usage examples.
 
