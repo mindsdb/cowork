@@ -458,6 +458,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
       description={<ArtifactFileName artifact={artifact} />}
       onActivate={openBest}
       actions={<ArtifactActions onOpen={openOutside} menuItems={menuItems} />}
+      // The meta holds the project link and status Try again; an overlay
+      // would cover them while the row is hovered.
+      reserveActions
       meta={(
         <>
           <ArtifactStatusSlot artifact={artifact} phase={phase} onRetry={onRetry} inlineChanges />
