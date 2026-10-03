@@ -1,35 +1,45 @@
 // Grid/list view switch for collection pages, plus the hook that owns the
 // choice. The choice persists per page under the page's own localStorage key.
-// List rows are multi-column and break at phone widths, so phones always get
-// the grid and the toggle is not drawn there; the stored desktop choice is
-// left as it was.
+// Each page names its default: cards for places you work in (Projects,
+// Artifacts), rows for things you manage (Scheduled, Skills). Phones always get
+// the page default and the toggle is not drawn there; the stored desktop choice
+// is left as it was.
 //
-//   const { view, setView, effectiveView } = useCollectionView('anton:projects-view');
+//   const { view, setView, effectiveView } = useCollectionView('anton:skills-view', { defaultView: 'list' });
 //   <FilterRow view={<ViewToggle value={view} onValueChange={setView} />} … />
 //   {effectiveView === 'grid' ? grid : list}
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Ico from '../Icons';
 import { ToggleGroup } from '../ui/ToggleGroup';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 export type CollectionViewMode = 'grid' | 'list';
 
-function readView(storageKey: string): CollectionViewMode {
+function readView(storageKey: string, fallback: CollectionViewMode): CollectionViewMode {
   try {
-    return localStorage.getItem(storageKey) === 'list' ? 'list' : 'grid';
+    const stored = localStorage.getItem(storageKey);
+    return stored === 'list' || stored === 'grid' ? stored : fallback;
   } catch {
-    return 'grid';
+    return fallback;
   }
 }
 
-export function useCollectionView(storageKey: string) {
+export interface CollectionViewOptions {
+  /** First-visit layout, and the layout phones always get. */
+  defaultView?: CollectionViewMode;
+}
+
+export function useCollectionView(storageKey: string, { defaultView = 'grid' }: CollectionViewOptions = {}) {
   const { isMobile } = useBreakpoint();
-  const [view, setView] = useState<CollectionViewMode>(() => readView(storageKey));
-  useEffect(() => {
-    try { localStorage.setItem(storageKey, view); } catch { /* storage unavailable */ }
-  }, [storageKey, view]);
-  const effectiveView: CollectionViewMode = isMobile ? 'grid' : view;
+  const [view, setViewState] = useState<CollectionViewMode>(() => readView(storageKey, defaultView));
+  // Only an explicit choice is stored, so a visitor who never picks keeps
+  // following the page default.
+  const setView = useCallback((next: CollectionViewMode) => {
+    setViewState(next);
+    try { localStorage.setItem(storageKey, next); } catch { /* storage unavailable */ }
+  }, [storageKey]);
+  const effectiveView: CollectionViewMode = isMobile ? defaultView : view;
   return { view, setView, effectiveView, isMobile };
 }
 
