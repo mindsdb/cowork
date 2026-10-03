@@ -16,7 +16,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
 
-const FALLBACK_DELAY_MS = 200;
+const FALLBACK_DELAY_MS = 0;
 let cachedDelay: number | undefined;
 
 // The open delay lives in the `--tooltip-delay` motion token (globals.css),
@@ -26,7 +26,7 @@ function tooltipDelay(): number {
   if (cachedDelay !== undefined) return cachedDelay;
   const raw = typeof document === 'undefined' ? ''
     : getComputedStyle(document.documentElement).getPropertyValue('--tooltip-delay').trim();
-  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
+  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : parseFloat(raw);
   cachedDelay = Number.isFinite(ms) ? ms : FALLBACK_DELAY_MS;
   return cachedDelay;
 }

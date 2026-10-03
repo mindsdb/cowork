@@ -256,14 +256,14 @@ body, body[data-theme="light"] {
      pulses, shimmers) keep their own cadence. Keep these on :root, never in
      the themed body blocks: a body declaration would shadow the :root
      overrides for every element. */
-  --dur-press:       40ms;    /* button :active nudge */
-  --dur-hover:       80ms;    /* color / background / border / shadow / small reveal */
-  --dur-popover-in:  100ms;   /* menu, select, combobox open */
-  --dur-popover-out: 60ms;    /* popover close, toast exit */
-  --dur-modal:       120ms;   /* modal open (close is instant) */
+  --dur-press:       0ms;     /* button :active nudge */
+  --dur-hover:       0ms;     /* color / background / border / shadow / small reveal */
+  --dur-popover-in:  0ms;     /* menu, select, combobox open */
+  --dur-popover-out: 0ms;     /* popover close, toast exit */
+  --dur-modal:       0ms;     /* modal open (close is instant) */
   --dur-layout:      200ms;   /* height/width/grid, progress, drawers, panel + content entrances */
   --dur-stagger:     40ms;    /* per-item delay in staggered entrances */
-  --tooltip-delay:   200ms;   /* first tooltip; later ones in the group open instantly */
+  --tooltip-delay:   0ms;     /* tooltips open on hover with no wait */
   --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in:         cubic-bezier(0.4, 0, 1, 1);
   --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);

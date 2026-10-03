@@ -30,6 +30,12 @@ describe('Tooltip delay token', () => {
     expect(screen.getByText('Hint')).toBeInTheDocument();
   });
 
+  it('reads a unitless 0 as no delay', async () => {
+    await renderWithToken('0');
+    await hoverAndWait(30);
+    expect(screen.getByText('Hint')).toBeInTheDocument();
+  });
+
   it('waits for --tooltip-delay before opening', async () => {
     await renderWithToken('0.8s');
     await hoverAndWait(100);
