@@ -80,3 +80,17 @@ describe('artifact card project link', () => {
     ).toBeNull();
   });
 });
+
+describe('artifact row project link', () => {
+  // The row's hover actions keep their width in flow rather than overlaying
+  // the meta, so hovering the row never covers this link. Position is pinned
+  // by class: happy-dom computes no Tailwind.
+  it('is not covered by the row actions on hover', () => {
+    localStorage.setItem('anton:artifacts-view', 'list');
+    render(<ArtifactsView artifacts={[ARTIFACT]} projects={[PROJECT]} onOpenProject={vi.fn()} />);
+
+    const cluster = screen.getByRole('button', { name: 'Artifact menu' }).closest('[data-item-actions]');
+    expect(cluster).not.toHaveClass('absolute');
+    expect(screen.getByRole('button', { name: PROJECT.display_name })).toBeInTheDocument();
+  });
+});

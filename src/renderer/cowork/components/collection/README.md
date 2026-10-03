@@ -49,8 +49,13 @@ view === 'grid' ? <ItemCard as="article" {...slots} /> : <ListItem as="article" 
   title, or from `activateLabel` when set. Omit `onActivate` while the title
   holds an input, such as an inline rename.
 - **Actions.** `actions` are hidden at rest. They appear on hover, when focus
-  is inside the item, while their menu is open, and always on touch devices.
-  They stay in the tab order, so Tab from the title reaches them. To show a
+  is inside the item, while their menu is open, and always on touch devices
+  (no hover, or a coarse pointer). They stay in the tab order, so Tab from
+  the title reaches them. Hover-revealed actions overlay the end of the title
+  (card) or meta (row); `revealActions` keeps them visible and in flow, so they
+  never cover the title, an inline rename, or the meta. A row whose meta holds
+  its own control sets `reserveActions` to keep the hidden actions in flow
+  instead of overlaying that control. To show a
   control at rest, such as Connectors' labelled Disconnect, put it in `meta`
   inside `<HoverActions reveal>`. That also lifts it above the item's
   click area.
