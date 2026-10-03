@@ -28,6 +28,7 @@ declare const Ico: {
   key: IconRenderer;
   lock: IconRenderer;
   mindsdb: IconRenderer;
+  more: IconRenderer;
   moreVert: IconRenderer;
   openFolder: IconRenderer;
   panelExpandLeft: IconRenderer;
