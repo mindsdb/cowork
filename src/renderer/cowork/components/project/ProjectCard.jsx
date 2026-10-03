@@ -1,15 +1,18 @@
-// D1 "Quiet" project card — name-led, single supporting activity line,
-// demoted stats. No per-project tints, no folder colors, no path. Pin
-// + ⋯ kebab reveal on hover. Click anywhere → opens the project.
-//
-// Design source: docs/design-handoff/Anton Projects (D1 · Quiet).
+// A project as a collection item: a card in the grid (ProjectCard) or a
+// row in the list (ProjectRow). Both are built from one slot set on the
+// collection kit — name-led, the latest task as the description, and a
+// quiet meta line (last activity, running tasks, stats). Pin + ⋯ sit in
+// the kit's HoverActions; a pinned project keeps them visible at rest.
+// The title is a real button stretched over the item, so it opens on
+// click, Enter or Space anywhere outside the actions.
 
 import { useEffect, useRef, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import Ico from '../Icons';
-import { Card, Tooltip } from '../ui';
+import { Tooltip } from '../ui';
+import { cn } from '../../lib/cn';
+import { ItemCard, ListItem, ITEM_MENU_TRIGGER, StatusDot } from '../collection';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
-import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
 import SharedResourceAttribution from '../SharedResourceAttribution';
@@ -107,14 +110,22 @@ export function visibleStats(stats = {}) {
   return out;
 }
 
-export function ProjectCard({
+// The pin and kebab share the kit's item-trigger look. The legacy class
+// keeps their 44px coarse-pointer tap target (globals.css).
+const ACTION_TRIGGER = cn(
+  'project-action-trigger inline-flex shrink-0 cursor-pointer items-center border-0 bg-transparent p-0 font-[inherit]',
+  ITEM_MENU_TRIGGER,
+);
+
+// One slot set for the grid card and the list row.
+function useProjectSlots({
   project,
-  isSelected,
+  isSelected = false,
   tasks = [],
   scheduled = [],
   pinned = false,
   editing = false,
-  // The server is still working through this project's delete. The card stays
+  // The server is still working through this project's delete. The item stays
   // put until DELETE succeeds, so it says it is waiting and drops the actions
   // that would fire a second one.
   deleting = false,
@@ -130,12 +141,11 @@ export function ProjectCard({
   const cardStats = visibleStats(stats);
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
-  const { revealed, hoverProps } = useRevealOnHover(isMenuOpen);
-  const [actionsFocused, setActionsFocused] = useState(false);
+  // App.jsx sets task.status to 'active' while a turn streams, so this is
+  // the project's live in-flight work.
+  const running = tasksFor(project, tasks).filter((t) => t.status === 'active').length;
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
-
-  const showHoverActions = alwaysShowActions || revealed || pinned || actionsFocused;
   const isReserved = isReservedProjectName(project.name);
 
   // When entering edit mode, focus + select the entire name on the
@@ -152,154 +162,104 @@ export function ProjectCard({
     return () => cancelAnimationFrame(id);
   }, [editing]);
 
-  const handleCardClick = () => {
-    if (editing || deleting) return; // ignore card clicks while editing or deleting
-    onOpen?.(project);
-  };
-
   const submitRename = () => {
     const next = renameInputRef.current?.value ?? projectLabel(project);
     onRenameSubmit?.(next);
   };
 
-  return (
-    <Card
-      as="div"
-      interactive={!editing && !deleting}
-      selected={isSelected || editing}
-      padding="cozy"
-      onActivate={editing || deleting ? undefined : handleCardClick}
-      aria-busy={deleting || undefined}
-      {...hoverProps}
-      className="min-h-[120px] flex flex-col gap-[10px] relative"
-      style={{
-        // Dynamic (app-state) + a transition that must stay inline: an inline
-        // style beats .card.interactive's unlayered `transition: var(--card-transition)`,
-        // so moving it to a utility would silently swap the transition.
-        cursor: editing || deleting ? 'default' : undefined,
-        opacity: deleting ? 0.6 : undefined,
-        transition: 'opacity .12s ease',
+  const title = editing ? (
+    <input
+      ref={renameInputRef}
+      type="text"
+      defaultValue={projectLabel(project)}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitRename();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onRenameCancel?.();
+        }
       }}
-    >
-      {/* Top row — folder + name + pin + ⋯ */}
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="inline-flex shrink-0 text-ink-3">
-          {Ico.folder(14)}
-        </span>
-        {editing ? (
-          <input
-            ref={renameInputRef}
-            type="text"
-            defaultValue={projectLabel(project)}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                submitRename();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                onRenameCancel?.();
-              }
-            }}
-            onBlur={submitRename}
-            spellCheck={false}
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="flex-1 min-w-0 font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink bg-surface-2 border border-solid border-accent rounded-[6px] py-[2px] px-[6px] [outline:none]"
-          />
-        ) : (
-          <span className="s-h3 flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel(project)}</span>
-        )}
+      onBlur={submitRename}
+      spellCheck={false}
+      autoCapitalize="none"
+      autoCorrect="off"
+      className="w-full min-w-0 rounded-md border border-solid border-accent bg-surface-2 px-1.5 py-0.5 font-body text-[length:inherit] font-medium text-ink [outline:none]"
+    />
+  ) : projectLabel(project);
 
-        {/* Pin button — visible on hover for unpinned, always for pinned */}
-        <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
-            onKeyDown={(e) => e.stopPropagation()}
-            onFocus={() => setActionsFocused(true)}
-            onBlur={() => setActionsFocused(false)}
-            aria-label={pinned ? 'Unpin project' : 'Pin project'}
-            aria-pressed={pinned}
-            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
-            style={{
-              color: pinned ? 'var(--accent)' : 'var(--ink-4)',
-              opacity: pinned || showHoverActions ? 1 : 0,
-              // Taken out of flow rather than faded while the delete is on the
-              // wire: an opacity-0 control stays clickable, and the coarse-
-              // pointer rule would paint it back in on touch.
-              display: deleting ? 'none' : 'inline-grid',
-            }}
-          >
-            {Ico.pin(13)}
-          </button>
-        </Tooltip>
-
-        {/* ⋯ menu trigger */}
+  // Withheld (not hidden) while the delete is on the wire, and the kebab for
+  // a reserved project, so no stylesheet can revive a control that must not fire.
+  const actions = !deleting && (
+    <>
+      <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
+          onKeyDown={(e) => e.stopPropagation()}
+          aria-label={pinned ? 'Unpin project' : 'Pin project'}
+          aria-pressed={pinned}
+          className={cn(ACTION_TRIGGER, pinned && 'text-accent hover:text-accent')}
+        >
+          {Ico.pin(13)}
+        </button>
+      </Tooltip>
+      {!isReserved && (
         <Tooltip content="Project menu">
           <button
             ref={triggerRef}
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const rect = triggerRef.current?.getBoundingClientRect();
-              onMenuOpen?.(project, rect);
+              onMenuOpen?.(project, triggerRef.current?.getBoundingClientRect());
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            onFocus={() => setActionsFocused(true)}
-            onBlur={() => setActionsFocused(false)}
             aria-label="Project menu"
-            className="project-action-trigger w-[26px] h-[26px] rounded-[6px] bg-transparent hover:bg-surface-3 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer shrink-0 [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] font-[inherit]"
-            style={{
-              opacity: showHoverActions ? 1 : 0,
-              display: isReserved || deleting ? 'none' : 'inline-grid',
-            }}
+            className={ACTION_TRIGGER}
           >
             {Ico.moreVert(15)}
           </button>
         </Tooltip>
-      </div>
-
-      {/* Activity block — clamp 2 lines. Falls back to a soft prompt
-          when the project has nothing yet. */}
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
-        {deleting ? (
-          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-3">
-            Deleting…
-          </span>
-        ) : summary ? (
-          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-2 line-clamp-2">
-            {summary.text}
-          </span>
-        ) : (
-          <span className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink-4 italic">
-            No activity yet
-          </span>
-        )}
-
-        <span className="inline-flex items-baseline gap-[6px] font-[family-name:var(--font-sans)] text-[11.5px] text-ink-4">
-          {active && (
-            <span aria-hidden className="w-[5px] h-[5px] rounded-full bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)] self-center" />
-          )}
-          <span>{summary?.time || '—'}</span>
-        </span>
-      </div>
-
-      <SharedResourceAttribution resource={project} />
-
-      {/* Stats row — full-word pluralized labels, hairline divider
-          above. Zero/undefined stats are omitted; when nothing is
-          left to show, the row (and its divider) don't render at
-          all rather than showing an empty strip. */}
-      {cardStats.length > 0 && (
-        <div className="flex flex-wrap gap-[14px] items-baseline border-t border-x-0 border-b-0 border-solid border-line pt-[10px]">
-          {cardStats.map(({ key, label }) => (
-            <span key={key} className="font-[family-name:var(--font-sans)] text-[12px] text-ink-4">{label}</span>
-          ))}
-        </div>
       )}
-    </Card>
+    </>
   );
+
+  const when = summary?.time || '—';
+
+  return {
+    leading: Ico.folder(14),
+    title,
+    actions: actions || undefined,
+    // A pinned project keeps its accent pin (and the kebab beside it) in view.
+    // Rename keeps them in flow too, so they never cover the name field.
+    revealActions: alwaysShowActions || isMenuOpen || pinned || editing,
+    selected: isSelected || editing,
+    busy: deleting,
+    onActivate: editing ? undefined : () => onOpen?.(project),
+    description: deleting ? 'Deleting…'
+      : summary ? summary.text
+      : <span className="italic text-ink-4">No activity yet</span>,
+    children: <SharedResourceAttribution resource={project} />,
+    meta: (
+      <>
+        {active ? <StatusDot tone="success">{when}</StatusDot> : <span className="whitespace-nowrap">{when}</span>}
+        {running > 0 && <span className="whitespace-nowrap text-accent">{running} running</span>}
+        {cardStats.length > 0 && <span className="truncate">{cardStats.map((s) => s.label).join(' · ')}</span>}
+      </>
+    ),
+  };
+}
+
+/** Grid layout: a project is a place you open and work in. */
+export function ProjectCard(props) {
+  return <ItemCard {...useProjectSlots(props)} />;
+}
+
+/** List layout: the same slots as a row, meta inline instead of columns. */
+export function ProjectRow(props) {
+  return <ListItem {...useProjectSlots(props)} />;
 }
