@@ -929,11 +929,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       </div>
       {/* The card is role="button" with a whole-surface click and Enter/Space
           handler. Actions, and the overflow menu whose events React bubbles
-          through its portal, must not also open the preview. */}
+          through its portal, must not also open the preview. Only Enter and
+          Space stop here: other keys (Cmd+K, Cmd+N, Escape) must still reach
+          the window-level shortcut listeners. */}
       <div
         className="chat-artifact-card__actions"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
         <ActionBar
           size="sm"
