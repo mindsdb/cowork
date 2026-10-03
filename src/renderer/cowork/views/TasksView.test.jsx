@@ -84,10 +84,10 @@ describe('TasksView', () => {
 
   it('filters by project, offering only projects that have tasks', async () => {
     const { user } = setup({ projects: [...PROJECTS, { name: 'empty', display_name: 'Empty' }] });
-    await user.click(screen.getByRole('button', { name: /^Project/ }));
-    expect(screen.getByRole('button', { name: 'All projects' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Empty' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /^Project/ }));
+    await user.click(screen.getByRole('combobox', { name: /^Project/ }));
+    expect(await screen.findByRole('option', { name: 'All projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Empty' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
     await pickOption(user, /^Project/, 'Ops');
     expect(orderOf(TITLES)).toEqual(['Beta notes']);
