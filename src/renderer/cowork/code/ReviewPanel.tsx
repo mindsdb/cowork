@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import { Tab, TabList, Tabs } from '../components/ui/Tabs';
 import Tooltip from '../components/ui/Tooltip';
@@ -225,13 +226,14 @@ export function ReviewPanel({
               {files.length > 0 && <><span className="code-diff-add">+{additions}</span><span className="code-diff-del">−{deletions}</span></>}
             </div>
             {files.length === 0 && (
-              <div className="code-review__empty">
-                <span>{Ico.code(18)}</span>
-                <strong>{directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}</strong>
-                <p>{directFolderWithoutDiff
+              <EmptyState
+                size="sm"
+                icon={Ico.code(18)}
+                title={directFolderWithoutDiff ? 'Open the folder to review changes' : 'No changes to review yet'}
+                description={directFolderWithoutDiff
                   ? 'Direct folders do not have a Git baseline, so Cowork cannot build an inline diff.'
-                  : 'File changes will collect here while the agent works.'}</p>
-              </div>
+                  : 'File changes will collect here while the agent works.'}
+              />
             )}
             {groupedFiles.map((group, groupIndex) => (
               <section className="code-diff-group" key={group.workspace.folder_id}>

@@ -13,10 +13,6 @@
 .code-files__error { padding: 10px 12px 0; }
 .code-files__body { flex: 1; min-height: 0; overflow: auto; }
 .code-files__loading { height: 120px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ink-4); font-size: 11px; }
-.code-files__empty { padding: 72px 24px; display: grid; justify-items: center; color: var(--ink-4); text-align: center; }
-.code-files__empty > span { margin-bottom: 10px; display: inline-flex; }
-.code-files__empty strong { color: var(--ink-3); font-size: 12px; }
-.code-files__empty p { max-width: 240px; margin: 5px 0 0; font-size: 11px; line-height: 1.5; }
 .code-files__crumbs { min-height: 38px; padding: 7px 12px; display: flex; align-items: center; overflow: hidden; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 10.5px; }
 .code-files__crumbs span { min-width: 0; display: flex; align-items: center; }
 .code-files__crumbs i { padding: 0 5px; color: var(--ink-5); font-style: normal; }
