@@ -4,6 +4,10 @@
 //
 //   [leading ……………………]  [secondary] [PRIMARY] [⋯]
 //
+// A decision with three answers of rising commitment (Deny · Always allow ·
+// Allow once) adds a ghost `tertiary` on the left; the secondary then takes
+// the outlined treatment, so emphasis steps ghost → outline → filled.
+//
 // The overflow trigger trails the primary, as ComposerLip already placed it,
 // so the menu opens flush with the bar's trailing edge (`align="end"`). Bars
 // docked to the composer pass `menuSide="top"` so the menu opens upward.
@@ -41,6 +45,8 @@ export interface ActionSpec {
   icon?: ReactNode;
   /** For a disclosure toggle such as "Details": sets `aria-expanded`. */
   expanded?: boolean;
+  /** `submit` when the bar sits inside a form the action submits. */
+  type?: 'button' | 'submit';
 }
 
 export type ActionBarSize = 'xs' | 'sm' | 'md';
@@ -48,6 +54,8 @@ export type ActionBarSize = 'xs' | 'sm' | 'md';
 export interface ActionBarProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
   primary?: ActionSpec | null;
   secondary?: ActionSpec | null;
+  /** A ghost action left of the secondary; promotes the secondary to outlined. */
+  tertiary?: ActionSpec | null;
   /** Menu items; falsy entries are skipped so callers can write `cond && item`. */
   overflow?: Array<MenuItem | false | null | undefined>;
   /** Context on the leading edge, such as a risk note or a status line. */
@@ -87,6 +95,7 @@ function ActionButton({ action, variant, size }: { action: ActionSpec; variant: 
       aria-busy={action.busy || undefined}
       aria-keyshortcuts={action.shortcut}
       aria-expanded={action.expanded}
+      type={action.type}
       className={action.busy ? 'is-busy' : undefined}
       onClick={action.onClick}
     >
@@ -103,6 +112,7 @@ function ActionButton({ action, variant, size }: { action: ActionSpec; variant: 
 export function ActionBar({
   primary,
   secondary,
+  tertiary,
   overflow = [],
   leading,
   size = 'sm',
@@ -113,11 +123,12 @@ export function ActionBar({
   ...rest
 }: ActionBarProps) {
   const items = overflow.filter((item): item is MenuItem => !!item);
-  if (!primary && !secondary && !items.length && !leading) return null;
+  if (!primary && !secondary && !tertiary && !items.length && !leading) return null;
   return (
     <div className={cn(barVariants({ size, align }), className)} {...rest}>
       {leading && <div className="min-w-0 flex-1">{leading}</div>}
-      {secondary && <ActionButton action={secondary} size={size} variant={secondary.tone === 'danger' ? 'danger' : 'subtle'} />}
+      {tertiary && <ActionButton action={tertiary} size={size} variant={tertiary.tone === 'danger' ? 'danger' : 'subtle'} />}
+      {secondary && <ActionButton action={secondary} size={size} variant={secondary.tone === 'danger' ? 'danger' : tertiary ? 'default' : 'subtle'} />}
       {primary && <ActionButton action={primary} size={size} variant={primary.tone === 'danger' ? 'danger-solid' : 'primary'} />}
       {items.length > 0 && (
         <Menu
