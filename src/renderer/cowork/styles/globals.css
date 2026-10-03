@@ -3579,7 +3579,8 @@ body[data-theme="dark"] .mshell__drawer-title {
    real target, so on a coarse pointer the control itself grows to the 44px
    minimum the rest of the mobile shell uses. */
 @media (hover: none), (pointer: coarse) {
-  .chat-card-shell .btn { min-height: 44px; }
+  .chat-card-shell .btn,
+  .chat-artifact-card__actions .btn { min-height: 44px; }
 }
 
 /* ─── Inline artifact card in the transcript ─────────────────────────────
