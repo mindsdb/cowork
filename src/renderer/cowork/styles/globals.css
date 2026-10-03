@@ -4324,6 +4324,13 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .user-turn-more:hover { color: var(--ink); }
 
+/* In-chat card actions are compact (`sm`, 28px) for a mouse. Touch needs a
+   real target, so on a coarse pointer the control itself grows to the 44px
+   minimum the rest of the mobile shell uses. */
+@media (hover: none), (pointer: coarse) {
+  .chat-card-shell .btn { min-height: 44px; }
+}
+
 /* ─── Inline artifact card in the transcript ─────────────────────────────
    Laid out from the chat column's width, not the window's. With the right
    rail docked, a 900px window leaves this column near 340px — narrower than

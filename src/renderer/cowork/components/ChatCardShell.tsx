@@ -42,11 +42,13 @@ export interface CardButton extends ActionSpec {
 /*
  * A caller's flat button list in ActionBar's hierarchy: the button marked
  * `primary` is the filled action, the next is the quiet secondary, and any
- * further ones go behind "…". An empty list gives no bar.
+ * further ones go behind "…". A lone button is the primary whether marked or
+ * not: as a borderless secondary on the tint it would read as plain text.
+ * An empty list gives no bar.
  */
 export function cardActions(buttons: CardButton[] = []): ActionBarProps | null {
   if (!buttons.length) return null;
-  const primary = buttons.find((b) => b.primary) || null;
+  const primary = buttons.length === 1 ? buttons[0] : buttons.find((b) => b.primary) || null;
   const [secondary = null, ...rest] = buttons.filter((b) => b !== primary);
   return {
     primary,
@@ -60,7 +62,7 @@ export default function ChatCardShell({
 }: ChatCardShellProps) {
   const { icon: Icon, label } = TONES[tone];
   return (
-    <div className={cn('flex flex-col gap-2 rounded-xl bg-surface-2 px-4 py-3.5', className)} {...rest}>
+    <div className={cn('chat-card-shell flex flex-col gap-2 rounded-xl bg-surface-2 px-4 py-3.5', className)} {...rest}>
       {kind !== false && (
         <div className="flex items-center gap-1.5 font-body text-xs font-medium text-ink-3">
           <Icon size={13} strokeWidth={1.75} aria-hidden="true" />
