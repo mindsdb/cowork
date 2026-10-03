@@ -11,7 +11,7 @@ single shell owns a page.
 | Header | `PageHeader` |
 | Toolbar | `FilterRow`. Search is `SearchInput`, filters and sort are `Select variant="pill"` (or `SortPill`), and the view switch is `ViewToggle`. |
 | ⌘K focuses search | `useCollectionShortcut(searchRef)` |
-| Grid or list preference | `useCollectionView(storageKey)`. It persists the choice and forces grid on phones. |
+| Grid or list preference | `useCollectionView(storageKey, { defaultView })`. It stores an explicit choice and gives phones the page default. |
 | Loading, empty, no match | `CollectionState` wraps the body |
 | Cards | `CardGrid` › `ItemCard` … `NewTile` |
 | Rows | `ListGroup` › `ListItem` … `NewRow`, plus `ListNotice` for an inline line |
