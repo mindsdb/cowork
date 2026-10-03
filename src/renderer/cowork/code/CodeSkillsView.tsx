@@ -8,8 +8,17 @@ import Button from '../components/ui/Button';
 import Checkbox from '../components/ui/Checkbox';
 import Input from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { PageHeader, FilterRow, SearchInput } from '../components/collection';
+import Select from '../components/ui/Select';
+import {
+  CollectionState,
+  FilterRow,
+  HoverActions,
+  ListGroup,
+  ListItem,
+  ListNotice,
+  PageHeader,
+  SearchInput,
+} from '../components/collection';
 import {
   codingApi,
   type CodeProject,
@@ -23,6 +32,13 @@ import { useSkillLibrary } from './useSkillLibrary';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
+
+const ORIGIN_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'team', label: 'Team' },
+  { value: 'personal', label: 'Yours' },
+  { value: 'built_in', label: 'MindsHub' },
+];
 
 function kindLabel(kind: SkillLibraryItem['kind']): string {
   if (kind === 'instructions') return 'Instructions';
@@ -277,77 +293,115 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
     finally { setBusy(false); }
   };
 
+  const openSource = (source: SkillLibrarySource) => { setSourceActionError(''); setSourceDetail(source); };
+  const groupTitle = (label: string) => <h2 className="m-0 text-xs font-semibold text-ink">{label}</h2>;
   const rows = (items: SkillLibraryItem[]) => items.map((item) => (
-    <div className="code-skill-row" key={item.id}>
-      <button type="button" className="code-skill-row__open" onClick={() => setDetailItem(item)} aria-label={`View ${item.name}`}>
-        <span className="code-skill-row__icon" aria-hidden="true">{item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}</span>
-        <span className="code-skill-row__main"><strong>{item.name}</strong><span>{item.description || item.path}</span></span>
-      </button>
-      <span className="code-skill-row__kind">{kindLabel(item.kind)}</span>
-      {item.origin === 'team' ? (
-        <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
-          {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
-        </Button>
-      ) : item.origin === 'personal' ? (
-        <div className="code-skill-row__personal">
-          <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>
-          <Button size="sm" variant="subtle" aria-label={`Edit ${item.name}`} onClick={() => setPersonalEditor({ id: item.path })}>Edit</Button>
-        </div>
-      ) : <span className="code-skill-row__availability">{item.enabled ? 'Available' : 'Disabled'}</span>}
-    </div>
+    <ListItem
+      key={item.id}
+      leading={<span className="inline-flex size-6 items-center justify-center rounded-md bg-surface-2 text-ink-3">
+        {item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}
+      </span>}
+      title={item.name}
+      description={item.description || item.path}
+      onActivate={() => setDetailItem(item)}
+      activateLabel={`View ${item.name}`}
+      meta={<>
+        <span className="max-sm:hidden">{kindLabel(item.kind)}</span>
+        {item.origin === 'team' ? (
+          <HoverActions reveal>
+            <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
+              {item.enabled_project_ids.length ? `${item.enabled_project_ids.length} project${item.enabled_project_ids.length === 1 ? '' : 's'}` : 'Choose projects'}
+            </Button>
+          </HoverActions>
+        ) : <span>{item.enabled ? 'Available' : 'Disabled'}</span>}
+      </>}
+      actions={item.origin === 'personal'
+        ? <Button size="sm" variant="subtle" aria-label={`Edit ${item.name}`} onClick={() => setPersonalEditor({ id: item.path })}>Edit</Button>
+        : undefined}
+    />
   ));
+  const showTeam = filter === 'all' || filter === 'team';
+  const searching = Boolean(query.trim());
 
   return (
     <main className="code-skills-view">
       <PageHeader
         title="Skills"
         subtitle="Your workflows and your team’s engineering standards, ready for Code tasks."
-        actions={<div className="code-skills-view__actions">
+        actions={<div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button variant="subtle" onClick={() => setAddOpen(true)}>{Ico.link(13)} Add team source</Button>
           <Button variant="primary" onClick={() => setPersonalEditor({})}>{Ico.plus(13)} Add personal skill</Button>
         </div>}
       />
       <FilterRow
         search={<SearchInput value={query} onChange={setQuery} placeholder="Search skills" shortcut="" />}
-        sort={<ToggleGroup
-          className="code-skills-filter"
-          aria-label="Filter skills"
+        sort={<Select
+          variant="pill"
+          label="Source"
           value={filter}
-          onValueChange={(value) => setFilter(value as OriginFilter)}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'team', label: 'Team' },
-            { value: 'personal', label: 'Yours' },
-            { value: 'built_in', label: 'MindsHub' },
-          ]}
+          onValueChange={(value: string) => setFilter(value as OriginFilter)}
+          options={ORIGIN_OPTIONS}
+          menuMinWidth={160}
         />}
       />
 
-      {error && <div className="code-skills-view__notice"><Alert variant="danger">{error}</Alert></div>}
-      {loading ? <div className="code-skills-empty">Loading skills…</div> : <div className="code-skills-catalog">
-        {(filter === 'all' || filter === 'team') && library.sources.map((source) => {
-          const items = teamBySource.get(source.id) || [];
-          if (!items.length && query.trim()) return null;
-          return <section className="code-skill-group" key={source.id}>
-            <header>
-              <button type="button" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}><span>{Ico.link(14)}</span><strong>{source.name}</strong><small>{source.branch} · {shortRevision(source.current_revision)}</small></button>
-              {source.error ? <Button size="sm" variant="tinted" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}>Needs attention</Button>
-                : source.update_available ? <Button size="sm" variant="tinted" onClick={() => { setSourceActionError(''); setSourceDetail(source); }}>Update available</Button>
-                  : <span>{source.item_count} item{source.item_count === 1 ? '' : 's'}</span>}
-            </header>
-            <div>{items.length ? rows(items) : <div className="code-skill-group__empty">{source.error ? 'Source unavailable — open for details.' : query.trim() ? 'No items match this search.' : 'No shared items found.'}</div>}</div>
-          </section>;
-        })}
-        {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
-        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
-        {!hasVisibleCatalog && <div className="code-skills-empty">
-          {query.trim() ? 'No skills match your search.' : filter === 'personal' || filter === 'all' ? <>
-            <span>{Ico.cube(20)}</span><strong>No personal skills yet</strong>
-            <p>Write instructions or import a SKILL.md. No Git repository needed.</p>
-            <Button variant="subtle" onClick={() => setPersonalEditor({})}>Add your first skill</Button>
-          </> : filter === 'team' ? <><strong>No team sources yet</strong><p>Connect a Git repository to share engineering standards across projects.</p></> : 'No skills in this view.'}
-        </div>}
-      </div>}
+      {error && <div className="mx-8 mt-5"><Alert variant="danger">{error}</Alert></div>}
+      <div className="mx-8 mt-5 grid gap-6">
+        <CollectionState
+          loading={loading}
+          skeleton="rows"
+          skeletonCount={4}
+          // The origin pill narrows what exists, so an empty pill reads as
+          // "nothing here yet"; only a search with no hits is a no-match.
+          total={hasVisibleCatalog || searching ? 1 : 0}
+          shown={hasVisibleCatalog ? 1 : 0}
+          query={query}
+          onClear={() => setQuery('')}
+          noMatchTitle="No skills match your search."
+          empty={filter === 'personal' || filter === 'all'
+            ? {
+                icon: Ico.cube(20),
+                title: 'No personal skills yet',
+                description: 'Write instructions or import a SKILL.md. No Git repository needed.',
+                action: <Button variant="subtle" onClick={() => setPersonalEditor({})}>Add your first skill</Button>,
+              }
+            : filter === 'team'
+              ? { title: 'No team sources yet', description: 'Connect a Git repository to share engineering standards across projects.' }
+              : { title: 'No skills in this view.' }}
+        >
+          {showTeam && library.sources.map((source) => {
+            const items = teamBySource.get(source.id) || [];
+            if (!items.length && searching) return null;
+            return <ListGroup
+              key={source.id}
+              density="compact"
+              title={<button
+                type="button"
+                className="group/src flex min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-body text-ink"
+                onClick={() => openSource(source)}
+              >
+                <span className="inline-flex text-ink-4">{Ico.link(14)}</span>
+                <strong className="text-xs font-semibold group-hover/src:text-accent">{source.name}</strong>
+                <small className="truncate font-mono text-2xs text-ink-4">{source.branch} · {shortRevision(source.current_revision)}</small>
+              </button>}
+              meta={source.error || source.update_available ? undefined : `${source.item_count} item${source.item_count === 1 ? '' : 's'}`}
+              actions={source.error ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Needs attention</Button>
+                : source.update_available ? <Button size="sm" variant="tinted" onClick={() => openSource(source)}>Update available</Button>
+                  : undefined}
+            >
+              {items.length ? rows(items) : <ListNotice className="py-6 text-center text-xs text-ink-4">
+                {source.error ? 'Source unavailable — open for details.' : searching ? 'No items match this search.' : 'No shared items found.'}
+              </ListNotice>}
+            </ListGroup>;
+          })}
+          {(filter === 'all' || filter === 'personal') && personal.length > 0 && (
+            <ListGroup density="compact" title={groupTitle('Yours')} description="Personal skills available in Code Mode" meta={personal.length}>{rows(personal)}</ListGroup>
+          )}
+          {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && (
+            <ListGroup density="compact" title={groupTitle('MindsHub')} description="Engineering skills maintained by MindsHub" meta={builtIn.length}>{rows(builtIn)}</ListGroup>
+          )}
+        </CollectionState>
+      </div>
 
       <AddSkillSourceModal open={addOpen} busy={busy} onClose={() => setAddOpen(false)} onAdd={async (values) => {
         setBusy(true);
