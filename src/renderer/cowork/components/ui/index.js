@@ -19,6 +19,7 @@ export { default as Select } from './Select.jsx';
 export { default as Combobox } from './Combobox.jsx';
 export { default as Tooltip } from './Tooltip.tsx';
 export { default as Checkbox } from './Checkbox.tsx';
+export { default as RadioGroup, Radio } from './RadioGroup.tsx';
 export { default as Kbd } from './Kbd.tsx';
 export { default as EmptyState } from './EmptyState.jsx';
 export { default as Meter } from './Meter.tsx';
