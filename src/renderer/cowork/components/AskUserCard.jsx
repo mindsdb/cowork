@@ -11,7 +11,7 @@ import { cn } from '../lib/cn';
 // through to native chrome. Only unselected options dim: the chosen one is
 // the answer.
 const OPTION = 'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default';
-const OPTION_IDLE = 'border-transparent bg-surface text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
+const OPTION_IDLE = 'border-line bg-surface text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
 const OPTION_SELECTED = 'border-accent bg-accent-bg text-ink font-medium';
 
 /**
