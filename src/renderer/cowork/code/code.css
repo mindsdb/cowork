@@ -527,38 +527,8 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-projects-table__empty { min-height: 170px; padding: 28px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ink-4); text-align: center; font-size: 11.5px; }
 .code-projects-table__empty.is-error { color: var(--danger); }
 
-/* First-class developer-tool connections. The collection follows Projects'
-   calm, row-based management pattern: providers are the stable hierarchy and
-   concrete accounts appear only when they exist. */
-.code-connectors-list { margin: 0 32px; border-top: 1px solid var(--line); }
-.code-connector-provider { border-bottom: 1px solid var(--line); }
-.code-connector-provider__summary { min-height: 78px; padding: 10px 7px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
-.code-connector-logo { width: 32px; height: 32px; display: inline-grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
-.code-connector-logo img { width: 18px; height: 18px; display: block; }
-.code-connector-provider__identity { min-width: 0; display: grid; gap: 4px; }
-.code-connector-provider__identity h2 { margin: 0; color: var(--ink-2); font-size: 12.5px; font-weight: 650; }
-.code-connector-provider__identity small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
-.code-connector-status { min-width: 96px; display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; color: var(--ink-4); font-size: 10.5px; white-space: nowrap; }
-.code-connector-status.is-connected { color: var(--ink-3); }
-.code-connector-status.is-connected .code-status-dot { background: var(--ok); }
-.code-connector-status.needs-attention { color: var(--warning); }
-.code-connector-status.needs-attention .code-status-dot { background: var(--warning); }
 .code-connector-return { min-height: 42px; margin: 0 32px 18px; padding: 7px 9px 7px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line)); border-radius: var(--r-lg); background: color-mix(in srgb, var(--accent-bg) 44%, var(--surface-1)); color: var(--ink-3); font-size: 10.5px; }
 .code-connector-return strong { color: var(--ink-2); font-weight: 620; }
-.code-connector-provider__error { padding: 0 7px 10px 55px; }
-.code-connector-oauth { min-height: 52px; margin: 0 7px 10px 55px; padding: 8px 8px 8px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line)); border-radius: var(--r); background: color-mix(in srgb, var(--accent-bg) 38%, var(--surface-1)); }
-.code-connector-oauth > span { min-width: 0; display: grid; gap: 3px; }
-.code-connector-oauth strong { color: var(--ink-2); font-size: 10.5px; font-weight: 620; }
-.code-connector-oauth small { color: var(--ink-4); font-size: 9.5px; }
-.code-connector-accounts { margin: 0 7px 10px 55px; border-top: 1px solid var(--line); }
-.code-connector-account { min-height: 48px; display: grid; grid-template-columns: 10px minmax(0, 1fr) 88px 92px 28px; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); }
-.code-connector-account__rail { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
-.code-connector-account__identity { min-width: 0; display: grid; gap: 3px; }
-.code-connector-account__identity strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }
-.code-connector-account__identity small { color: var(--ink-4); font-size: 9.5px; }
-.code-connector-account__state { color: var(--ink-4); font-size: 10px; text-align: right; }
-.code-connector-account__state.needs-attention { color: var(--warning); }
-.code-connector-account:has(.needs-attention) .code-connector-account__rail { background: var(--warning); }
 
 /* Project settings are quiet, editable rows. Details stay folded until the
    user chooses to configure one folder or review a playbook update. */
@@ -894,9 +864,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-agent-picker { flex: 0 1 126px; }
   .code-model-picker { margin-left: auto; }
   .code-composer__actions .btn:first-of-type { margin-left: auto; }
-  .code-connector-provider__summary { grid-template-columns: 36px minmax(0, 1fr) auto; }
-  .code-connector-status { display: none; }
-  .code-connector-accounts { margin-left: 7px; }
 }
 
 @media (max-width: 700px) {
@@ -929,11 +896,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-project-defaults { grid-template-columns: 1fr; }
   .code-project-resource__commands { padding-left: 12px; }
   .code-project-resource__commands label { grid-template-columns: 1fr; gap: 4px; }
-  .code-connector-provider__summary { grid-template-columns: 36px minmax(0, 1fr); }
-  .code-connector-provider__summary > .btn { grid-column: 2; justify-self: start; }
-  .code-connector-account { grid-template-columns: 10px minmax(0, 1fr) 28px; padding: 7px 0; }
-  .code-connector-account__state,
-  .code-connector-account > .btn:not([aria-label^="Disconnect"]) { grid-column: 2; justify-self: start; text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {
