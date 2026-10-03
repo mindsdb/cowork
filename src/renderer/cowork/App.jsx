@@ -33,6 +33,7 @@ import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/
 import { useCodeWorkspace } from './code/useCodeWorkspace';
 import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
+import { projectLabel } from './lib/projectLabel';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
@@ -533,6 +534,20 @@ export default function App() {
       <AppCore />
     </ToastProvider>
   );
+}
+
+// Cmd+K's starting list before anything is typed: the five most recently
+// updated tasks and the first three projects, from state App already holds.
+function searchRecents(tasks, projects) {
+  const labelFor = (task) => {
+    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    return project ? projectLabel(project) : undefined;
+  };
+  return [
+    ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
+      .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
+    ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.name, title: projectLabel(project) })),
+  ];
 }
 
 function AppCore() {
@@ -5372,6 +5387,7 @@ function AppCore() {
         onClose={() => setSearchOpen(false)}
         onSearch={searchCowork}
         onSelect={handleSearchSelect}
+        recents={searchOpen ? searchRecents(tasks, projects) : undefined}
       />
 
       <ConnectorPicker

@@ -202,4 +202,41 @@ describe('SearchModal', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(opener).toHaveFocus());
   });
+
+  describe('recents before typing', () => {
+    const RECENTS = [
+      { type: 'task', id: 't9', title: 'Churn summary', subtitle: 'Metrics' },
+      { type: 'task', id: 't8', title: 'Board deck numbers' },
+      { type: 'project', id: 'p9', title: 'Website refresh' },
+    ];
+
+    it('lists recent tasks and projects under their headings instead of the hint', () => {
+      setup({ recents: RECENTS });
+      expect(screen.getByText('Recent tasks')).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /Churn summary/ })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /Website refresh/ })).toBeInTheDocument();
+      expect(screen.queryByText(/are searchable/)).toBeNull();
+    });
+
+    it('opens a recent item with the arrow keys and Enter, without searching', async () => {
+      const { user, props } = setup({ recents: RECENTS });
+      await user.keyboard('{ArrowDown}{Enter}');
+      expect(props.onSelect).toHaveBeenCalledWith(RECENTS[1]);
+      expect(props.onClose).toHaveBeenCalledTimes(1);
+      expect(props.onSearch).not.toHaveBeenCalled();
+    });
+
+    it('replaces recents with search results once a query is typed', async () => {
+      const { user } = setup({ recents: RECENTS });
+      await user.type(input(), 'report');
+      expect(await screen.findByRole('option', { name: /Quarterly report/ })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Churn summary/ })).toBeNull();
+      expect(screen.queryByText('Recent tasks')).toBeNull();
+    });
+
+    it('shows the hint when there are no recents', () => {
+      setup({ recents: [] });
+      expect(screen.getByText(/are searchable/)).toBeInTheDocument();
+    });
+  });
 });
