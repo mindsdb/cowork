@@ -30,7 +30,10 @@ const SORT_OPTIONS = [
 ];
 
 // Same key convention as ArtifactsView / ProjectsView (`anton:<surface>-view`).
-const VIEW_MODE_KEY = 'anton:scheduled-view';
+// v2: the old `anton:scheduled-view` key was written on every mount, so a stored
+// 'grid' there was usually the old default, not a choice. A fresh key lets
+// everyone start on rows; only a choice made in this layout is remembered.
+const VIEW_MODE_KEY = 'anton:scheduled-view-v2';
 
 export default function ScheduledView({
   scheduled,

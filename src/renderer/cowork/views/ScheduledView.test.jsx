@@ -10,7 +10,8 @@ import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
 
 import ScheduledView from './ScheduledView';
 
-const VIEW_KEY = 'anton:scheduled-view';
+const VIEW_KEY = 'anton:scheduled-view-v2';
+const LEGACY_VIEW_KEY = 'anton:scheduled-view';
 const PROJECTS = [{ id: 'proj-metrics', name: 'metrics', display_name: 'Metrics', path: '/work/metrics' }];
 const SCHEDULED = [
   {
@@ -114,6 +115,14 @@ describe('ScheduledView — toolbar', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(3);
+  });
+
+  // Staging wrote the old key on every mount, so its 'grid' is not a choice.
+  it('opens on rows even when the legacy key holds grid', () => {
+    localStorage.setItem(LEGACY_VIEW_KEY, 'grid');
+    setup();
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
   });
 });
 
