@@ -1814,6 +1814,10 @@ export default function ChatView({
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
   onQuestionAnswered,
+  // One side of a model comparison: the transcript only. The Compare screen
+  // owns the header, the shared composer and the side panel, so none of them
+  // render here.
+  pane = false,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1858,9 +1862,12 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
   // Inline rail only active on wide screens.
-  const effectiveRailOpen = !isNarrow && railOpen;
+  const effectiveRailOpen = !pane && !isNarrow && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text) => onSend?.(text);
   // Narrow-screen overlay rail.
-  const railOverlayOpen = isNarrow && railNarrowOpen;
+  const railOverlayOpen = !pane && isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
@@ -2090,12 +2097,12 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
+        {!pane && (<Tooltip content="Expand panel">
           <button
             type="button"
             onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
@@ -2117,7 +2124,7 @@ export default function ChatView({
           >
             {Ico.panelExpandLeft(15)}
           </button>
-        </Tooltip>
+        </Tooltip>)}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2125,7 +2132,7 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
+        {!pane && (<div
           // Belt + suspenders: even if a flex child miscalculates by a
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
@@ -2278,7 +2285,7 @@ export default function ChatView({
               title now (above) so it stays visually attached to the
               task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+        </div>)}
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2333,7 +2340,7 @@ export default function ChatView({
         <div
           ref={scrollRef}
           data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+          className={`scroll-clean min-h-0 overflow-y-auto overflow-x-hidden px-7 max-sm:px-3.5 bg-transparent [-webkit-app-region:no-drag] select-text ${pane ? 'pt-4 pb-8' : 'pt-8 pb-[180px] mb-[25px]'}`}
         >
           <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
             {(() => {
@@ -2378,10 +2385,10 @@ export default function ChatView({
                     // No turn offers a delete while one is out: every other
                     // turn's index is about to shift when the server reindexes
                     // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    onDelete={orphan && !deleteInFlight && onDeleteTurn ? () => onDeleteTurn(turnIdxForThisUser) : null}
                     deleting={deletingTurnIndex === turnIdxForThisUser}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2547,7 +2554,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      onRetry={prevUserText && sendAgain ? () => sendAgain(prevUserText) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2631,8 +2638,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2678,8 +2685,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="Billing is temporarily unavailable"
                       body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2702,8 +2709,8 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={retryText && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(retryText), primary: true }]
                         : []}
                     />
                   );
@@ -2738,7 +2745,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
+                      onRetry={rlRetryText && sendAgain ? () => sendAgain(rlRetryText) : undefined}
                     />
                   );
                 }
@@ -2917,7 +2924,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        {!pane && (<div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -2979,11 +2986,12 @@ export default function ChatView({
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
-        </div>
+        </div>)}
         </>
         )}
       </div>
 
+      {!pane && (<>
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
       {isNarrow && (
@@ -3064,6 +3072,7 @@ export default function ChatView({
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
+      </>)}
 
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>
